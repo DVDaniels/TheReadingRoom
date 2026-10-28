@@ -251,7 +251,7 @@
 
   function selectView(v) {
     S.view = /^\d+$/.test(v) ? Number(v) : v;
-    S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 });
+    S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
   }
 
 
@@ -259,23 +259,32 @@
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
   let listScroll = 0, articleHtml = '', articleFor = null;
 
+  // Wide windows show the list and the article side by side (the breakpoint matches styles.css).
+  const wide = window.matchMedia('(min-width: 1280px)');
+  const isSplit = () => wide.matches;
+  wide.addEventListener('change', () => {
+    if (S.readerId) $('listView').hidden = !isSplit() ? true : false;
+    if (isSplit()) $('listView').hidden = false;
+  });
+
   function openReader(id) {
     const it = item(id); if (!it) return;
-    if (!S.readerId) listScroll = $('main').scrollTop;
+    if (!S.readerId && !isSplit()) listScroll = $('main').scrollTop;
     S.readerId = S.selId = id; S.keep.add(id);
     hidePops();
-    $('listView').hidden = true; $('reader').hidden = false;
-    $('main').scrollTo({ top: 0 });
+    $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true;
+    if (isSplit()) $('reader').scrollTo({ top: 0 }); else $('main').scrollTo({ top: 0 });
     if (!it.read) mark(id, { read: true }); else render();
     renderReaderChrome();
     loadArticle(it);
+    if (isSplit()) document.querySelector(`.story[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
   }
 
   function closeReader(silent) {
     if (!S.readerId) return;
     S.readerId = null; articleFor = null; hidePops();
-    $('reader').hidden = true; $('listView').hidden = false;
-    if (!silent) { renderList(); $('main').scrollTo({ top: listScroll }); }
+    $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false;
+    if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
   }
 
   function renderReaderChrome() {

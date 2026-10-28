@@ -19,6 +19,8 @@ and keeps everything on your computer.
 - **Today**, **Read later** and **Recently read** sit at the top of the sidebar; **All** and your folders below.
 - **Folders:** make one with the folder button beside *Feeds* (⇧⌘N), then drag feeds onto it or pick a folder
   from a feed's folder menu. Click the arrow to collapse a folder; click its name to read everything in it.
+- **Layout:** on a wide window (1280 px and up, like a full-screen iMac) stories and the article sit side by side;
+  narrower windows show the list, and the article opens full width.
 - **Reading:** click a story to read it in the app, in clean type. **View original** (`o`) opens the real page in the
   app's web window; links inside articles open there too. In the web window, ⌘[ and ⌘] go back and forward and
   ⇧⌘O opens the page in your regular browser.
