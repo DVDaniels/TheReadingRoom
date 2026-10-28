@@ -43,7 +43,28 @@ jobs:
         with: { workspaces: src-tauri }
       - run: npm ci
       - name: Build universal app (Apple silicon + Intel)
-        run: npx tauri build --target universal-apple-darwin
+        # Signs with your Developer ID and notarizes with Apple once those secrets exist
+        # (see "Publishing" in the README). Without them it builds unsigned, as before.
+        env:
+          DEVID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          DEVID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$DEVID_CERT" ]; then
+            export APPLE_CERTIFICATE="$DEVID_CERT" APPLE_CERTIFICATE_PASSWORD="$CERT_PASSWORD" APPLE_SIGNING_IDENTITY="$DEVID_IDENTITY"
+            if [ -n "$API_KEY_P8" ]; then
+              mkdir -p "$HOME/private_keys"
+              printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+              export APPLE_API_ISSUER="$API_ISSUER" APPLE_API_KEY="$API_KEY_ID" APPLE_API_KEY_PATH="$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+            fi
+            echo "Signing with Developer ID"
+          else
+            echo "No Developer ID secrets yet: building unsigned"
+          fi
+          npx tauri build --target universal-apple-darwin
       - name: Upload .dmg
         uses: actions/upload-artifact@v4
         with:

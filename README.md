@@ -64,3 +64,28 @@ npx tauri build    # make the .app and .dmg in src-tauri/target/release/bundle/
 Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, then push to `main`.
 The workflow publishes the `.dmg` as the Release for that version; pushes without a version bump
 refresh that same release's installer.
+
+## Publishing (Mac App Store and signed downloads)
+
+The App Store listing, privacy policy and support page text are in [`appstore/`](appstore/).
+Both workflows need an [Apple Developer Program](https://developer.apple.com/programs/) membership (Individual,
+so the store lists **David Daniels** as the developer). Add these under **Settings › Secrets and variables › Actions**:
+
+| Secret | What it is |
+| --- | --- |
+| `APPLE_TEAM_ID` | Your 10-character Team ID (developer.apple.com › Account › Membership) |
+| `APPLE_CERT_PASSWORD` | The password you choose when exporting certificates as .p12 |
+| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_API_KEY_P8` | An App Store Connect API key (Users and Access › Integrations); `_P8` is the key file's text |
+| `APPLE_DEVELOPER_ID_CERT`, `APPLE_DEVELOPER_ID_IDENTITY` | *Signed downloads:* "Developer ID Application" certificate as base64 .p12, and its full name |
+| `APPLE_APPSTORE_CERTS` | *App Store:* "Apple Distribution" and "Mac Installer Distribution" certificates in one base64 .p12 |
+| `APPLE_APPSTORE_IDENTITY`, `APPLE_INSTALLER_IDENTITY` | *App Store:* the full names of those two certificates |
+| `APPLE_PROVISION_PROFILE` | *App Store:* a "Mac App Store Connect" provisioning profile for `com.daviddaniels.readingroom`, base64 |
+
+- **Signed downloads:** once the Developer ID secrets exist, every build on `main` signs and notarizes the `.dmg`,
+  so it opens without the "Open Anyway" step.
+- **App Store:** bump the version, then **Actions › Send to the Mac App Store › Run workflow**. The build appears in
+  App Store Connect under TestFlight; from there, add it to a version and submit for review.
+
+The App Store build runs inside Apple's App Sandbox (`src-tauri/Entitlements.appstore.plist`): network access, and
+files you pick in Open/Save dialogs. It can't read the old Python version's folder, which only matters for people
+who never opened the regular version.

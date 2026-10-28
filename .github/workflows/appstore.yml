@@ -1,0 +1,77 @@
+name: Send to the Mac App Store
+
+# Run this by hand from the Actions tab ("Run workflow") when you want Apple to get a new version.
+# It builds the sandboxed App Store version, signs it, and uploads it to App Store Connect,
+# where it shows up under TestFlight and can be submitted for review.
+# Bump the version in src-tauri/tauri.conf.json first: Apple only accepts each version number once.
+on:
+  workflow_dispatch:
+
+jobs:
+  appstore:
+    runs-on: macos-latest
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPSTORE_CERTS: ${{ secrets.APPLE_APPSTORE_CERTS }}
+      CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APP_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
+      INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+      PROFILE: ${{ secrets.APPLE_PROVISION_PROFILE }}
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - name: Check the Apple secrets are set
+        run: |
+          missing=""
+          for v in TEAM_ID APPSTORE_CERTS CERT_PASSWORD APP_IDENTITY INSTALLER_IDENTITY PROFILE API_KEY_ID API_ISSUER API_KEY_P8; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then echo "::error::Add these repository secrets first (Settings > Secrets and variables > Actions):$missing"; exit 1; fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-apple-darwin,x86_64-apple-darwin" }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+
+      - name: Load signing certificates
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"; KCPW="$(uuidgen)"
+          echo "$APPSTORE_CERTS" | base64 --decode > "$RUNNER_TEMP/certs.p12"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          security import "$RUNNER_TEMP/certs.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v "$KC"
+
+      - name: Add provisioning profile and team ID
+        run: |
+          echo "$PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
+          sed -i '' "s/TEAM_ID/$TEAM_ID/g" src-tauri/Entitlements.appstore.plist
+
+      - name: Build the App Store version
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
+        run: npx tauri build --bundles app --target universal-apple-darwin --config src-tauri/tauri.appstore.conf.json
+
+      - name: Package for the App Store
+        run: |
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/The Reading Room.app"
+          xcrun productbuild --sign "$INSTALLER_IDENTITY" --component "$APP" /Applications "$RUNNER_TEMP/The Reading Room.pkg"
+
+      - name: Upload to App Store Connect
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          xcrun altool --upload-app --type macos --file "$RUNNER_TEMP/The Reading Room.pkg" --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: The-Reading-Room-AppStore-pkg
+          path: ${{ runner.temp }}/The Reading Room.pkg
