@@ -5,9 +5,10 @@ and keeps everything on your computer.
 
 ## Install
 
-1. Open the **Actions** tab, click the latest green **Build Mac app** run, and download
-   **The-Reading-Room-mac** under *Artifacts*. Tagged versions are also on the **Releases** page.
-2. Unzip it, open the `.dmg`, and drag **The Reading Room** into **Applications**.
+1. Open the **Releases** page (right side of the repo) and download the `.dmg` from the newest version.
+   In-between builds are on the **Actions** tab, under *Artifacts* on each green run.
+2. Open the `.dmg` and drag **The Reading Room** into **Applications** (choose **Replace** when updating;
+   your feeds, folders and read marks are kept).
 3. The first time only: macOS says it can't verify the app, because it isn't signed with an Apple
    Developer ID yet. Open **System Settings › Privacy & Security**, scroll down, and click **Open Anyway**.
 
@@ -15,9 +16,12 @@ and keeps everything on your computer.
 
 - Checks your feeds when it opens and every 30 minutes while it's running. Closing the window keeps it
   running in the Dock; the Dock icon shows your unread count. Quit with ⌘Q.
+- **Today**, **Read later** and **Recently read** sit at the top of the sidebar; **All** and your folders below.
+- **Folders:** make one with the folder button beside *Feeds* (⇧⌘N), then drag feeds onto it or pick a folder
+  from a feed's folder menu. Click the arrow to collapse a folder; click its name to read everything in it.
 - **Add a feed** (⌘N): paste the feed address, or just the website and it finds the feed.
 - **Keyboard:** `j` / `k` next and previous, `o` open in your browser, `s` save, `m` read/unread, ⌘R refresh.
-- **Feeds menu › Import OPML** brings subscriptions over from Feedly (Feedly: Settings › OPML Export).
+- **Feeds menu › Import OPML** brings subscriptions over from Feedly, folders included (Feedly: Settings › OPML Export).
 - Stories you had in the earlier Python version are carried over automatically the first time it opens.
 
 Your data lives in `~/Library/Application Support/com.daviddaniels.readingroom/reader.db`.

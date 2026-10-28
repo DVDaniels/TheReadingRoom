@@ -14,12 +14,20 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="5" cy="19" r="2" fill="currentColor"/></svg>
       The Reading Room
     </div>
-    <div><h2>Read</h2><nav class="nav" id="views"></nav></div>
-    <div><h2>Feeds</h2><nav class="nav" id="feeds"></nav></div>
+    <nav class="nav" id="views" aria-label="Views"></nav>
+    <div>
+      <div class="rail-head"><h2>Feeds</h2><button class="mini" id="newFolderBtn" type="button" title="New folder (⇧⌘N)" aria-label="New folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg></button></div>
+      <form class="folderform" id="folderForm" hidden>
+        <input id="folderName" type="text" placeholder="Folder name" autocomplete="off" aria-label="Folder name" maxlength="60">
+        <button class="btn primary" type="submit">Create</button>
+      </form>
+      <nav class="nav" id="feeds" aria-label="Feeds"></nav>
+    </div>
     <form class="addfeed" id="addForm" hidden>
       <label for="feedUrl">Feed or website address</label>
       <input id="feedUrl" type="text" placeholder="adactio.com or https://…/feed" autocomplete="off" spellcheck="false" required>
       <input id="feedName" type="text" placeholder="Name (optional)" autocomplete="off">
+      <select id="feedFolder" aria-label="Folder"></select>
       <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
       <span class="note" id="addNote">Paste a site and The Reading Room finds its feed.</span>
     </form>

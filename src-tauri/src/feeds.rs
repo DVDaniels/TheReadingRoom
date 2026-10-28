@@ -24,6 +24,7 @@ pub struct ParsedItem {
     pub link: String,
     pub date: String,
     pub summary: String,
+    pub image: String,
 }
 
 pub fn client() -> reqwest::Client {
@@ -193,6 +194,8 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .map(|s| s.content.clone())
                 .or_else(|| e.content.as_ref().and_then(|c| c.body.clone()))
                 .unwrap_or_default();
+            let full = e.content.as_ref().and_then(|c| c.body.clone()).unwrap_or_default();
+            let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
             let summary = plain(&body, SUMMARY_CHARS);
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
             if title.is_empty() {
@@ -205,10 +208,45 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary }
+            ParsedItem { key, title, link, date, summary, image }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
+}
+
+/// A picture for the story list: the feed's own thumbnail, an image attachment, or the first picture in the post.
+fn story_image(e: &feed_rs::model::Entry, html: &str, base: Option<&url::Url>) -> String {
+    static IMG: OnceLock<Regex> = OnceLock::new();
+    let mut found: Option<String> = None;
+    for m in &e.media {
+        if let Some(t) = m.thumbnails.first() {
+            found = Some(t.image.uri.clone());
+            break;
+        }
+        if let Some(c) = m.content.iter().find(|c| {
+            c.content_type.as_ref().map_or(false, |t| t.to_string().starts_with("image"))
+                || c.url.as_ref().map_or(false, |u| {
+                    let p = u.path().to_ascii_lowercase();
+                    [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].iter().any(|x| p.ends_with(x))
+                })
+        }) {
+            found = c.url.as_ref().map(|u| u.to_string());
+            break;
+        }
+    }
+    if found.is_none() {
+        found = re(&IMG, r#"(?is)<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']"#)
+            .captures_iter(html)
+            .map(|c| html_escape::decode_html_entities(&c[1]).to_string())
+            // skip tracking pixels and emoji
+            .find(|u| !u.contains("pixel") && !u.contains("emoji") && !u.contains("gravatar") && !u.starts_with("data:"));
+    }
+    let Some(u) = found else { return String::new() };
+    let abs = match base {
+        Some(b) => b.join(&u).map(|x| x.to_string()).unwrap_or(u),
+        None => u,
+    };
+    if abs.starts_with("https://") || abs.starts_with("http://") { abs } else { String::new() }
 }
 
 pub fn item_id(feed_id: i64, key: &str) -> String {
@@ -226,6 +264,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             link: p.link.clone(),
             date: p.date.clone(),
             summary: p.summary.clone(),
+            image: p.image.clone(),
         })
         .collect()
 }
@@ -244,6 +283,20 @@ mod tests {
         assert_eq!(f.items[0].link, "https://ex.com/1");
         assert_eq!(f.items[0].summary, "Hello world & friends.");
         assert_eq!(f.items[0].date, "2026-10-27T10:00:00Z");
+        assert_eq!(f.items[0].image, "");
+    }
+
+    #[test]
+    fn finds_story_images() {
+        let xml = br#"<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>T</title><link>https://ex.com/</link>
+        <item><title>With thumb</title><link>https://ex.com/a</link><media:thumbnail url="https://cdn.ex.com/a.jpg"/></item>
+        <item><title>With enclosure</title><link>https://ex.com/b</link><enclosure url="https://cdn.ex.com/b.png" type="image/png" length="1"/></item>
+        <item><title>Inline</title><link>https://ex.com/c</link><description><![CDATA[<p><img src="/img/c.webp" alt=""> text</p>]]></description></item>
+        </channel></rss>"#;
+        let f = parse(xml, "https://ex.com/feed").unwrap();
+        assert_eq!(f.items[0].image, "https://cdn.ex.com/a.jpg");
+        assert_eq!(f.items[1].image, "https://cdn.ex.com/b.png");
+        assert_eq!(f.items[2].image, "https://ex.com/img/c.webp");
     }
 
     #[test]

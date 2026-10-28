@@ -29,6 +29,7 @@ type Shared = Arc<AppState>;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
+    folders: Vec<db::Folder>,
     feeds: Vec<db::Feed>,
     items: Vec<db::Item>,
     refreshing: bool,
@@ -112,6 +113,7 @@ fn update_badge(app: &AppHandle) {
 fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
     let conn = state.db.lock().unwrap();
     Ok(Snapshot {
+        folders: db::folders(&conn).map_err(err)?,
         feeds: db::feeds(&conn).map_err(err)?,
         items: db::items(&conn, ITEM_LIMIT).map_err(err)?,
         refreshing: state.refreshing.load(Ordering::SeqCst),
@@ -123,14 +125,20 @@ fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
 fn mark(app: AppHandle, state: State<'_, Shared>, ids: Vec<String>, read: Option<bool>, saved: Option<bool>) -> Result<(), String> {
     {
         let mut conn = state.db.lock().unwrap();
-        db::mark(&mut conn, &ids, read, saved).map_err(err)?;
+        db::mark(&mut conn, &ids, read, saved, &feeds::now_iso()).map_err(err)?;
     }
     update_badge(&app);
     Ok(())
 }
 
 #[tauri::command]
-async fn add_feed(app: AppHandle, state: State<'_, Shared>, url: String, title: Option<String>) -> Result<Added, String> {
+async fn add_feed(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    url: String,
+    title: Option<String>,
+    folder_id: Option<i64>,
+) -> Result<Added, String> {
     let mut url = url.trim().to_string();
     if url.is_empty() {
         return Err("Paste a feed or website address first.".into());
@@ -156,7 +164,7 @@ async fn add_feed(app: AppHandle, state: State<'_, Shared>, url: String, title: 
         if db::url_exists(&conn, &fetched.url).map_err(err)? {
             return Err("You already follow this feed.".into());
         }
-        let id = db::add_feed(&conn, &fetched.url, &name, &fetched.site).map_err(err)?;
+        let id = db::add_feed(&conn, &fetched.url, &name, &fetched.site, folder_id).map_err(err)?;
         let feed = db::feed(&conn, id).map_err(err)?.ok_or("The new feed went missing. Try again.")?;
         let items = feeds::to_new_items(id, &fetched.items);
         db::store_fetch(&mut conn, &feed, &fetched.title, &fetched.site, &items, &now).map_err(err)?;
@@ -182,6 +190,45 @@ fn rename_feed(state: State<'_, Shared>, id: i64, title: String) -> Result<(), S
     db::rename_feed(&state.db.lock().unwrap(), id, &title).map_err(err)
 }
 
+fn clean_name(name: &str) -> Result<String, String> {
+    let name: String = name.trim().chars().take(60).collect();
+    if name.is_empty() {
+        Err("Give the folder a name.".into())
+    } else {
+        Ok(name)
+    }
+}
+
+#[tauri::command]
+fn create_folder(state: State<'_, Shared>, name: String) -> Result<i64, String> {
+    let name = clean_name(&name)?;
+    let conn = state.db.lock().unwrap();
+    if db::folder_name_taken(&conn, &name, None).map_err(err)? {
+        return Err(format!("You already have a folder called {name}."));
+    }
+    db::folder_named(&conn, &name).map_err(err)
+}
+
+#[tauri::command]
+fn rename_folder(state: State<'_, Shared>, id: i64, name: String) -> Result<(), String> {
+    let name = clean_name(&name)?;
+    let conn = state.db.lock().unwrap();
+    if db::folder_name_taken(&conn, &name, Some(id)).map_err(err)? {
+        return Err(format!("You already have a folder called {name}."));
+    }
+    db::rename_folder(&conn, id, &name).map_err(err)
+}
+
+#[tauri::command]
+fn delete_folder(state: State<'_, Shared>, id: i64) -> Result<(), String> {
+    db::delete_folder(&state.db.lock().unwrap(), id).map_err(err)
+}
+
+#[tauri::command]
+fn set_feed_folder(state: State<'_, Shared>, feed_id: i64, folder_id: Option<i64>) -> Result<(), String> {
+    db::set_feed_folder(&state.db.lock().unwrap(), feed_id, folder_id).map_err(err)
+}
+
 #[tauri::command]
 fn refresh(app: AppHandle) {
     tauri::async_runtime::spawn(refresh_feeds(app, None));
@@ -205,7 +252,11 @@ async fn import_opml(app: AppHandle, state: State<'_, Shared>) -> Result<usize, 
     {
         let conn = state.db.lock().unwrap();
         for o in &outlines {
-            if let Some(id) = db::add_feed_if_new(&conn, &o.url, &o.title).map_err(err)? {
+            let folder_id = match &o.folder {
+                Some(name) => Some(db::folder_named(&conn, name).map_err(err)?),
+                None => None,
+            };
+            if let Some(id) = db::add_feed_if_new(&conn, &o.url, &o.title, folder_id).map_err(err)? {
                 new_ids.push(id);
             }
         }
@@ -220,7 +271,7 @@ async fn import_opml(app: AppHandle, state: State<'_, Shared>) -> Result<usize, 
 async fn export_opml(app: AppHandle, state: State<'_, Shared>) -> Result<bool, String> {
     let text = {
         let conn = state.db.lock().unwrap();
-        opml::export(&db::feeds(&conn).map_err(err)?, &feeds::now_iso())
+        opml::export(&db::folders(&conn).map_err(err)?, &db::feeds(&conn).map_err(err)?, &feeds::now_iso())
     };
     let Some(file) = app
         .dialog()
@@ -266,6 +317,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &MenuItem::with_id(app, "refresh", "Refresh All", true, Some("CmdOrCtrl+R"))?,
             &MenuItem::with_id(app, "add-feed", "Add Feed…", true, Some("CmdOrCtrl+N"))?,
+            &MenuItem::with_id(app, "new-folder", "New Folder…", true, Some("CmdOrCtrl+Shift+N"))?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "import", "Import OPML…", true, None::<&str>)?,
             &MenuItem::with_id(app, "export", "Export OPML…", true, None::<&str>)?,
@@ -294,6 +346,7 @@ pub fn run() {
                 let name = match event.id().as_ref() {
                     "refresh" => "menu-refresh",
                     "add-feed" => "menu-add-feed",
+                    "new-folder" => "menu-new-folder",
                     "import" => "menu-import",
                     "export" => "menu-export",
                     _ => return,
@@ -327,6 +380,10 @@ pub fn run() {
             add_feed,
             remove_feed,
             rename_feed,
+            create_folder,
+            rename_folder,
+            delete_folder,
+            set_feed_folder,
             refresh,
             import_opml,
             export_opml

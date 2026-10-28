@@ -5,20 +5,34 @@
   const { openUrl } = window.__TAURI__.opener;
 
   const $ = id => document.getElementById(id);
-  const S = { feeds: [], items: [], view: 'all', unreadOnly: true, openId: null, selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  // view: 'today' | 'all' | 'saved' | 'recent' | 'folder:<id>' | <feed id number>
+  const S = { folders: [], feeds: [], items: [], view: 'today', unreadOnly: true, openId: null, selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     read: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>',
-    unread: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>'
+    unread: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>',
+    today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    later: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
+    recent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
   const HUES = [162, 210, 28, 280, 340, 95, 190, 50];
   const hueFor = id => HUES[(Number(id) * 7) % HUES.length];
   const feedById = id => S.feeds.find(f => String(f.id) === String(id));
+  const folderById = id => S.folders.find(f => String(f.id) === String(id));
   const item = id => S.items.find(i => i.id === id);
   const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
   const isWeb = u => /^https?:\/\//i.test(u || '');
   const msg = e => (typeof e === 'string' ? e : e?.message) || 'Something went wrong. Try again.';
+  const fmtCount = n => n > 999 ? '1K+' : (n || '');
+  const folderOf = v => typeof v === 'string' && v.startsWith('folder:') ? folderById(v.slice(7)) : null;
+  const DAY = 864e5;
+
+  // Which folders are collapsed is remembered between launches.
+  const collapsed = new Set((() => { try { return JSON.parse(localStorage.getItem('collapsed') || '[]'); } catch { return []; } })());
+  const saveCollapsed = () => { try { localStorage.setItem('collapsed', JSON.stringify([...collapsed])); } catch {} };
 
   function ago(iso) {
     const t = new Date(iso).getTime(); if (!t) return '';
@@ -33,88 +47,156 @@
     const d = new Date(iso), today = new Date(), y = new Date(); y.setDate(today.getDate() - 1);
     if (d.toDateString() === today.toDateString()) return 'Today';
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
-    if ((today - d) / 864e5 < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+    if ((today - d) / DAY < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
     return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
   }
 
+  // ------------------------------------------------------------ which stories show
+  const isToday = i => Date.now() - new Date(i.date).getTime() < DAY;
+  function inScope(i, view = S.view) {
+    if (view === 'all') return true;
+    if (view === 'today') return isToday(i);
+    if (view === 'saved') return i.saved;
+    if (view === 'recent') return !!i.read_at;
+    const folder = folderOf(view);
+    if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
+    return String(i.feed_id) === String(view);
+  }
+  const usesUnreadFilter = () => S.view !== 'saved' && S.view !== 'recent';
   function visible() {
-    let list = S.items;
-    if (S.view === 'saved') list = list.filter(i => i.saved);
-    else if (S.view !== 'all') list = list.filter(i => String(i.feed_id) === String(S.view));
-    if (S.unreadOnly && S.view !== 'saved') list = list.filter(i => !i.read || i.id === S.openId);
+    let list = S.items.filter(i => inScope(i));
+    if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || i.id === S.openId);
     if (S.q) { const q = S.q.toLowerCase(); list = list.filter(i => (i.title + ' ' + i.summary).toLowerCase().includes(q)); }
+    if (S.view === 'recent') list = [...list].sort((a, b) => (b.read_at || '').localeCompare(a.read_at || ''));
     return list;
   }
-  const unreadCount = fid => S.items.filter(i => (fid == null || String(i.feed_id) === String(fid)) && !i.read).length;
+  const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view)).length;
 
-  // ------------------------------------------------------------ render
+  // ------------------------------------------------------------ render: sidebar
+  function navButton(view, label, count, { icon = '', fav = null, err = '', title = '' } = {}) {
+    const lead = icon ? `<span class="navicon">${icon}</span>`
+      : fav ? `<span class="fav" style="background:hsl(${hueFor(fav.id)} 45% 42%)">${esc((fav.title || '?').trim()[0] || '?')}</span>` : '';
+    const tail = err ? '<span class="err" aria-label="Problem with this feed"></span>' : `<span class="count">${fmtCount(count)}</span>`;
+    return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${tail}</button>`;
+  }
+  const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
+
   function renderRail() {
-    const views = [{ id: 'all', name: 'All stories', count: unreadCount(null) }, { id: 'saved', name: 'Saved for later', count: S.items.filter(i => i.saved).length }];
-    $('views').innerHTML = views.map(v => `<button data-view="${v.id}" aria-current="${S.view === v.id}"><span class="name">${esc(v.name)}</span><span class="count">${v.count || ''}</span></button>`).join('');
-    $('feeds').innerHTML = S.feeds.map(f => `<button data-view="${f.id}" aria-current="${String(S.view) === String(f.id)}" title="${esc(f.status === 'error' ? f.error : f.url)}">
-        <span class="fav" style="background:hsl(${hueFor(f.id)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
-        <span class="name">${esc(f.title)}</span>${f.status === 'error' ? '<span class="err" aria-label="Problem with this feed"></span>' : `<span class="count">${unreadCount(f.id) || ''}</span>`}</button>`).join('')
-      || '<span class="note" style="padding:0 10px">No feeds yet. Add one below.</span>';
+    $('views').innerHTML =
+      navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
+      navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
+      navButton('recent', 'Recently read', '', { icon: ICONS.recent });
+
+    let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
+    for (const folder of S.folders) {
+      const open = !collapsed.has(folder.id);
+      const inside = S.feeds.filter(f => f.folder_id === folder.id);
+      html += `<div class="folder" data-folder="${folder.id}">
+          <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
+          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id))}
+        </div>`;
+      if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
+    }
+    const loose = S.feeds.filter(f => !f.folder_id || !folderById(f.folder_id));
+    if (loose.length && S.folders.length) html += '<hr>';
+    html += loose.map(feedButton).join('');
+    if (!S.feeds.length) html += '<span class="note" style="padding:0 10px">No feeds yet. Add one below.</span>';
+    $('feeds').innerHTML = html;
+  }
+
+  // ------------------------------------------------------------ render: header
+  function viewName() {
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', recent: 'Recently read' };
+    if (names[S.view]) return names[S.view];
+    const folder = folderOf(S.view); if (folder) return folder.name;
+    return feedById(S.view)?.title || 'Feed';
+  }
+  function folderOptions(selected) {
+    return `<option value="">No folder</option>` + S.folders.map(f => `<option value="${f.id}"${f.id === selected ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
   }
 
   function renderHead() {
-    const f = feedById(S.view);
-    $('viewTitle').textContent = S.view === 'all' ? 'All stories' : S.view === 'saved' ? 'Saved for later' : (f ? f.title : 'Feed');
-    const n = S.view === 'saved' ? S.items.filter(i => i.saved).length : unreadCount(S.view === 'all' ? null : S.view);
+    $('viewTitle').textContent = viewName();
     const a = S.lastRefresh ? ago(S.lastRefresh) : '';
     const when = S.refreshing ? 'Checking feeds…' : S.lastRefresh ? (a === 'now' ? 'Checked just now' : `Checked ${a} ago`) : 'Not checked yet';
-    $('viewSub').textContent = `${n} ${S.view === 'saved' ? 'saved' : 'unread'} · ${when}`;
+    const lead = S.view === 'saved' ? `${S.items.filter(i => i.saved).length} saved`
+      : S.view === 'recent' ? `${S.items.filter(i => i.read_at).length} read recently`
+      : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
+      : `${unreadIn(S.view)} unread`;
+    $('viewSub').textContent = `${lead} · ${when}`;
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
-    $('seg').hidden = S.view === 'saved';
-    $('markAll').hidden = S.view === 'saved';
+    $('seg').hidden = !usesUnreadFilter();
+    $('markAll').hidden = !usesUnreadFilter();
     $('refresh').disabled = S.refreshing;
     $('refresh').textContent = S.refreshing ? 'Refreshing…' : 'Refresh';
 
-    const bar = $('feedBar');
+    const bar = $('feedBar'), f = feedById(S.view), folder = folderOf(S.view);
+    bar.classList.add('feedbar');
     if (f) {
       bar.hidden = false;
-      bar.innerHTML = `${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+      bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
+        ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
         <button class="btn" id="renameFeed">Rename</button><button class="btn danger" id="removeFeed">Unfollow</button>`;
+      $('moveFeed').onchange = e => moveFeed(f.id, e.target.value ? Number(e.target.value) : null);
       if (f.status === 'error') showBanner(`This feed couldn't be read last time: ${esc(f.error)}`, true);
       else if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (folder) {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn" id="renameFolder">Rename folder</button><button class="btn danger" id="deleteFolder">Delete folder</button>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else {
       bar.hidden = true;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     }
   }
 
+  // ------------------------------------------------------------ render: stories
+  function emptyText() {
+    if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
+    if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
+    if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
+    if (!S.items.length) return ['No stories yet', S.refreshing ? 'Checking your feeds now. Stories appear as they arrive.' : 'Press Refresh to pull the latest posts.'];
+    if (S.view === 'today' && S.unreadOnly) return ['You’re caught up for today', 'Nothing new in the last 24 hours. “All” in the sidebar has older stories.'];
+    if (S.unreadOnly) return ['You’re all caught up', 'Switch to “All” to see stories you’ve already read.'];
+    return ['Nothing here yet', 'New stories appear after the next refresh.'];
+  }
+
   function renderList() {
     const all = visible(), list = all.slice(0, S.shown);
     if (!list.length) {
-      const [t, d] = S.q ? ['No matches', 'Try a different word, or clear the search.']
-        : S.view === 'saved' ? ['Nothing saved yet', 'Press the bookmark on any story to keep it here.']
-        : S.items.length && S.unreadOnly ? ['You’re all caught up', 'Switch to “All” to see stories you’ve already read.']
-        : ['No stories yet', S.refreshing ? 'Checking your feeds now. Stories appear as they arrive.' : 'Press Refresh to pull the latest posts.'];
+      const [t, d] = emptyText();
       $('list').innerHTML = `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`;
       return;
     }
     let out = '', lastDay = '';
+    const groupBy = S.view === 'recent' ? i => dayLabel(i.read_at) : i => dayLabel(i.date);
     for (const it of list) {
-      const day = dayLabel(it.date);
+      const day = groupBy(it);
       if (day !== lastDay) { if (lastDay) out += '</div>'; out += `<div class="daygroup"><h3>${esc(day)}</h3>`; lastDay = day; }
       const f = feedById(it.feed_id), open = S.openId === it.id;
       out += `<article class="story${it.read ? ' read' : ''}${open ? ' open' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
-        <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
-        <button class="title" data-act="toggle" aria-expanded="${open}">${esc(it.title)}</button>
+        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-act="toggle">` : ''}
+        <div class="body">
+          <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
+          <button class="title" data-act="toggle" aria-expanded="${open}">${esc(it.title)}</button>
+          ${it.summary ? `<div class="summary">${esc(it.summary)}</div>` : ''}
+          ${open && isWeb(it.link) ? `<div class="open-row"><a href="${esc(it.link)}">Read the full post on ${esc(f ? f.title : 'the site')} →</a></div>` : ''}
+        </div>
         <div class="acts">
-          <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from saved' : 'Save for later'}" aria-label="${it.saved ? 'Remove from saved' : 'Save for later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
+          <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
           <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
         </div>
-        ${it.summary ? `<div class="summary">${esc(it.summary)}</div>` : ''}
-        ${open && isWeb(it.link) ? `<div class="open-row"><a href="${esc(it.link)}">Read the full post on ${esc(f ? f.title : 'the site')} →</a></div>` : ''}
       </article>`;
     }
     out += '</div>';
     if (all.length > list.length) out += `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>`;
     $('list').innerHTML = out;
   }
-  function render() { renderRail(); renderHead(); renderList(); }
+  function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); }
+
+  // A picture that fails to load just disappears.
+  document.addEventListener('error', e => { if (e.target.classList?.contains('thumb')) e.target.remove(); }, true);
 
   function status(text, err) { const el = $('status'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
   function showBanner(html, err, kind = 'feed-error') { const b = $('banner'); b.hidden = false; b.className = 'banner' + (err ? ' err' : ''); b.dataset.kind = kind; b.innerHTML = html; }
@@ -124,15 +206,21 @@
   async function load() {
     try {
       const s = await invoke('get_state');
-      S.feeds = s.feeds; S.items = s.items; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
-      if (S.view !== 'all' && S.view !== 'saved' && !feedById(S.view)) S.view = 'all';
+      S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
+      const valid = ['today', 'all', 'saved', 'recent'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      if (!valid) S.view = 'all';
       render();
     } catch (e) { status(msg(e), true); }
   }
 
   async function mark(ids, patch) {
     ids = [].concat(ids);
-    for (const it of S.items) if (ids.includes(it.id)) Object.assign(it, patch);
+    const now = new Date().toISOString();
+    for (const it of S.items) if (ids.includes(it.id)) {
+      Object.assign(it, patch);
+      if (patch.read === true && !it.read_at) it.read_at = now;
+      if (patch.read === false) it.read_at = null;
+    }
     render();
     try { await invoke('mark', { ids, ...patch }); } catch (e) { status(msg(e), true); load(); }
   }
@@ -143,21 +231,37 @@
     try { await invoke('refresh'); } catch (e) { S.refreshing = false; renderHead(); status(msg(e), true); }
   }
 
-  // ------------------------------------------------------------ actions
-  // Every web link opens in your normal browser, never inside the app.
+  async function moveFeed(feedId, folderId) {
+    const f = feedById(feedId); if (!f || f.folder_id === folderId) return;
+    f.folder_id = folderId; if (folderId) collapsed.delete(folderId);
+    render();
+    try {
+      await invoke('set_feed_folder', { feedId, folderId });
+      status(folderId ? `Moved ${f.title} to ${folderById(folderId)?.name}.` : `Took ${f.title} out of its folder.`);
+    } catch (e) { status(msg(e), true); load(); }
+  }
+
+  function selectView(v) {
+    S.view = /^\d+$/.test(v) ? Number(v) : v;
+    S.openId = S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 });
+  }
+
+  // ------------------------------------------------------------ clicks
   document.addEventListener('click', e => {
+    // Every web link opens in your normal browser, never inside the app.
     const a = e.target.closest('a[href]');
     if (a) { e.preventDefault(); if (isWeb(a.href)) openUrl(a.href).catch(() => status('Couldn’t open your browser.', true)); return; }
 
+    const chev = e.target.closest('[data-chev]');
+    if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
+
     const v = e.target.closest('[data-view]');
-    if (v) {
-      S.view = /^\d+$/.test(v.dataset.view) ? Number(v.dataset.view) : v.dataset.view;
-      S.openId = S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 });
-      return;
-    }
+    if (v) { selectView(v.dataset.view); return; }
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
+    if (e.target.id === 'renameFolder') return startRenameFolder();
+    if (e.target.id === 'deleteFolder') return confirmDeleteFolder();
 
     const act = e.target.closest('[data-act]'); if (!act) return;
     const id = act.closest('.story').dataset.id, it = item(id); S.selId = id;
@@ -165,6 +269,18 @@
     if (act.dataset.act === 'save') mark(id, { saved: !it.saved });
     if (act.dataset.act === 'read') mark(id, { read: !it.read });
   });
+
+  // Drag a feed onto a folder (or onto "All" to take it out of its folder).
+  let dragFeed = null;
+  document.addEventListener('dragstart', e => { const b = e.target.closest?.('[data-feed]'); if (b) { dragFeed = Number(b.dataset.feed); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragFeed)); } });
+  document.addEventListener('dragend', () => { dragFeed = null; document.querySelectorAll('.drop').forEach(x => x.classList.remove('drop')); });
+  const dropTarget = e => {
+    const t = e.target.closest?.('[data-view]'); if (!t || dragFeed == null) return null;
+    if (t.dataset.view === 'all') return { el: t, folder: null };
+    const m = /^folder:(\d+)$/.exec(t.dataset.view); return m ? { el: t, folder: Number(m[1]) } : null;
+  };
+  document.addEventListener('dragover', e => { const d = dropTarget(e); document.querySelectorAll('.drop').forEach(x => x !== d?.el && x.classList.remove('drop')); if (d) { e.preventDefault(); d.el.classList.add('drop'); } });
+  document.addEventListener('drop', e => { const d = dropTarget(e); if (d) { e.preventDefault(); moveFeed(dragFeed, d.folder); } });
 
   $('fAll').onclick = () => { S.unreadOnly = false; S.shown = 60; render(); };
   $('fUnread').onclick = () => { S.unreadOnly = true; S.shown = 60; render(); };
@@ -174,14 +290,26 @@
   $('markAll').onclick = () => {
     const ids = visible().filter(i => !i.read).map(i => i.id);
     if (!ids.length) { status('Nothing unread here.'); return; }
-    showBanner(`<span>Mark ${ids.length} ${ids.length === 1 ? 'story' : 'stories'} as read?</span><button class="btn primary" id="yesAll">Mark read</button><button class="btn" id="noAll">Cancel</button>`, false, 'confirm');
+    showBanner(`<span>Mark ${ids.length} ${ids.length === 1 ? 'story' : 'stories'} in ${esc(viewName())} as read?</span><button class="btn primary" id="yesAll">Mark read</button><button class="btn" id="noAll">Cancel</button>`, false, 'confirm');
     $('noAll').onclick = hideBanner;
     $('yesAll').onclick = () => { hideBanner(); mark(ids, { read: true }); status(`Marked ${ids.length} as read.`); };
   };
 
+  // ------------------------------------------------------------ feeds and folders
+  function inlineRename(current, onSave) {
+    showBanner(`<input class="search" id="newName" value="${esc(current)}" aria-label="New name" style="flex:1;min-width:160px"><button class="btn primary" id="saveName">Rename</button><button class="btn" id="noName">Cancel</button>`, false, 'confirm');
+    const input = $('newName'); input.focus(); input.select();
+    $('noName').onclick = hideBanner;
+    const go = async () => { const v = input.value.trim(); if (!v) return; hideBanner(); try { await onSave(v); load(); } catch (e) { status(msg(e), true); } };
+    $('saveName').onclick = go;
+    input.onkeydown = ev => { if (ev.key === 'Enter') go(); if (ev.key === 'Escape') hideBanner(); };
+  }
+  function startRename() { const f = feedById(S.view); if (f) inlineRename(f.title, title => invoke('rename_feed', { id: f.id, title })); }
+  function startRenameFolder() { const f = folderOf(S.view); if (f) inlineRename(f.name, name => invoke('rename_folder', { id: f.id, name })); }
+
   function confirmRemove() {
     const f = feedById(S.view); if (!f) return;
-    showBanner(`<span>Unfollow ${esc(f.title)}? Its stories leave your reader too, including saved ones.</span><button class="btn danger" id="yesRemove">Unfollow</button><button class="btn" id="noRemove">Cancel</button>`, false, 'confirm');
+    showBanner(`<span>Unfollow ${esc(f.title)}? Its stories leave your reader too, including ones saved for later.</span><button class="btn danger" id="yesRemove">Unfollow</button><button class="btn" id="noRemove">Cancel</button>`, false, 'confirm');
     $('noRemove').onclick = hideBanner;
     $('yesRemove').onclick = async () => {
       hideBanner();
@@ -189,22 +317,39 @@
       catch (e) { status(msg(e), true); }
     };
   }
-  function startRename() {
-    const f = feedById(S.view); if (!f) return;
-    showBanner(`<input class="search" id="newName" value="${esc(f.title)}" aria-label="New name" style="flex:1;min-width:160px"><button class="btn primary" id="saveName">Rename</button><button class="btn" id="noName">Cancel</button>`, false, 'confirm');
-    const input = $('newName'); input.focus(); input.select();
-    $('noName').onclick = hideBanner;
-    const go = async () => {
-      const title = input.value.trim(); if (!title) return;
+  function confirmDeleteFolder() {
+    const f = folderOf(S.view); if (!f) return;
+    const n = S.feeds.filter(x => x.folder_id === f.id).length;
+    showBanner(`<span>Delete the ${esc(f.name)} folder? ${n ? `Its ${n} ${n === 1 ? 'feed stays' : 'feeds stay'} in your reader, just outside any folder.` : 'It has no feeds in it.'}</span><button class="btn danger" id="yesDel">Delete folder</button><button class="btn" id="noDel">Cancel</button>`, false, 'confirm');
+    $('noDel').onclick = hideBanner;
+    $('yesDel').onclick = async () => {
       hideBanner();
-      try { await invoke('rename_feed', { id: f.id, title }); load(); } catch (e) { status(msg(e), true); }
+      try { await invoke('delete_folder', { id: f.id }); S.view = 'all'; status(`Deleted the ${f.name} folder.`); load(); }
+      catch (e) { status(msg(e), true); }
     };
-    $('saveName').onclick = go;
-    input.onkeydown = ev => { if (ev.key === 'Enter') go(); if (ev.key === 'Escape') hideBanner(); };
   }
 
+  // new folder
+  function openNewFolder() { $('folderForm').hidden = false; $('folderName').value = ''; $('folderName').focus(); }
+  $('newFolderBtn').onclick = () => $('folderForm').hidden ? openNewFolder() : ($('folderForm').hidden = true);
+  $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
+  $('folderForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('folderName').value.trim(); if (!name) return;
+    try {
+      const id = await invoke('create_folder', { name });
+      $('folderForm').hidden = true; status(`Created ${name}. Drag feeds onto it, or pick it from a feed’s folder menu.`);
+      await load(); selectView('folder:' + id);
+    } catch (err) { status(msg(err), true); }
+  });
+
   // add a feed
-  function openAdd() { $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
+  function renderAddFolders() {
+    const sel = $('feedFolder'); if (!sel || !$('addForm').hidden) return;
+    const current = folderOf(S.view)?.id ?? feedById(S.view)?.folder_id ?? null;
+    sel.innerHTML = folderOptions(current); sel.hidden = !S.folders.length;
+  }
+  function openAdd() { renderAddFolders(); $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
   $('showAdd').onclick = openAdd;
   $('cancelAdd').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; };
   $('addForm').addEventListener('submit', async e => {
@@ -212,10 +357,11 @@
     const note = $('addNote'), btn = $('addBtn');
     btn.disabled = true; btn.textContent = 'Finding feed…'; note.className = 'note'; note.textContent = 'Checking that address…';
     try {
-      const r = await invoke('add_feed', { url: $('feedUrl').value.trim(), title: $('feedName').value.trim() || null });
+      const folderId = $('feedFolder').value ? Number($('feedFolder').value) : null;
+      const r = await invoke('add_feed', { url: $('feedUrl').value.trim(), title: $('feedName').value.trim() || null, folderId });
       $('feedUrl').value = ''; $('feedName').value = '';
       note.textContent = `Now following ${r.title}.`;
-      await load(); S.view = r.id; render();
+      await load(); selectView(r.id);
     } catch (err) { note.className = 'note err'; note.textContent = msg(err); }
     finally { btn.disabled = false; btn.textContent = 'Add feed'; }
   });
@@ -224,7 +370,7 @@
   async function importOpml() {
     try {
       const n = await invoke('import_opml');
-      if (n) status(`Added ${n} ${n === 1 ? 'feed' : 'feeds'}. Pulling their stories now.`);
+      if (n) status(`Added ${n} ${n === 1 ? 'feed' : 'feeds'}, with their folders. Pulling their stories now.`);
       load();
     } catch (e) { status(msg(e), true); }
   }
@@ -235,9 +381,9 @@
   $('importBtn').onclick = importOpml;
   $('exportBtn').onclick = exportOpml;
 
-  // keyboard (⌘R and ⌘N come from the app menu)
+  // keyboard (⌘R, ⌘N and ⇧⌘N come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown); if (!list.length) return;
     let i = list.findIndex(x => x.id === S.selId);
     if (e.key === 'j' || e.key === 'k') {
@@ -254,6 +400,7 @@
   listen('state-changed', load);
   listen('menu-refresh', refresh);
   listen('menu-add-feed', openAdd);
+  listen('menu-new-folder', openNewFolder);
   listen('menu-import', importOpml);
   listen('menu-export', exportOpml);
   setInterval(renderHead, 60 * 1000); // keep "Checked 5m ago" current
