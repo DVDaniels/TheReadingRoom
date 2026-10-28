@@ -1,0 +1,271 @@
+//! Fetching and reading feeds: RSS 0.9x/1.0/2.0, Atom and JSON Feed (via feed-rs),
+//! plus finding a site's feed from its home page.
+
+use crate::db::NewItem;
+use chrono::Utc;
+use regex::Regex;
+use sha1::{Digest, Sha1};
+use std::sync::OnceLock;
+use std::time::Duration;
+
+pub const SUMMARY_CHARS: usize = 700;
+const MAX_BYTES: usize = 8_000_000;
+
+pub struct Fetched {
+    pub url: String,
+    pub title: String,
+    pub site: String,
+    pub items: Vec<ParsedItem>,
+}
+
+pub struct ParsedItem {
+    pub key: String,
+    pub title: String,
+    pub link: String,
+    pub date: String,
+    pub summary: String,
+}
+
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(concat!("ReadingRoom/", env!("CARGO_PKG_VERSION"), " (+personal RSS reader)"))
+        .timeout(Duration::from_secs(25))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .expect("http client")
+}
+
+pub fn now_iso() -> String {
+    Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
+    cell.get_or_init(|| Regex::new(pat).expect("regex"))
+}
+
+/// Turn HTML into a tidy plain-text snippet.
+pub fn plain(s: &str, limit: usize) -> String {
+    static SCRIPT: OnceLock<Regex> = OnceLock::new();
+    static TAG: OnceLock<Regex> = OnceLock::new();
+    static WS: OnceLock<Regex> = OnceLock::new();
+    let s = re(&SCRIPT, r"(?is)<(script|style)\b.*?</(script|style)>").replace_all(s, " ");
+    let s = re(&TAG, r"(?s)<[^>]*>").replace_all(&s, " ");
+    let s = html_escape::decode_html_entities(&s);
+    let s = re(&WS, r"\s+").replace_all(&s, " ");
+    let s = s.trim();
+    if s.chars().count() <= limit {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(limit).collect();
+    match cut.rfind(' ') {
+        Some(i) if i > limit / 2 => format!("{}…", &cut[..i]),
+        _ => format!("{cut}…"),
+    }
+}
+
+async fn get(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, String, String), String> {
+    let resp = client
+        .get(url)
+        .header(
+            "Accept",
+            "application/rss+xml, application/atom+xml, application/feed+json, application/xml;q=0.9, text/xml;q=0.9, text/html;q=0.5, */*;q=0.1",
+        )
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                "The site took too long to answer.".to_string()
+            } else if e.is_connect() {
+                "Couldn't reach the site. Check the address and your connection.".to_string()
+            } else {
+                format!("Couldn't reach the site ({e}).")
+            }
+        })?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("The site answered with error {}.", status.as_u16()));
+    }
+    let final_url = resp.url().to_string();
+    let ctype = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let body = resp.bytes().await.map_err(|_| "The site's answer was cut off. Try again.".to_string())?;
+    if body.len() > MAX_BYTES {
+        return Err("That feed is too large to read.".into());
+    }
+    Ok((body.to_vec(), final_url, ctype))
+}
+
+fn looks_like_html(body: &[u8], ctype: &str) -> bool {
+    if ctype.starts_with("text/html") {
+        return true;
+    }
+    let head = String::from_utf8_lossy(&body[..body.len().min(600)]).trim_start().to_ascii_lowercase();
+    head.starts_with("<!doctype html") || head.starts_with("<html")
+}
+
+/// Find `<link rel="alternate" type="application/rss+xml" href="…">` in a web page.
+pub fn discover(html: &str, base: &str) -> Option<String> {
+    static LINK: OnceLock<Regex> = OnceLock::new();
+    static ATTR: OnceLock<Regex> = OnceLock::new();
+    let base = url::Url::parse(base).ok()?;
+    let mut fallback = None;
+    for tag in re(&LINK, r"(?is)<link\b[^>]*>").find_iter(html) {
+        let mut rel = String::new();
+        let mut typ = String::new();
+        let mut href = String::new();
+        for c in re(&ATTR, r#"(?is)([a-z-]+)\s*=\s*["']([^"']*)["']"#).captures_iter(tag.as_str()) {
+            match c[1].to_ascii_lowercase().as_str() {
+                "rel" => rel = c[2].to_ascii_lowercase(),
+                "type" => typ = c[2].to_ascii_lowercase(),
+                "href" => href = html_escape::decode_html_entities(&c[2]).to_string(),
+                _ => {}
+            }
+        }
+        if !rel.split_whitespace().any(|r| r == "alternate") || href.is_empty() {
+            continue;
+        }
+        let url = base.join(&href).ok()?.to_string();
+        match typ.as_str() {
+            "application/rss+xml" | "application/atom+xml" => return Some(url),
+            "application/feed+json" | "application/json" | "application/rdf+xml" if fallback.is_none() => {
+                fallback = Some(url)
+            }
+            _ => {}
+        }
+    }
+    fallback
+}
+
+/// Fetch a feed, following a website address to the feed it advertises.
+pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
+    let (mut body, mut final_url, ctype) = get(client, url).await?;
+    if looks_like_html(&body, &ctype) {
+        let page = String::from_utf8_lossy(&body).to_string();
+        let found = discover(&page, &final_url)
+            .ok_or("That page doesn't list an RSS or Atom feed. Try the feed's own address.")?;
+        let (b, u, _) = get(client, &found).await?;
+        body = b;
+        final_url = u;
+    }
+    parse(&body, &final_url)
+}
+
+pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
+    let feed = feed_rs::parser::Builder::new()
+        .base_uri(Some(base))
+        .build()
+        .parse(body)
+        .map_err(|_| "This address isn't an RSS or Atom feed.".to_string())?;
+
+    let title = feed.title.as_ref().map(|t| plain(&t.content, 120)).unwrap_or_default();
+    let site = feed
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref().map_or(true, |r| r == "alternate") && !l.href.ends_with(".xml") && !l.href.contains("/feed"))
+        .or_else(|| feed.links.iter().find(|l| l.rel.as_deref() != Some("self")))
+        .map(|l| l.href.clone())
+        .unwrap_or_default();
+
+    let base_url = url::Url::parse(base).ok();
+    let now = now_iso();
+    let items = feed
+        .entries
+        .iter()
+        .map(|e| {
+            let raw_link = e
+                .links
+                .iter()
+                .find(|l| l.rel.as_deref().map_or(true, |r| r == "alternate"))
+                .or_else(|| e.links.first())
+                .map(|l| l.href.clone())
+                .unwrap_or_default();
+            let link = match (&base_url, raw_link.is_empty()) {
+                (Some(b), false) => b.join(&raw_link).map(|u| u.to_string()).unwrap_or(raw_link),
+                _ => raw_link,
+            };
+            let body = e
+                .summary
+                .as_ref()
+                .map(|s| s.content.clone())
+                .or_else(|| e.content.as_ref().and_then(|c| c.body.clone()))
+                .unwrap_or_default();
+            let summary = plain(&body, SUMMARY_CHARS);
+            let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
+            if title.is_empty() {
+                title = if summary.is_empty() { "(untitled)".into() } else { plain(&summary, 90) };
+            }
+            let date = e
+                .published
+                .or(e.updated)
+                .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+                .unwrap_or_else(|| now.clone());
+            // feed-rs makes up an id when a feed has none; prefer the link in that case.
+            let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
+            ParsedItem { key, title, link, date, summary }
+        })
+        .collect();
+    Ok(Fetched { url: base.to_string(), title, site, items })
+}
+
+pub fn item_id(feed_id: i64, key: &str) -> String {
+    let mut h = Sha1::new();
+    h.update(format!("{feed_id}|{key}").as_bytes());
+    h.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
+    items
+        .iter()
+        .map(|p| NewItem {
+            id: item_id(feed_id, &p.key),
+            title: p.title.clone(),
+            link: p.link.clone(),
+            date: p.date.clone(),
+            summary: p.summary.clone(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rss_and_strips_html() {
+        let xml = br#"<?xml version="1.0"?><rss version="2.0"><channel><title>Test &amp; Co</title><link>https://ex.com/</link>
+        <item><title>First</title><link>/1</link><pubDate>Tue, 27 Oct 2026 10:00:00 GMT</pubDate>
+        <description><![CDATA[<p>Hello <script>x()</script>world &amp; friends.</p>]]></description></item></channel></rss>"#;
+        let f = parse(xml, "https://ex.com/feed").unwrap();
+        assert_eq!(f.title, "Test & Co");
+        assert_eq!(f.items[0].link, "https://ex.com/1");
+        assert_eq!(f.items[0].summary, "Hello world & friends.");
+        assert_eq!(f.items[0].date, "2026-10-27T10:00:00Z");
+    }
+
+    #[test]
+    fn parses_atom() {
+        let xml = br#"<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>A</title><id>x</id>
+        <link href="https://ex.com/blog/"/><entry><title>One</title><id>a1</id>
+        <link rel="alternate" href="https://ex.com/a1"/><updated>2026-10-26T12:00:00Z</updated><summary>Sum</summary></entry></feed>"#;
+        let f = parse(xml, "https://ex.com/atom.xml").unwrap();
+        assert_eq!(f.items.len(), 1);
+        assert_eq!(f.items[0].link, "https://ex.com/a1");
+        assert_eq!(f.site, "https://ex.com/blog/");
+    }
+
+    #[test]
+    fn finds_feed_in_page() {
+        let html = r#"<html><head><link rel="alternate" type="application/rss+xml" title="RSS" href="/feed/"></head></html>"#;
+        assert_eq!(discover(html, "https://ex.com/about").as_deref(), Some("https://ex.com/feed/"));
+    }
+
+    #[test]
+    fn trims_long_text() {
+        let s = plain(&"word ".repeat(400), 50);
+        assert!(s.ends_with('…') && s.chars().count() <= 51);
+    }
+}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Reading Room</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="dragbar" data-tauri-drag-region></div>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="5" cy="19" r="2" fill="currentColor"/></svg>
+      The Reading Room
+    </div>
+    <div><h2>Read</h2><nav class="nav" id="views"></nav></div>
+    <div><h2>Feeds</h2><nav class="nav" id="feeds"></nav></div>
+    <form class="addfeed" id="addForm" hidden>
+      <label for="feedUrl">Feed or website address</label>
+      <input id="feedUrl" type="text" placeholder="adactio.com or https://…/feed" autocomplete="off" spellcheck="false" required>
+      <input id="feedName" type="text" placeholder="Name (optional)" autocomplete="off">
+      <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
+      <span class="note" id="addNote">Paste a site and The Reading Room finds its feed.</span>
+    </form>
+    <button class="btn" id="showAdd" type="button">+ Add a feed</button>
+    <div class="rail-foot">
+      <span><kbd>j</kbd> <kbd>k</kbd> next / previous · <kbd>o</kbd> open</span>
+      <span><kbd>s</kbd> save · <kbd>m</kbd> read / unread · <kbd>⌘R</kbd> refresh</span>
+      <span class="row"><button class="linkish" id="importBtn" type="button">Import OPML</button> · <button class="linkish" id="exportBtn" type="button">Export OPML</button></span>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div class="col">
+      <div class="head">
+        <div>
+          <h1 id="viewTitle">All stories</h1>
+          <div class="sub" id="viewSub">Loading…</div>
+        </div>
+        <div class="tools">
+          <input class="search" id="q" type="search" placeholder="Search stories" aria-label="Search stories">
+          <div class="seg" role="group" aria-label="Filter" id="seg">
+            <button id="fAll" aria-pressed="false">All</button>
+            <button id="fUnread" aria-pressed="true">Unread</button>
+          </div>
+          <button class="btn" id="markAll" type="button">Mark all read</button>
+          <button class="btn primary" id="refresh" type="button">Refresh</button>
+        </div>
+      </div>
+      <div id="feedBar" class="row" hidden></div>
+      <div id="banner" hidden></div>
+      <div class="status" id="status" aria-live="polite"></div>
+      <div id="list"><div class="empty"><strong>Loading your stories</strong><span>One moment.</span></div></div>
+    </div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
