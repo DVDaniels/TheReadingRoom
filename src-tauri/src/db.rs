@@ -136,12 +136,97 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     if !has_column(&conn, "items", "byline")? {
         conn.execute("ALTER TABLE items ADD COLUMN byline TEXT", [])?;
     }
+    // Version 0.5 additions: change tracking for sync between Macs
+    for (table, col) in [("folders", "uid"), ("folders", "updated_at"), ("feeds", "updated_at"),
+                         ("items", "marks_at"), ("highlights", "uid"), ("highlights", "updated_at")] {
+        if !has_column(&conn, table, col)? {
+            conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {col} TEXT"), [])?;
+            if (table, col) == ("items", "marks_at") {
+                // Stories you'd already read or saved count as marked when you read them.
+                conn.execute("UPDATE items SET marks_at = COALESCE(read_at, fetched_at) WHERE read = 1 OR saved = 1", [])?;
+            }
+            if col == "updated_at" && (table == "feeds" || table == "folders") {
+                // Anything from before sync counts as yours (only brand-new starter feeds have no time).
+                conn.execute(&format!("UPDATE {table} SET updated_at = '2001-01-01T00:00:00.000Z'"), [])?;
+            }
+            if (table, col) == ("highlights", "updated_at") {
+                conn.execute("UPDATE highlights SET updated_at = created_at", [])?;
+            }
+        }
+    }
+    conn.execute_batch(TRACKING)?;
     if seed_defaults {
+        // Starter feeds carry no timestamp, so another Mac's choices always win over them.
+        set_applying(&conn, true)?;
         for (title, url) in DEFAULT_FEEDS {
             conn.execute("INSERT OR IGNORE INTO feeds(url, title) VALUES (?1, ?2)", params![url, title])?;
         }
+        set_applying(&conn, false)?;
     }
     Ok(conn)
+}
+
+/// Triggers that stamp every change you make (and remember deletions), so other Macs can catch up.
+/// They stay quiet while changes from another Mac are being applied (the `sync_applying` flag).
+const TRACKING: &str = "
+    CREATE TABLE IF NOT EXISTS tombstones (kind TEXT NOT NULL, key TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, key));
+    UPDATE folders SET uid = lower(hex(randomblob(16))) WHERE uid IS NULL;
+    UPDATE highlights SET uid = lower(hex(randomblob(16))) WHERE uid IS NULL;
+    CREATE INDEX IF NOT EXISTS items_link ON items(link);
+
+    CREATE TRIGGER IF NOT EXISTS t_folders_ins AFTER INSERT ON folders
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN UPDATE folders SET uid = COALESCE(NEW.uid, lower(hex(randomblob(16)))),
+                               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS t_folders_upd AFTER UPDATE OF name ON folders
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN UPDATE folders SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS t_folders_del AFTER DELETE ON folders
+      WHEN OLD.uid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN INSERT OR REPLACE INTO tombstones VALUES ('folder', OLD.uid, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+
+    CREATE TRIGGER IF NOT EXISTS t_feeds_ins AFTER INSERT ON feeds
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN UPDATE feeds SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+            DELETE FROM tombstones WHERE kind = 'feed' AND key = NEW.url; END;
+    CREATE TRIGGER IF NOT EXISTS t_feeds_upd AFTER UPDATE OF title, folder_id ON feeds
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+       AND (OLD.title IS NOT NEW.title OR OLD.folder_id IS NOT NEW.folder_id)
+      BEGIN UPDATE feeds SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS t_feeds_del AFTER DELETE ON feeds
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN INSERT OR REPLACE INTO tombstones VALUES ('feed', OLD.url, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+
+    CREATE TRIGGER IF NOT EXISTS t_items_marks AFTER UPDATE OF read, saved ON items
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+       AND (OLD.read IS NOT NEW.read OR OLD.saved IS NOT NEW.saved)
+      BEGIN UPDATE items SET marks_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+    CREATE TRIGGER IF NOT EXISTS t_hl_ins AFTER INSERT ON highlights
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN UPDATE highlights SET uid = COALESCE(NEW.uid, lower(hex(randomblob(16)))),
+                                  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS t_hl_upd AFTER UPDATE OF note, text ON highlights
+      WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN UPDATE highlights SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS t_hl_del AFTER DELETE ON highlights
+      WHEN OLD.uid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
+      BEGIN INSERT OR REPLACE INTO tombstones VALUES ('highlight', OLD.uid, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+";
+
+/// While true, the tracking triggers don't stamp changes (used when applying another Mac's changes).
+pub fn set_applying(conn: &Connection, on: bool) -> rusqlite::Result<()> {
+    if on {
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('sync_applying', '1')", [])?;
+    } else {
+        conn.execute("DELETE FROM meta WHERE key = 'sync_applying'", [])?;
+    }
+    Ok(())
+}
+
+pub fn delete_meta(conn: &Connection, key: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM meta WHERE key=?1", [key])?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------- folders

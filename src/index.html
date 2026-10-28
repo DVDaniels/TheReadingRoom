@@ -36,6 +36,7 @@
       <span><kbd>j</kbd> <kbd>k</kbd> next / previous · <kbd>o</kbd> open</span>
       <span><kbd>s</kbd> save · <kbd>m</kbd> read / unread · <kbd>⌘R</kbd> refresh</span>
       <span class="row"><button class="linkish" id="importBtn" type="button">Import OPML</button> · <button class="linkish" id="exportBtn" type="button">Export OPML</button></span>
+      <button class="syncbtn" id="syncBtn" type="button"><span class="dot" id="syncDot"></span><span id="syncLabel">Sync between Macs: off</span></button>
     </div>
   </aside>
 
@@ -100,6 +101,13 @@
   <button type="button" role="menuitem" data-share="email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Email</button>
   <hr>
   <button type="button" role="menuitem" data-share="browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Open in your browser</button>
+</div>
+<div class="overlay" id="syncPanel" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+    <h2 id="syncTitle">Sync between your Macs</h2>
+    <div id="syncBody"></div>
+    <div class="row sheet-foot"><button class="btn" type="button" id="syncClose">Done</button></div>
+  </div>
 </div>
 <script src="app.js"></script>
 </body>

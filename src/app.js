@@ -20,7 +20,8 @@
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
   const HUES = [162, 210, 28, 280, 340, 95, 190, 50];
-  const hueFor = id => HUES[(Number(id) * 7) % HUES.length];
+  // Colour from the feed's address, so a feed looks the same on every Mac.
+  const hueFor = key => { let h = 0; for (const c of String(key)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
   const feedById = id => S.feeds.find(f => String(f.id) === String(id));
   const folderById = id => S.folders.find(f => String(f.id) === String(id));
   const item = id => S.items.find(i => i.id === id);
@@ -77,7 +78,7 @@
   // ------------------------------------------------------------ render: sidebar
   function navButton(view, label, count, { icon = '', fav = null, err = '', title = '' } = {}) {
     const lead = icon ? `<span class="navicon">${icon}</span>`
-      : fav ? `<span class="fav" style="background:hsl(${hueFor(fav.id)} 45% 42%)">${esc((fav.title || '?').trim()[0] || '?')}</span>` : '';
+      : fav ? `<span class="fav" style="background:hsl(${hueFor(fav.url)} 45% 42%)">${esc((fav.title || '?').trim()[0] || '?')}</span>` : '';
     const tail = err ? '<span class="err" aria-label="Problem with this feed"></span>' : `<span class="count">${fmtCount(count)}</span>`;
     return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${tail}</button>`;
   }
@@ -624,7 +625,8 @@
 
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (e.key === 'Escape') { if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (!$('syncPanel').hidden) return;
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown);
     const cur = S.readerId || S.selId;
@@ -640,6 +642,70 @@
     else if (cur && e.key === 'm') { const it = item(cur); if (it) mark(it.id, { read: !it.read }); }
     else if (cur && e.key === 'o') { const it = item(cur); if (it && isWeb(it.link)) openWeb(it.link); }
   });
+
+
+  // ------------------------------------------------------------ sync between Macs
+  let sync = null;
+  function renderSyncButton() {
+    if (!sync) return;
+    $('syncDot').className = 'dot' + (sync.error ? ' err' : sync.on ? ' on' : '');
+    $('syncLabel').textContent = !sync.on ? 'Sync between Macs: off'
+      : sync.error ? 'Sync needs attention'
+      : sync.lastSync ? `Synced ${ago(sync.lastSync) === 'now' ? 'just now' : ago(sync.lastSync) + ' ago'}` : 'Syncing…';
+  }
+  function renderSyncPanel() {
+    if (!sync || $('syncPanel').hidden) return;
+    const body = $('syncBody');
+    if (!sync.on) {
+      body.innerHTML = `
+        <p>Keep your feeds, folders, read and Read later stories, highlights and notes the same on all your Macs. Each Mac still downloads the stories itself.</p>
+        <div class="row">
+          <button class="btn primary" id="syncICloud" ${sync.icloudAvailable ? '' : 'disabled'}>Sync with iCloud Drive</button>
+          <button class="btn" id="syncPick">Choose another folder…</button>
+        </div>
+        ${sync.icloudAvailable ? '' : '<p class="note err">iCloud Drive is off for this Mac. Turn it on in System Settings › your name › iCloud › iCloud Drive.</p>'}
+        <p>Then do the same on your other Mac, so both use the same folder.</p>`;
+      $('syncICloud').onclick = () => syncAction('sync_use_icloud');
+      $('syncPick').onclick = () => syncAction('sync_choose_folder');
+      return;
+    }
+    const peers = sync.peers.length
+      ? sync.peers.map(p => `<span class="peer">${esc(p.name)} <small>· updated ${esc(ago(p.lastSeen) === 'now' ? 'just now' : ago(p.lastSeen) + ' ago')}</small></span>`).join('')
+      : '<span class="peer"><small>None yet. Turn on sync on your other Mac and pick this same folder.</small></span>';
+    body.innerHTML = `
+      <dl class="facts">
+        <dt>Folder</dt><dd>${esc(sync.label || sync.folder)}</dd>
+        <dt>This Mac</dt><dd>${esc(sync.thisMac)}</dd>
+        <dt>Other Macs</dt><dd>${peers}</dd>
+        <dt>Last synced</dt><dd>${sync.lastSync ? esc(ago(sync.lastSync) === 'now' ? 'Just now' : ago(sync.lastSync) + ' ago') : 'Not yet'}</dd>
+      </dl>
+      ${sync.error ? `<p class="note err">${esc(sync.error)}</p>` : ''}
+      <p>Changes sync within about half a minute while the app is open.</p>
+      <div class="row">
+        <button class="btn primary" id="syncNowBtn">Sync now</button>
+        <button class="btn" id="syncOff">Turn off sync</button>
+      </div>`;
+    $('syncNowBtn').onclick = () => syncAction('sync_now');
+    $('syncOff').onclick = () => syncAction('sync_turn_off', 'Sync is off for this Mac. Your stories stay here.');
+  }
+  async function loadSync() { try { sync = await invoke('sync_status'); renderSyncButton(); renderSyncPanel(); } catch {} }
+  async function syncAction(cmd, done) {
+    try {
+      const s = await invoke(cmd);
+      if (s) { sync = s; renderSyncButton(); renderSyncPanel(); if (done) status(done); load(); }
+    } catch (e) {
+      $('syncBody').insertAdjacentHTML('beforeend', `<p class="note err">${esc(msg(e))}</p>`);
+    }
+  }
+  function openSync() { $('syncPanel').hidden = false; renderSyncPanel(); loadSync(); $('syncClose').focus(); }
+  function closeSync() { $('syncPanel').hidden = true; }
+  $('syncBtn').onclick = openSync;
+  $('syncClose').onclick = closeSync;
+  $('syncPanel').addEventListener('mousedown', e => { if (e.target.id === 'syncPanel') closeSync(); });
+  listen('sync-changed', loadSync);
+  listen('menu-sync', openSync);
+  setInterval(renderSyncButton, 30 * 1000);
+  loadSync();
 
   // events from the app: refresh finished, menu items
   listen('state-changed', load);

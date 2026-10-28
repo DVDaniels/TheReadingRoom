@@ -4,6 +4,7 @@ mod article;
 mod db;
 mod feeds;
 mod opml;
+mod sync;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -24,7 +25,19 @@ pub struct AppState {
     db: Mutex<Connection>,
     refreshing: AtomicBool,
     client: reqwest::Client,
+    sync: Mutex<SyncInfo>,
+    sync_now: tokio::sync::Notify,
 }
+
+#[derive(Default)]
+struct SyncInfo {
+    last_sync: Option<String>,
+    error: Option<String>,
+    peers: Vec<(String, String)>, // name, last written
+    last_written: Option<sync::SyncFile>,
+}
+
+const SYNC_EVERY: Duration = Duration::from_secs(30);
 
 type Shared = Arc<AppState>;
 
@@ -98,6 +111,7 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
         let _ = db::set_meta(&conn, "last_refresh", &now);
     }
     st.refreshing.store(false, Ordering::SeqCst);
+    st.sync_now.notify_one(); // newly downloaded stories may have marks from another Mac
     update_badge(&app);
     let _ = app.emit("state-changed", ());
 }
@@ -335,6 +349,168 @@ fn delete_highlight(state: State<'_, Shared>, id: i64) -> Result<(), String> {
     db::delete_highlight(&state.db.lock().unwrap(), id).map_err(err)
 }
 
+// ---- sync between Macs
+
+fn sync_dir(conn: &Connection) -> Option<PathBuf> {
+    db::get_meta(conn, "sync_dir").ok().flatten().filter(|d| !d.is_empty()).map(PathBuf::from)
+}
+
+fn device_id(conn: &Connection) -> String {
+    if let Ok(Some(id)) = db::get_meta(conn, "device_id") {
+        return id;
+    }
+    let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0)).unwrap_or_else(|_| "mac".into());
+    let _ = db::set_meta(conn, "device_id", &id);
+    id
+}
+
+/// One round of sync: take in the other Macs' changes, then publish this Mac's.
+fn run_sync(app: &AppHandle) {
+    let st: Shared = app.state::<Shared>().inner().clone();
+    let (dir, me) = {
+        let conn = st.db.lock().unwrap();
+        (sync_dir(&conn), device_id(&conn))
+    };
+    let Some(dir) = dir else { return };
+    let result = (|| -> Result<sync::Applied, String> {
+        if !dir.is_dir() {
+            return Err("The sync folder can't be found. If it's in iCloud Drive, check that iCloud Drive is on for this Mac.".into());
+        }
+        let peers = sync::read_peers(&dir, &me);
+        let mut total = sync::Applied::default();
+        {
+            let mut conn = st.db.lock().unwrap();
+            if sync::join(&mut conn, &peers).map_err(err)? {
+                total.changes += 1;
+            }
+            for p in &peers {
+                let got = sync::merge(&mut conn, p).map_err(err)?;
+                total.changes += got.changes;
+                total.new_feeds.extend(got.new_feeds);
+            }
+        }
+        st.sync.lock().unwrap().peers = peers.iter().map(|p| (p.device_name.clone(), p.written_at.clone())).collect();
+
+        let mut mine = {
+            let conn = st.db.lock().unwrap();
+            sync::export(&conn, &me, &sync::device_name()).map_err(err)?
+        };
+        let unchanged = st.sync.lock().unwrap().last_written.as_ref() == Some(&mine);
+        let own_file = dir.join(format!("{me}.json"));
+        if !unchanged || !own_file.exists() {
+            let compare = mine.clone();
+            mine.written_at = feeds::now_iso();
+            sync::write_own(&dir, &mine).map_err(|_| "Couldn't write to the sync folder. Check that it still exists and isn't full.".to_string())?;
+            st.sync.lock().unwrap().last_written = Some(compare);
+        }
+        Ok(total)
+    })();
+    let now = feeds::now_iso();
+    match result {
+        Ok(applied) => {
+            {
+                let mut info = st.sync.lock().unwrap();
+                info.last_sync = Some(now);
+                info.error = None;
+            }
+            if !applied.new_feeds.is_empty() {
+                tauri::async_runtime::spawn(refresh_feeds(app.clone(), Some(applied.new_feeds)));
+            }
+            if applied.changes > 0 {
+                update_badge(app);
+                let _ = app.emit("state-changed", ());
+            }
+        }
+        Err(e) => st.sync.lock().unwrap().error = Some(e),
+    }
+    let _ = app.emit("sync-changed", ());
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncStatus {
+    on: bool,
+    folder: Option<String>,
+    label: Option<String>,
+    icloud_available: bool,
+    this_mac: String,
+    last_sync: Option<String>,
+    error: Option<String>,
+    peers: Vec<Peer>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Peer {
+    name: String,
+    last_seen: String,
+}
+
+fn status_of(state: &Shared) -> SyncStatus {
+    let dir = sync_dir(&state.db.lock().unwrap());
+    let info = state.sync.lock().unwrap();
+    let icloud = sync::icloud_drive();
+    let label = dir.as_ref().map(|d| match &icloud {
+        Some(root) if d.starts_with(root) => {
+            let rest = d.strip_prefix(root).map(|r| r.display().to_string()).unwrap_or_default();
+            if rest.is_empty() { "iCloud Drive".to_string() } else { format!("iCloud Drive › {}", rest.replace('/', " › ")) }
+        }
+        _ => d.display().to_string(),
+    });
+    SyncStatus {
+        on: dir.is_some(),
+        folder: dir.map(|d| d.display().to_string()),
+        label,
+        icloud_available: icloud.is_some(),
+        this_mac: sync::device_name(),
+        last_sync: info.last_sync.clone(),
+        error: info.error.clone(),
+        peers: info.peers.iter().map(|(n, w)| Peer { name: n.clone(), last_seen: w.clone() }).collect(),
+    }
+}
+
+fn start_sync(app: &AppHandle, state: &Shared, dir: PathBuf) -> Result<SyncStatus, String> {
+    std::fs::create_dir_all(&dir).map_err(|_| "Couldn't create the sync folder there. Pick another folder.".to_string())?;
+    db::set_meta(&state.db.lock().unwrap(), "sync_dir", &dir.display().to_string()).map_err(err)?;
+    state.sync.lock().unwrap().last_written = None;
+    run_sync(app);
+    Ok(status_of(state))
+}
+
+#[tauri::command]
+fn sync_status(state: State<'_, Shared>) -> SyncStatus {
+    status_of(state.inner())
+}
+
+#[tauri::command]
+fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<SyncStatus, String> {
+    let root = sync::icloud_drive()
+        .ok_or("iCloud Drive isn't on for this Mac. Turn it on in System Settings › your name › iCloud › iCloud Drive, then try again.")?;
+    start_sync(&app, state.inner(), root.join("The Reading Room"))
+}
+
+#[tauri::command]
+async fn sync_choose_folder(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
+    let Some(folder) = app.dialog().file().set_title("Choose a folder to sync through").blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let dir = folder.into_path().map_err(|_| "Couldn't use that folder.".to_string())?;
+    start_sync(&app, state.inner(), dir).map(Some)
+}
+
+#[tauri::command]
+fn sync_turn_off(state: State<'_, Shared>) -> Result<SyncStatus, String> {
+    db::delete_meta(&state.db.lock().unwrap(), "sync_dir").map_err(err)?;
+    *state.sync.lock().unwrap() = SyncInfo::default();
+    Ok(status_of(state.inner()))
+}
+
+#[tauri::command]
+fn sync_now(app: AppHandle, state: State<'_, Shared>) -> SyncStatus {
+    run_sync(&app);
+    status_of(state.inner())
+}
+
 #[tauri::command]
 fn refresh(app: AppHandle) {
     tauri::async_runtime::spawn(refresh_feeds(app, None));
@@ -427,6 +603,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "import", "Import OPML…", true, None::<&str>)?,
             &MenuItem::with_id(app, "export", "Export OPML…", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "sync", "Sync Between Macs…", true, Some("CmdOrCtrl+,"))?,
         ],
     )?;
     menu.append(&feeds_menu)?;
@@ -457,6 +635,8 @@ pub fn run() {
                 db: Mutex::new(conn),
                 refreshing: AtomicBool::new(false),
                 client: feeds::client(),
+                sync: Mutex::new(SyncInfo::default()),
+                sync_now: tokio::sync::Notify::new(),
             }));
 
             app.set_menu(build_menu(&handle)?)?;
@@ -489,12 +669,25 @@ pub fn run() {
                     "new-folder" => "menu-new-folder",
                     "import" => "menu-import",
                     "export" => "menu-export",
+                    "sync" => "menu-sync",
                     _ => return,
                 };
                 let _ = app.emit(name, ());
             });
 
             update_badge(&handle);
+            // Sync with your other Macs now, then every 30 seconds (or right away when asked).
+            let sync_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    run_sync(&sync_handle);
+                    let st: Shared = sync_handle.state::<Shared>().inner().clone();
+                    tokio::select! {
+                        _ = st.sync_now.notified() => {}
+                        _ = tokio::time::sleep(SYNC_EVERY) => {}
+                    }
+                }
+            });
             // Check feeds now, then every 30 minutes while the app is open.
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -533,6 +726,11 @@ pub fn run() {
             add_highlight,
             set_note,
             delete_highlight,
+            sync_status,
+            sync_use_icloud,
+            sync_choose_folder,
+            sync_turn_off,
+            sync_now,
             refresh,
             import_opml,
             export_opml

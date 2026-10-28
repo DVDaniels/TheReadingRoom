@@ -19,6 +19,10 @@ and keeps everything on your computer.
 - **Today**, **Read later** and **Recently read** sit at the top of the sidebar; **All** and your folders below.
 - **Folders:** make one with the folder button beside *Feeds* (⇧⌘N), then drag feeds onto it or pick a folder
   from a feed's folder menu. Click the arrow to collapse a folder; click its name to read everything in it.
+- **Sync between Macs:** **Feeds › Sync Between Macs…** (⌘,) on each Mac, then **Sync with iCloud Drive**. Feeds,
+  folders, read and Read later marks, highlights and notes stay the same everywhere; each Mac downloads stories itself.
+  Every Mac writes its own small file in *iCloud Drive › The Reading Room* and reads the others', so they never clash;
+  when the same thing changes on two Macs, the later change wins.
 - **Layout:** on a wide window (1280 px and up, like a full-screen iMac) stories and the article sit side by side;
   narrower windows show the list, and the article opens full width.
 - **Reading:** click a story to read it in the app, in clean type. **View original** (`o`) opens the real page in the
@@ -45,6 +49,7 @@ Your data lives in `~/Library/Application Support/com.daviddaniels.readingroom/r
 | `src-tauri/src/db.rs` | Storage (SQLite) |
 | `src-tauri/src/opml.rs` | OPML import and export |
 | `src-tauri/src/article.rs` | The reader: pulls the article out of a web page and cleans it |
+| `src-tauri/src/sync.rs` | Sync between Macs through a shared folder |
 | `src-tauri/src/lib.rs` | App wiring: window, menus, Dock badge, background refresh, commands the page calls |
 | `src-tauri/tauri.conf.json` | App name, version, window size, icon |
 | `.github/workflows/build.yml` | Builds the Mac app on every push |
