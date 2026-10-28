@@ -38,7 +38,7 @@ Your data lives in `~/Library/Application Support/com.daviddaniels.readingroom/r
 
 | Path | What it is |
 | --- | --- |
-| `src/` | The window itself: `index.html`, `styles.css`, `app.js`, bundled fonts. Edit these to change the look. |
+| `src/` | The window itself: `index.html`, `styles.css`, `app.js`, and the bundled Geist fonts. Edit these to change the look. |
 | `src-tauri/src/feeds.rs` | Fetching and reading RSS, Atom and JSON Feed; finding a site's feed |
 | `src-tauri/src/db.rs` | Storage (SQLite) |
 | `src-tauri/src/opml.rs` | OPML import and export |
