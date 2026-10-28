@@ -50,5 +50,6 @@ npx tauri build    # make the .app and .dmg in src-tauri/target/release/bundle/
 
 ## Releasing a new version
 
-Bump `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag:
-`git tag v0.2.0 && git push --tags`. The workflow publishes the `.dmg` as a Release.
+Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, then push to `main`.
+The workflow publishes the `.dmg` as the Release for that version; pushes without a version bump
+refresh that same release's installer.
