@@ -249,6 +249,26 @@ fn story_image(e: &feed_rs::model::Entry, html: &str, base: Option<&url::Url>) -
     if abs.starts_with("https://") || abs.starts_with("http://") { abs } else { String::new() }
 }
 
+/// Words instead of a web address ("walgreens pharmacy") mean a Google News search.
+pub fn news_query(input: &str) -> Option<String> {
+    let t = input.trim();
+    if t.starts_with("http://") || t.starts_with("https://") {
+        return None;
+    }
+    let looks_like_address = !t.contains(' ') && t.contains('.') && !t.ends_with('.');
+    if looks_like_address || t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+pub fn google_news_url(query: &str) -> String {
+    let mut u = url::Url::parse("https://news.google.com/rss/search").expect("static url");
+    u.query_pairs_mut().append_pair("q", query).append_pair("hl", "en-US").append_pair("gl", "US").append_pair("ceid", "US:en");
+    u.to_string()
+}
+
 pub fn item_id(feed_id: i64, key: &str) -> String {
     let mut h = Sha1::new();
     h.update(format!("{feed_id}|{key}").as_bytes());
@@ -314,6 +334,15 @@ mod tests {
     fn finds_feed_in_page() {
         let html = r#"<html><head><link rel="alternate" type="application/rss+xml" title="RSS" href="/feed/"></head></html>"#;
         assert_eq!(discover(html, "https://ex.com/about").as_deref(), Some("https://ex.com/feed/"));
+    }
+
+    #[test]
+    fn spots_news_searches() {
+        assert_eq!(news_query("walgreens pharmacy").as_deref(), Some("walgreens pharmacy"));
+        assert_eq!(news_query("bitcoin").as_deref(), Some("bitcoin"));
+        assert_eq!(news_query("adactio.com"), None);
+        assert_eq!(news_query("https://ex.com/feed"), None);
+        assert!(google_news_url("walgreens pharmacy").contains("q=walgreens+pharmacy"));
     }
 
     #[test]

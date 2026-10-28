@@ -1,5 +1,6 @@
 //! The Reading Room — app wiring: window, menus, background refresh and the commands the page calls.
 
+mod article;
 mod db;
 mod feeds;
 mod opml;
@@ -12,8 +13,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 const REFRESH_EVERY: Duration = Duration::from_secs(30 * 60);
 const ITEM_LIMIT: i64 = 2000;
@@ -32,6 +34,7 @@ struct Snapshot {
     folders: Vec<db::Folder>,
     feeds: Vec<db::Feed>,
     items: Vec<db::Item>,
+    highlights: Vec<db::Highlight>,
     refreshing: bool,
     last_refresh: Option<String>,
 }
@@ -116,6 +119,7 @@ fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
         folders: db::folders(&conn).map_err(err)?,
         feeds: db::feeds(&conn).map_err(err)?,
         items: db::items(&conn, ITEM_LIMIT).map_err(err)?,
+        highlights: db::highlights(&conn).map_err(err)?,
         refreshing: state.refreshing.load(Ordering::SeqCst),
         last_refresh: db::get_meta(&conn, "last_refresh").map_err(err)?,
     })
@@ -142,6 +146,14 @@ async fn add_feed(
     let mut url = url.trim().to_string();
     if url.is_empty() {
         return Err("Paste a feed or website address first.".into());
+    }
+    // Words rather than an address: follow that search on Google News.
+    let mut title = title;
+    if let Some(query) = feeds::news_query(&url) {
+        if title.as_deref().map_or(true, |t| t.trim().is_empty()) {
+            title = Some(format!("Google News: {query}"));
+        }
+        url = feeds::google_news_url(&query);
     }
     if !url.starts_with("http://") && !url.starts_with("https://") {
         url = format!("https://{url}");
@@ -227,6 +239,100 @@ fn delete_folder(state: State<'_, Shared>, id: i64) -> Result<(), String> {
 #[tauri::command]
 fn set_feed_folder(state: State<'_, Shared>, feed_id: i64, folder_id: Option<i64>) -> Result<(), String> {
     db::set_feed_folder(&state.db.lock().unwrap(), feed_id, folder_id).map_err(err)
+}
+
+// ---- reader, web window, sharing, highlights
+
+#[tauri::command]
+async fn get_article(state: State<'_, Shared>, item_id: String, refetch: Option<bool>) -> Result<article::Article, String> {
+    let link = {
+        let conn = state.db.lock().unwrap();
+        if !refetch.unwrap_or(false) {
+            if let Some(c) = db::cached_article(&conn, &item_id).map_err(err)? {
+                return Ok(article::Article { html: c.html, byline: c.byline });
+            }
+        }
+        db::item_link(&conn, &item_id).map_err(err)?.unwrap_or_default()
+    };
+    if !link.starts_with("http") {
+        return Err("This story has no web page to open.".into());
+    }
+    let a = article::fetch(&state.client, &link).await?;
+    db::cache_article(&state.db.lock().unwrap(), &item_id, &a.html, &a.byline).map_err(err)?;
+    Ok(a)
+}
+
+fn web_url(url: &str) -> Result<url::Url, String> {
+    let u = url::Url::parse(url).map_err(|_| "That link isn't a web address.".to_string())?;
+    if u.scheme() == "http" || u.scheme() == "https" {
+        Ok(u)
+    } else {
+        Err("That link isn't a web address.".into())
+    }
+}
+
+/// Show a web page in the app's own browsing window (one window, reused).
+#[tauri::command]
+async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
+    let u = web_url(&url)?;
+    if let Some(w) = app.get_webview_window("web") {
+        w.navigate(u).map_err(|e| e.to_string())?;
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "web", WebviewUrl::External(u))
+        .title("The Reading Room — Web")
+        .inner_size(1120.0, 860.0)
+        .min_inner_size(420.0, 400.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// A small sharing window (X, LinkedIn). Sign in there once; the app remembers it.
+#[tauri::command]
+async fn open_share(app: AppHandle, url: String) -> Result<(), String> {
+    let u = web_url(&url)?;
+    if let Some(w) = app.get_webview_window("share") {
+        let _ = w.close();
+    }
+    WebviewWindowBuilder::new(&app, "share", WebviewUrl::External(u))
+        .title("Share")
+        .inner_size(620.0, 720.0)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Hand a link to the Mac: web pages to your browser, mailto: to Mail.
+#[tauri::command]
+fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    let ok = url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:");
+    if !ok {
+        return Err("That link can't be opened.".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|_| "Couldn't hand that link to your Mac.".to_string())
+}
+
+#[tauri::command]
+fn add_highlight(state: State<'_, Shared>, item_id: String, text: String, note: Option<String>, start: i64) -> Result<i64, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Select some text to highlight.".into());
+    }
+    db::add_highlight(&state.db.lock().unwrap(), &item_id, &text, note.as_deref().unwrap_or("").trim(), start, &feeds::now_iso()).map_err(err)
+}
+
+#[tauri::command]
+fn set_note(state: State<'_, Shared>, id: i64, note: String) -> Result<(), String> {
+    db::set_note(&state.db.lock().unwrap(), id, note.trim()).map_err(err)
+}
+
+#[tauri::command]
+fn delete_highlight(state: State<'_, Shared>, id: i64) -> Result<(), String> {
+    db::delete_highlight(&state.db.lock().unwrap(), id).map_err(err)
 }
 
 #[tauri::command]
@@ -324,6 +430,18 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
     menu.append(&feeds_menu)?;
+    let go = Submenu::with_items(
+        app,
+        "Go",
+        true,
+        &[
+            &MenuItem::with_id(app, "back", "Back", true, Some("CmdOrCtrl+["))?,
+            &MenuItem::with_id(app, "forward", "Forward", true, Some("CmdOrCtrl+]"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "browser", "Open Page in Browser", true, Some("CmdOrCtrl+Shift+O"))?,
+        ],
+    )?;
+    menu.append(&go)?;
     Ok(menu)
 }
 
@@ -343,7 +461,29 @@ pub fn run() {
 
             app.set_menu(build_menu(&handle)?)?;
             app.on_menu_event(|app, event| {
+                // Back / Forward / Open in Browser act on the web window when it's in front.
+                let web = app.get_webview_window("web").filter(|w| w.is_focused().unwrap_or(false));
+                match (event.id().as_ref(), &web) {
+                    ("back", Some(w)) => {
+                        let _ = w.eval("history.back()");
+                        return;
+                    }
+                    ("forward", Some(w)) => {
+                        let _ = w.eval("history.forward()");
+                        return;
+                    }
+                    ("browser", Some(w)) => {
+                        if let Ok(u) = w.url() {
+                            let _ = app.opener().open_url(u.as_str(), None::<&str>);
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
                 let name = match event.id().as_ref() {
+                    "back" => "menu-back",
+                    "forward" => "menu-forward",
+                    "browser" => "menu-browser",
                     "refresh" => "menu-refresh",
                     "add-feed" => "menu-add-feed",
                     "new-folder" => "menu-new-folder",
@@ -368,8 +508,10 @@ pub fn run() {
             // Mac convention: closing the window keeps the app running (and refreshing) in the Dock.
             #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (window, event);
@@ -384,6 +526,13 @@ pub fn run() {
             rename_folder,
             delete_folder,
             set_feed_folder,
+            get_article,
+            open_web,
+            open_share,
+            open_external,
+            add_highlight,
+            set_note,
+            delete_highlight,
             refresh,
             import_opml,
             export_opml

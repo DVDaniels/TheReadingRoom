@@ -11,6 +11,8 @@
 @font-face { font-family: "IBM Plex Mono"; src: url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 
 :root {
+  --mark: #FFE58A;
+  --mark-ink: #3B2F00;
   --bg: #F6F7F9;
   --surface: #FFFFFF;
   --ink: #18202A;
@@ -30,6 +32,7 @@
   :root {
     --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #94A0B1; --line: #29313C;
     --accent: #3CC39E; --accent-soft: #17302A; --saved: #E0A84A; --danger: #F97066;
+    --mark: #6B5418; --mark-ink: #FFF3D1;
     color-scheme: dark;
   }
 }
@@ -37,7 +40,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
-button, input { font: inherit; color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 [hidden] { display: none !important; }
@@ -156,7 +159,58 @@ main { min-width: 0; overflow-y: auto; padding: calc(var(--titlebar) + 4px) max(
 .empty strong { color: var(--ink); font-family: var(--font-read); font-size: 20px; font-weight: 500; }
 .more { align-self: center; }
 
+/* Reader */
+.reader { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+.reader-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
+.reader-article { display: flex; flex-direction: column; gap: 14px; padding-bottom: 40px; }
+.r-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.r-meta .src { color: var(--accent); font-weight: 600; }
+.r-meta time { font-family: var(--font-mono); font-size: 12px; }
+.r-title { font-family: var(--font-read); font-weight: 600; font-size: 38px; line-height: 1.12; letter-spacing: -0.015em; margin: 0; text-wrap: balance; }
+.prose { font-family: var(--font-read); font-size: 19px; line-height: 1.65; max-width: 68ch; overflow-wrap: anywhere; }
+.prose > * + * { margin-top: 1em; }
+.prose p, .prose ul, .prose ol, .prose blockquote, .prose figure, .prose pre { margin-bottom: 0; }
+.prose h1, .prose h2, .prose h3, .prose h4 { font-family: var(--font-read); line-height: 1.25; margin-top: 1.6em; margin-bottom: 0; }
+.prose h2 { font-size: 26px; } .prose h3 { font-size: 22px; } .prose h4 { font-size: 19px; }
+.prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose img, .prose picture, .prose video { max-width: 100%; height: auto; border-radius: 6px; display: block; }
+.prose figure { margin-left: 0; margin-right: 0; }
+.prose figcaption { font-family: var(--font-ui); font-size: 13px; color: var(--muted); margin-top: 6px; }
+.prose blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 18px; color: var(--muted); font-style: italic; }
+.prose pre, .prose code { font-family: var(--font-mono); font-size: 14px; }
+.prose pre { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+.prose table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 15px; }
+.prose td, .prose th { border: 1px solid var(--line); padding: 6px 10px; }
+.prose hr { border: 0; border-top: 1px solid var(--line); }
+.prose mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; cursor: pointer; }
+.prose mark.has-note { box-shadow: inset 0 -2px 0 var(--saved); }
+.r-fallback { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.r-fallback .summary-text { font-family: var(--font-read); font-size: 19px; line-height: 1.6; }
+.r-notes { border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.r-notes h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0; }
+.quote { border-left: 3px solid var(--mark); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 4px; }
+.quote q { font-family: var(--font-read); font-size: 16px; quotes: "“" "”"; cursor: pointer; }
+.quote .note-text { font-size: 13px; color: var(--muted); }
+.story .quotes { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+
+/* Floating tools: highlight bubble, note editor, share menu */
+.pop, .menu { position: fixed; z-index: 50; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(10, 20, 30, .18); }
+.pop { display: flex; padding: 4px; gap: 2px; }
+.pop > button { border: 0; background: none; padding: 6px 10px; border-radius: 7px; font-size: 13px; font-weight: 500; }
+.pop > button:hover { background: var(--accent-soft); color: var(--accent); }
+.notepop { flex-direction: column; gap: 8px; padding: 10px; width: 300px; }
+.notepop textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: var(--bg); font-size: 14px; }
+.menu { padding: 6px; min-width: 220px; display: flex; flex-direction: column; }
+.menu button { display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 7px; font-size: 14px; }
+.menu button:hover, .menu button:focus-visible { background: var(--accent-soft); color: var(--accent); }
+.menu svg { width: 16px; height: 16px; flex: none; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
 @media (max-width: 820px) {
+  .r-title { font-size: 30px; }
+  .prose { font-size: 18px; }
   .story { gap: 12px; }
   .thumb { width: 96px; }
   .rail-head, #folderForm, .infolder { display: none; }

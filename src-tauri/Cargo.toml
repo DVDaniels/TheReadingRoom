@@ -1,6 +1,6 @@
 [package]
 name = "reading-room"
-version = "0.2.0"
+version = "0.3.0"
 description = "The Reading Room — a private RSS reader"
 authors = ["David Daniels"]
 edition = "2021"
@@ -29,6 +29,8 @@ quick-xml = "0.36"
 futures = "0.3"
 tokio = { version = "1", features = ["time"] }
 url = "2"
+dom_smoothie = "0.19.0"
+ammonia = "4.2.4"
 
 [profile.release]
 codegen-units = 1

@@ -2,11 +2,10 @@
 (() => {
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
-  const { openUrl } = window.__TAURI__.opener;
 
   const $ = id => document.getElementById(id);
-  // view: 'today' | 'all' | 'saved' | 'recent' | 'folder:<id>' | <feed id number>
-  const S = { folders: [], feeds: [], items: [], view: 'today', unreadOnly: true, openId: null, selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
+  const S = { folders: [], feeds: [], items: [], highlights: [], readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -16,6 +15,8 @@
     later: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     recent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+    notes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
+    share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
   const HUES = [162, 210, 28, 280, 340, 95, 190, 50];
@@ -58,14 +59,15 @@
     if (view === 'today') return isToday(i);
     if (view === 'saved') return i.saved;
     if (view === 'recent') return !!i.read_at;
+    if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => S.view !== 'saved' && S.view !== 'recent';
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated'].includes(S.view);
   function visible() {
     let list = S.items.filter(i => inScope(i));
-    if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || i.id === S.openId);
+    if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || S.keep.has(i.id));
     if (S.q) { const q = S.q.toLowerCase(); list = list.filter(i => (i.title + ' ' + i.summary).toLowerCase().includes(q)); }
     if (S.view === 'recent') list = [...list].sort((a, b) => (b.read_at || '').localeCompare(a.read_at || ''));
     return list;
@@ -85,6 +87,7 @@
     $('views').innerHTML =
       navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
+      navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
       navButton('recent', 'Recently read', '', { icon: ICONS.recent });
 
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
@@ -106,7 +109,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', recent: 'Recently read' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -121,6 +124,7 @@
     const when = S.refreshing ? 'Checking feeds…' : S.lastRefresh ? (a === 'now' ? 'Checked just now' : `Checked ${a} ago`) : 'Not checked yet';
     const lead = S.view === 'saved' ? `${S.items.filter(i => i.saved).length} saved`
       : S.view === 'recent' ? `${S.items.filter(i => i.read_at).length} read recently`
+      : S.view === 'annotated' ? `${S.highlights.length} ${S.highlights.length === 1 ? 'highlight' : 'highlights'} in ${new Set(S.highlights.map(h => h.item_id)).size} stories`
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : `${unreadIn(S.view)} unread`;
     $('viewSub').textContent = `${lead} · ${when}`;
@@ -156,6 +160,7 @@
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
+    if (S.view === 'annotated') return ['No highlights yet', 'Open a story, select a passage, and choose Highlight or Add note.'];
     if (!S.items.length) return ['No stories yet', S.refreshing ? 'Checking your feeds now. Stories appear as they arrive.' : 'Press Refresh to pull the latest posts.'];
     if (S.view === 'today' && S.unreadOnly) return ['You’re caught up for today', 'Nothing new in the last 24 hours. “All” in the sidebar has older stories.'];
     if (S.unreadOnly) return ['You’re all caught up', 'Switch to “All” to see stories you’ve already read.'];
@@ -174,16 +179,19 @@
     for (const it of list) {
       const day = groupBy(it);
       if (day !== lastDay) { if (lastDay) out += '</div>'; out += `<div class="daygroup"><h3>${esc(day)}</h3>`; lastDay = day; }
-      const f = feedById(it.feed_id), open = S.openId === it.id;
-      out += `<article class="story${it.read ? ' read' : ''}${open ? ' open' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
-        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-act="toggle">` : ''}
+      const f = feedById(it.feed_id);
+      const quotes = S.view === 'annotated' ? S.highlights.filter(h => h.item_id === it.id).map(h =>
+        `<div class="quote"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
+      out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
+        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open">` : ''}
         <div class="body">
           <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
-          <button class="title" data-act="toggle" aria-expanded="${open}">${esc(it.title)}</button>
-          ${it.summary ? `<div class="summary">${esc(it.summary)}</div>` : ''}
-          ${open && isWeb(it.link) ? `<div class="open-row"><a href="${esc(it.link)}">Read the full post on ${esc(f ? f.title : 'the site')} →</a></div>` : ''}
+          <button class="title" data-act="open">${esc(it.title)}</button>
+          ${it.summary && !quotes ? `<div class="summary">${esc(it.summary)}</div>` : ''}
+          ${quotes ? `<div class="quotes">${quotes}</div>` : ''}
         </div>
         <div class="acts">
+          <button class="icon" data-act="share" title="Share" aria-label="Share" aria-haspopup="menu">${ICONS.share}</button>
           <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
           <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
         </div>
@@ -193,7 +201,7 @@
     if (all.length > list.length) out += `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>`;
     $('list').innerHTML = out;
   }
-  function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); }
+  function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); }
 
   // A picture that fails to load just disappears.
   document.addEventListener('error', e => { if (e.target.classList?.contains('thumb')) e.target.remove(); }, true);
@@ -206,8 +214,8 @@
   async function load() {
     try {
       const s = await invoke('get_state');
-      S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
-      const valid = ['today', 'all', 'saved', 'recent'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render();
     } catch (e) { status(msg(e), true); }
@@ -243,20 +251,243 @@
 
   function selectView(v) {
     S.view = /^\d+$/.test(v) ? Number(v) : v;
-    S.openId = S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 });
+    S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 });
   }
+
+
+  // ------------------------------------------------------------ reader
+  const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
+  let listScroll = 0, articleHtml = '', articleFor = null;
+
+  function openReader(id) {
+    const it = item(id); if (!it) return;
+    if (!S.readerId) listScroll = $('main').scrollTop;
+    S.readerId = S.selId = id; S.keep.add(id);
+    hidePops();
+    $('listView').hidden = true; $('reader').hidden = false;
+    $('main').scrollTo({ top: 0 });
+    if (!it.read) mark(id, { read: true }); else render();
+    renderReaderChrome();
+    loadArticle(it);
+  }
+
+  function closeReader(silent) {
+    if (!S.readerId) return;
+    S.readerId = null; articleFor = null; hidePops();
+    $('reader').hidden = true; $('listView').hidden = false;
+    if (!silent) { renderList(); $('main').scrollTo({ top: listScroll }); }
+  }
+
+  function renderReaderChrome() {
+    const it = item(S.readerId); if (!it) return closeReader();
+    const f = feedById(it.feed_id);
+    $('rBackLabel').textContent = viewName();
+    $('rSave').textContent = it.saved ? 'Saved ✓' : 'Read later';
+    $('rSave').setAttribute('aria-pressed', String(!!it.saved));
+    $('rTitle').textContent = it.title;
+    const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    $('rMeta').innerHTML = `<span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${esc(when)}</time><span id="rByline"></span>`;
+    const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === it.id);
+    $('rPrev').disabled = i <= 0; $('rNext').disabled = i < 0 || i >= list.length - 1;
+    renderNotes();
+  }
+
+  async function loadArticle(it, refetch = false) {
+    articleFor = it.id;
+    $('rBody').innerHTML = `<p class="note">Loading the article…</p>`;
+    try {
+      const a = await invoke('get_article', { itemId: it.id, refetch });
+      if (articleFor !== it.id) return; // moved on to another story
+      articleHtml = a.html;
+      if (a.byline && $('rByline')) $('rByline').textContent = a.byline;
+      paintArticle();
+    } catch (e) {
+      if (articleFor !== it.id) return;
+      articleHtml = '';
+      $('rBody').innerHTML = `<div class="r-fallback">
+          ${it.summary ? `<p class="summary-text">${esc(it.summary)}</p>` : ''}
+          <p class="note">${esc(msg(e))}</p>
+          <div class="row"><button class="btn primary" id="rFallbackOpen">View the original page</button><button class="btn" id="rRetry">Try again</button></div>
+        </div>`;
+      $('rFallbackOpen').onclick = () => openWeb(it.link);
+      $('rRetry').onclick = () => loadArticle(it, true);
+    }
+  }
+
+  // Story HTML comes from the Rust side already cleaned (no scripts, styles or event handlers).
+  function paintArticle() {
+    const body = $('rBody');
+    body.innerHTML = articleHtml;
+    body.querySelectorAll('img').forEach(img => { img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; });
+    for (const h of S.highlights.filter(h => h.item_id === S.readerId)) wrapHighlight(body, h);
+  }
+
+  // ---- highlights: find the passage by its position (or its text) and wrap it in <mark>
+  function textNodes(root) {
+    const out = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let pos = 0, n;
+    while ((n = w.nextNode())) { out.push({ node: n, start: pos, end: pos + n.data.length }); pos += n.data.length; }
+    return { nodes: out, text: out.map(x => x.node.data).join('') };
+  }
+  function wrapHighlight(root, h) {
+    const { nodes, text } = textNodes(root);
+    let start = h.start >= 0 && text.substr(h.start, h.text.length) === h.text ? h.start : text.indexOf(h.text);
+    if (start < 0) return false;
+    const end = start + h.text.length;
+    for (const { node, start: ns, end: ne } of nodes) {
+      if (ne <= start || ns >= end || !node.data.trim()) continue;
+      let target = node;
+      const a = Math.max(start, ns) - ns, b = Math.min(end, ne) - ns;
+      if (b < target.data.length) target.splitText(b);
+      if (a > 0) target = target.splitText(a);
+      const mark = document.createElement('mark');
+      mark.dataset.h = h.id;
+      if (h.note) mark.classList.add('has-note');
+      target.parentNode.insertBefore(mark, target);
+      mark.appendChild(target);
+    }
+    return true;
+  }
+
+  function renderNotes() {
+    const mine = S.highlights.filter(h => h.item_id === S.readerId);
+    const box = $('rNotes');
+    box.hidden = !mine.length;
+    box.innerHTML = mine.length ? `<h2>Your highlights and notes</h2>` + mine.map(h =>
+      `<div class="quote" data-jump="${h.id}"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
+  }
+
+  function hidePops() {
+    let any = false;
+    for (const id of ['selPop', 'notePop', 'shareMenu']) if (!$(id).hidden) { $(id).hidden = true; any = true; }
+    return any;
+  }
+  function placeNear(el, rect) {
+    el.hidden = false;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let x = rect.left + rect.width / 2 - w / 2, y = rect.top - h - 8;
+    if (y < 44) y = rect.bottom + 8;
+    x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+    y = Math.max(8, Math.min(y, window.innerHeight - h - 8));
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+  }
+
+  let pending = null; // the selection waiting for "Highlight" / "Add note"
+  document.addEventListener('mouseup', e => {
+    if (!S.readerId || e.target.closest('.pop, .menu')) return;
+    setTimeout(() => {
+      const sel = window.getSelection();
+      const body = $('rBody');
+      if (!sel || sel.isCollapsed || !articleHtml) { if (!$('selPop').hidden) $('selPop').hidden = true; return; }
+      const range = sel.getRangeAt(0);
+      if (!body.contains(range.commonAncestorContainer)) return;
+      const text = range.toString();
+      if (!text.trim()) return;
+      const before = document.createRange(); before.selectNodeContents(body); before.setEnd(range.startContainer, range.startOffset);
+      pending = { text, start: before.toString().length };
+      placeNear($('selPop'), range.getBoundingClientRect());
+    }, 0);
+  });
+
+  async function saveHighlight(withNote) {
+    if (!pending || !S.readerId) return;
+    const lead = pending.text.length - pending.text.trimStart().length;
+    const h = { item_id: S.readerId, text: pending.text.trim(), start: pending.start + lead, note: '' };
+    $('selPop').hidden = true; window.getSelection()?.removeAllRanges(); pending = null;
+    try {
+      h.id = await invoke('add_highlight', { itemId: h.item_id, text: h.text, note: null, start: h.start });
+      h.created_at = new Date().toISOString();
+      S.highlights.push(h);
+      paintArticle(); renderNotes(); renderRail();
+      if (withNote) openNoteEditor(h.id);
+    } catch (e) { status(msg(e), true); }
+  }
+  $('selHighlight').onclick = () => saveHighlight(false);
+  $('selNote').onclick = () => saveHighlight(true);
+
+  let editing = null;
+  function openNoteEditor(id) {
+    const h = S.highlights.find(x => x.id === id); if (!h) return;
+    editing = h;
+    const mark = $('rBody').querySelector(`mark[data-h="${id}"]`);
+    $('noteText').value = h.note || '';
+    placeNear($('notePop'), (mark || $('rBody')).getBoundingClientRect());
+    $('noteText').focus();
+  }
+  $('noteSave').onclick = async () => {
+    if (!editing) return;
+    const note = $('noteText').value.trim();
+    try { await invoke('set_note', { id: editing.id, note }); editing.note = note; $('notePop').hidden = true; paintArticle(); renderNotes(); renderList(); }
+    catch (e) { status(msg(e), true); }
+  };
+  $('noteDelete').onclick = async () => {
+    if (!editing) return;
+    try {
+      await invoke('delete_highlight', { id: editing.id });
+      S.highlights = S.highlights.filter(x => x.id !== editing.id);
+      $('notePop').hidden = true; paintArticle(); renderNotes(); renderRail(); renderList();
+    } catch (e) { status(msg(e), true); }
+  };
+  $('noteText').onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('noteSave').click(); };
+
+  // ---- sharing
+  let shareItem = null;
+  function openShareMenu(anchor, it) {
+    if (!it) return;
+    shareItem = it; hidePops();
+    const menu = $('shareMenu'); placeNear(menu, anchor.getBoundingClientRect());
+    const r = anchor.getBoundingClientRect(); // menus drop down, not up
+    menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 8) + 'px';
+    menu.querySelector('button')?.focus();
+  }
+  async function share(kind) {
+    const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
+    const u = encodeURIComponent(it.link), t = encodeURIComponent(it.title);
+    try {
+      if (kind === 'x') await invoke('open_share', { url: `https://x.com/intent/post?text=${t}&url=${u}` });
+      if (kind === 'linkedin') await invoke('open_share', { url: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` });
+      if (kind === 'email') await invoke('open_external', { url: `mailto:?subject=${t}&body=${t}%0A%0A${u}` });
+      if (kind === 'browser') await invoke('open_external', { url: it.link });
+      if (kind === 'copy') {
+        try { await navigator.clipboard.writeText(it.link); status('Link copied.'); }
+        catch { status(`Couldn’t copy automatically. The link is ${it.link}`, true); }
+      }
+    } catch (e) { status(msg(e), true); }
+  }
+  $('shareMenu').addEventListener('click', e => { const b = e.target.closest('[data-share]'); if (b) share(b.dataset.share); });
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.pop, .menu, [data-act="share"], #rShare')) { $('shareMenu').hidden = true; $('notePop').hidden = true; }
+  });
+
+  // reader toolbar and article clicks
+  $('rBack').onclick = () => closeReader();
+  $('rSave').onclick = () => { const it = item(S.readerId); if (it) mark(it.id, { saved: !it.saved }); };
+  $('rShare').onclick = e => openShareMenu(e.currentTarget, item(S.readerId));
+  $('rOriginal').onclick = () => { const it = item(S.readerId); if (it) openWeb(it.link); };
+  const step = d => { const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === S.readerId); const n = list[i + d]; if (n) openReader(n.id); };
+  $('rPrev').onclick = () => step(-1);
+  $('rNext').onclick = () => step(1);
+  $('reader').addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (a) { e.preventDefault(); openWeb(a.href); return; }
+    const m = e.target.closest('mark[data-h]');
+    if (m && window.getSelection()?.isCollapsed) { openNoteEditor(Number(m.dataset.h)); return; }
+    const j = e.target.closest('[data-jump]');
+    if (j) $('rBody').querySelector(`mark[data-h="${j.dataset.jump}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
 
   // ------------------------------------------------------------ clicks
   document.addEventListener('click', e => {
-    // Every web link opens in your normal browser, never inside the app.
+    if (e.target.closest('.reader, .pop, .menu')) return; // the reader handles its own clicks
+    // Every web link opens inside the app, in its web window.
     const a = e.target.closest('a[href]');
-    if (a) { e.preventDefault(); if (isWeb(a.href)) openUrl(a.href).catch(() => status('Couldn’t open your browser.', true)); return; }
+    if (a) { e.preventDefault(); openWeb(a.href); return; }
 
     const chev = e.target.closest('[data-chev]');
     if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
 
     const v = e.target.closest('[data-view]');
-    if (v) { selectView(v.dataset.view); return; }
+    if (v) { closeReader(true); selectView(v.dataset.view); return; }
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
@@ -265,7 +496,8 @@
 
     const act = e.target.closest('[data-act]'); if (!act) return;
     const id = act.closest('.story').dataset.id, it = item(id); S.selId = id;
-    if (act.dataset.act === 'toggle') { S.openId = S.openId === id ? null : id; if (S.openId && !it.read) mark(id, { read: true }); else render(); }
+    if (act.dataset.act === 'open') openReader(id);
+    if (act.dataset.act === 'share') openShareMenu(act, it);
     if (act.dataset.act === 'save') mark(id, { saved: !it.saved });
     if (act.dataset.act === 'read') mark(id, { read: !it.read });
   });
@@ -381,19 +613,23 @@
   $('importBtn').onclick = importOpml;
   $('exportBtn').onclick = exportOpml;
 
-  // keyboard (⌘R, ⌘N and ⇧⌘N come from the app menu)
+  // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
-    const list = visible().slice(0, S.shown); if (!list.length) return;
-    let i = list.findIndex(x => x.id === S.selId);
+    const list = visible().slice(0, S.shown);
+    const cur = S.readerId || S.selId;
+    let i = list.findIndex(x => x.id === cur);
     if (e.key === 'j' || e.key === 'k') {
+      if (!list.length) return;
       i = e.key === 'j' ? Math.min(list.length - 1, i + 1) : Math.max(0, i - 1);
-      const it = list[i]; S.selId = S.openId = it.id;
-      if (!it.read) mark(it.id, { read: true }); else render();
-      document.querySelector(`.story[data-id="${CSS.escape(it.id)}"]`)?.scrollIntoView({ block: 'nearest' });
-    } else if (S.selId && e.key === 's') { const it = item(S.selId); if (it) mark(it.id, { saved: !it.saved }); }
-    else if (S.selId && e.key === 'm') { const it = item(S.selId); if (it) mark(it.id, { read: !it.read }); }
-    else if (S.selId && e.key === 'o') { const it = item(S.selId); if (it && isWeb(it.link)) openUrl(it.link); }
+      if (S.readerId) { openReader(list[i].id); return; }
+      S.selId = list[i].id; renderList();
+      document.querySelector(`.story[data-id="${CSS.escape(S.selId)}"]`)?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && !S.readerId && S.selId) { openReader(S.selId); }
+    else if (cur && e.key === 's') { const it = item(cur); if (it) mark(it.id, { saved: !it.saved }); }
+    else if (cur && e.key === 'm') { const it = item(cur); if (it) mark(it.id, { read: !it.read }); }
+    else if (cur && e.key === 'o') { const it = item(cur); if (it && isWeb(it.link)) openWeb(it.link); }
   });
 
   // events from the app: refresh finished, menu items
@@ -403,6 +639,9 @@
   listen('menu-new-folder', openNewFolder);
   listen('menu-import', importOpml);
   listen('menu-export', exportOpml);
+  listen('menu-back', () => closeReader());
+  listen('menu-forward', () => {});
+  listen('menu-browser', () => { const it = item(S.readerId || S.selId); if (it && isWeb(it.link)) invoke('open_external', { url: it.link }); });
   setInterval(renderHead, 60 * 1000); // keep "Checked 5m ago" current
   load();
 })();

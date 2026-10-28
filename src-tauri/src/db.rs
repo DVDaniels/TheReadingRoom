@@ -48,6 +48,21 @@ pub struct Item {
     pub read_at: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct Highlight {
+    pub id: i64,
+    pub item_id: String,
+    pub text: String,
+    pub note: String,
+    pub start: i64,
+    pub created_at: String,
+}
+
+pub struct Cached {
+    pub html: String,
+    pub byline: String,
+}
+
 pub struct NewItem {
     pub id: String,
     pub title: String,
@@ -91,6 +106,15 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL COLLATE NOCASE
         );
+        CREATE TABLE IF NOT EXISTS highlights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            start INTEGER DEFAULT -1,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS highlights_item ON highlights(item_id);
         CREATE INDEX IF NOT EXISTS items_feed_date ON items(feed_id, date);
         CREATE INDEX IF NOT EXISTS items_feed_link ON items(feed_id, link);
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);",
@@ -104,6 +128,13 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     }
     if !has_column(&conn, "items", "read_at")? {
         conn.execute("ALTER TABLE items ADD COLUMN read_at TEXT", [])?;
+    }
+    // Version 0.3 additions: the reader's cached copy of each article
+    if !has_column(&conn, "items", "content")? {
+        conn.execute("ALTER TABLE items ADD COLUMN content TEXT", [])?;
+    }
+    if !has_column(&conn, "items", "byline")? {
+        conn.execute("ALTER TABLE items ADD COLUMN byline TEXT", [])?;
     }
     if seed_defaults {
         for (title, url) in DEFAULT_FEEDS {
@@ -222,6 +253,7 @@ pub fn add_feed_if_new(conn: &Connection, url: &str, title: &str, folder_id: Opt
 }
 
 pub fn remove_feed(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM highlights WHERE item_id IN (SELECT id FROM items WHERE feed_id=?1)", [id])?;
     conn.execute("DELETE FROM items WHERE feed_id=?1", [id])?;
     conn.execute("DELETE FROM feeds WHERE id=?1", [id])?;
     Ok(())
@@ -237,7 +269,10 @@ pub fn rename_feed(conn: &Connection, id: i64, title: &str) -> rusqlite::Result<
 pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
     let mut st = conn.prepare(
         "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at
-         FROM items ORDER BY date DESC LIMIT ?1",
+         FROM items
+         WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
+            OR saved=1 OR id IN (SELECT item_id FROM highlights)
+         ORDER BY date DESC",
     )?;
     let rows = st.query_map([limit], |r| {
         Ok(Item {
@@ -330,12 +365,61 @@ pub fn store_fetch(
         params![site, title, now, feed.id],
     )?;
     tx.execute(
-        "DELETE FROM items WHERE feed_id=?1 AND saved=0 AND id NOT IN
-           (SELECT id FROM items WHERE feed_id=?1 ORDER BY date DESC LIMIT ?2)",
+        "DELETE FROM items WHERE feed_id=?1 AND saved=0
+           AND id NOT IN (SELECT item_id FROM highlights)
+           AND id NOT IN (SELECT id FROM items WHERE feed_id=?1 ORDER BY date DESC LIMIT ?2)",
         params![feed.id, KEEP_PER_FEED],
     )?;
     tx.commit()?;
     Ok(added)
+}
+
+// ---------------------------------------------------------------- reader copy
+
+pub fn item_link(conn: &Connection, id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT link FROM items WHERE id=?1", [id], |r| r.get(0)).optional()
+}
+
+pub fn cached_article(conn: &Connection, id: &str) -> rusqlite::Result<Option<Cached>> {
+    conn.query_row(
+        "SELECT content, COALESCE(byline,'') FROM items WHERE id=?1 AND content IS NOT NULL AND content<>''",
+        [id],
+        |r| Ok(Cached { html: r.get(0)?, byline: r.get(1)? }),
+    )
+    .optional()
+}
+
+pub fn cache_article(conn: &Connection, id: &str, html: &str, byline: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE items SET content=?1, byline=?2 WHERE id=?3", params![html, byline, id])?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------- highlights and notes
+
+pub fn highlights(conn: &Connection) -> rusqlite::Result<Vec<Highlight>> {
+    let mut st = conn.prepare("SELECT id, item_id, text, COALESCE(note,''), COALESCE(start,-1), created_at FROM highlights ORDER BY created_at")?;
+    let rows = st.query_map([], |r| {
+        Ok(Highlight { id: r.get(0)?, item_id: r.get(1)?, text: r.get(2)?, note: r.get(3)?, start: r.get(4)?, created_at: r.get(5)? })
+    })?;
+    rows.collect()
+}
+
+pub fn add_highlight(conn: &Connection, item_id: &str, text: &str, note: &str, start: i64, now: &str) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO highlights(item_id, text, note, start, created_at) VALUES (?1,?2,?3,?4,?5)",
+        params![item_id, text, note, start, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn set_note(conn: &Connection, id: i64, note: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE highlights SET note=?1 WHERE id=?2", params![note, id])?;
+    Ok(())
+}
+
+pub fn delete_highlight(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM highlights WHERE id=?1", [id])?;
+    Ok(())
 }
 
 pub fn get_meta(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {

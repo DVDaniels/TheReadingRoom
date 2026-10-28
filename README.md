@@ -19,8 +19,16 @@ and keeps everything on your computer.
 - **Today**, **Read later** and **Recently read** sit at the top of the sidebar; **All** and your folders below.
 - **Folders:** make one with the folder button beside *Feeds* (⇧⌘N), then drag feeds onto it or pick a folder
   from a feed's folder menu. Click the arrow to collapse a folder; click its name to read everything in it.
-- **Add a feed** (⌘N): paste the feed address, or just the website and it finds the feed.
-- **Keyboard:** `j` / `k` next and previous, `o` open in your browser, `s` save, `m` read/unread, ⌘R refresh.
+- **Reading:** click a story to read it in the app, in clean type. **View original** (`o`) opens the real page in the
+  app's web window; links inside articles open there too. In the web window, ⌘[ and ⌘] go back and forward and
+  ⇧⌘O opens the page in your regular browser.
+- **Highlights and notes:** select text in an article, then choose **Highlight** or **Add note**. Click a highlight to
+  edit its note or remove it. **Annotated** in the sidebar collects every story you've marked up.
+- **Share:** the Share button posts to X or LinkedIn (sign in once in the share window), copies the link, or emails it.
+- **Add a feed** (⌘N): paste the feed address, or just the website and it finds the feed. Type words instead,
+  like `walgreens pharmacy`, to follow that search on Google News.
+- **Keyboard:** `j` / `k` next and previous, `Enter` read, `Esc` back, `o` view original, `s` read later,
+  `m` read/unread, ⌘R refresh.
 - **Feeds menu › Import OPML** brings subscriptions over from Feedly, folders included (Feedly: Settings › OPML Export).
 - Stories you had in the earlier Python version are carried over automatically the first time it opens.
 
@@ -34,6 +42,7 @@ Your data lives in `~/Library/Application Support/com.daviddaniels.readingroom/r
 | `src-tauri/src/feeds.rs` | Fetching and reading RSS, Atom and JSON Feed; finding a site's feed |
 | `src-tauri/src/db.rs` | Storage (SQLite) |
 | `src-tauri/src/opml.rs` | OPML import and export |
+| `src-tauri/src/article.rs` | The reader: pulls the article out of a web page and cleans it |
 | `src-tauri/src/lib.rs` | App wiring: window, menus, Dock badge, background refresh, commands the page calls |
 | `src-tauri/tauri.conf.json` | App name, version, window size, icon |
 | `.github/workflows/build.yml` | Builds the Mac app on every push |

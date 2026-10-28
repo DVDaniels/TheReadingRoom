@@ -25,11 +25,11 @@
     </div>
     <form class="addfeed" id="addForm" hidden>
       <label for="feedUrl">Feed or website address</label>
-      <input id="feedUrl" type="text" placeholder="adactio.com or https://…/feed" autocomplete="off" spellcheck="false" required>
+      <input id="feedUrl" type="text" placeholder="A site, a feed, or a search like walgreens" autocomplete="off" spellcheck="false" required>
       <input id="feedName" type="text" placeholder="Name (optional)" autocomplete="off">
       <select id="feedFolder" aria-label="Folder"></select>
       <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
-      <span class="note" id="addNote">Paste a site and The Reading Room finds its feed.</span>
+      <span class="note" id="addNote">Paste a site and it finds the feed, or type words to follow them on Google News.</span>
     </form>
     <button class="btn" id="showAdd" type="button">+ Add a feed</button>
     <div class="rail-foot">
@@ -40,7 +40,7 @@
   </aside>
 
   <main id="main">
-    <div class="col">
+    <div class="col" id="listView">
       <div class="head">
         <div>
           <h1 id="viewTitle">All stories</h1>
@@ -61,7 +61,42 @@
       <div class="status" id="status" aria-live="polite"></div>
       <div id="list"><div class="empty"><strong>Loading your stories</strong><span>One moment.</span></div></div>
     </div>
+
+    <section class="reader" id="reader" hidden aria-label="Article">
+      <div class="reader-bar">
+        <button class="btn" id="rBack" type="button" title="Back (Esc)">← <span id="rBackLabel">Back</span></button>
+        <div class="row">
+          <button class="icon" id="rPrev" type="button" title="Previous story (k)" aria-label="Previous story"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
+          <button class="icon" id="rNext" type="button" title="Next story (j)" aria-label="Next story"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          <button class="btn" id="rSave" type="button">Read later</button>
+          <button class="btn" id="rShare" type="button" aria-haspopup="menu">Share</button>
+          <button class="btn primary" id="rOriginal" type="button" title="View original (o)">View original</button>
+        </div>
+      </div>
+      <article class="reader-article">
+        <div class="r-meta" id="rMeta"></div>
+        <h1 class="r-title" id="rTitle"></h1>
+        <div class="prose" id="rBody"></div>
+        <section class="r-notes" id="rNotes" hidden></section>
+      </article>
+    </section>
   </main>
+</div>
+<div class="pop" id="selPop" hidden role="toolbar" aria-label="Highlight">
+  <button type="button" id="selHighlight">Highlight</button>
+  <button type="button" id="selNote">Add note</button>
+</div>
+<div class="pop notepop" id="notePop" hidden>
+  <textarea id="noteText" rows="3" placeholder="Add a note about this passage"></textarea>
+  <div class="row"><button class="btn primary" type="button" id="noteSave">Save note</button><button class="btn danger" type="button" id="noteDelete">Remove highlight</button></div>
+</div>
+<div class="menu" id="shareMenu" hidden role="menu">
+  <button type="button" role="menuitem" data-share="x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.7 3h3.1l-6.8 7.8L22 21h-6.3l-4.9-6.4L5.2 21H2.1l7.3-8.3L1.8 3h6.4l4.4 5.9zm-1.1 16.2h1.7L7.5 4.7H5.7z"/></svg>Post on X</button>
+  <button type="button" role="menuitem" data-share="linkedin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.75h4V21H3zM9.5 9.75h3.8v1.54h.06c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.77 2.65 4.77 6.1V21h-4v-5.02c0-1.2-.02-2.74-1.67-2.74-1.67 0-1.93 1.3-1.93 2.65V21h-4z"/></svg>Share on LinkedIn</button>
+  <button type="button" role="menuitem" data-share="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link</button>
+  <button type="button" role="menuitem" data-share="email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Email</button>
+  <hr>
+  <button type="button" role="menuitem" data-share="browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Open in your browser</button>
 </div>
 <script src="app.js"></script>
 </body>
