@@ -95,3 +95,18 @@ so the store lists **David Daniels** as the developer). Add these under **Settin
 The App Store build runs inside Apple's App Sandbox (`src-tauri/Entitlements.appstore.plist`): network access, and
 files you pick in Open/Save dialogs. It can't read the old Python version's folder, which only matters for people
 who never opened the regular version.
+
+## iPhone and iPad (TestFlight)
+
+Run **Actions › Send to iPhone and iPad (TestFlight) › Run workflow**. A GitHub Mac builds the iOS app,
+signs it and uploads it to App Store Connect; it shows up in the TestFlight app on your iPhone after Apple
+processes it (usually 10–30 minutes). Every run gets a new build number automatically.
+
+Signing reuses the Mac App Store secrets: the "Apple Distribution" certificate in `APPLE_APPSTORE_CERTS`
+signs iOS apps too, and `.github/scripts/ios_signing.py` finds or creates the iOS App Store provisioning
+profile through the App Store Connect API key. To sign with a hand-made certificate and profile instead, set
+`IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD` and `IOS_MOBILE_PROVISION` (base64).
+
+Differences from the Mac version for now: web pages and share pages open in Safari (one window per app on
+iOS), sync between devices is Mac-only, and feeds move between folders with the folder menu on a feed's page
+(drag and drop is Mac-only).
