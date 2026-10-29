@@ -71,6 +71,13 @@ jobs:
             echo "::error title=ios init::$(tail -40 "$RUNNER_TEMP/init.log" | tr '\n' ' ' | cut -c1-3000)"
             exit 1
           fi
+          # The new project comes with Tauri's placeholder icon: put ours in (src-tauri/icons/ios, no transparency).
+          ICONSET="$(find src-tauri/gen/apple -type d -name 'AppIcon.appiconset' | head -1)"
+          [ -n "$ICONSET" ] || { echo "::error::Couldn't find AppIcon.appiconset in the Xcode project."; exit 1; }
+          cp src-tauri/icons/ios/*.png "$ICONSET/"
+          missing=$(python3 -c "import json,os,sys;d=sys.argv[1];print(' '.join(i['filename'] for i in json.load(open(d+'/Contents.json'))['images'] if i.get('filename') and not os.path.exists(d+'/'+i['filename'])))" "$ICONSET")
+          [ -z "$missing" ] || { echo "::error title=App icon::Missing icon files: $missing"; exit 1; }
+          echo "::notice title=App icon::Copied $(ls src-tauri/icons/ios/*.png | wc -l | tr -d ' ') icon files into $ICONSET"
           # Not using encryption beyond HTTPS: answer Apple's export question once, in the app itself.
           PLIST="$(find src-tauri/gen/apple -name Info.plist -path '*_iOS*' | head -1)"
           echo "::notice title=Info.plist::$PLIST"
