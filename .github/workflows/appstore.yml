@@ -13,6 +13,7 @@ jobs:
     env:
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPSTORE_CERTS: ${{ secrets.APPLE_APPSTORE_CERTS }}
+      INSTALLER_CERT: ${{ secrets.APPLE_INSTALLER_CERT }}
       CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
       APP_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
       INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
@@ -46,6 +47,11 @@ jobs:
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KCPW" "$KC"
           security import "$RUNNER_TEMP/certs.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          # The installer certificate can also come on its own (APPLE_INSTALLER_CERT)
+          if [ -n "$INSTALLER_CERT" ]; then
+            echo "$INSTALLER_CERT" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+            security import "$RUNNER_TEMP/installer.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          fi
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           echo "::notice title=Identities in keychain::$(security find-identity -v "$KC" | tr '\n' ' ' | cut -c1-600)"

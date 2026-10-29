@@ -83,6 +83,7 @@ so the store lists **David Daniels** as the developer). Add these under **Settin
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_API_KEY_P8` | An App Store Connect API key (Users and Access › Integrations); `_P8` is the key file's text |
 | `APPLE_DEVELOPER_ID_CERT`, `APPLE_DEVELOPER_ID_IDENTITY` | *Signed downloads:* "Developer ID Application" certificate as base64 .p12, and its full name |
 | `APPLE_APPSTORE_CERTS` | *App Store:* "Apple Distribution" and "Mac Installer Distribution" certificates in one base64 .p12 |
+| `APPLE_INSTALLER_CERT` | *App Store, optional:* the "Mac Installer Distribution" certificate on its own as base64 .p12, if it isn't in `APPLE_APPSTORE_CERTS` |
 | `APPLE_APPSTORE_IDENTITY`, `APPLE_INSTALLER_IDENTITY` | *App Store:* the full names of those two certificates |
 | `APPLE_PROVISION_PROFILE` | *App Store:* a "Mac App Store Connect" provisioning profile for `com.daviddaniels.readingroom`, base64 |
 
