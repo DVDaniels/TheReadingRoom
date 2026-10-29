@@ -199,7 +199,7 @@
       const quotes = S.view === 'annotated' ? S.highlights.filter(h => h.item_id === it.id).map(h =>
         `<div class="quote"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
       out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
-        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open">` : ''}
+        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
         <div class="body">
           <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
           <button class="title" data-act="open">${esc(it.title)}</button>
@@ -219,8 +219,22 @@
   }
   function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); }
 
-  // A picture that fails to load just disappears.
-  document.addEventListener('error', e => { if (e.target.classList?.contains('thumb')) e.target.remove(); }, true);
+  // Stories without a picture get a tile in their feed's colour, with its first letter (like the sidebar).
+  function tileFor(f) { return f ? `${hueFor(f.url)}|${(f.title || '?').trim()[0] || '?'}` : '210|•'; }
+  function tileHtml(f) {
+    const [h, letter] = tileFor(f).split('|');
+    return `<div class="thumb tile" style="--h:${h}" data-act="open" aria-hidden="true"><span>${esc(letter.toUpperCase())}</span></div>`;
+  }
+  // A picture that fails to load turns into that tile.
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!img.classList?.contains('thumb') || img.tagName !== 'IMG') return;
+    const [h, letter] = (img.dataset.tile || '210|•').split('|');
+    const t = document.createElement('div');
+    t.className = 'thumb tile'; t.style.setProperty('--h', h); t.dataset.act = 'open'; t.setAttribute('aria-hidden', 'true');
+    t.innerHTML = `<span>${esc(letter.toUpperCase())}</span>`;
+    img.replaceWith(t);
+  }, true);
 
   function status(text, err) { const el = $('status'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
   function showBanner(html, err, kind = 'feed-error') { const b = $('banner'); b.hidden = false; b.className = 'banner' + (err ? ' err' : ''); b.dataset.kind = kind; b.innerHTML = html; }

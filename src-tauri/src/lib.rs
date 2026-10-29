@@ -30,6 +30,7 @@ const ITEM_LIMIT: i64 = 2000;
 pub struct AppState {
     db: Mutex<Connection>,
     refreshing: AtomicBool,
+    finding_images: AtomicBool,
     client: reqwest::Client,
     sync: Mutex<SyncInfo>,
     sync_now: tokio::sync::Notify,
@@ -126,6 +127,41 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
     st.sync_now.notify_one(); // newly downloaded stories may have marks from another Mac
     update_badge(&app);
     let _ = app.emit("state-changed", ());
+    tauri::async_runtime::spawn(find_images(app.clone()));
+}
+
+/// Stories that came without a picture: look for the one their web page offers for sharing.
+/// A few at a time in the background, newest first; each page is only checked once.
+async fn find_images(app: AppHandle) {
+    let st: Shared = app.state::<Shared>().inner().clone();
+    if st.finding_images.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    for _round in 0..10 {
+        let todo = db::items_needing_image(&st.db.lock().unwrap(), 24).unwrap_or_default();
+        if todo.is_empty() {
+            break;
+        }
+        let found: Vec<(String, String)> = stream::iter(todo)
+            .map(|(id, link)| {
+                let client = st.client.clone();
+                async move { (id, feeds::page_image(&client, &link).await.unwrap_or_default()) }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
+        let any = found.iter().any(|(_, img)| !img.is_empty());
+        {
+            let conn = st.db.lock().unwrap();
+            for (id, img) in &found {
+                let _ = db::set_page_image(&conn, id, img);
+            }
+        }
+        if any {
+            let _ = app.emit("state-changed", ());
+        }
+    }
+    st.finding_images.store(false, Ordering::SeqCst);
 }
 
 /// Unread count on the Dock icon (Mac only; on iPhone it would need notification permission).
@@ -789,6 +825,7 @@ pub fn run() {
             app.manage::<Shared>(Arc::new(AppState {
                 db: Mutex::new(conn),
                 refreshing: AtomicBool::new(false),
+                finding_images: AtomicBool::new(false),
                 client: feeds::client(),
                 sync: Mutex::new(SyncInfo::default()),
                 sync_now: tokio::sync::Notify::new(),

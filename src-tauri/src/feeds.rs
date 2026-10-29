@@ -351,3 +351,94 @@ mod tests {
         assert!(s.ends_with('…') && s.chars().count() <= 51);
     }
 }
+
+// ------------------------------------------------------------------ pictures from the story's web page
+
+/// The picture a web page offers for sharing (og:image, twitter:image or image_src), if any.
+/// Only reads the top of the page, where those tags live.
+pub async fn page_image(client: &reqwest::Client, link: &str) -> Option<String> {
+    let base = url::Url::parse(link).ok()?;
+    // Google News links lead to a redirect page whose picture is Google's logo.
+    if base.host_str().map_or(true, |h| h.ends_with("news.google.com")) {
+        return None;
+    }
+    let mut resp = client.get(link).timeout(Duration::from_secs(12)).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let is_html = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map_or(true, |t| t.contains("html"));
+    if !is_html {
+        return None;
+    }
+    let final_url = resp.url().clone();
+    let mut buf: Vec<u8> = Vec::new();
+    while let Ok(Some(chunk)) = resp.chunk().await {
+        buf.extend_from_slice(&chunk);
+        if buf.len() > 400_000 || find_ci(&buf, b"</head>") {
+            break;
+        }
+    }
+    let html = String::from_utf8_lossy(&buf);
+    pick_page_image(&html, &final_url)
+}
+
+fn find_ci(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
+}
+
+pub fn pick_page_image(html: &str, base: &url::Url) -> Option<String> {
+    static TAG: OnceLock<Regex> = OnceLock::new();
+    static ATTR: OnceLock<Regex> = OnceLock::new();
+    let tag = TAG.get_or_init(|| Regex::new(r"(?is)<(meta|link)\b[^>]*>").unwrap());
+    let attr = ATTR.get_or_init(|| Regex::new(r#"(?is)([a-z][a-z:_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#).unwrap());
+    // Best first: Open Graph, then Twitter, then the old image_src link.
+    let mut found: [Option<String>; 3] = [None, None, None];
+    for m in tag.captures_iter(html) {
+        let kind = m[1].to_ascii_lowercase();
+        let mut key = String::new();
+        let mut value = String::new();
+        for a in attr.captures_iter(&m[0]) {
+            let name = a[1].to_ascii_lowercase();
+            let v = a.get(2).or(a.get(3)).or(a.get(4)).map(|x| x.as_str()).unwrap_or("").trim().to_string();
+            match (kind.as_str(), name.as_str()) {
+                ("meta", "property" | "name" | "itemprop") | ("link", "rel") => key = v.to_ascii_lowercase(),
+                ("meta", "content") | ("link", "href") => value = v,
+                _ => {}
+            }
+        }
+        if value.is_empty() {
+            continue;
+        }
+        let slot = match key.as_str() {
+            "og:image" | "og:image:url" | "og:image:secure_url" => 0,
+            "twitter:image" | "twitter:image:src" => 1,
+            "image_src" | "image" => 2,
+            _ => continue,
+        };
+        if found[slot].is_none() {
+            found[slot] = Some(value);
+        }
+    }
+    let raw = found.into_iter().flatten().next()?;
+    let raw = html_escape::decode_html_entities(&raw).to_string();
+    let u = base.join(&raw).ok()?;
+    (u.scheme() == "https" || u.scheme() == "http").then(|| u.to_string())
+}
+
+#[cfg(test)]
+mod page_image_tests {
+    use super::pick_page_image;
+    #[test]
+    fn picks_open_graph_and_resolves_relative() {
+        let base = url::Url::parse("https://example.com/post/1").unwrap();
+        let html = r#"<head><meta name="twitter:image" content="https://cdn.example.com/t.jpg">
+            <meta content="/img/og.jpg?a=1&amp;b=2" property="og:image"></head>"#;
+        assert_eq!(pick_page_image(html, &base).as_deref(), Some("https://example.com/img/og.jpg?a=1&b=2"));
+        assert_eq!(pick_page_image("<head><link rel='image_src' href='//x.org/i.png'></head>", &base).as_deref(), Some("https://x.org/i.png"));
+        assert_eq!(pick_page_image("<head><title>None</title></head>", &base), None);
+    }
+}

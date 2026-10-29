@@ -136,6 +136,10 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     if !has_column(&conn, "items", "byline")? {
         conn.execute("ALTER TABLE items ADD COLUMN byline TEXT", [])?;
     }
+    // Version 1.0.1: whether we've looked for a story's picture on its web page
+    if !has_column(&conn, "items", "image_checked")? {
+        conn.execute("ALTER TABLE items ADD COLUMN image_checked INTEGER DEFAULT 0", [])?;
+    }
     // Version 0.5 additions: change tracking for sync between Macs
     for (table, col) in [("folders", "uid"), ("folders", "updated_at"), ("feeds", "updated_at"),
                          ("items", "marks_at"), ("highlights", "uid"), ("highlights", "updated_at")] {
@@ -395,6 +399,23 @@ pub fn mark(conn: &mut Connection, ids: &[String], read: Option<bool>, saved: Op
         }
     }
     tx.commit()
+}
+
+/// Newest stories that came without a picture and haven't had their web page checked for one.
+pub fn items_needing_image(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut st = conn.prepare(
+        "SELECT id, link FROM items
+         WHERE COALESCE(image,'') = '' AND COALESCE(image_checked,0) = 0 AND link LIKE 'http%'
+         ORDER BY date DESC LIMIT ?1",
+    )?;
+    let rows = st.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
+    rows
+}
+
+/// Remember what the web page offered (an empty image means it had none).
+pub fn set_page_image(conn: &Connection, id: &str, image: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE items SET image = CASE WHEN ?1 <> '' THEN ?1 ELSE image END, image_checked = 1 WHERE id = ?2", params![image, id])?;
+    Ok(())
 }
 
 pub fn feed_error(conn: &Connection, id: i64, msg: &str, now: &str) -> rusqlite::Result<()> {
