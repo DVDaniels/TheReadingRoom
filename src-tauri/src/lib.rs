@@ -64,6 +64,12 @@ struct Added {
     title: String,
 }
 
+/// Something you changed should reach your other devices: sync now instead of waiting for the next round.
+/// (iPhone and iPad pause the app soon after you leave it, so waiting 30 seconds can mean never.)
+fn changed(state: &Shared) {
+    state.sync_now.notify_one();
+}
+
 fn err<E: std::fmt::Display>(e: E) -> String {
     format!("Something went wrong saving your reader ({e}).")
 }
@@ -156,6 +162,7 @@ fn mark(app: AppHandle, state: State<'_, Shared>, ids: Vec<String>, read: Option
         let mut conn = state.db.lock().unwrap();
         db::mark(&mut conn, &ids, read, saved, &feeds::now_iso()).map_err(err)?;
     }
+    changed(state.inner());
     update_badge(&app);
     Ok(())
 }
@@ -207,6 +214,7 @@ async fn add_feed(
         db::store_fetch(&mut conn, &feed, &fetched.title, &fetched.site, &items, &now).map_err(err)?;
         id
     };
+    changed(state.inner());
     update_badge(&app);
     Ok(Added { id, title: name })
 }
@@ -214,6 +222,7 @@ async fn add_feed(
 #[tauri::command]
 fn remove_feed(app: AppHandle, state: State<'_, Shared>, id: i64) -> Result<(), String> {
     db::remove_feed(&state.db.lock().unwrap(), id).map_err(err)?;
+    changed(state.inner());
     update_badge(&app);
     Ok(())
 }
@@ -224,7 +233,9 @@ fn rename_feed(state: State<'_, Shared>, id: i64, title: String) -> Result<(), S
     if title.is_empty() {
         return Err("Give the feed a name.".into());
     }
-    db::rename_feed(&state.db.lock().unwrap(), id, &title).map_err(err)
+    let r = db::rename_feed(&state.db.lock().unwrap(), id, &title).map_err(err);
+    changed(state.inner());
+    r
 }
 
 fn clean_name(name: &str) -> Result<String, String> {
@@ -243,7 +254,9 @@ fn create_folder(state: State<'_, Shared>, name: String) -> Result<i64, String> 
     if db::folder_name_taken(&conn, &name, None).map_err(err)? {
         return Err(format!("You already have a folder called {name}."));
     }
-    db::folder_named(&conn, &name).map_err(err)
+    let r = db::folder_named(&conn, &name).map_err(err);
+    changed(state.inner());
+    r
 }
 
 #[tauri::command]
@@ -253,17 +266,23 @@ fn rename_folder(state: State<'_, Shared>, id: i64, name: String) -> Result<(), 
     if db::folder_name_taken(&conn, &name, Some(id)).map_err(err)? {
         return Err(format!("You already have a folder called {name}."));
     }
-    db::rename_folder(&conn, id, &name).map_err(err)
+    let r = db::rename_folder(&conn, id, &name).map_err(err);
+    changed(state.inner());
+    r
 }
 
 #[tauri::command]
 fn delete_folder(state: State<'_, Shared>, id: i64) -> Result<(), String> {
-    db::delete_folder(&state.db.lock().unwrap(), id).map_err(err)
+    let r = db::delete_folder(&state.db.lock().unwrap(), id).map_err(err);
+    changed(state.inner());
+    r
 }
 
 #[tauri::command]
 fn set_feed_folder(state: State<'_, Shared>, feed_id: i64, folder_id: Option<i64>) -> Result<(), String> {
-    db::set_feed_folder(&state.db.lock().unwrap(), feed_id, folder_id).map_err(err)
+    let r = db::set_feed_folder(&state.db.lock().unwrap(), feed_id, folder_id).map_err(err);
+    changed(state.inner());
+    r
 }
 
 // ---- reader, web window, sharing, highlights
@@ -363,17 +382,23 @@ fn add_highlight(state: State<'_, Shared>, item_id: String, text: String, note: 
     if text.is_empty() {
         return Err("Select some text to highlight.".into());
     }
-    db::add_highlight(&state.db.lock().unwrap(), &item_id, &text, note.as_deref().unwrap_or("").trim(), start, &feeds::now_iso()).map_err(err)
+    let r = db::add_highlight(&state.db.lock().unwrap(), &item_id, &text, note.as_deref().unwrap_or("").trim(), start, &feeds::now_iso()).map_err(err);
+    changed(state.inner());
+    r
 }
 
 #[tauri::command]
 fn set_note(state: State<'_, Shared>, id: i64, note: String) -> Result<(), String> {
-    db::set_note(&state.db.lock().unwrap(), id, note.trim()).map_err(err)
+    let r = db::set_note(&state.db.lock().unwrap(), id, note.trim()).map_err(err);
+    changed(state.inner());
+    r
 }
 
 #[tauri::command]
 fn delete_highlight(state: State<'_, Shared>, id: i64) -> Result<(), String> {
-    db::delete_highlight(&state.db.lock().unwrap(), id).map_err(err)
+    let r = db::delete_highlight(&state.db.lock().unwrap(), id).map_err(err);
+    changed(state.inner());
+    r
 }
 
 // ---- sync between Macs
@@ -391,7 +416,24 @@ fn device_id(conn: &Connection) -> String {
     id
 }
 
-/// One round of sync: take in the other Macs' changes, then publish this Mac's.
+/// Write this device's sync file if anything changed since it was last written.
+fn publish(st: &Shared, dir: &std::path::Path, me: &str) -> Result<(), String> {
+    let mut mine = {
+        let conn = st.db.lock().unwrap();
+        sync::export(&conn, me, &sync::device_name()).map_err(err)?
+    };
+    let unchanged = st.sync.lock().unwrap().last_written.as_ref() == Some(&mine);
+    let own_file = dir.join(format!("{me}.json"));
+    if !unchanged || !own_file.exists() {
+        let compare = mine.clone();
+        mine.written_at = feeds::now_iso();
+        sync::write_own(dir, &mine).map_err(|_| "Couldn't write to the sync folder. Check that it still exists and isn't full.".to_string())?;
+        st.sync.lock().unwrap().last_written = Some(compare);
+    }
+    Ok(())
+}
+
+/// One round of sync: take in the other devices' changes, then publish this one's.
 fn run_sync(app: &AppHandle) {
     let st: Shared = app.state::<Shared>().inner().clone();
     let (dir, me) = {
@@ -401,11 +443,15 @@ fn run_sync(app: &AppHandle) {
     let Some(dir) = dir else { return };
     let result = (|| -> Result<sync::Applied, String> {
         if !dir.is_dir() {
-            return Err("The sync folder can't be found. If it's in iCloud Drive, check that iCloud Drive is on for this Mac.".into());
+            return Err("The sync folder can't be found. If it's in iCloud Drive, check that iCloud Drive is on for this device.".into());
         }
-        // iPhone and iPad keep iCloud files in the cloud until asked for them.
+        // iPhone and iPad: send this device's changes first (the app may be paused any moment),
+        // then wait for iCloud to bring down the other devices' files.
         #[cfg(mobile)]
-        let _ = app.icloud_folder().download(&dir.display().to_string());
+        {
+            publish(&st, &dir, &me)?;
+            let _ = app.icloud_folder().download(&dir.display().to_string());
+        }
         let peers = sync::read_peers(&dir, &me);
         let mut total = sync::Applied::default();
         {
@@ -420,19 +466,7 @@ fn run_sync(app: &AppHandle) {
             }
         }
         st.sync.lock().unwrap().peers = peers.iter().map(|p| (p.device_name.clone(), p.written_at.clone())).collect();
-
-        let mut mine = {
-            let conn = st.db.lock().unwrap();
-            sync::export(&conn, &me, &sync::device_name()).map_err(err)?
-        };
-        let unchanged = st.sync.lock().unwrap().last_written.as_ref() == Some(&mine);
-        let own_file = dir.join(format!("{me}.json"));
-        if !unchanged || !own_file.exists() {
-            let compare = mine.clone();
-            mine.written_at = feeds::now_iso();
-            sync::write_own(&dir, &mine).map_err(|_| "Couldn't write to the sync folder. Check that it still exists and isn't full.".to_string())?;
-            st.sync.lock().unwrap().last_written = Some(compare);
-        }
+        publish(&st, &dir, &me)?;
         Ok(total)
     })();
     let now = feeds::now_iso();

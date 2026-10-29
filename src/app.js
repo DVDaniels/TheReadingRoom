@@ -752,6 +752,12 @@
   $('syncClose').onclick = closeSync;
   $('syncPanel').addEventListener('mousedown', e => { if (e.target.id === 'syncPanel') closeSync(); });
   listen('sync-changed', loadSync);
+  // Opening the app (or switching back to it) and leaving it both sync right away. On iPhone and iPad the app
+  // is paused soon after you leave, so this is what gets your last changes to your other devices.
+  document.addEventListener('visibilitychange', () => {
+    if (!sync?.on) return;
+    invoke('sync_now').then(s => { sync = s; renderSyncButton(); renderSyncPanel(); }).catch(() => {});
+  });
   listen('menu-sync', openSync);
   setInterval(renderSyncButton, 30 * 1000);
   loadSync();
