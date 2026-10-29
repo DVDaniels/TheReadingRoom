@@ -48,7 +48,7 @@ jobs:
           security import "$RUNNER_TEMP/certs.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
-          security find-identity -v "$KC"
+          echo "::notice title=Identities in keychain::$(security find-identity -v "$KC" | tr '\n' ' ' | cut -c1-600)"
 
       - name: Add provisioning profile and team ID
         run: |
@@ -62,14 +62,24 @@ jobs:
 
       - name: Package for the App Store
         run: |
-          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/The Reading Room.app"
-          xcrun productbuild --sign "$INSTALLER_IDENTITY" --component "$APP" /Applications "$RUNNER_TEMP/The Reading Room.pkg"
+          BUNDLE=src-tauri/target/universal-apple-darwin/release/bundle
+          echo "::notice title=Built bundles::$(ls -R "$BUNDLE" 2>&1 | head -20 | tr '\n' ' ')"
+          APP="$(ls -d "$BUNDLE"/macos/*.app | head -1)"
+          echo "::notice title=App signature::$(codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority=|TeamIdentifier' | tr '\n' ' ')"
+          if ! xcrun productbuild --sign "$INSTALLER_IDENTITY" --component "$APP" /Applications "$RUNNER_TEMP/The Reading Room.pkg" > "$RUNNER_TEMP/pb.log" 2>&1; then
+            echo "::error title=productbuild::$(tr '\n' ' ' < "$RUNNER_TEMP/pb.log" | cut -c1-2000)"
+            exit 1
+          fi
 
       - name: Upload to App Store Connect
         run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          xcrun altool --upload-app --type macos --file "$RUNNER_TEMP/The Reading Room.pkg" --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER"
+          if ! xcrun altool --upload-app --type macos --file "$RUNNER_TEMP/The Reading Room.pkg" --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER" > "$RUNNER_TEMP/up.log" 2>&1; then
+            echo "::error title=Upload::$(tr '\n' ' ' < "$RUNNER_TEMP/up.log" | cut -c1-3000)"
+            exit 1
+          fi
+          echo "::notice title=Upload::$(tr '\n' ' ' < "$RUNNER_TEMP/up.log" | cut -c1-1000)"
 
       - uses: actions/upload-artifact@v4
         with:
