@@ -445,9 +445,9 @@ pub fn write_own(dir: &Path, file: &SyncFile) -> std::io::Result<()> {
 }
 
 pub fn icloud_drive() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
-    let p = home.join("Library/Mobile Documents/com~apple~CloudDocs");
-    p.is_dir().then_some(p)
+    let p = crate::bookmark::real_home()?.join("Library/Mobile Documents/com~apple~CloudDocs");
+    // The sandboxed App Store version can't look there until you pick it, so assume it exists.
+    (crate::bookmark::sandboxed() || p.is_dir()).then_some(p)
 }
 
 pub fn device_name() -> String {

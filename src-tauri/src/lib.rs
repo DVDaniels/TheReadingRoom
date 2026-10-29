@@ -1,6 +1,7 @@
 //! The Reading Room — app wiring: window, menus, background refresh and the commands the page calls.
 
 mod article;
+mod bookmark;
 mod db;
 mod feeds;
 mod opml;
@@ -482,25 +483,66 @@ fn sync_status(state: State<'_, Shared>) -> SyncStatus {
     status_of(state.inner())
 }
 
+/// Ask for a folder. In the App Store version this is also what gives the app permission to use it,
+/// so it's remembered as a bookmark for later launches.
+fn pick_folder(app: &AppHandle, state: &Shared, title: &str, start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    let mut dialog = app.dialog().file().set_title(title);
+    if let Some(dir) = start {
+        dialog = dialog.set_directory(dir);
+    }
+    let Some(folder) = dialog.blocking_pick_folder() else { return Ok(None) };
+    let picked = folder.into_path().map_err(|_| "Couldn't use that folder.".to_string())?;
+    if bookmark::sandboxed() {
+        let data = bookmark::create(&picked)?;
+        db::set_meta(&state.db.lock().unwrap(), "sync_bookmark", &bookmark::to_hex(&data)).map_err(err)?;
+    }
+    Ok(Some(picked))
+}
+
 #[tauri::command]
-fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<SyncStatus, String> {
+async fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
     let root = sync::icloud_drive()
         .ok_or("iCloud Drive isn't on for this Mac. Turn it on in System Settings › your name › iCloud › iCloud Drive, then try again.")?;
-    start_sync(&app, state.inner(), root.join("The Reading Room"))
+    if !bookmark::sandboxed() {
+        return start_sync(&app, state.inner(), root.join("The Reading Room")).map(Some);
+    }
+    // App Store version: you choose the folder once, and macOS lets the app keep using it.
+    let Some(picked) = pick_folder(&app, state.inner(), "Choose iCloud Drive (or its “The Reading Room” folder), then click Open", Some(root.clone()))? else {
+        return Ok(None);
+    };
+    let dir = if picked == root || picked.file_name().map_or(false, |n| n == "com~apple~CloudDocs") {
+        picked.join("The Reading Room")
+    } else {
+        picked
+    };
+    start_sync(&app, state.inner(), dir).map(Some)
 }
 
 #[tauri::command]
 async fn sync_choose_folder(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
-    let Some(folder) = app.dialog().file().set_title("Choose a folder to sync through").blocking_pick_folder() else {
+    let Some(dir) = pick_folder(&app, state.inner(), "Choose a folder to sync through", None)? else {
         return Ok(None);
     };
-    let dir = folder.into_path().map_err(|_| "Couldn't use that folder.".to_string())?;
     start_sync(&app, state.inner(), dir).map(Some)
+}
+
+/// At launch, reopen the folder you picked (App Store version only).
+fn reopen_sync_folder(conn: &Connection) {
+    let Some(hex) = db::get_meta(conn, "sync_bookmark").ok().flatten() else { return };
+    let Some(data) = bookmark::from_hex(&hex) else { return };
+    if let Ok((path, stale)) = bookmark::open(&data) {
+        if stale {
+            if let Ok(fresh) = bookmark::create(&path) {
+                let _ = db::set_meta(conn, "sync_bookmark", &bookmark::to_hex(&fresh));
+            }
+        }
+    }
 }
 
 #[tauri::command]
 fn sync_turn_off(state: State<'_, Shared>) -> Result<SyncStatus, String> {
     db::delete_meta(&state.db.lock().unwrap(), "sync_dir").map_err(err)?;
+    db::delete_meta(&state.db.lock().unwrap(), "sync_bookmark").map_err(err)?;
     *state.sync.lock().unwrap() = SyncInfo::default();
     Ok(status_of(state.inner()))
 }
@@ -631,6 +673,7 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let conn = open_database(&handle)?;
+            reopen_sync_folder(&conn);
             app.manage::<Shared>(Arc::new(AppState {
                 db: Mutex::new(conn),
                 refreshing: AtomicBool::new(false),
