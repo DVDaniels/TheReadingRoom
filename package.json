@@ -1,6 +1,6 @@
 {
   "name": "reading-room",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "The Reading Room — a private RSS reader for Mac",
   "scripts": {
