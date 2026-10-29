@@ -361,7 +361,12 @@
   function paintArticle() {
     const body = $('rBody');
     body.innerHTML = articleHtml;
-    body.querySelectorAll('img').forEach(img => { img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; });
+    body.querySelectorAll('img').forEach(img => {
+      img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+      // A picture that can't load leaves no empty frame behind (nor an empty figure around it).
+      const drop = () => { const fig = img.closest('figure'); img.remove(); if (fig && !fig.querySelector('img, video')) fig.remove(); };
+      if (!img.getAttribute('src') && !img.getAttribute('srcset')) drop(); else img.addEventListener('error', drop, { once: true });
+    });
     for (const h of S.highlights.filter(h => h.item_id === S.readerId)) wrapHighlight(body, h);
   }
 

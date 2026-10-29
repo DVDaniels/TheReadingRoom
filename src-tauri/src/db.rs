@@ -136,6 +136,12 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     if !has_column(&conn, "items", "byline")? {
         conn.execute("ALTER TABLE items ADD COLUMN byline TEXT", [])?;
     }
+    // Version 1.0.1: saved copies of articles with pictures were made before lazy-loaded photos were
+    // understood; let them download again (once) so their pictures show.
+    if conn.query_row("SELECT value FROM meta WHERE key='article_cache'", [], |r| r.get::<_, String>(0)).optional()?.as_deref() != Some("2") {
+        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<img%'", [])?;
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '2')", [])?;
+    }
     // Version 1.0.1: whether we've looked for a story's picture on its web page
     if !has_column(&conn, "items", "image_checked")? {
         conn.execute("ALTER TABLE items ADD COLUMN image_checked INTEGER DEFAULT 0", [])?;
