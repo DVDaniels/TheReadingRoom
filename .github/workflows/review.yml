@@ -1,0 +1,30 @@
+name: Mac App Review
+
+# Run by hand. "notes" saves appstore/review-notes.txt as the version's App Review notes;
+# "resubmit" sends the Mac version back to App Review.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [notes, resubmit]
+        default: notes
+      video_url:
+        description: "Link to the review screen recording (for notes)"
+        required: false
+        default: ""
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          python .github/scripts/asc_review.py "${{ inputs.action }}" "${{ inputs.video_url }}"
