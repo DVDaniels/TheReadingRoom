@@ -135,6 +135,7 @@
 
   function renderHead() {
     $('viewTitle').textContent = viewName();
+    if ($('clock')) $('clock').hidden = S.view !== 'today';
     const a = S.lastRefresh ? ago(S.lastRefresh) : '';
     const when = S.refreshing ? 'Checking feeds…' : S.lastRefresh ? (a === 'now' ? 'Checked just now' : `Checked ${a} ago`) : 'Not checked yet';
     const lead = S.view === 'saved' ? `${S.items.filter(i => i.saved).length} saved`
@@ -810,5 +811,19 @@
   listen('menu-forward', () => {});
   listen('menu-browser', () => { const it = item(S.readerId || S.selId); if (it && isWeb(it.link)) invoke('open_external', { url: it.link }); });
   setInterval(renderHead, 60 * 1000); // keep "Checked 5m ago" current
+
+  // ------------------------------------------------------------ Today: clock and date, and the pinned top bar
+  function tick() {
+    const now = new Date();
+    $('clockTime').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    $('clockDate').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    $('clock').hidden = S.view !== 'today';
+  }
+  tick(); setInterval(tick, 15 * 1000);
+  // A thin line under the top bar once stories are scrolling beneath it.
+  const scrollerOf = () => (isSplit() ? $('listView') : $('main'));
+  const markStuck = () => $('listTop').classList.toggle('stuck', scrollerOf().scrollTop > 4);
+  $('main').addEventListener('scroll', markStuck, { passive: true });
+  $('listView').addEventListener('scroll', markStuck, { passive: true });
   load();
 })();

@@ -64,7 +64,11 @@ jobs:
       - name: Build the App Store version
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
-        run: npx tauri build --bundles app --target universal-apple-darwin --config src-tauri/tauri.appstore.conf.json
+        run: |
+          # Each upload needs its own build number; the version (1.0.1 …) comes from tauri.conf.json.
+          echo '{"bundle":{"macOS":{"bundleVersion":"${{ github.run_number }}"}}}' > "$RUNNER_TEMP/build-number.json"
+          echo "::notice title=Build number::${{ github.run_number }}"
+          npx tauri build --bundles app --target universal-apple-darwin --config src-tauri/tauri.appstore.conf.json --config "$RUNNER_TEMP/build-number.json"
 
       - name: Package for the App Store
         run: |
