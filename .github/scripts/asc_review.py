@@ -17,7 +17,7 @@ def token():
 def call(method, path, **kw):
     r = requests.request(method, API + path, headers={"Authorization": f"Bearer {token()}"}, timeout=60, **kw)
     if r.status_code >= 400:
-        errs = "; ".join(f"{e.get('title')}: {e.get('detail')}" for e in r.json().get("errors", [])) if r.content else r.text
+        errs = r.text
         print(f"::error title={method} {path}::{r.status_code} {errs[:1500]}")
         sys.exit(1)
     return r.json() if r.content else {}
@@ -46,5 +46,13 @@ elif sys.argv[1] == "resubmit":
         print("::error title=Resubmit::No open Mac review submission found: " + ", ".join(s["attributes"].get("state", "") for s in subs))
         sys.exit(1)
     s = open_subs[0]
+    # Rejected items have to be marked as dealt with before the submission can go back to App Review.
+    items = call("GET", f"/reviewSubmissions/{s['id']}/items")["data"]
+    for it in items:
+        st = it["attributes"].get("state")
+        print(f"::notice title=Item::{it['id']} {st} resolved={it['attributes'].get('resolved')}")
+        if st in ("REJECTED", "UNRESOLVED_ISSUES") or it["attributes"].get("resolved") is False:
+            call("PATCH", f"/reviewSubmissionItems/{it['id']}", json={"data": {"type": "reviewSubmissionItems", "id": it["id"], "attributes": {"resolved": True}}})
+            print(f"::notice title=Item resolved::{it['id']}")
     out = call("PATCH", f"/reviewSubmissions/{s['id']}", json={"data": {"type": "reviewSubmissions", "id": s["id"], "attributes": {"submitted": True}}})
     print(f"::notice title=Resubmitted::{out['data']['attributes'].get('state')}")
