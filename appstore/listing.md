@@ -7,8 +7,9 @@ Character limits are Apple's.
 
 | Field | Value |
 | --- | --- |
-| Name (30) | The Reading Room |
-| Subtitle (30) | A private RSS reader |
+| Name (30) | The Reading Room – RSS Reader |
+| Name in the Dock and menu bar | The Reading Room |
+| Subtitle (30) | Private, ad-free news & blogs |
 | Bundle ID | com.daviddaniels.readingroom |
 | Primary category | News |
 | Secondary category | Productivity |
