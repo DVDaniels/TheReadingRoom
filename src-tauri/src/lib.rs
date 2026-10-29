@@ -14,8 +14,11 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -117,6 +120,11 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
     let _ = app.emit("state-changed", ());
 }
 
+/// Unread count on the Dock icon (Mac only; on iPhone it would need notification permission).
+#[cfg(mobile)]
+fn update_badge(_app: &AppHandle) {}
+
+#[cfg(desktop)]
 fn update_badge(app: &AppHandle) {
     let st: Shared = app.state::<Shared>().inner().clone();
     let n = st.db.lock().ok().and_then(|c| db::unread_count(&c).ok()).unwrap_or(0);
@@ -287,6 +295,7 @@ fn web_url(url: &str) -> Result<url::Url, String> {
 }
 
 /// Show a web page in the app's own browsing window (one window, reused).
+#[cfg(desktop)]
 #[tauri::command]
 async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
     let u = web_url(&url)?;
@@ -305,7 +314,22 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// iPhone and iPad have one window per app, so web pages open in Safari.
+#[cfg(mobile)]
+#[tauri::command]
+async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
+    let u = web_url(&url)?;
+    app.opener().open_url(u.as_str(), None::<&str>).map_err(|_| "Couldn't open that page.".to_string())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn open_share(app: AppHandle, url: String) -> Result<(), String> {
+    open_web(app, url).await
+}
+
 /// A small sharing window (X, LinkedIn). Sign in there once; the app remembers it.
+#[cfg(desktop)]
 #[tauri::command]
 async fn open_share(app: AppHandle, url: String) -> Result<(), String> {
     let u = web_url(&url)?;
@@ -485,6 +509,12 @@ fn sync_status(state: State<'_, Shared>) -> SyncStatus {
 
 /// Ask for a folder. In the App Store version this is also what gives the app permission to use it,
 /// so it's remembered as a bookmark for later launches.
+#[cfg(mobile)]
+fn pick_folder(_app: &AppHandle, _state: &Shared, _title: &str, _start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    Err("Syncing through a folder is only available on a Mac.".into())
+}
+
+#[cfg(desktop)]
 fn pick_folder(app: &AppHandle, state: &Shared, title: &str, start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
     let mut dialog = app.dialog().file().set_title(title);
     if let Some(dir) = start {
@@ -551,6 +581,13 @@ fn sync_turn_off(state: State<'_, Shared>) -> Result<SyncStatus, String> {
 fn sync_now(app: AppHandle, state: State<'_, Shared>) -> SyncStatus {
     run_sync(&app);
     status_of(state.inner())
+}
+
+/// Which kind of device the page is running on, so it can lay itself out to match.
+#[tauri::command]
+fn app_info() -> serde_json::Value {
+    let platform = if cfg!(target_os = "ios") { "ios" } else if cfg!(target_os = "macos") { "macos" } else { "other" };
+    serde_json::json!({ "platform": platform, "mobile": cfg!(mobile), "version": env!("CARGO_PKG_VERSION") })
 }
 
 #[tauri::command]
@@ -632,6 +669,7 @@ fn open_database(app: &AppHandle) -> Result<Connection, Box<dyn std::error::Erro
     Ok(db::open(&path, fresh)?)
 }
 
+#[cfg(desktop)]
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::default(app)?;
     let feeds_menu = Submenu::with_items(
@@ -682,7 +720,9 @@ pub fn run() {
                 sync_now: tokio::sync::Notify::new(),
             }));
 
+            #[cfg(desktop)]
             app.set_menu(build_menu(&handle)?)?;
+            #[cfg(desktop)]
             app.on_menu_event(|app, event| {
                 // Back / Forward / Open in Browser act on the web window when it's in front.
                 let web = app.get_webview_window("web").filter(|w| w.is_focused().unwrap_or(false));
@@ -753,6 +793,7 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            app_info,
             get_state,
             mark,
             add_feed,

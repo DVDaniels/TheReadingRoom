@@ -91,6 +91,8 @@ button { cursor: pointer; }
 .rail-foot kbd { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; text-align: left; }
 .linkish:hover { text-decoration: underline; }
+.sep { margin: 0 2px; }
+.phone-only { display: none !important; }
 
 /* Sidebar sections, folders */
 .rail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -272,4 +274,76 @@ main { min-width: 0; overflow-y: auto; padding: var(--top) max(16px, 4vw) 64px; 
 }
 @media (prefers-reduced-motion: no-preference) {
   .story { transition: background-color .15s; }
+}
+
+/* ---------------------------------------------------------------- iPhone and iPad
+   html.ios is set by app.js when the app runs on iOS. Touch targets get bigger, inputs use 16px text
+   (smaller makes iOS zoom in), and Mac-only controls (window drag strip, keyboard hints, sync, export) go away. */
+html.ios { --top: calc(env(safe-area-inset-top) + 12px); -webkit-text-size-adjust: 100%; }
+html.ios body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios .syncbtn, html.ios #exportBtn, html.ios .sep { display: none !important; }
+html.ios input, html.ios select, html.ios textarea { font-size: 16px !important; }
+html.ios .icon { width: 40px; height: 40px; }
+html.ios .icon svg { width: 20px; height: 20px; }
+html.ios .btn { padding: 8px 14px; font-size: 15px; }
+html.ios .nav button { padding: 10px 10px; font-size: 16px; }
+html.ios .menu button { padding: 12px 12px; font-size: 16px; }
+html.ios .pop > button { padding: 10px 14px; font-size: 15px; }
+html.ios .title:hover, html.ios .btn:hover { color: inherit; }
+html.ios .btn.primary:hover { color: var(--surface); }
+html.ios .rail, html.ios main { padding-bottom: calc(env(safe-area-inset-bottom) + 32px); }
+
+/* iPhone: one screen at a time. body[data-screen] is feeds, list or reader. */
+@media (max-width: 760px) {
+  html.ios .phone-only { display: flex !important; }
+  html.ios .app { display: block; height: 100%; }
+  html.ios .rail { position: fixed; inset: 0; border: 0; padding: var(--top) 16px calc(env(safe-area-inset-bottom) + 24px);
+    overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 22px; }
+  html.ios .rail .nav { flex-direction: column; overflow: visible; gap: 2px; padding: 0; }
+  html.ios .rail .nav button { width: 100%; flex: initial; border: 0; border-radius: 10px; padding: 11px 10px; }
+  html.ios .rail-head { display: flex; }
+  html.ios .infolder { display: block; }
+  html.ios #folderForm:not([hidden]) { display: flex; }
+  html.ios .rail h2 { display: block; }
+  html.ios .rail-foot { display: flex; margin-top: 8px; font-size: 15px; }
+  html.ios .rail-foot .linkish { font-size: 15px; }
+  html.ios .brand { font-size: 26px; }
+  html.ios .rail .nav .folder .chev { width: 32px; height: 44px; flex: none; padding: 0; border-radius: 8px; }
+  html.ios .rail .nav .folder > button[data-view] { flex: 1; min-width: 0; padding-left: 4px; }
+  html.ios .infolder button[data-view] { padding-left: 42px; }
+  html.ios .mini { width: 40px; height: 40px; }
+  html.ios body[data-screen="list"] .rail, html.ios body[data-screen="reader"] .rail { display: none; }
+  html.ios body[data-screen="feeds"] main { display: none; }
+
+  html.ios main { position: fixed; inset: 0; padding: var(--top) 16px calc(env(safe-area-inset-bottom) + 40px);
+    overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  html.ios .phonebar { align-items: center; justify-content: space-between; margin: -4px 0 -6px; }
+  html.ios .back { border: 0; background: none; padding: 6px 4px; margin-left: -6px; color: var(--accent); font-size: 17px; font-weight: 500; gap: 2px; }
+  html.ios .back svg { width: 22px; height: 22px; }
+  html.ios .pull { font-size: 13px; color: var(--muted); opacity: 0; transition: opacity .15s; }
+  html.ios .pull.show { opacity: 1; }
+  html.ios .col { gap: 14px; }
+  html.ios .head h1 { font-size: 34px; }
+  html.ios .tools { width: 100%; }
+  html.ios .tools .search { flex: 1 1 100%; width: auto; padding: 9px 12px; }
+
+  /* A story: text on the left, picture on the right, its buttons underneath */
+  html.ios .story { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; row-gap: 2px; padding: 14px 0 6px; }
+  html.ios .story.sel { box-shadow: none; padding-left: 0; }
+  html.ios .story .body { grid-column: 1; grid-row: 1; }
+  html.ios .story .thumb { grid-column: 2; grid-row: 1; width: 84px; max-width: none; aspect-ratio: 1; border-radius: 8px; }
+  html.ios .story .acts { grid-column: 1 / -1; grid-row: 2; margin-left: -10px; }
+  html.ios .title { font-size: 18px; }
+  html.ios .summary { -webkit-line-clamp: 2; font-size: 15px; }
+
+  html.ios .reader { gap: 18px; }
+  html.ios .reader-bar { top: calc(-1 * var(--top)); padding: calc(var(--top) + 4px) 0 8px; margin: calc(-1 * var(--top)) 0 0; flex-wrap: nowrap; gap: 4px; }
+  html.ios .reader-bar > .row { flex-wrap: nowrap; gap: 4px; }
+  html.ios #rBack { border: 0; background: none; padding: 6px 2px; margin-left: -4px; color: var(--accent); font-size: 17px; min-width: 0; }
+  html.ios #rBackLabel { max-width: 26vw; overflow: hidden; text-overflow: ellipsis; }
+  html.ios .reader-bar .btn:not(#rBack) { padding: 7px 10px; font-size: 14px; }
+  html.ios #rPrev, html.ios #rNext { width: 34px; }
+  html.ios .r-title { font-size: 30px; }
+  html.ios .prose { font-size: 18px; line-height: 1.65; }
+  html.ios .notepop { width: calc(100vw - 32px); }
 }

@@ -32,6 +32,20 @@
   const folderOf = v => typeof v === 'string' && v.startsWith('folder:') ? folderById(v.slice(7)) : null;
   const DAY = 864e5;
 
+  // ------------------------------------------------------------ iPhone and iPad
+  // On iOS the page gets html.ios. On a phone-sized screen it shows one of three screens at a time:
+  // feeds (the sidebar), list (the stories) or reader (an article).
+  let IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const phoneSize = window.matchMedia('(max-width: 760px)');
+  const isPhone = () => IOS && phoneSize.matches;
+  function setScreen(name) { document.body.dataset.screen = name; }
+  function applyPlatform() {
+    document.documentElement.classList.toggle('ios', IOS);
+    if (!document.body.dataset.screen) setScreen('list');
+  }
+  applyPlatform();
+  invoke('app_info').then(info => { IOS = info.platform === 'ios'; applyPlatform(); render(); }).catch(() => {});
+
   // Which folders are collapsed is remembered between launches.
   const collapsed = new Set((() => { try { return JSON.parse(localStorage.getItem('collapsed') || '[]'); } catch { return []; } })());
   const saveCollapsed = () => { try { localStorage.setItem('collapsed', JSON.stringify([...collapsed])); } catch {} };
@@ -253,6 +267,7 @@
   function selectView(v) {
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
+    if (isPhone()) setScreen('list');
   }
 
 
@@ -274,6 +289,7 @@
     S.readerId = S.selId = id; S.keep.add(id);
     hidePops();
     $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true;
+    if (isPhone()) setScreen('reader');
     if (isSplit()) $('reader').scrollTo({ top: 0 }); else $('main').scrollTo({ top: 0 });
     if (!it.read) mark(id, { read: true }); else render();
     renderReaderChrome();
@@ -285,6 +301,7 @@
     if (!S.readerId) return;
     S.readerId = null; articleFor = null; hidePops();
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false;
+    if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
   }
 
@@ -292,7 +309,8 @@
     const it = item(S.readerId); if (!it) return closeReader();
     const f = feedById(it.feed_id);
     $('rBackLabel').textContent = viewName();
-    $('rSave').textContent = it.saved ? 'Saved ✓' : 'Read later';
+    $('rSave').textContent = isPhone() ? (it.saved ? 'Saved ✓' : 'Save') : (it.saved ? 'Saved ✓' : 'Read later');
+    $('rOriginal').textContent = isPhone() ? 'Web' : 'View original';
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
     $('rTitle').textContent = it.title;
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -383,21 +401,29 @@
   }
 
   let pending = null; // the selection waiting for "Highlight" / "Add note"
+  function checkSelection() {
+    if (!S.readerId) return;
+    const sel = window.getSelection();
+    const body = $('rBody');
+    if (!sel || sel.isCollapsed || !articleHtml) { if (!$('selPop').hidden) $('selPop').hidden = true; return; }
+    const range = sel.getRangeAt(0);
+    if (!body.contains(range.commonAncestorContainer)) return;
+    const text = range.toString();
+    if (!text.trim()) return;
+    const before = document.createRange(); before.selectNodeContents(body); before.setEnd(range.startContainer, range.startOffset);
+    pending = { text, start: before.toString().length };
+    const r = range.getBoundingClientRect();
+    placeNear($('selPop'), r);
+    // On iPhone and iPad the system's own menu (Copy, Look Up…) sits above the selection, so go below it.
+    if (IOS) { const p = $('selPop'); p.style.top = Math.min(r.bottom + 14, window.innerHeight - p.offsetHeight - 12) + 'px'; }
+  }
   document.addEventListener('mouseup', e => {
-    if (!S.readerId || e.target.closest('.pop, .menu')) return;
-    setTimeout(() => {
-      const sel = window.getSelection();
-      const body = $('rBody');
-      if (!sel || sel.isCollapsed || !articleHtml) { if (!$('selPop').hidden) $('selPop').hidden = true; return; }
-      const range = sel.getRangeAt(0);
-      if (!body.contains(range.commonAncestorContainer)) return;
-      const text = range.toString();
-      if (!text.trim()) return;
-      const before = document.createRange(); before.selectNodeContents(body); before.setEnd(range.startContainer, range.startOffset);
-      pending = { text, start: before.toString().length };
-      placeNear($('selPop'), range.getBoundingClientRect());
-    }, 0);
+    if (IOS || !S.readerId || e.target.closest('.pop, .menu')) return;
+    setTimeout(checkSelection, 0);
   });
+  // Touch: there's no mouseup when you finish dragging the selection handles, so wait for the selection to settle.
+  let selTimer;
+  document.addEventListener('selectionchange', () => { if (!IOS) return; clearTimeout(selTimer); selTimer = setTimeout(checkSelection, 350); });
 
   async function saveHighlight(withNote) {
     if (!pending || !S.readerId) return;
@@ -414,6 +440,10 @@
   }
   $('selHighlight').onclick = () => saveHighlight(false);
   $('selNote').onclick = () => saveHighlight(true);
+  // A tap would clear the selection before the click arrives, so act on the touch itself.
+  for (const [id, note] of [['selHighlight', false], ['selNote', true]]) {
+    $(id).addEventListener('touchstart', e => { e.preventDefault(); saveHighlight(note); }, { passive: false });
+  }
 
   let editing = null;
   function openNoteEditor(id) {
@@ -444,6 +474,11 @@
   let shareItem = null;
   function openShareMenu(anchor, it) {
     if (!it) return;
+    // iPhone and iPad: the system share sheet (Messages, Mail, X, LinkedIn, Copy and the rest).
+    if (IOS && navigator.share && isWeb(it.link)) {
+      navigator.share({ title: it.title, url: it.link }).catch(e => { if (e?.name !== 'AbortError') status(msg(e), true); });
+      return;
+    }
     shareItem = it; hidePops();
     const menu = $('shareMenu'); placeNear(menu, anchor.getBoundingClientRect());
     const r = anchor.getBoundingClientRect(); // menus drop down, not up
@@ -706,6 +741,43 @@
   listen('menu-sync', openSync);
   setInterval(renderSyncButton, 30 * 1000);
   loadSync();
+
+  // ------------------------------------------------------------ iPhone gestures
+  $('toFeeds').onclick = () => { hidePops(); setScreen('feeds'); };
+  // Swipe in from the left edge to go back: article → stories → feeds.
+  let swipe = null;
+  document.addEventListener('touchstart', e => {
+    if (!isPhone() || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    swipe = t.clientX < 28 ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!swipe) return;
+    const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = Math.abs(t.clientY - swipe.y);
+    swipe = null;
+    if (dx < 70 || dy > 60) return;
+    if (document.body.dataset.screen === 'reader') closeReader();
+    else if (document.body.dataset.screen === 'list') setScreen('feeds');
+  }, { passive: true });
+  // Pull the story list down from the top to refresh.
+  let pullY = null;
+  const mainEl = $('main');
+  mainEl.addEventListener('touchstart', e => {
+    pullY = isPhone() && document.body.dataset.screen === 'list' && mainEl.scrollTop <= 0 ? e.touches[0].clientY : null;
+  }, { passive: true });
+  mainEl.addEventListener('touchmove', e => {
+    if (pullY == null) return;
+    const d = e.touches[0].clientY - pullY;
+    $('pull').classList.toggle('show', d > 20);
+    $('pull').textContent = d > 80 ? 'Release to refresh' : 'Pull to refresh';
+  }, { passive: true });
+  mainEl.addEventListener('touchend', e => {
+    if (pullY == null) return;
+    const d = e.changedTouches[0].clientY - pullY; pullY = null;
+    $('pull').classList.remove('show');
+    if (d > 80) refresh();
+  }, { passive: true });
+  phoneSize.addEventListener('change', () => { if (!isPhone()) return; setScreen(S.readerId ? 'reader' : 'list'); });
 
   // events from the app: refresh finished, menu items
   listen('state-changed', load);
