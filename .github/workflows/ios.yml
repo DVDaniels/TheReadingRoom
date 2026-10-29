@@ -23,6 +23,9 @@ jobs:
       HAND_CERT: ${{ secrets.IOS_CERTIFICATE }}
       HAND_CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       HAND_PROFILE: ${{ secrets.IOS_MOBILE_PROVISION }}
+      # Otherwise the Mac App Store's Apple Distribution certificate is reused (it signs iPhone apps too)
+      APPSTORE_CERTS: ${{ secrets.APPLE_APPSTORE_CERTS }}
+      CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
     steps:
       - name: Check the Apple secrets are set
         run: |
@@ -40,19 +43,18 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyjwt cryptography requests
 
       - name: App Store Connect key
         run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          {
-            echo "APPLE_API_KEY=$API_KEY_ID"
-            echo "APPLE_API_ISSUER=$API_ISSUER"
-            echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          } >> "$GITHUB_ENV"
-          # With a hand-made certificate, Tauri signs with it instead of asking Xcode to manage signing.
+          # Sign by hand (Tauri's IOS_* variables): a certificate and profile from the IOS_ secrets if set,
+          # otherwise the Apple Distribution certificate plus a profile fetched or made through the API.
           if [ -z "$HAND_CERT" ]; then
-            echo "::notice title=Signing::Xcode will create and manage the iPhone certificate and profile with the API key."
+            python .github/scripts/ios_signing.py
           else
             {
               echo "IOS_CERTIFICATE=$HAND_CERT"
