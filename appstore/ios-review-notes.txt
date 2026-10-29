@@ -1,0 +1,16 @@
+1. Screen recording: A screen recording of the app (shown on Mac; the iPhone and iPad app is the same app with a touch layout): VIDEO_URL The app has no account registration or login, no in-app purchases or paid features, and no user-generated content shared with other people (highlights and notes are private and stay on the user's device, or in the user's own iCloud Drive if they turn on sync), so there are no reporting, blocking or account-deletion flows.
+
+2. Purpose and audience: The Reading Room is a free RSS and Atom feed reader for people who want to follow blogs, news sites and writers directly, without an algorithmic social feed, ads or tracking. Users add the sites they care about, organize them into folders, and read new stories in a clean reader inside the app. They can save stories to read later, highlight passages and add notes, and share links. It is for readers, writers, students and anyone who follows the open web.
+
+3. Setup and main features: No login or sample files are needed. On first launch the app includes a few sample feeds of public blogs and refreshes them automatically.
+- Tap any story to read it in the built-in reader. "Web" opens the original page in Safari.
+- Select text in an article, then tap Highlight or Add note. Tap a highlight to edit its note. Annotated lists all highlights.
+- The bookmark button saves a story to Read later. Pull down on the story list to refresh.
+- Tap "Feeds" (top left) for folders and feeds. "+ Add a feed": enter a website address and the app finds its feed, or type a few words to follow that topic as a news search.
+- Optional: "Sync with your Macs" at the bottom of Feeds lets the user pick a folder in their own iCloud Drive (shared with the Mac version of the app).
+
+4. External services: The app has no server or backend of its own and no analytics or AI services. It downloads feeds and articles directly from the websites the user subscribes to. Topic searches use Google News' public RSS feeds. Sharing uses the iOS share sheet. Optional sync writes a small file to a folder the user picks in their own iCloud Drive.
+
+5. Regional differences: The app works the same in all regions. Content depends only on the sites each user chooses to follow. Topic searches use the English (US) edition of Google News.
+
+6. Regulated industries / third-party material: The app does not operate in a regulated industry. It shows publicly published feeds from sites the user chooses, the way a web browser does, with links back to the original source. The sample feeds are public blogs, including the developer's own site, daviddaniels.com.

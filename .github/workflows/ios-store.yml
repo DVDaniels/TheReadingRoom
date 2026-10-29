@@ -1,0 +1,39 @@
+name: iPhone and iPad App Store
+
+# Run by hand. "prepare" fills in the iOS version in App Store Connect (listing, review notes, screenshots
+# from appstore/screenshots/ios, and the build); "submit" sends it to App Review.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [prepare, submit]
+        default: prepare
+      build:
+        description: "TestFlight build number to submit (for prepare)"
+        default: ""
+      version:
+        description: "Version number shown on the App Store"
+        default: "1.0.1"
+      video_url:
+        description: "Link to the review screen recording"
+        default: "https://github.com/DVDaniels/TheReadingRoom/blob/main/appstore/app-review-demo.mp4"
+
+jobs:
+  store:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          if [ "${{ inputs.action }}" = prepare ]; then
+            python .github/scripts/asc_ios.py prepare "${{ inputs.build }}" "${{ inputs.version }}" "${{ inputs.video_url }}"
+          else
+            python .github/scripts/asc_ios.py submit
+          fi

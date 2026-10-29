@@ -1,0 +1,29 @@
+The Reading Room is a calm, private place to read the websites, blogs and news you follow.
+
+Add any site and it finds the feed for you. Organize feeds into folders, see what's new in Today, and read stories in a clean, distraction-free reader. On iPad, your stories and the article you're reading sit side by side.
+
+READ YOUR WAY
+• Today, All stories, and a view for each folder and feed
+• A clean reader that shows just the article, with its pictures
+• A picture for every story, so the list is easy to scan
+• Pull down to refresh; swipe from the edge to go back
+• Light and dark appearance that follows your iPhone or iPad
+
+KEEP WHAT MATTERS
+• Read later for stories you want to come back to
+• Highlight passages and add notes; Annotated collects them all
+• Recently read, so nothing gets lost
+
+FOLLOW ANYTHING
+• Paste a website and The Reading Room finds its RSS or Atom feed
+• Type a few words to follow that topic as a news search
+• Bring your subscriptions from another reader with OPML, folders included
+
+SYNC WITH YOUR MAC
+• Use The Reading Room on Mac too, and keep feeds, folders, Read later, highlights and notes the same everywhere, through a folder in your own iCloud Drive
+
+SHARE
+• Send a story anywhere with the iOS share sheet
+
+PRIVATE BY DESIGN
+No account, no tracking, no ads. Your feeds, folders, highlights and notes stay on your devices, and in your own iCloud Drive if you turn on sync. The app talks directly to the sites you follow, and to nothing else.
