@@ -450,7 +450,13 @@ pub fn icloud_drive() -> Option<PathBuf> {
     (crate::bookmark::sandboxed() || p.is_dir()).then_some(p)
 }
 
+/// Set at launch on iPhone and iPad, where the name comes from the system.
+pub static DEVICE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 pub fn device_name() -> String {
+    if let Some(n) = DEVICE_NAME.get() {
+        return n.clone();
+    }
     if cfg!(target_os = "macos") {
         if let Ok(out) = std::process::Command::new("/usr/sbin/scutil").args(["--get", "ComputerName"]).output() {
             let n = String::from_utf8_lossy(&out.stdout).trim().to_string();

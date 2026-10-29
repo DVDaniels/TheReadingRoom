@@ -21,6 +21,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+#[cfg(mobile)]
+use tauri_plugin_icloud_folder::FolderExt;
 
 const REFRESH_EVERY: Duration = Duration::from_secs(30 * 60);
 const ITEM_LIMIT: i64 = 2000;
@@ -401,6 +403,9 @@ fn run_sync(app: &AppHandle) {
         if !dir.is_dir() {
             return Err("The sync folder can't be found. If it's in iCloud Drive, check that iCloud Drive is on for this Mac.".into());
         }
+        // iPhone and iPad keep iCloud files in the cloud until asked for them.
+        #[cfg(mobile)]
+        let _ = app.icloud_folder().download(&dir.display().to_string());
         let peers = sync::read_peers(&dir, &me);
         let mut total = sync::Applied::default();
         {
@@ -486,7 +491,7 @@ fn status_of(state: &Shared) -> SyncStatus {
         on: dir.is_some(),
         folder: dir.map(|d| d.display().to_string()),
         label,
-        icloud_available: icloud.is_some(),
+        icloud_available: icloud.is_some() || cfg!(mobile),
         this_mac: sync::device_name(),
         last_sync: info.last_sync.clone(),
         error: info.error.clone(),
@@ -509,9 +514,32 @@ fn sync_status(state: State<'_, Shared>) -> SyncStatus {
 
 /// Ask for a folder. In the App Store version this is also what gives the app permission to use it,
 /// so it's remembered as a bookmark for later launches.
+/// iPhone and iPad: Apple's Files picker. The bookmark keeps the app's access to the folder after restarts.
 #[cfg(mobile)]
-fn pick_folder(_app: &AppHandle, _state: &Shared, _title: &str, _start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
-    Err("Syncing through a folder is only available on a Mac.".into())
+fn pick_folder(app: &AppHandle, state: &Shared, _title: &str, _start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    let Some((path, bookmark)) = app.icloud_folder().pick()? else { return Ok(None) };
+    db::set_meta(&state.db.lock().unwrap(), "sync_bookmark_ios", &bookmark).map_err(err)?;
+    Ok(Some(PathBuf::from(path)))
+}
+
+/// At launch on iPhone and iPad: reopen the folder you picked, and learn this device's name.
+#[cfg(mobile)]
+fn reopen_ios(app: &AppHandle) {
+    if let Some(name) = app.icloud_folder().device_name() {
+        let _ = sync::DEVICE_NAME.set(name);
+    }
+    let st: Shared = app.state::<Shared>().inner().clone();
+    let Some(bookmark) = db::get_meta(&st.db.lock().unwrap(), "sync_bookmark_ios").ok().flatten() else { return };
+    match app.icloud_folder().open(&bookmark) {
+        Ok((path, keep)) => {
+            let conn = st.db.lock().unwrap();
+            let _ = db::set_meta(&conn, "sync_dir", &path);
+            if keep != bookmark {
+                let _ = db::set_meta(&conn, "sync_bookmark_ios", &keep);
+            }
+        }
+        Err(e) => st.sync.lock().unwrap().error = Some(e),
+    }
 }
 
 #[cfg(desktop)]
@@ -529,6 +557,16 @@ fn pick_folder(app: &AppHandle, state: &Shared, title: &str, start: Option<PathB
     Ok(Some(picked))
 }
 
+/// iPhone and iPad: pick iCloud Drive (or its "The Reading Room" folder) in the Files picker.
+#[cfg(mobile)]
+#[tauri::command]
+async fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
+    let Some(picked) = pick_folder(&app, state.inner(), "", None)? else { return Ok(None) };
+    let dir = if picked.file_name().map_or(false, |n| n == "com~apple~CloudDocs") { picked.join("The Reading Room") } else { picked };
+    start_sync(&app, state.inner(), dir).map(Some)
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 async fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
     let root = sync::icloud_drive()
@@ -573,14 +611,15 @@ fn reopen_sync_folder(conn: &Connection) {
 fn sync_turn_off(state: State<'_, Shared>) -> Result<SyncStatus, String> {
     db::delete_meta(&state.db.lock().unwrap(), "sync_dir").map_err(err)?;
     db::delete_meta(&state.db.lock().unwrap(), "sync_bookmark").map_err(err)?;
+    db::delete_meta(&state.db.lock().unwrap(), "sync_bookmark_ios").map_err(err)?;
     *state.sync.lock().unwrap() = SyncInfo::default();
     Ok(status_of(state.inner()))
 }
 
 #[tauri::command]
-fn sync_now(app: AppHandle, state: State<'_, Shared>) -> SyncStatus {
+async fn sync_now(app: AppHandle, state: State<'_, Shared>) -> Result<SyncStatus, String> {
     run_sync(&app);
-    status_of(state.inner())
+    Ok(status_of(state.inner()))
 }
 
 /// Which kind of device the page is running on, so it can lay itself out to match.
@@ -708,6 +747,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_icloud_folder::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let conn = open_database(&handle)?;
@@ -762,6 +802,8 @@ pub fn run() {
             // Sync with your other Macs now, then every 30 seconds (or right away when asked).
             let sync_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
+                #[cfg(mobile)]
+                reopen_ios(&sync_handle);
                 loop {
                     run_sync(&sync_handle);
                     let st: Shared = sync_handle.state::<Shared>().inner().clone();

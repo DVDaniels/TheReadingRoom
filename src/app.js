@@ -684,13 +684,27 @@
   function renderSyncButton() {
     if (!sync) return;
     $('syncDot').className = 'dot' + (sync.error ? ' err' : sync.on ? ' on' : '');
-    $('syncLabel').textContent = !sync.on ? 'Sync between Macs: off'
+    $('syncLabel').textContent = !sync.on ? (IOS ? 'Sync with your Macs: off' : 'Sync between Macs: off')
       : sync.error ? 'Sync needs attention'
       : sync.lastSync ? `Synced ${ago(sync.lastSync) === 'now' ? 'just now' : ago(sync.lastSync) + ' ago'}` : 'Syncing…';
   }
   function renderSyncPanel() {
     if (!sync || $('syncPanel').hidden) return;
     const body = $('syncBody');
+    $('syncTitle').textContent = IOS ? 'Sync with your Macs' : 'Sync between your Macs';
+    if (!sync.on && IOS) {
+      body.innerHTML = `
+        <p>Keep your feeds, folders, read and Read later stories, highlights and notes the same here and on your Macs.</p>
+        <ol class="steps">
+          <li>Tap <strong>Choose the sync folder</strong>.</li>
+          <li>In the Files window, tap <strong>iCloud Drive</strong>, then the <strong>The Reading Room</strong> folder your Macs use.</li>
+          <li>Tap <strong>Open</strong>.</li>
+        </ol>
+        <div class="row"><button class="btn primary" id="syncICloud">Choose the sync folder</button></div>
+        <p class="note">No folder yet? Turn on sync on a Mac first (Feeds › Sync Between Macs). Picking iCloud Drive itself also works: the app makes the folder.</p>`;
+      $('syncICloud').onclick = () => syncAction('sync_use_icloud');
+      return;
+    }
     if (!sync.on) {
       body.innerHTML = `
         <p>Keep your feeds, folders, read and Read later stories, highlights and notes the same on all your Macs. Each Mac still downloads the stories itself.</p>
@@ -710,8 +724,8 @@
     body.innerHTML = `
       <dl class="facts">
         <dt>Folder</dt><dd>${esc(sync.label || sync.folder)}</dd>
-        <dt>This Mac</dt><dd>${esc(sync.thisMac)}</dd>
-        <dt>Other Macs</dt><dd>${peers}</dd>
+        <dt>${IOS ? 'This device' : 'This Mac'}</dt><dd>${esc(sync.thisMac)}</dd>
+        <dt>${IOS ? 'Your Macs' : 'Other Macs'}</dt><dd>${peers}</dd>
         <dt>Last synced</dt><dd>${sync.lastSync ? esc(ago(sync.lastSync) === 'now' ? 'Just now' : ago(sync.lastSync) + ' ago') : 'Not yet'}</dd>
       </dl>
       ${sync.error ? `<p class="note err">${esc(sync.error)}</p>` : ''}
@@ -721,7 +735,7 @@
         <button class="btn" id="syncOff">Turn off sync</button>
       </div>`;
     $('syncNowBtn').onclick = () => syncAction('sync_now');
-    $('syncOff').onclick = () => syncAction('sync_turn_off', 'Sync is off for this Mac. Your stories stay here.');
+    $('syncOff').onclick = () => syncAction('sync_turn_off', IOS ? 'Sync is off here. Your stories stay on this device.' : 'Sync is off for this Mac. Your stories stay here.');
   }
   async function loadSync() { try { sync = await invoke('sync_status'); renderSyncButton(); renderSyncPanel(); } catch {} }
   async function syncAction(cmd, done) {

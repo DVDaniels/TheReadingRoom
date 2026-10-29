@@ -212,6 +212,8 @@ main { min-width: 0; overflow-y: auto; padding: var(--top) max(16px, 4vw) 64px; 
 .sheet p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .sheet-foot { justify-content: flex-end; }
 #syncBody { display: flex; flex-direction: column; gap: 14px; }
+.steps { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+.steps strong { color: var(--ink); }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 14px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
@@ -281,7 +283,8 @@ main { min-width: 0; overflow-y: auto; padding: var(--top) max(16px, 4vw) 64px; 
    (smaller makes iOS zoom in), and Mac-only controls (window drag strip, keyboard hints, sync, export) go away. */
 html.ios { --top: calc(env(safe-area-inset-top) + 12px); -webkit-text-size-adjust: 100%; }
 html.ios body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
-html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios .syncbtn, html.ios #exportBtn, html.ios .sep { display: none !important; }
+html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios #exportBtn, html.ios .sep { display: none !important; }
+html.ios .syncbtn { font-size: 15px; padding: 8px 0; }
 html.ios input, html.ios select, html.ios textarea { font-size: 16px !important; }
 html.ios .icon { width: 40px; height: 40px; }
 html.ios .icon svg { width: 20px; height: 20px; }
