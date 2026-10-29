@@ -298,6 +298,8 @@ main { min-width: 0; overflow-y: auto; padding: var(--top) max(16px, 4vw) 64px; 
    (smaller makes iOS zoom in), and Mac-only controls (window drag strip, keyboard hints, sync, export) go away. */
 html.ios { --top: calc(env(safe-area-inset-top) + 12px); -webkit-text-size-adjust: 100%; }
 html.ios body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+/* An opaque strip under the status bar (clock, battery), so nothing scrolls visibly behind it. */
+html.ios body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 40; pointer-events: none; }
 html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios #exportBtn, html.ios .sep { display: none !important; }
 html.ios .syncbtn { font-size: 15px; padding: 8px 0; }
 html.ios input, html.ios select, html.ios textarea { font-size: 16px !important; }

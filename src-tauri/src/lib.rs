@@ -555,7 +555,15 @@ fn status_of(state: &Shared) -> SyncStatus {
             let rest = d.strip_prefix(root).map(|r| r.display().to_string()).unwrap_or_default();
             if rest.is_empty() { "iCloud Drive".to_string() } else { format!("iCloud Drive › {}", rest.replace('/', " › ")) }
         }
-        _ => d.display().to_string(),
+        _ => {
+            // iPhone and iPad: …/Mobile Documents/com~apple~CloudDocs/<rest>
+            let full = d.display().to_string();
+            match full.split_once("/com~apple~CloudDocs") {
+                Some((_, rest)) if rest.trim_matches('/').is_empty() => "iCloud Drive".to_string(),
+                Some((_, rest)) => format!("iCloud Drive › {}", rest.trim_matches('/').replace('/', " › ")),
+                None => full,
+            }
+        }
     });
     SyncStatus {
         on: dir.is_some(),
@@ -588,7 +596,9 @@ fn sync_status(state: State<'_, Shared>) -> SyncStatus {
 #[cfg(mobile)]
 fn pick_folder(app: &AppHandle, state: &Shared, _title: &str, _start: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
     let Some((path, bookmark)) = app.icloud_folder().pick()? else { return Ok(None) };
-    db::set_meta(&state.db.lock().unwrap(), "sync_bookmark_ios", &bookmark).map_err(err)?;
+    let conn = state.db.lock().unwrap();
+    db::set_meta(&conn, "sync_bookmark_ios", &bookmark).map_err(err)?;
+    db::delete_meta(&conn, "sync_subfolder").map_err(err)?;
     Ok(Some(PathBuf::from(path)))
 }
 
@@ -603,7 +613,17 @@ fn reopen_ios(app: &AppHandle) {
     match app.icloud_folder().open(&bookmark) {
         Ok((path, keep)) => {
             let conn = st.db.lock().unwrap();
-            let _ = db::set_meta(&conn, "sync_dir", &path);
+            let sub = db::get_meta(&conn, "sync_subfolder").ok().flatten().filter(|s| !s.is_empty());
+            let dir = match sub {
+                Some(sub) => PathBuf::from(&path).join(sub),
+                // Older builds didn't remember the subfolder: picking iCloud Drive always meant this one.
+                None if PathBuf::from(&path).file_name().map_or(false, |n| n == "com~apple~CloudDocs") => {
+                    let _ = db::set_meta(&conn, "sync_subfolder", "The Reading Room");
+                    PathBuf::from(&path).join("The Reading Room")
+                }
+                None => PathBuf::from(&path),
+            };
+            let _ = db::set_meta(&conn, "sync_dir", &dir.display().to_string());
             if keep != bookmark {
                 let _ = db::set_meta(&conn, "sync_bookmark_ios", &keep);
             }
@@ -632,7 +652,14 @@ fn pick_folder(app: &AppHandle, state: &Shared, title: &str, start: Option<PathB
 #[tauri::command]
 async fn sync_use_icloud(app: AppHandle, state: State<'_, Shared>) -> Result<Option<SyncStatus>, String> {
     let Some(picked) = pick_folder(&app, state.inner(), "", None)? else { return Ok(None) };
-    let dir = if picked.file_name().map_or(false, |n| n == "com~apple~CloudDocs") { picked.join("The Reading Room") } else { picked };
+    // Picking iCloud Drive itself means its "The Reading Room" folder. Remember that part: after a restart
+    // the bookmark only reopens the folder that was picked.
+    let dir = if picked.file_name().map_or(false, |n| n == "com~apple~CloudDocs") {
+        db::set_meta(&state.db.lock().unwrap(), "sync_subfolder", "The Reading Room").map_err(err)?;
+        picked.join("The Reading Room")
+    } else {
+        picked
+    };
     start_sync(&app, state.inner(), dir).map(Some)
 }
 
@@ -682,6 +709,7 @@ fn sync_turn_off(state: State<'_, Shared>) -> Result<SyncStatus, String> {
     db::delete_meta(&state.db.lock().unwrap(), "sync_dir").map_err(err)?;
     db::delete_meta(&state.db.lock().unwrap(), "sync_bookmark").map_err(err)?;
     db::delete_meta(&state.db.lock().unwrap(), "sync_bookmark_ios").map_err(err)?;
+    db::delete_meta(&state.db.lock().unwrap(), "sync_subfolder").map_err(err)?;
     *state.sync.lock().unwrap() = SyncInfo::default();
     Ok(status_of(state.inner()))
 }
