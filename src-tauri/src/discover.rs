@@ -356,6 +356,11 @@ pub async fn run(
         }
         let mut items = fetched.items;
         items.sort_by(|a, b| b.date.cmp(&a.date));
+        // People, not publications: a site posting seven or more times a week is an outlet
+        let week_ago = (chrono::Utc::now() - chrono::Duration::days(7)).format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        if items.iter().filter(|i| i.date >= week_ago).count() >= 7 {
+            return None;
+        }
         let posts = items.iter().take(3).map(|i| Post { title: i.title.clone(), link: i.link.clone(), date: i.date.clone() }).collect();
         let site = if fetched.site.starts_with("http") {
             fetched.site.clone()

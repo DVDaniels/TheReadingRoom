@@ -31,11 +31,20 @@ pub struct SyncFile {
     /// Muted words (version 1.1 and later); the whole list travels together, newest wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutes: Option<MuteRec>,
+    /// Reading preferences: which feeds are people, hidden news sources, your own site
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefs: Option<PrefsRec>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MuteRec {
     pub words: Vec<String>,
+    pub at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PrefsRec {
+    pub data: serde_json::Value,
     pub at: String,
 }
 
@@ -217,6 +226,10 @@ pub fn export(conn: &Connection, device_id: &str, device_name: &str) -> rusqlite
     }
     f.mutes = match (db::get_meta(conn, "mutes")?, db::get_meta(conn, "mutes_at")?) {
         (Some(w), Some(at)) => Some(MuteRec { words: serde_json::from_str(&w).unwrap_or_default(), at }),
+        _ => None,
+    };
+    f.prefs = match (db::get_meta(conn, "prefs")?, db::get_meta(conn, "prefs_at")?) {
+        (Some(p), Some(at)) => serde_json::from_str(&p).ok().map(|data| PrefsRec { data, at }),
         _ => None,
     };
     Ok(f)
@@ -412,6 +425,16 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
         }
     }
 
+    // Reading preferences: the newest set wins.
+    if let Some(p) = &remote.prefs {
+        let local_at = db::get_meta(&tx, "prefs_at")?;
+        if newer(&Some(p.at.clone()), &local_at) {
+            db::set_meta(&tx, "prefs", &p.data.to_string())?;
+            db::set_meta(&tx, "prefs_at", &p.at)?;
+            out.changes += 1;
+        }
+    }
+
     db::set_applying(&tx, false)?;
     tx.commit()?;
     Ok(out)
@@ -513,6 +536,24 @@ mod tests {
         let fb = export(&b, "b", "B").unwrap();
         merge(&mut a, &fb).unwrap();
         assert!(db::get_meta(&a, "mutes").unwrap().unwrap().contains("football"));
+    }
+
+    #[test]
+    fn prefs_travel_newest_wins() {
+        let (mut a, _da) = fresh("prefs-a");
+        let (mut b, _db) = fresh("prefs-b");
+        db::set_meta(&a, "prefs", r#"{"kinds":{"https://x.blog/feed":"person"}}"#).unwrap();
+        db::set_meta(&a, "prefs_at", "2026-10-30T08:00:00.000Z").unwrap();
+        let fa = export(&a, "a", "A").unwrap();
+        merge(&mut b, &fa).unwrap();
+        assert!(db::get_meta(&b, "prefs").unwrap().unwrap().contains("x.blog"));
+        db::set_meta(&b, "prefs", r#"{"hidden":["Bitcoinist.com"]}"#).unwrap();
+        db::set_meta(&b, "prefs_at", "2026-10-30T09:00:00.000Z").unwrap();
+        merge(&mut b, &fa).unwrap();
+        assert!(db::get_meta(&b, "prefs").unwrap().unwrap().contains("Bitcoinist"));
+        let fb = export(&b, "b", "B").unwrap();
+        merge(&mut a, &fb).unwrap();
+        assert!(db::get_meta(&a, "prefs").unwrap().unwrap().contains("Bitcoinist"));
     }
 
     fn fresh(name: &str) -> (Connection, std::path::PathBuf) {

@@ -58,6 +58,7 @@ struct Snapshot {
     items: Vec<db::Item>,
     highlights: Vec<db::Highlight>,
     mutes: Vec<String>,
+    prefs: serde_json::Value,
     refreshing: bool,
     last_refresh: Option<String>,
 }
@@ -191,6 +192,7 @@ fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
         items: db::items(&conn, ITEM_LIMIT).map_err(err)?,
         highlights: db::highlights(&conn).map_err(err)?,
         mutes: db::get_meta(&conn, "mutes").map_err(err)?.and_then(|m| serde_json::from_str(&m).ok()).unwrap_or_default(),
+        prefs: db::get_meta(&conn, "prefs").map_err(err)?.and_then(|m| serde_json::from_str(&m).ok()).unwrap_or_else(|| serde_json::json!({})),
         refreshing: state.refreshing.load(Ordering::SeqCst),
         last_refresh: db::get_meta(&conn, "last_refresh").map_err(err)?,
     })
@@ -724,6 +726,21 @@ async fn sync_now(app: AppHandle, state: State<'_, Shared>) -> Result<SyncStatus
     Ok(status_of(state.inner()))
 }
 
+/// Reading preferences (people or publications, hidden news sources, your own site), shared with your other devices.
+#[tauri::command]
+fn set_prefs(state: State<'_, Shared>, prefs: serde_json::Value) -> Result<(), String> {
+    if !prefs.is_object() || prefs.to_string().len() > 200_000 {
+        return Err("Those settings couldn't be saved.".into());
+    }
+    {
+        let conn = state.db.lock().unwrap();
+        db::set_meta(&conn, "prefs", &prefs.to_string()).map_err(err)?;
+        db::set_meta(&conn, "prefs_at", &chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).map_err(err)?;
+    }
+    changed(state.inner());
+    Ok(())
+}
+
 /// Words and phrases whose stories you don't want to see (shared with your other devices).
 #[tauri::command]
 fn set_mutes(state: State<'_, Shared>, words: Vec<String>) -> Result<Vec<String>, String> {
@@ -1194,6 +1211,7 @@ pub fn run() {
             weather_place,
             weather_now,
             set_mutes,
+            set_prefs,
             speak,
             speech_control,
             speech_status,

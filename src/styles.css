@@ -535,7 +535,9 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 
   /* The briefing: greeting and notes on the left, the lead story big on the right, four more beneath */
   body.home .brief { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.55fr); column-gap: 28px; row-gap: 12px; padding: 24px 24px 20px;
-    grid-template-areas: "top lead" "line lead" "inbrief lead" "foot lead" "more more"; grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
+    grid-template-areas: "top lead" "line lead" "inbrief lead" "foot lead" "people people" "more more"; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; }
+  body.home .b-people { grid-area: people; }
+  body.home .b-pgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   body.home .b-top { grid-area: top; flex-direction: column; align-items: flex-start; gap: 4px; }
   body.home .brief h2 { font-size: 38px; }
   body.home .b-line { grid-area: line; font-size: 16px; }
@@ -614,3 +616,19 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   .sug .fav { width: 40px; height: 40px; }
   .sug-acts { grid-column: 2; }
 }
+
+/* ---------------------------------------------------------------- people first */
+.b-people { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.b-sub { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.b-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.b-person { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; cursor: pointer; min-width: 0;
+  background: color-mix(in srgb, var(--surface) 70%, transparent) !important; border: 1px solid var(--b-line) !important; }
+.b-person:hover { border-color: var(--accent) !important; }
+.b-pwho { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--b-soft); min-width: 0; }
+.b-pwho time { font-weight: 400; font-family: var(--font-mono); margin-left: auto; flex: none; }
+.b-ptitle { font-family: var(--font-read); font-size: 17px; font-weight: 600; line-height: 1.25; letter-spacing: var(--tight-sm); color: var(--b-ink); }
+.b-psum { font-size: 13px; line-height: 1.45; color: var(--b-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 760px) { .b-pgrid { grid-template-columns: 1fr; } .b-psum { -webkit-line-clamp: 2; } }
+.meta .via { font-size: 11px; color: var(--muted); }
+.kindpick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.sheet-sub { margin: 14px 0 0; font-size: 15px; }

@@ -5,7 +5,7 @@
 
   const $ = id => document.getElementById(id);
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
-  const S = { folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set() };
   const ICONS = {
@@ -19,6 +19,8 @@
     all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
     notes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+    people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+    hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
@@ -79,6 +81,7 @@
     if (view === 'recent') return !!i.read_at;
     if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
     if (view === 'discover') return false;
+    if (view === 'people') return isPerson(i.feed_id);
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
@@ -93,8 +96,32 @@
     });
     muteRe = parts.length ? new RegExp(parts.join('|'), 'i') : null;
   }
-  const isMuted = i => !!muteRe && muteRe.test(i.title + ' ' + (i.summary || '')) && !i.saved;
+  const isMuted = i => !i.saved && ((!!muteRe && muteRe.test(i.title + ' ' + (i.summary || ''))) || hiddenSource(i));
   const mutesApply = (view = S.view) => !['saved', 'annotated'].includes(view);
+
+  // ---- people first: each feed is a person (someone's own site) or a publication.
+  // Automatic: a news search, or a feed posting seven or more times a week, is a publication. You can change any feed.
+  const isNewsSearch = f => /news\.google\./.test(f?.url || '');
+  function buildKinds() {
+    const weekAgo = Date.now() - 7 * DAY, n = new Map();
+    for (const i of S.items) if (Date.parse(i.date) > weekAgo) n.set(i.feed_id, (n.get(i.feed_id) || 0) + 1);
+    S.kinds = new Map(S.feeds.map(f => [f.id, isNewsSearch(f) || (n.get(f.id) || 0) >= 7 ? 'pub' : 'person']));
+  }
+  const autoKind = f => S.kinds.get(f.id) || 'person';
+  const kindOf = f => (f && (S.prefs.kinds || {})[f.url]) || (f ? autoKind(f) : 'pub');
+  const isPerson = feedId => { const f = feedById(feedId); return !!f && kindOf(f) === 'person'; };
+  // Stories from a news search name the real website at the end of the title: show that instead
+  const viaNews = it => isNewsSearch(feedById(it.feed_id));
+  const headline = it => viaNews(it) ? (it.title || '').replace(/\s[-–—|]\s[^-–—|]{2,60}$/, '') : (it.title || '');
+  const srcLabel = it => viaNews(it) ? outletOf(it) : (feedById(it.feed_id)?.title || '');
+  const viaTag = it => viaNews(it) ? '<span class="via">via Google News</span>' : '';
+  function hiddenSource(it) {
+    const h = S.prefs.hidden; if (!h?.length || !viaNews(it)) return false;
+    const o = outletOf(it).toLowerCase(); return h.some(x => x.toLowerCase() === o);
+  }
+  async function savePrefs() {
+    try { await invoke('set_prefs', { prefs: S.prefs }); } catch (e) { status(msg(e), true); }
+  }
 
   // ---- the same story from several feeds (news searches especially): show it once
   const outletOf = i => { const m = /\s[-–—|]\s([^-–—|]{2,60})$/.exec(i.title || ''); return m ? m[1].trim() : (feedById(i.feed_id)?.title || ''); };
@@ -140,6 +167,7 @@
   function renderRail() {
     $('views').innerHTML =
       navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
+      navButton('people', 'People', unreadIn('people'), { icon: ICONS.people }) +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
       navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
@@ -164,7 +192,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -185,6 +213,7 @@
       : S.view === 'annotated' ? `${S.highlights.length} ${S.highlights.length === 1 ? 'highlight' : 'highlights'} in ${new Set(S.highlights.map(h => h.item_id)).size} stories`
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : S.view === 'discover' ? discoverSub()
+      : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     $('viewSub').textContent = S.view === 'discover' ? lead : `${lead}${muted} · ${when}`;
@@ -202,9 +231,19 @@
       bar.hidden = false;
       bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
         ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+        <label class="kindpick">This feed is <select id="kindFeed" aria-label="This feed is">
+          <option value=""${(S.prefs.kinds || {})[f.url] ? '' : ' selected'}>${autoKind(f) === 'person' ? 'A person (automatic)' : 'A publication (automatic)'}</option>
+          <option value="person"${(S.prefs.kinds || {})[f.url] === 'person' ? ' selected' : ''}>A person</option>
+          <option value="pub"${(S.prefs.kinds || {})[f.url] === 'pub' ? ' selected' : ''}>A publication</option></select></label>
         <button class="btn" id="myFeedBtn">${myFeed()?.id === f.id ? 'Not my site' : 'This is my site'}</button>
         <button class="btn" id="renameFeed">Rename</button><button class="btn danger" id="removeFeed">Unfollow</button>`;
       $('moveFeed').onchange = e => moveFeed(f.id, e.target.value ? Number(e.target.value) : null);
+      $('kindFeed').onchange = e => {
+        S.prefs.kinds = { ...(S.prefs.kinds || {}) };
+        if (e.target.value) S.prefs.kinds[f.url] = e.target.value; else delete S.prefs.kinds[f.url];
+        savePrefs(); render();
+        status(kindOf(f) === 'person' ? `${f.title} counts as a person: it shows in People and leads Today.` : `${f.title} counts as a publication.`);
+      };
       if (f.status === 'error') showBanner(`This feed couldn't be read last time: ${esc(f.error)}`, true);
       else if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'annotated' && S.highlights.length) {
@@ -230,6 +269,7 @@
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
+    if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
     if (S.view === 'annotated') return ['No highlights yet', 'Open a story, select a passage, and choose Highlight or Add note.'];
     if (!S.items.length) return ['No stories yet', S.refreshing ? 'Checking your feeds now. Stories appear as they arrive.' : 'Press Refresh to pull the latest posts.'];
     if (S.view === 'today' && S.unreadOnly) return ['You’re caught up for today', 'Nothing new in the last 24 hours. “All” in the sidebar has older stories.'];
@@ -257,9 +297,10 @@
   let ownerName = '';
   // Your own site: picked with "This is my site" on a feed, otherwise the feed whose address has your name in it
   function myFeed() {
-    const pick = store.get('myFeed');
+    const pick = S.prefs.mine;
     if (pick === 'none') return null;
-    if (pick && feedById(pick)) return feedById(pick);
+    const f = pick && S.feeds.find(x => x.url === pick);
+    if (f) return f;
     const n = ownerName.toLowerCase();
     return n.length >= 3 ? S.feeds.find(f => (f.site + ' ' + f.url).toLowerCase().includes(n)) || null : null;
   }
@@ -281,9 +322,9 @@
     return `<article class="h-card${it.read ? ' read' : ''}" data-id="${esc(it.id)}">
       ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
       <div class="h-body">
-        <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time>
+        <div class="meta"><span class="src">${esc(srcLabel(it))}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time>
           <button class="icon h-save${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button></div>
-        <button class="title" data-act="open">${esc(it.title)}</button>
+        <button class="title" data-act="open">${esc(headline(it))}</button>
         ${it.summary ? `<div class="summary">${esc(it.summary)}</div>` : ''}
       </div>
     </article>`;
@@ -328,30 +369,35 @@
       seenStory.add(k); return true;
     });
     const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i)).length : 0;
-    // The lead: the newest unread story with a picture (stories from news searches only if nothing else has one)
+    // People first: unread posts from people you read in the last few days, one per person (not your own site)
+    const mine = myFeed();
+    const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && isPerson(i.feed_id) && i.feed_id !== mine?.id && Date.now() - Date.parse(i.date) < 4 * DAY)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const onePer = new Set(), people = peopleAll.filter(i => !onePer.has(i.feed_id) && onePer.add(i.feed_id));
+    // The lead: a person's post with a picture from the last three days, otherwise the newest story with a picture
+    // (news searches only if nothing else has one)
     const withPic = unread.filter(i => isWeb(i.image));
-    const own = withPic.filter(i => !/^Google News/.test(feedById(i.feed_id)?.title || ''));
-    const lead = own[0] || withPic[0] || unread[0];
+    const own = withPic.filter(i => !viaNews(i));
+    const personLead = people.find(i => isWeb(i.image) && Date.now() - Date.parse(i.date) < 3 * DAY);
+    const lead = personLead || own[0] || withPic[0] || unread[0];
+    const peopleShown = people.filter(i => i !== lead).slice(0, isHome() ? 4 : 3);
     const seen = new Set([lead?.feed_id]);
     const more = [];
     const want = isHome() ? 4 : 3;
     for (const i of [...own, ...withPic, ...unread]) {
       if (more.length >= want) break;
-      if (i === lead || more.includes(i) || seen.has(i.feed_id)) continue;
+      if (i === lead || more.includes(i) || seen.has(i.feed_id) || peopleShown.includes(i)) continue;
       seen.add(i.feed_id); more.push(i);
     }
     // Wide screens only: six more headlines as text, and a line about your reading
     const perFeed = new Map([[lead?.feed_id, 1]]);
     const inBrief = isHome() ? unread.filter(i => {
-      if (i === lead || more.includes(i)) return false;
+      if (i === lead || more.includes(i) || peopleShown.includes(i)) return false;
       const n = perFeed.get(i.feed_id) || 0;
       if (n >= 2) return false;
       perFeed.set(i.feed_id, n + 1); return true;
     }).slice(0, 6) : [];
-    briefShown = new Set([lead, ...more, ...inBrief].filter(Boolean).map(i => i.id));
-    const byFeed = new Map();
-    for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
-    const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => feedById(id)).filter(Boolean);
+    briefShown = new Set([lead, ...more, ...inBrief, ...peopleShown].filter(Boolean).map(i => i.id));
     const saved = S.items.filter(i => i.saved);
 
     const since = (() => {
@@ -366,45 +412,49 @@
     if (!unread.length) line = 'Nothing new waiting. You’re caught up for today.';
     else if (fresh && since) line = `${fresh} new ${fresh === 1 ? 'story' : 'stories'} ${since}, ${unread.length} unread today.`;
     else line = `${unread.length} unread ${unread.length === 1 ? 'story' : 'stories'} from the last day.`;
-    if (busiest.length) line += ` Most from ${busiest.map(f => `<button class="b-link" data-view="${f.id}">${esc(f.title)}</button>`).join(' and ')}.`;
+    // Point to the people, not to whoever posted the most
+    if (peopleAll.length) line += ` <button class="b-link" data-view="people">${peopleAll.length} new from people you read</button>.`;
 
     const date = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-    const src = it => esc(feedById(it.feed_id)?.title || '');
+    const src = it => esc(srcLabel(it));
     const leadHtml = lead ? `<button class="b-lead${isWeb(lead.image) ? '' : ' no-pic'}" data-open="${esc(lead.id)}">
         ${isWeb(lead.image) ? `<img src="${esc(lead.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : ''}
-        <span class="b-lead-text"><span class="b-src">${src(lead)}</span><span class="b-head">${esc(lead.title)}</span></span>
+        <span class="b-lead-text"><span class="b-src">${src(lead)}</span><span class="b-head">${esc(headline(lead))}</span></span>
       </button>` : '';
     const moreHtml = more.length ? `<div class="b-more">${more.map(i => `<button class="b-item" data-open="${esc(i.id)}">
         ${isWeb(i.image) ? `<img src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : `<span class="b-tile" style="--h:${hueFor(feedById(i.feed_id)?.url || '')}">${esc((feedById(i.feed_id)?.title || '?')[0])}</span>`}
-        <span><span class="b-src">${src(i)}</span><span class="b-title">${esc(i.title)}</span></span></button>`).join('')}</div>` : '';
+        <span><span class="b-src">${src(i)}</span><span class="b-title">${esc(headline(i))}</span></span></button>`).join('')}</div>` : '';
     const oldest = saved[saved.length - 1];
     const laterHtml = saved.length ? `<div class="b-later">
         <span class="b-later-k">Waiting in Read later</span>
         <button class="b-link" data-view="saved">${saved.length === 1 ? 'Open' : `All ${saved.length}`}</button>
         <button class="b-link b-oldest" data-open="${esc(oldest.id)}" title="The one that’s waited longest">${esc(oldest.title)}</button>
       </div>` : '';
-    // 6. Your own latest post, from the feed marked as your site
-    const mine = myFeed();
+    // Your own latest post, from the feed marked as your site
     const myPost = mine && S.items.filter(i => i.feed_id === mine.id).sort((a, b) => b.date.localeCompare(a.date))[0];
     const mineHtml = myPost && Date.now() - Date.parse(myPost.date) < 45 * DAY ? `<div class="b-mine">
         <span class="b-later-k">Latest on ${esc(mine.title)} · ${esc(ago(myPost.date))}${ago(myPost.date) === 'now' ? '' : ' ago'}</span>
         <button class="b-link b-oldest" data-open="${esc(myPost.id)}">${esc(myPost.title)}</button></div>` : '';
     const inBriefHtml = inBrief.length ? `<div class="b-brief">${inBrief.map(i => `<button class="b-hl" data-open="${esc(i.id)}">
-        <span class="b-hl-src">${src(i)} <time>${esc(ago(i.date))}</time></span><span class="b-hl-t">${esc(i.title)}</span></button>`).join('')}</div>` : '';
+        <span class="b-hl-src">${src(i)} <time>${esc(ago(i.date))}</time></span><span class="b-hl-t">${esc(headline(i))}</span></button>`).join('')}</div>` : '';
+    // No counting how much you read: only the passages you kept
     let statsHtml = '';
     if (isHome()) {
-      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-      const weekAgo = Date.now() - 7 * DAY;
-      const readToday = S.items.filter(i => i.read_at && new Date(i.read_at) >= dayStart).length;
-      const readWeek = S.items.filter(i => i.read_at && new Date(i.read_at).getTime() >= weekAgo).length;
-      const hlWeek = S.highlights.filter(h => h.created_at && new Date(h.created_at).getTime() >= weekAgo).length;
-      statsHtml = `<p class="b-stats">You’ve read ${readToday} ${readToday === 1 ? 'story' : 'stories'} today and ${readWeek} this week${hlWeek ? `, with ${hlWeek} ${hlWeek === 1 ? 'highlight' : 'highlights'}` : ''}.</p>`;
+      const hlWeek = S.highlights.filter(h => h.created_at && Date.now() - new Date(h.created_at).getTime() < 7 * DAY).length;
+      if (hlWeek) statsHtml = `<p class="b-stats"><button class="b-link" data-view="annotated">${hlWeek} ${hlWeek === 1 ? 'passage' : 'passages'}</button> highlighted this week.</p>`;
     }
+    const peopleHtml = peopleShown.length ? `<div class="b-people"><h3 class="b-sub">From people you read</h3><div class="b-pgrid">${peopleShown.map(i => {
+        const f = feedById(i.feed_id);
+        return `<button class="b-person" data-open="${esc(i.id)}">
+          <span class="b-pwho"><span class="fav" style="background:hsl(${hueFor(f?.url || '')} 45% 42%)">${esc((f?.title || '?').trim()[0] || '?')}</span>${esc(f?.title || '')}<time>${esc(ago(i.date))}</time></span>
+          <span class="b-ptitle">${esc(i.title)}</span>
+          ${i.summary ? `<span class="b-psum">${esc(i.summary)}</span>` : ''}</button>`;
+      }).join('')}</div></div>` : '';
     return `<section class="brief" aria-label="Today’s briefing">
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
-      ${inBriefHtml}${leadHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
+      ${inBriefHtml}${leadHtml}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
 
@@ -430,13 +480,14 @@
       out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
         ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
         <div class="body">
-          <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
+          <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
           ${alsoLine(it)}
-          <button class="title" data-act="open">${esc(it.title)}</button>
+          <button class="title" data-act="open">${esc(headline(it))}</button>
           ${it.summary && !quotes ? `<div class="summary">${esc(it.summary)}</div>` : ''}
           ${quotes ? `<div class="quotes">${quotes}</div>` : ''}
         </div>
         <div class="acts">
+          ${viaNews(it) ? `<button class="icon" data-act="hidesrc" title="Hide stories from ${esc(outletOf(it))}" aria-label="Hide stories from ${esc(outletOf(it))}">${ICONS.hide}</button>` : ''}
           <button class="icon" data-act="share" title="Share" aria-label="Share" aria-haspopup="menu">${ICONS.share}</button>
           <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
           <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
@@ -475,8 +526,11 @@
     try {
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
-      S.mutes = s.mutes || []; buildMutes(); renderMutes();
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      S.mutes = s.mutes || []; S.prefs = s.prefs && typeof s.prefs === 'object' ? s.prefs : {};
+      buildKinds(); buildMutes(); renderMutes();
+      const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
+      if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render();
     } catch (e) { status(msg(e), true); }
@@ -660,7 +714,7 @@
     $('rSave').textContent = isPhone() ? (it.saved ? 'Saved ✓' : 'Save') : (it.saved ? 'Saved ✓' : 'Read later');
     $('rOriginal').textContent = isPhone() ? 'Web' : 'View original';
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
-    $('rTitle').textContent = it.title;
+    $('rTitle').textContent = headline(it);
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     $('rMeta').innerHTML = `<span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${esc(when)}</time><span id="rByline"></span>`;
     const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === it.id);
@@ -1086,7 +1140,7 @@
     if (e.target.id === 'myFeedBtn') {
       const f = feedById(S.view); if (!f) return;
       const mineNow = myFeed()?.id === f.id;
-      store.set('myFeed', mineNow ? 'none' : String(f.id));
+      S.prefs.mine = mineNow ? 'none' : f.url; savePrefs();
       status(mineNow ? `${f.title} won’t show on Today as your site.` : `Today will show your latest post from ${f.title}.`);
       renderHead(); return;
     }
@@ -1097,6 +1151,12 @@
     const id = act.closest('.story, .h-card').dataset.id, it = item(id); S.selId = id;
     if (act.dataset.act === 'open') openReader(id);
     if (act.dataset.act === 'share') openShareMenu(act, it);
+    if (act.dataset.act === 'hidesrc') {
+      const name = outletOf(it);
+      S.prefs.hidden = [...new Set([...(S.prefs.hidden || []), name])];
+      savePrefs(); renderMutes(); render();
+      status(`Stories from ${name} are hidden. Undo in Muted words.`);
+    }
     if (act.dataset.act === 'save') mark(id, { saved: !it.saved });
     if (act.dataset.act === 'read') mark(id, { read: !it.read });
   });
@@ -1218,7 +1278,12 @@
     $('muteList').innerHTML = S.mutes.length
       ? S.mutes.map((w, i) => `<span class="chip">${esc(w)}<button type="button" data-unmute="${i}" aria-label="Unmute ${esc(w)}">×</button></span>`).join('')
       : '<span class="note">Nothing muted yet.</span>';
-    $('muteBtn').textContent = S.mutes.length ? `Muted words (${S.mutes.length})` : 'Muted words';
+    const hidden = S.prefs.hidden || [];
+    $('hiddenList').innerHTML = hidden.length
+      ? hidden.map((w, i) => `<span class="chip">${esc(w)}<button type="button" data-unhide="${i}" aria-label="Show ${esc(w)} again">×</button></span>`).join('')
+      : '<span class="note">None. Use the ⊘ button on a news-search story to hide its website.</span>';
+    const n = S.mutes.length + hidden.length;
+    $('muteBtn').textContent = n ? `Muted words (${n})` : 'Muted words';
   }
   async function saveMutes(words) {
     try { S.mutes = await invoke('set_mutes', { words }); buildMutes(); renderMutes(); render(); }
@@ -1232,6 +1297,11 @@
     e.preventDefault();
     const w = $('muteInput').value.trim(); if (!w) return;
     $('muteInput').value = ''; saveMutes([...S.mutes, w]);
+  });
+  $('hiddenList').addEventListener('click', e => {
+    const b = e.target.closest('[data-unhide]'); if (!b) return;
+    S.prefs.hidden = (S.prefs.hidden || []).filter((_, i) => i !== Number(b.dataset.unhide));
+    savePrefs(); renderMutes(); render();
   });
   $('muteList').addEventListener('click', e => {
     const b = e.target.closest('[data-unmute]'); if (!b) return;
