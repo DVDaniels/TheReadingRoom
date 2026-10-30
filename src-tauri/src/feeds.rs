@@ -64,7 +64,7 @@ pub fn plain(s: &str, limit: usize) -> String {
     }
 }
 
-async fn get(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, String, String), String> {
+pub(crate) async fn get(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, String, String), String> {
     let resp = client
         .get(url)
         .header(
@@ -100,7 +100,7 @@ async fn get(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, String, St
     Ok((body.to_vec(), final_url, ctype))
 }
 
-fn looks_like_html(body: &[u8], ctype: &str) -> bool {
+pub(crate) fn looks_like_html(body: &[u8], ctype: &str) -> bool {
     if ctype.starts_with("text/html") {
         return true;
     }

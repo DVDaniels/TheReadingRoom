@@ -515,6 +515,11 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   body.home #listView { border-right: 0; padding: 0 clamp(28px, 3.5vw, 64px) 56px; align-items: center; }
   body.home #listView > * { width: 100%; max-width: 1560px; }
   body.home .tools { width: auto; }
+  /* Discover has no stories to open, so it takes the whole window, at a readable width */
+  body.discover-view main { grid-template-columns: minmax(0, 1fr); }
+  body.discover-view .reader-empty { display: none !important; }
+  body.discover-view #listView { border-right: 0; padding: 0 clamp(28px, 3.5vw, 64px) 56px; align-items: center; }
+  body.discover-view #listView > * { width: 100%; max-width: 960px; }
   body.home .tools .search { flex: 0 1 320px; }
   body.home .head h1 { font-size: 40px; }
 
@@ -562,4 +567,38 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   .h-card .title { font-size: 17px; line-height: 1.3; }
   .h-card.read .title { color: var(--muted); font-weight: 400; }
   .h-card .summary { font-size: 14px; -webkit-line-clamp: 2; }
+}
+
+/* ---------------------------------------------------------------- Discover */
+.discover-view #q, .discover-view #refresh { display: none; }
+.disc-intro { color: var(--muted); font-size: 15px; margin: 0; max-width: 64ch; }
+.sug { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line); }
+.sug .fav { width: 44px; height: 44px; border-radius: 10px; font-size: 20px; font-family: var(--font-read); }
+.sug h3 { margin: 0; font-size: 18px; font-family: var(--font-read); letter-spacing: var(--tight-sm); }
+.sug h3 a { color: inherit; text-decoration: none; }
+.sug h3 a:hover { text-decoration: underline; }
+.sug .dom { font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+.sug .why { font-size: 14px; color: var(--ink); margin-top: 6px; }
+.sug .why b { color: var(--accent); font-weight: 600; }
+.sug .latest { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.sug .latest a, .sug .posts a { color: var(--ink); text-decoration: none; }
+.sug .latest a:hover, .sug .posts a:hover { text-decoration: underline; }
+.sug .posts { list-style: none; margin: 8px 0 0; padding: 0 0 0 12px; border-left: 3px solid var(--accent-soft); display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.sug .posts time { color: var(--muted); font-size: 12px; margin-left: 8px; }
+.sug-acts { display: flex; gap: 8px; align-items: center; }
+.sug-x { font-size: 20px; line-height: 1; color: var(--muted); }
+.sec-h { margin: 22px 0 0; font-family: var(--font-read); font-size: 22px; letter-spacing: var(--tight-sm); }
+.sec-p { margin: 4px 0 6px; font-size: 14px; color: var(--muted); }
+.disc-wait { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 6px; }
+.disc-wait strong { font-family: var(--font-read); font-size: 20px; }
+.disc-wait span { color: var(--muted); font-size: 14px; }
+.disc-bar { height: 6px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; margin-top: 8px; }
+.disc-bar div { height: 100%; background: var(--accent); transition: width .4s ease; }
+.disc-note { font-size: 13px; color: var(--accent); }
+.disc-foot { font-size: 12px; color: var(--muted); margin: 18px 0 8px; max-width: 70ch; }
+.disc-foot code { font-family: var(--font-mono); font-size: 11px; }
+@media (max-width: 760px) {
+  .sug { grid-template-columns: 40px minmax(0, 1fr); }
+  .sug .fav { width: 40px; height: 40px; }
+  .sug-acts { grid-column: 2; }
 }

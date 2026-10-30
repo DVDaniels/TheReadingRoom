@@ -6,6 +6,8 @@
   const $ = id => document.getElementById(id);
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
   const S = { folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  // Discover's results (see the Discover section)
+  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set() };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -17,6 +19,7 @@
     all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
     notes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+    discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
   const HUES = [162, 210, 28, 280, 340, 95, 190, 50];
@@ -75,11 +78,12 @@
     if (view === 'saved') return i.saved;
     if (view === 'recent') return !!i.read_at;
     if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
+    if (view === 'discover') return false;
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -138,7 +142,8 @@
       navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
-      navButton('recent', 'Recently read', '', { icon: ICONS.recent });
+      navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
+      navButton('discover', 'Discover', D.report?.suggestions.length || '', { icon: ICONS.discover });
 
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
@@ -159,7 +164,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -179,9 +184,11 @@
       : S.view === 'recent' ? `${S.items.filter(i => i.read_at).length} read recently`
       : S.view === 'annotated' ? `${S.highlights.length} ${S.highlights.length === 1 ? 'highlight' : 'highlights'} in ${new Set(S.highlights.map(h => h.item_id)).size} stories`
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
+      : S.view === 'discover' ? discoverSub()
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = S.view === 'discover' ? lead : `${lead}${muted} · ${when}`;
+    document.body.classList.toggle('discover-view', S.view === 'discover');
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -202,6 +209,10 @@
     } else if (S.view === 'annotated' && S.highlights.length) {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" data-export="all">${IOS ? 'Share all highlights' : 'Export all highlights'}</button>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'discover') {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn" data-disc="scan"${D.running ? ' disabled' : ''}>${D.running ? 'Looking…' : 'Look again'}</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (folder) {
       bar.hidden = false;
@@ -377,6 +388,7 @@
 
   function renderList() {
     syncHome();
+    if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
     const brief = briefHtml();
@@ -442,7 +454,7 @@
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
       S.mutes = s.mutes || []; buildMutes(); renderMutes();
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render();
     } catch (e) { status(msg(e), true); }
@@ -480,8 +492,109 @@
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
     if (isPhone()) setScreen('list');
+    if (S.view === 'discover') openDiscover();
   }
 
+
+
+  // ------------------------------------------------------------ Discover
+  // Blogs the sites you follow recommend: in their blogrolls, or by linking to them again and again.
+  // The looking happens on the Rust side (discover.rs); this draws the results.
+  const WEEK = 7 * DAY;
+  const names = list => list.length <= 1 ? list.join('') : list.length === 2 ? list.join(' and ') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  const bold = list => names(list.slice(0, 3).map(n => `<b>${esc(n)}</b>`)) + (list.length > 3 ? ` and ${list.length - 3} more` : '');
+
+  function discoverSub() {
+    if (D.running) return D.total ? `Reading ${D.done} of ${D.total} sites…` : 'Looking through the sites you follow…';
+    if (D.report) return `From the blogrolls and links of the ${D.report.sites} sites you follow · updated ${ago(D.report.at) === 'now' ? 'just now' : ago(D.report.at) + ' ago'}`;
+    return 'Blogs recommended by the sites you follow';
+  }
+  function whyLine(s) {
+    const parts = [];
+    if (s.rolls.length) parts.push(`In the blogroll${s.rolls.length > 1 ? 's' : ''} of ${bold(s.rolls)}`);
+    if (s.linkers.length) parts.push(`${s.rolls.length ? 'linked' : 'Linked'} ${s.links === 1 ? 'once' : `<b>${s.links} times</b>`} by ${bold(s.linkers)}`);
+    return parts.join(' · ');
+  }
+  function sugHtml(s) {
+    const latest = s.posts[0];
+    const open = D.open.has(s.domain), busy = D.busy.has(s.domain);
+    const d = esc(s.domain);
+    return `<div class="sug" data-sug="${d}">
+      <span class="fav" style="background:hsl(${hueFor(s.feed)} 45% 42%)">${esc((s.title || '?').trim()[0] || '?')}</span>
+      <div class="sug-body">
+        <h3>${isWeb(s.site) ? `<a href="${esc(s.site)}">${esc(s.title)}</a>` : esc(s.title)}</h3>
+        <div class="dom">${d}</div>
+        <div class="why">${whyLine(s)}</div>
+        ${latest && !open ? `<div class="latest">Latest: <a href="${esc(latest.link)}">${esc(latest.title)}</a> · ${ago(latest.date) === 'now' ? 'just now' : ago(latest.date) + ' ago'}</div>` : ''}
+        ${open ? `<ul class="posts">${s.posts.map(p => `<li><a href="${esc(p.link)}">${esc(p.title)}</a><time>${ago(p.date)}</time></li>`).join('')}</ul>` : ''}
+      </div>
+      <div class="sug-acts">
+        <button class="btn" data-disc="preview" data-domain="${d}" aria-expanded="${open}">${open ? 'Less' : 'Preview'}</button>
+        <button class="btn primary" data-disc="follow" data-domain="${d}"${busy ? ' disabled' : ''}>${busy ? 'Adding…' : 'Follow'}</button>
+        <button class="icon sug-x" data-disc="hide" data-domain="${d}" title="Not for me" aria-label="Not for me">×</button>
+      </div>
+    </div>`;
+  }
+  function discoverHtml() {
+    const intro = `<p class="disc-intro">The writers you read recommend these blogs, in their blogrolls or by linking to them often. The more of your sites that point to one, the higher it appears.</p>`;
+    if (D.running && !D.report) {
+      const pct = D.total ? Math.round(100 * D.done / D.total) : 5;
+      return intro + `<div class="disc-wait"><strong>Reading the sites you follow</strong><span>Checking blogrolls and recent links. This takes a minute or so.</span><div class="disc-bar"><div style="width:${pct}%"></div></div></div>`;
+    }
+    if (!D.report) return intro + `<div class="empty"><strong>Find blogs to follow</strong><span>The app reads the blogrolls and recent posts of the sites you follow.</span><button class="btn primary" data-disc="scan">Look now</button></div>`;
+    const list = D.report.suggestions;
+    if (!list.length) return intro + `<div class="empty"><strong>Nothing new to suggest</strong><span>${S.feeds.length < 3 ? 'Follow a few more sites and look again.' : 'You may already follow everything they recommend. Look again in a week or so.'}</span></div>`;
+    const rolled = list.filter(s => s.rolls.length), linked = list.filter(s => !s.rolls.length);
+    let out = intro;
+    if (D.running) out += `<div class="disc-note">Looking again: ${D.done} of ${D.total} sites…</div>`;
+    if (rolled.length) out += `<h2 class="sec-h">From their blogrolls</h2>` + rolled.map(sugHtml).join('');
+    if (linked.length) out += `<h2 class="sec-h">Linked often by your feeds</h2><p class="sec-p">Sites the stories you read keep pointing to lately.</p>` + linked.map(sugHtml).join('');
+    const found = D.report.rolls_found || [];
+    out += `<p class="disc-foot">${found.length
+      ? `Blogrolls read from ${esc(names(found))}.`
+      : 'None of the sites you follow publish a blogroll the app could read, so these come from links in their posts.'} Blogrolls are found through a site’s <code>rel="blogroll"</code> link, <code>/.well-known/recommendations.opml</code>, or a Blogroll page.</p>`;
+    return out;
+  }
+  function paintDiscover() { if (S.view === 'discover') { renderHead(); renderList(); } renderRail(); }
+  async function loadDiscover() {
+    try { const r = await invoke('discover_get'); D.report = r.report; D.running = r.running; } catch {}
+  }
+  async function startDiscover() {
+    if (D.running) return;
+    D.running = true; D.done = 0; D.total = 0; paintDiscover();
+    try { const r = await invoke('discover_scan'); if (r) { D.report = r; D.running = false; D.open.clear(); } }
+    catch (e) { D.running = false; status(msg(e), true); }
+    paintDiscover();
+  }
+  async function openDiscover() {
+    await loadDiscover(); paintDiscover();
+    if (!D.running && (!D.report || Date.now() - Date.parse(D.report.at) > WEEK)) startDiscover();
+  }
+  async function discoverAction(kind, domain) {
+    const s = D.report?.suggestions.find(x => x.domain === domain);
+    if (kind === 'scan') return startDiscover();
+    if (!s) return;
+    if (kind === 'preview') { D.open.has(domain) ? D.open.delete(domain) : D.open.add(domain); renderList(); return; }
+    if (kind === 'hide') {
+      D.report.suggestions = D.report.suggestions.filter(x => x !== s); paintDiscover();
+      status(`You won’t see ${s.title} here again.`);
+      invoke('discover_hide', { domain }).catch(e => status(msg(e), true));
+      return;
+    }
+    if (kind === 'follow') {
+      D.busy.add(domain); renderList();
+      try {
+        await invoke('add_feed', { url: s.feed, title: s.title, folderId: null });
+        D.report.suggestions = D.report.suggestions.filter(x => x !== s);
+        status(`Following ${s.title}. Its stories are in All.`);
+        await load();
+      } catch (e) { status(msg(e), true); }
+      D.busy.delete(domain); paintDiscover();
+    }
+  }
+  listen('discover-progress', e => { const [done, total] = e.payload; D.done = done; D.total = total; D.running = true; if (S.view === 'discover') { renderHead(); renderList(); } });
+  listen('discover-done', async () => { await loadDiscover(); D.running = false; paintDiscover(); });
+  loadDiscover().then(() => renderRail());
 
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
@@ -939,6 +1052,8 @@
 
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
+    const dz = e.target.closest('[data-disc]');
+    if (dz) { discoverAction(dz.dataset.disc, dz.dataset.domain); return; }
     if (e.target.id === 'briefClose') { store.set('briefHidden', new Date().toDateString()); renderList(); return; }
     if (e.target.id === 'briefShow') { store.set('briefHidden', ''); renderList(); return; }
     const op = e.target.closest('[data-open]');

@@ -3,6 +3,7 @@
 mod article;
 mod bookmark;
 mod db;
+mod discover;
 mod feeds;
 mod opml;
 mod sync;
@@ -31,6 +32,7 @@ pub struct AppState {
     db: Mutex<Connection>,
     refreshing: AtomicBool,
     finding_images: AtomicBool,
+    discovering: AtomicBool,
     client: reqwest::Client,
     sync: Mutex<SyncInfo>,
     sync_now: tokio::sync::Notify,
@@ -871,6 +873,86 @@ async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: b
     }))
 }
 
+// ---- Discover: blogs your sites recommend (see discover.rs)
+
+fn followed_domains(conn: &Connection) -> std::collections::HashSet<String> {
+    db::feeds(conn)
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|f| [discover::domain_of(&f.url), discover::domain_of(&f.site)])
+        .flatten()
+        .collect()
+}
+
+fn discover_hidden(conn: &Connection) -> std::collections::HashSet<String> {
+    db::get_meta(conn, "discover_hidden")
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
+}
+
+/// The last look, minus anything followed or hidden since.
+fn discover_cached(conn: &Connection) -> Option<discover::Report> {
+    let mut r: discover::Report = serde_json::from_str(&db::get_meta(conn, "discover").ok()??).ok()?;
+    let followed = followed_domains(conn);
+    let hidden = discover_hidden(conn);
+    r.suggestions.retain(|s| {
+        !followed.contains(&s.domain) && !hidden.contains(&s.domain) && discover::domain_of(&s.feed).map_or(true, |d| !followed.contains(&d))
+    });
+    Some(r)
+}
+
+#[tauri::command]
+fn discover_get(state: State<'_, Shared>) -> serde_json::Value {
+    let conn = state.db.lock().unwrap();
+    serde_json::json!({ "report": discover_cached(&conn), "running": state.discovering.load(Ordering::SeqCst) })
+}
+
+#[tauri::command]
+async fn discover_scan(app: AppHandle, state: State<'_, Shared>) -> Result<Option<discover::Report>, String> {
+    if state.discovering.swap(true, Ordering::SeqCst) {
+        return Ok(None); // already looking; a "discover-done" event follows
+    }
+    let (sources, followed, hidden) = {
+        let conn = state.db.lock().unwrap();
+        let sources: Vec<discover::Source> = db::feeds(&conn)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| !f.url.contains("news.google.com"))
+            .map(|f| discover::Source { title: f.title, url: f.url, site: f.site })
+            .collect();
+        (sources, followed_domains(&conn), discover_hidden(&conn))
+    };
+    let handle = app.clone();
+    let report = discover::run(&state.client, sources, followed, hidden, move |done, total| {
+        let _ = handle.emit("discover-progress", (done, total));
+    })
+    .await;
+    {
+        let conn = state.db.lock().unwrap();
+        if let Ok(json) = serde_json::to_string(&report) {
+            let _ = db::set_meta(&conn, "discover", &json);
+        }
+    }
+    state.discovering.store(false, Ordering::SeqCst);
+    let _ = app.emit("discover-done", ());
+    Ok(Some(report))
+}
+
+/// "Not for me": keep this site out of suggestions.
+#[tauri::command]
+fn discover_hide(state: State<'_, Shared>, domain: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let mut hidden: Vec<String> = discover_hidden(&conn).into_iter().collect();
+    if !hidden.contains(&domain) {
+        hidden.push(domain);
+    }
+    db::set_meta(&conn, "discover_hidden", &serde_json::to_string(&hidden).unwrap_or_default()).map_err(err)
+}
+
 /// Which kind of device the page is running on, so it can lay itself out to match.
 #[tauri::command]
 fn app_info() -> serde_json::Value {
@@ -1024,6 +1106,7 @@ pub fn run() {
                 db: Mutex::new(conn),
                 refreshing: AtomicBool::new(false),
                 finding_images: AtomicBool::new(false),
+                discovering: AtomicBool::new(false),
                 client: feeds::client(),
                 sync: Mutex::new(SyncInfo::default()),
                 sync_now: tokio::sync::Notify::new(),
@@ -1104,6 +1187,9 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            discover_get,
+            discover_scan,
+            discover_hide,
             app_info,
             weather_place,
             weather_now,
