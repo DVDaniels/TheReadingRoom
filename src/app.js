@@ -607,6 +607,84 @@
     else exportText('Highlights', allMarkdown());
   });
 
+  // ---- Listen: read the article aloud
+  // iPhone and iPad use the app's native speech (keeps playing with the screen locked, Lock Screen controls);
+  // the Mac uses the system voices through the page.
+  const PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  const RATES = [0.8, 1, 1.25, 1.5, 2];
+  const aloud = { id: null, title: '', text: '', state: 'idle', position: 0, rate: Number(store.get('listenRate')) || 1, poll: null, utter: null };
+  const webSpeech = () => !IOS && 'speechSynthesis' in window;
+  $('rListen').hidden = !(IOS || webSpeech());
+  function bestWebVoice() {
+    const vs = speechSynthesis.getVoices(), lang = (navigator.language || 'en-US').slice(0, 2);
+    const mine = vs.filter(v => v.lang.startsWith(lang));
+    const score = v => (/premium/i.test(v.name) ? 4 : 0) + (/enhanced/i.test(v.name) ? 3 : 0) + (/siri/i.test(v.name) ? 2 : 0) + (v.lang === navigator.language ? 1 : 0) + (v.localService ? 0.5 : 0);
+    return mine.sort((a, b) => score(b) - score(a))[0] || null;
+  }
+  function webStart(offset) {
+    speechSynthesis.cancel();
+    let at = Math.max(0, Math.min(offset, aloud.text.length));
+    while (at > 0 && !/\s/.test(aloud.text[at - 1])) at--;
+    const u = new SpeechSynthesisUtterance(aloud.text.slice(at));
+    const v = bestWebVoice(); if (v) u.voice = v;
+    u.rate = aloud.rate;
+    u.onboundary = e => { aloud.position = at + e.charIndex; paintPlayer(); };
+    u.onend = () => { if (aloud.utter === u && aloud.state === 'playing') { aloud.state = 'done'; aloud.position = aloud.text.length; paintPlayer(); } };
+    aloud.utter = u; aloud.position = at; aloud.state = 'playing';
+    speechSynthesis.speak(u);
+  }
+  async function listenCmd(action, value) {
+    try {
+      if (IOS) { Object.assign(aloud, await invoke('speech_control', { action, value: value ?? null })); }
+      else if (action === 'pause') { speechSynthesis.pause(); aloud.state = 'paused'; }
+      else if (action === 'resume') { if (speechSynthesis.paused) speechSynthesis.resume(); else webStart(aloud.position); aloud.state = 'playing'; }
+      else if (action === 'stop') { aloud.utter = null; speechSynthesis.cancel(); aloud.state = 'idle'; }
+      else if (action === 'skip') webStart(aloud.position + Math.round(value * 15 * aloud.rate));
+      else if (action === 'rate') { if (aloud.state === 'playing') webStart(aloud.position); }
+    } catch (e) { status(msg(e), true); }
+    paintPlayer();
+  }
+  async function startListening() {
+    const it = item(S.readerId); if (!it) return;
+    const body = $('rBody').innerText.replace(/\n{2,}/g, '\n').trim();
+    if (!body || !articleHtml) { status('Open the article first: this story has no text to read yet.', true); return; }
+    aloud.id = it.id; aloud.title = it.title; aloud.text = `${it.title}.\n${body}`; aloud.position = 0;
+    const f = feedById(it.feed_id);
+    try {
+      if (IOS) Object.assign(aloud, await invoke('speak', { text: aloud.text, title: it.title, source: f?.title || '', rate: aloud.rate, offset: 0 }));
+      else webStart(0);
+    } catch (e) { status(msg(e), true); return; }
+    $('player').hidden = false; document.body.classList.add('playing');
+    paintPlayer();
+    clearInterval(aloud.poll);
+    if (IOS) aloud.poll = setInterval(async () => {
+      if (document.hidden) return;
+      try { Object.assign(aloud, await invoke('speech_status')); paintPlayer(); } catch {}
+    }, 800);
+  }
+  function paintPlayer() {
+    $('plTitle').textContent = aloud.title;
+    $('plPlay').innerHTML = aloud.state === 'playing' ? PAUSE : PLAY;
+    $('plPlay').setAttribute('aria-label', aloud.state === 'playing' ? 'Pause' : 'Play');
+    $('plRate').textContent = `${aloud.rate}×`;
+    const len = aloud.length || aloud.text.length || 1;
+    $('plFill').style.width = `${Math.min(100, (aloud.position / len) * 100)}%`;
+  }
+  function closePlayer() { listenCmd('stop'); clearInterval(aloud.poll); $('player').hidden = true; document.body.classList.remove('playing'); }
+  $('rListen').onclick = () => (aloud.id === S.readerId && aloud.state === 'playing') ? listenCmd('pause') : startListening();
+  $('plPlay').onclick = () => {
+    if (aloud.state === 'playing') listenCmd('pause');
+    else if (aloud.state === 'done' || aloud.state === 'idle') { aloud.position = 0; IOS ? invoke('speak', { text: aloud.text, title: aloud.title, source: '', rate: aloud.rate, offset: 0 }).then(s => { Object.assign(aloud, s); paintPlayer(); }) : webStart(0); }
+    else listenCmd('resume');
+  };
+  $('plBack').onclick = () => listenCmd('skip', -15);
+  $('plFwd').onclick = () => listenCmd('skip', 30);
+  $('plRate').onclick = () => { aloud.rate = RATES[(RATES.indexOf(aloud.rate) + 1) % RATES.length] || 1; store.set('listenRate', String(aloud.rate)); listenCmd('rate', aloud.rate); };
+  $('plClose').onclick = closePlayer;
+  $('plTitle').onclick = () => { if (aloud.id && item(aloud.id)) openReader(aloud.id); };
+  if (webSpeech()) speechSynthesis.onvoiceschanged = () => {};
+
   // ---- text size, width and appearance (remembered on this device)
   const TYPE_DEFAULT = { size: 18, width: 'medium', theme: 'auto' };
   let typePrefs = (() => { try { return { ...TYPE_DEFAULT, ...JSON.parse(localStorage.getItem('readerPrefs') || '{}') }; } catch { return { ...TYPE_DEFAULT }; } })();
@@ -954,6 +1032,12 @@
   listen('sync-changed', loadSync);
   // Opening the app (or switching back to it) and leaving it both sync right away. On iPhone and iPad the app
   // is paused soon after you leave, so this is what gets your last changes to your other devices.
+  // Coming back to the app after a while: check the feeds (iPhone and iPad don't run the app in the background).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || S.refreshing) return;
+    const last = S.lastRefresh ? new Date(S.lastRefresh).getTime() : 0;
+    if (Date.now() - last > 15 * 60 * 1000) refresh();
+  });
   document.addEventListener('visibilitychange', () => {
     if (!sync?.on) return;
     invoke('sync_now').then(s => { sync = s; renderSyncButton(); renderSyncPanel(); }).catch(() => {});

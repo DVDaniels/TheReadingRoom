@@ -82,6 +82,7 @@
         <div class="row">
           <button class="icon" id="rPrev" type="button" title="Previous story (k)" aria-label="Previous story"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
           <button class="icon" id="rNext" type="button" title="Next story (j)" aria-label="Next story"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          <button class="btn" id="rListen" type="button" title="Read this article aloud" aria-label="Listen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/></svg><span class="lbl">Listen</span></button>
           <button class="btn" id="rType" type="button" aria-haspopup="menu" title="Text size, width and appearance" aria-label="Text settings">Aa</button>
           <button class="btn" id="rSave" type="button">Read later</button>
           <button class="btn" id="rShare" type="button" aria-haspopup="menu">Share</button>
@@ -96,6 +97,19 @@
       </article>
     </section>
   </main>
+</div>
+<div class="player" id="player" hidden role="region" aria-label="Reading aloud">
+  <div class="pl-bar"><div class="pl-fill" id="plFill"></div></div>
+  <div class="pl-row">
+    <button class="pl-title linkish" id="plTitle" type="button"></button>
+    <div class="pl-ctl">
+      <button type="button" class="icon" id="plBack" aria-label="Back 15 seconds" title="Back 15 seconds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v4h4"/><text x="12" y="15.5" font-size="7" text-anchor="middle" fill="currentColor" stroke="none" font-family="system-ui" font-weight="700">15</text></svg></button>
+      <button type="button" class="icon pl-play" id="plPlay" aria-label="Pause"></button>
+      <button type="button" class="icon" id="plFwd" aria-label="Forward 30 seconds" title="Forward 30 seconds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v4h-4"/><text x="12" y="15.5" font-size="7" text-anchor="middle" fill="currentColor" stroke="none" font-family="system-ui" font-weight="700">30</text></svg></button>
+      <button type="button" class="pl-rate" id="plRate" title="Speed">1×</button>
+      <button type="button" class="icon" id="plClose" aria-label="Stop reading" title="Stop">×</button>
+    </div>
+  </div>
 </div>
 <div class="pop" id="selPop" hidden role="toolbar" aria-label="Highlight">
   <button type="button" id="selHighlight">Highlight</button>

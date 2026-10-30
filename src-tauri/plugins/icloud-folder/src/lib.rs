@@ -110,6 +110,67 @@ impl<R: Runtime> Folder<R> {
     }
 }
 
+/// Where reading aloud stands: idle, playing, paused or done; `position` of `length` characters.
+#[derive(serde::Serialize, Deserialize, Default, Clone)]
+pub struct SpeechState {
+    pub state: String,
+    pub position: i64,
+    pub length: i64,
+    pub rate: f32,
+}
+
+#[derive(serde::Serialize)]
+struct SpeakArgs<'a> {
+    text: &'a str,
+    title: &'a str,
+    source: &'a str,
+    rate: f32,
+    offset: i64,
+}
+
+#[derive(serde::Serialize)]
+struct ControlArgs<'a> {
+    action: &'a str,
+    value: Option<f32>,
+}
+
+impl<R: Runtime> Folder<R> {
+    /// Read `text` aloud from character `offset`, with the system voice (keeps going with the screen locked).
+    pub fn speak(&self, text: &str, title: &str, source: &str, rate: f32, offset: i64) -> Result<SpeechState, String> {
+        #[cfg(target_os = "ios")]
+        {
+            return self.handle.run_mobile_plugin("speak", SpeakArgs { text, title, source, rate, offset }).map_err(|e| e.to_string());
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = SpeakArgs { text, title, source, rate, offset };
+            Err(ONLY_IOS.into())
+        }
+    }
+
+    /// pause, resume, stop, skip (value = seconds, negative to go back) or rate (value = speed).
+    pub fn speech_control(&self, action: &str, value: Option<f32>) -> Result<SpeechState, String> {
+        #[cfg(target_os = "ios")]
+        {
+            return self.handle.run_mobile_plugin("speechControl", ControlArgs { action, value }).map_err(|e| e.to_string());
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = ControlArgs { action, value };
+            Err(ONLY_IOS.into())
+        }
+    }
+
+    pub fn speech_status(&self) -> Result<SpeechState, String> {
+        #[cfg(target_os = "ios")]
+        {
+            return self.handle.run_mobile_plugin("speechStatus", ()).map_err(|e| e.to_string());
+        }
+        #[cfg(not(target_os = "ios"))]
+        Err(ONLY_IOS.into())
+    }
+}
+
 pub trait FolderExt<R: Runtime> {
     fn icloud_folder(&self) -> &Folder<R>;
 }

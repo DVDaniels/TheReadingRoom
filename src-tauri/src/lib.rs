@@ -742,6 +742,44 @@ fn set_mutes(state: State<'_, Shared>, words: Vec<String>) -> Result<Vec<String>
     Ok(clean)
 }
 
+// ---- reading aloud (iPhone and iPad: native, with background audio; the Mac uses the page's own speech)
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn speak(app: AppHandle, text: String, title: String, source: String, rate: f32, offset: i64) -> Result<tauri_plugin_icloud_folder::SpeechState, String> {
+    app.icloud_folder().speak(&text, &title, &source, rate, offset)
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn speech_control(app: AppHandle, action: String, value: Option<f32>) -> Result<tauri_plugin_icloud_folder::SpeechState, String> {
+    app.icloud_folder().speech_control(&action, value)
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn speech_status(app: AppHandle) -> Result<tauri_plugin_icloud_folder::SpeechState, String> {
+    app.icloud_folder().speech_status()
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn speak() -> Result<(), String> {
+    Err("On the Mac, reading aloud uses the system voice in the page.".into())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn speech_control() -> Result<(), String> {
+    Err("On the Mac, reading aloud uses the system voice in the page.".into())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn speech_status() -> Result<(), String> {
+    Err("On the Mac, reading aloud uses the system voice in the page.".into())
+}
+
 /// Which kind of device the page is running on, so it can lay itself out to match.
 #[tauri::command]
 fn app_info() -> serde_json::Value {
@@ -977,6 +1015,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_info,
             set_mutes,
+            speak,
+            speech_control,
+            speech_status,
             get_state,
             mark,
             add_feed,

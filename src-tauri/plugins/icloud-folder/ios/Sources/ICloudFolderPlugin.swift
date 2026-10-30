@@ -30,6 +30,7 @@ class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
 
 class ICloudFolderPlugin: Plugin {
   let pickerDelegate = FolderPickerDelegate()
+  let speaker = ArticleSpeaker()
 
   @objc public func pickFolder(_ invoke: Invoke) throws {
     DispatchQueue.main.async {

@@ -422,3 +422,24 @@ html[data-theme="dark"] {
 .typemenu #sizeNow { font-family: var(--font-mono); color: var(--ink); opacity: 1; min-width: 40px; }
 html.ios .typemenu .seg button { padding: 8px 10px; font-size: 14px; }
 #rType { font-family: var(--font-read); font-weight: 600; letter-spacing: -0.01em; }
+
+/* ---------------------------------------------------------------- Listen: the player bar */
+#rListen { gap: 6px; }
+.player { position: fixed; z-index: 45; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: min(560px, calc(100vw - 24px)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(10, 20, 30, .22); overflow: hidden; }
+.pl-bar { height: 3px; background: var(--line); }
+.pl-fill { height: 100%; width: 0; background: var(--accent); transition: width .4s linear; }
+.pl-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; }
+.pl-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; }
+.pl-ctl { display: flex; align-items: center; gap: 2px; flex: none; }
+.pl-ctl .icon svg { width: 22px; height: 22px; }
+.pl-play { width: 40px; height: 40px; border-radius: 50% !important; background: var(--accent) !important; color: var(--surface) !important; }
+.pl-play svg { width: 20px !important; height: 20px !important; }
+.pl-rate { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 8px; font-family: var(--font-mono); font-size: 12px; min-width: 44px; }
+#plClose { font-size: 20px; }
+body.playing main, body.playing #listView, body.playing #reader { padding-bottom: 110px; }
+@media (max-width: 760px) {
+  html.ios #rListen .lbl, html.ios #rPrev, html.ios #rNext { display: none; }
+  html.ios #rListen { padding: 7px 9px; }
+}
