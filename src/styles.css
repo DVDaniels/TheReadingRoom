@@ -93,11 +93,11 @@ button { cursor: pointer; }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; text-align: left; }
 .linkish:hover { text-decoration: underline; }
 .sep, .sep2 { margin: 0 2px; }
-.brief-off { margin: -14px 0 0; font-size: 13px; }
+.brief-off { margin: -4px 0 0; font-size: 13px; }
 /* Today's briefing: the app icon's green and cream, with the day's lead story as the one big picture. */
 .brief { --b-bg: #127A62; --b-ink: #F5EFE0; --b-soft: rgba(245, 239, 224, .72); --b-line: rgba(245, 239, 224, .18);
-  position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 22px 22px 18px; margin: 4px 0 8px;
-  display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+  position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 18px 18px 14px; margin: 2px 0 4px;
+  display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="sepia"]) .brief { --b-bg: #0F5A49; } }
 html[data-theme="dark"] .brief { --b-bg: #0F5A49; }
 html[data-theme="sepia"] .brief { --b-bg: #6E4A26; }
@@ -177,16 +177,18 @@ html[data-theme="sepia"] .brief { --b-bg: #6E4A26; }
    so they sit flush at the top and nothing can show above them. */
 main { min-width: 0; overflow-y: auto; padding: 0 max(16px, 4vw) 64px; }
 .reader-empty { display: none; }
-.col { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
-.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 14px 16px; }
+.col { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px 16px; }
 .head .tools { grid-column: 1 / -1; }
 /* The top bar (title, date, search and buttons) stays put while the stories scroll under it. */
-.listtop { position: sticky; top: 0; z-index: 6; padding: var(--bar-top) 0 14px;
+.listtop { position: sticky; top: 0; z-index: 6; padding: var(--bar-top) 0 10px;
   background: var(--bg); border-bottom: 1px solid transparent; transition: border-color .15s;
-  box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax); display: flex; flex-direction: column; gap: 14px; }
+  box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax); display: flex; flex-direction: column; gap: 10px; }
 .listtop.stuck { border-bottom-color: var(--line); }
 /* Clock and date, as on the Command Center */
 .clock { text-align: right; font-family: var(--font-mono); display: flex; flex-direction: column; gap: 4px; align-items: flex-end; padding-bottom: 2px; }
+.clock .time .sec { opacity: .45; }
+.clock .time .ampm { font-size: .6em; margin-left: .25em; color: var(--muted); }
 .clock .time { font-size: 26px; font-weight: 500; letter-spacing: .02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .clock .date { font-size: 12px; color: var(--muted); letter-spacing: .06em; white-space: nowrap; }
 .head h1 { font-family: var(--font-read); font-weight: 600; font-size: 40px; line-height: 1.1; margin: 0; letter-spacing: var(--tight); text-wrap: balance; }
@@ -200,7 +202,8 @@ main { min-width: 0; overflow-y: auto; padding: 0 max(16px, 4vw) 64px; }
 
 .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; padding: 10px 12px; background: var(--accent-soft); border-radius: 10px; }
 .banner.err { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
-.status { font-size: 13px; color: var(--muted); min-height: 1em; }
+.status { font-size: 13px; color: var(--muted); }
+.status:empty { display: none; }
 .status.err { color: var(--danger); }
 
 .daygroup { position: relative; }
@@ -211,9 +214,9 @@ main { min-width: 0; overflow-y: auto; padding: 0 max(16px, 4vw) 64px; }
 .swipe-bg[data-side="read"] { background: var(--accent); }
 .swipe-bg[data-side="save"] .r, .swipe-bg[data-side="read"] .l { visibility: hidden; }
 .swipe-bg:not(.go) span { opacity: .6; }
-.daygroup h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 8px 0 4px; }
+.daygroup h3 { margin-top: 2px !important; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 8px 0 4px; }
 /* One story: [thumbnail] [text] [actions] */
-.story { border-top: 1px solid var(--line); padding: 16px 0; display: flex; gap: 18px; align-items: flex-start; }
+.story { border-top: 1px solid var(--line); padding: 12px 0; display: flex; gap: 16px; align-items: flex-start; }
 .story.sel { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
 .thumb { flex: none; width: 152px; aspect-ratio: 152 / 92; max-width: 30%; object-fit: cover; border-radius: 6px; background: var(--line); }
 .story.read .thumb { opacity: .55; }
@@ -332,7 +335,7 @@ main { min-width: 0; overflow-y: auto; padding: 0 max(16px, 4vw) 64px; }
   .head h1 { font-size: 36px; }
   .tools { width: 100%; }
   .tools .search { flex: 1; width: auto; }
-  .story { padding: 14px 12px; margin: 0 -12px; gap: 14px; border-radius: 8px; }
+  .story { padding: 11px 12px; margin: 0 -12px; gap: 14px; border-radius: 8px; }
   .story.sel { box-shadow: none; padding-left: 12px; background: var(--accent-soft); border-top-color: transparent; }
   .story.sel + .story { border-top-color: transparent; }
   .thumb { width: 104px; aspect-ratio: 1; }
@@ -413,7 +416,7 @@ html.ios .rail, html.ios main { padding-bottom: calc(env(safe-area-inset-bottom)
   html.ios .pull.show { opacity: 1; }
   html.ios .col { gap: 14px; }
   html.ios .head h1 { font-size: 34px; }
-  html.ios .listtop { padding-bottom: 12px; gap: 10px; }
+  html.ios .listtop { padding-bottom: 8px; gap: 8px; }
   html.ios .clock .time { font-size: 20px; }
   html.ios .clock .date { font-size: 11.5px; letter-spacing: .03em; }
   html.ios .tools { width: 100%; }

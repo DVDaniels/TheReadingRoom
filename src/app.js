@@ -1178,11 +1178,14 @@
   // ------------------------------------------------------------ Today: clock and date, and the pinned top bar
   function tick() {
     const now = new Date();
-    $('clockTime').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    // Hours and minutes, then the seconds a little lighter so they tick without shouting.
+    const parts = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }).formatToParts(now);
+    $('clockTime').innerHTML = parts.map(p => p.type === 'second' ? `<span class="sec">${p.value}</span>`
+      : p.type === 'dayPeriod' ? `<span class="ampm">${p.value}</span>` : esc(p.value)).join('');
     $('clockDate').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     $('clock').hidden = S.view !== 'today';
   }
-  tick(); setInterval(tick, 15 * 1000);
+  tick(); setInterval(tick, 1000);
   // A thin line under the top bar once stories are scrolling beneath it.
   const scrollerOf = () => (isSplit() ? $('listView') : $('main'));
   const markStuck = () => $('listTop').classList.toggle('stuck', scrollerOf().scrollTop > 4);
