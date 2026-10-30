@@ -640,3 +640,31 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 .prow .pname { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; font-weight: 600; overflow: hidden; }
 .prow .pname small { font-weight: 400; font-size: 12px; color: var(--muted); }
 .prow .seg button { padding: 4px 10px; font-size: 12px; }
+
+/* ---------------------------------------------------------------- People as a homepage */
+.p-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+.p-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.p-card button { color: inherit; font: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+.p-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.p-who .fav { width: 24px; height: 24px; border-radius: 7px; font-size: 12px; }
+.p-name { font-weight: 600 !important; font-size: 14px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-name:hover { color: var(--accent); }
+.p-site { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.p-site:hover { color: var(--accent); }
+.p-img { width: 100%; max-width: none; aspect-ratio: 16 / 9; border-radius: 10px; object-fit: cover; }
+.p-meta { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.p-title { font-family: var(--font-read) !important; font-size: 20px !important; font-weight: 600; line-height: 1.25; letter-spacing: var(--tight-sm); text-wrap: balance; }
+.p-title:hover { color: var(--accent); }
+.p-sum { margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.p-sum.long { -webkit-line-clamp: 6; }
+.p-more { list-style: none; margin: 4px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.p-more li { display: flex; gap: 8px; align-items: baseline; font-size: 14px; min-width: 0; }
+.p-more button { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-more button:hover { color: var(--accent); }
+.p-more time { flex: none; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.p-all { align-self: flex-start; font-size: 13px; margin-top: auto; }
+.p-card.read { opacity: .7; }
+.p-foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--muted); }
+.p-foot p { margin: 0; line-height: 1.8; }
+.p-foot .b-link { font-weight: 500; }
+.p-foot .b-later-k { margin-right: 6px; }

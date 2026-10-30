@@ -321,7 +321,8 @@
   let briefShown = new Set();
   const isHome = () => isSplit() && S.view === 'today' && !S.readerId && !S.q;
   function syncHome() {
-    document.body.classList.toggle('home', isHome());
+    document.body.classList.toggle('home', isHome() || isPeopleHome());
+    document.body.classList.toggle('people-home', isPeopleHome());
     document.body.classList.toggle('today-view', S.view === 'today');
   }
   function cardHtml(it) {
@@ -469,6 +470,7 @@
     syncHome();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
+    if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
     const brief = briefHtml();
     if (!list.length) {
@@ -517,6 +519,7 @@
   document.addEventListener('error', e => {
     const img = e.target;
     if (!img.classList?.contains('thumb') || img.tagName !== 'IMG') return;
+    if (img.classList.contains('p-img')) { img.closest('.p-card')?.querySelector('.p-sum')?.classList.add('long'); img.remove(); return; }
     const [h, letter] = (img.dataset.tile || '210|•').split('|');
     const t = document.createElement('div');
     t.className = 'thumb tile'; t.style.setProperty('--h', h); t.dataset.act = 'open'; t.setAttribute('aria-hidden', 'true');
@@ -579,6 +582,46 @@
   }
 
 
+
+  // ------------------------------------------------------------ People as a homepage (wide windows, no story open)
+  // Like a street of front porches: a card for each person with their newest post, the busiest-lately first.
+  const isPeopleHome = () => isSplit() && S.view === 'people' && !S.readerId && !S.q;
+  function personCard(f, posts, total) {
+    const [top, ...rest] = posts;
+    const pic = isWeb(top.image);
+    return `<article class="p-card${top.read ? ' read' : ''}" data-id="${esc(top.id)}">
+      <header class="p-who"><span class="fav" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
+        <button class="p-name" data-view="${f.id}">${esc(f.title)}</button>
+        ${isWeb(f.site) ? `<a class="p-site" href="${esc(f.site)}" title="Visit ${esc(f.title)}">${esc(f.site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : ''}</header>
+      ${pic ? `<img class="thumb p-img" src="${esc(top.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : ''}
+      <div class="p-meta"><time datetime="${esc(top.date)}">${esc(ago(top.date) === 'now' ? 'just now' : ago(top.date) + ' ago')}</time>
+        <button class="icon h-save${top.saved ? ' on' : ''}" data-act="save" title="${top.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${top.saved ? 'Remove from Read later' : 'Read later'}">${top.saved ? ICONS.saved : ICONS.save}</button></div>
+      <button class="p-title" data-act="open">${esc(top.title)}</button>
+      ${top.summary ? `<p class="p-sum${pic ? '' : ' long'}">${esc(top.summary)}</p>` : ''}
+      ${rest.length ? `<ul class="p-more">${rest.slice(0, 2).map(i => `<li><button data-open="${esc(i.id)}">${esc(i.title)}</button><time>${esc(ago(i.date))}</time></li>`).join('')}</ul>` : ''}
+      ${total > 3 ? `<button class="linkish p-all" data-view="${f.id}">${S.unreadOnly ? `${total} unread` : `All ${total}`} →</button>` : ''}
+    </article>`;
+  }
+  function peopleHomeHtml(list) {
+    const by = new Map();
+    for (const it of list) { if (!by.has(it.feed_id)) by.set(it.feed_id, []); by.get(it.feed_id).push(it); }
+    const people = S.feeds.filter(f => kindOf(f) === 'person');
+    const active = people.filter(f => by.has(f.id)).sort((a, b) => by.get(b.id)[0].date.localeCompare(by.get(a.id)[0].date));
+    const fresh = active.filter(f => Date.now() - Date.parse(by.get(f.id)[0].date) < 7 * DAY);
+    const older = active.filter(f => !fresh.includes(f));
+    const caught = people.filter(f => !by.has(f.id) && (f.recent || 0) > 0);
+    const quiet = people.filter(f => !by.has(f.id) && !(f.recent || 0));
+    const grid = fs => `<div class="p-grid">${fs.map(f => personCard(f, by.get(f.id), by.get(f.id).length)).join('')}</div>`;
+    const names = fs => fs.map(f => `<button class="b-link" data-view="${f.id}">${esc(f.title)}</button>`).join(', ');
+    let out = '';
+    if (!active.length) { const [t, d] = emptyText(); out += `<div class="empty"><strong>${S.unreadOnly && people.length ? 'You’re caught up with everyone' : t}</strong><span>${S.unreadOnly && people.length ? 'Switch to “All” to see what they’ve written before.' : d}</span></div>`; }
+    if (fresh.length) out += `<section class="h-sec"><div class="h-head"><h2>This week</h2><span class="h-count">${fresh.length} ${fresh.length === 1 ? 'person' : 'people'} wrote something</span></div>${grid(fresh)}</section>`;
+    if (older.length) out += `<section class="h-sec"><div class="h-head"><h2>Earlier</h2><span class="h-count">${older.length} more</span></div>${grid(older)}</section>`;
+    if (caught.length || quiet.length) out += `<section class="p-foot">
+        ${caught.length ? `<p><span class="b-later-k">All caught up with</span> ${names(caught)}</p>` : ''}
+        ${quiet.length ? `<p><span class="b-later-k">Quiet for a month</span> ${names(quiet)}</p>` : ''}</section>`;
+    return out;
+  }
 
   // ------------------------------------------------------------ choosing who counts as a person
   function peopleRows() {
@@ -1194,7 +1237,7 @@
     if (e.target.id === 'deleteFolder') return confirmDeleteFolder();
 
     const act = e.target.closest('[data-act]'); if (!act) return;
-    const id = act.closest('.story, .h-card').dataset.id, it = item(id); S.selId = id;
+    const id = act.closest('.story, .h-card, .p-card').dataset.id, it = item(id); S.selId = id;
     if (act.dataset.act === 'open') openReader(id);
     if (act.dataset.act === 'share') openShareMenu(act, it);
     if (act.dataset.act === 'hidesrc') {
