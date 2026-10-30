@@ -202,6 +202,7 @@
       bar.hidden = false;
       bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
         ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+        <button class="btn" id="myFeedBtn">${myFeed()?.id === f.id ? 'Not my site' : 'This is my site'}</button>
         <button class="btn" id="renameFeed">Rename</button><button class="btn danger" id="removeFeed">Unfollow</button>`;
       $('moveFeed').onchange = e => moveFeed(f.id, e.target.value ? Number(e.target.value) : null);
       if (f.status === 'error') showBanner(`This feed couldn't be read last time: ${esc(f.error)}`, true);
@@ -254,6 +255,14 @@
   setTimeout(leave, 5 * 60 * 1000); // after a few minutes this counts as a visit
 
   let ownerName = '';
+  // Your own site: picked with "This is my site" on a feed, otherwise the feed whose address has your name in it
+  function myFeed() {
+    const pick = store.get('myFeed');
+    if (pick === 'none') return null;
+    if (pick && feedById(pick)) return feedById(pick);
+    const n = ownerName.toLowerCase();
+    return n.length >= 3 ? S.feeds.find(f => (f.site + ' ' + f.url).toLowerCase().includes(n)) || null : null;
+  }
   function greeting() {
     const h = new Date().getHours();
     const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -332,7 +341,13 @@
       seen.add(i.feed_id); more.push(i);
     }
     // Wide screens only: six more headlines as text, and a line about your reading
-    const inBrief = isHome() ? unread.filter(i => i !== lead && !more.includes(i)).slice(0, 6) : [];
+    const perFeed = new Map([[lead?.feed_id, 1]]);
+    const inBrief = isHome() ? unread.filter(i => {
+      if (i === lead || more.includes(i)) return false;
+      const n = perFeed.get(i.feed_id) || 0;
+      if (n >= 2) return false;
+      perFeed.set(i.feed_id, n + 1); return true;
+    }).slice(0, 6) : [];
     briefShown = new Set([lead, ...more, ...inBrief].filter(Boolean).map(i => i.id));
     const byFeed = new Map();
     for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
@@ -362,11 +377,18 @@
     const moreHtml = more.length ? `<div class="b-more">${more.map(i => `<button class="b-item" data-open="${esc(i.id)}">
         ${isWeb(i.image) ? `<img src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : `<span class="b-tile" style="--h:${hueFor(feedById(i.feed_id)?.url || '')}">${esc((feedById(i.feed_id)?.title || '?')[0])}</span>`}
         <span><span class="b-src">${src(i)}</span><span class="b-title">${esc(i.title)}</span></span></button>`).join('')}</div>` : '';
+    const oldest = saved[saved.length - 1];
     const laterHtml = saved.length ? `<div class="b-later">
-        <button class="b-link" data-view="saved">${saved.length} in Read later</button>
-        <span class="b-dot" aria-hidden="true"></span>
-        <button class="b-link b-oldest" data-open="${esc(saved[saved.length - 1].id)}">${esc(saved[saved.length - 1].title)}</button>
+        <span class="b-later-k">Waiting in Read later</span>
+        <button class="b-link" data-view="saved">${saved.length === 1 ? 'Open' : `All ${saved.length}`}</button>
+        <button class="b-link b-oldest" data-open="${esc(oldest.id)}" title="The one that’s waited longest">${esc(oldest.title)}</button>
       </div>` : '';
+    // 6. Your own latest post, from the feed marked as your site
+    const mine = myFeed();
+    const myPost = mine && S.items.filter(i => i.feed_id === mine.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+    const mineHtml = myPost && Date.now() - Date.parse(myPost.date) < 45 * DAY ? `<div class="b-mine">
+        <span class="b-later-k">Latest on ${esc(mine.title)} · ${esc(ago(myPost.date))}${ago(myPost.date) === 'now' ? '' : ' ago'}</span>
+        <button class="b-link b-oldest" data-open="${esc(myPost.id)}">${esc(myPost.title)}</button></div>` : '';
     const inBriefHtml = inBrief.length ? `<div class="b-brief">${inBrief.map(i => `<button class="b-hl" data-open="${esc(i.id)}">
         <span class="b-hl-src">${src(i)} <time>${esc(ago(i.date))}</time></span><span class="b-hl-t">${esc(i.title)}</span></button>`).join('')}</div>` : '';
     let statsHtml = '';
@@ -382,7 +404,7 @@
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
-      ${inBriefHtml}${leadHtml}${moreHtml}<div class="b-foot">${statsHtml}${laterHtml}</div>
+      ${inBriefHtml}${leadHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
 
@@ -1061,6 +1083,13 @@
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
+    if (e.target.id === 'myFeedBtn') {
+      const f = feedById(S.view); if (!f) return;
+      const mineNow = myFeed()?.id === f.id;
+      store.set('myFeed', mineNow ? 'none' : String(f.id));
+      status(mineNow ? `${f.title} won’t show on Today as your site.` : `Today will show your latest post from ${f.title}.`);
+      renderHead(); return;
+    }
     if (e.target.id === 'renameFolder') return startRenameFolder();
     if (e.target.id === 'deleteFolder') return confirmDeleteFolder();
 
