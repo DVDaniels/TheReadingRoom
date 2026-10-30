@@ -126,6 +126,22 @@ struct SpeakArgs<'a> {
     source: &'a str,
     rate: f32,
     offset: i64,
+    voice: &'a str,
+}
+
+/// A voice you can choose for reading aloud. quality: 1 default, 2 enhanced, 3 premium.
+#[derive(serde::Serialize, Deserialize, Clone)]
+pub struct Voice {
+    pub id: String,
+    pub name: String,
+    pub language: String,
+    pub quality: i64,
+}
+
+#[derive(serde::Serialize, Deserialize, Clone, Default)]
+pub struct Voices {
+    pub voices: Vec<Voice>,
+    pub best: String,
 }
 
 #[derive(serde::Serialize)]
@@ -136,16 +152,25 @@ struct ControlArgs<'a> {
 
 impl<R: Runtime> Folder<R> {
     /// Read `text` aloud from character `offset`, with the system voice (keeps going with the screen locked).
-    pub fn speak(&self, text: &str, title: &str, source: &str, rate: f32, offset: i64) -> Result<SpeechState, String> {
+    pub fn speak(&self, text: &str, title: &str, source: &str, rate: f32, offset: i64, voice: &str) -> Result<SpeechState, String> {
         #[cfg(target_os = "ios")]
         {
-            return self.handle.run_mobile_plugin("speak", SpeakArgs { text, title, source, rate, offset }).map_err(|e| e.to_string());
+            return self.handle.run_mobile_plugin("speak", SpeakArgs { text, title, source, rate, offset, voice }).map_err(|e| e.to_string());
         }
         #[cfg(not(target_os = "ios"))]
         {
-            let _ = SpeakArgs { text, title, source, rate, offset };
+            let _ = SpeakArgs { text, title, source, rate, offset, voice };
             Err(ONLY_IOS.into())
         }
+    }
+
+    pub fn voices(&self) -> Result<Voices, String> {
+        #[cfg(target_os = "ios")]
+        {
+            return self.handle.run_mobile_plugin("speechVoices", ()).map_err(|e| e.to_string());
+        }
+        #[cfg(not(target_os = "ios"))]
+        Err(ONLY_IOS.into())
     }
 
     /// pause, resume, stop, skip (value = seconds, negative to go back) or rate (value = speed).

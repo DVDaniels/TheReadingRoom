@@ -99,7 +99,7 @@ button { cursor: pointer; }
   position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 18px 18px 14px; margin: 2px 0 16px;
   display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
 .brief button { color: inherit; font: inherit; text-align: left; }
-.b-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 16px; padding-right: 28px; }
+.b-top { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 16px; padding-right: 36px; }
 .brief h2 { margin: 0; color: var(--accent); font-family: var(--font-read); font-size: 30px; font-weight: 600; letter-spacing: var(--tight); line-height: 1.1; }
 .b-date { margin: 0; font-size: 14px; color: var(--b-soft); }
 .b-line { margin: 0; font-size: 15px; line-height: 1.5; color: var(--b-soft); max-width: 62ch; }
@@ -126,7 +126,7 @@ button { cursor: pointer; }
 .b-later .b-link { flex: none; }
 .b-later .b-oldest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
 .b-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--b-soft); flex: none; }
-.brief-x { position: absolute; top: 12px; right: 12px; border: 0; background: color-mix(in srgb, var(--accent) 12%, transparent) !important; width: 30px; height: 30px; border-radius: 50%;
+.brief-x { position: absolute; top: -4px; right: -4px; border: 0; background: color-mix(in srgb, var(--accent) 12%, transparent) !important; width: 30px; height: 30px; border-radius: 50%;
   color: var(--b-ink) !important; font-size: 18px !important; line-height: 1; text-align: center !important; }
 .brief-x:hover { background: color-mix(in srgb, var(--accent) 22%, transparent) !important; }
 @media (max-width: 760px) {
@@ -485,4 +485,64 @@ body.playing main, body.playing #listView, body.playing #reader { padding-bottom
 @media (max-width: 760px) {
   html.ios #rListen .lbl, html.ios #rPrev, html.ios #rNext { display: none; }
   html.ios #rListen { padding: 7px 9px; }
+}
+
+/* Voice picker */
+.voices { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; margin: 0 -8px; }
+.voice { display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 10px 8px; border-radius: 8px; font-size: 15px; }
+.voice:hover { background: var(--bg); }
+.voice.on { background: var(--accent-soft); }
+.v-name { font-weight: 600; }
+.v-q { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+.v-q.q3 { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.v-q.q2 { color: var(--accent); border-color: var(--accent); }
+.v-lang { margin-left: auto; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.v-on { color: var(--accent); font-weight: 700; }
+html.ios .voice { padding: 12px 8px; font-size: 16px; }
+
+/* ---------------------------------------------------------------- Today as a homepage (wide windows, no story open) */
+@media (min-width: 1280px) {
+  body.today-view #rBack { visibility: visible; }
+  body.home main { grid-template-columns: minmax(0, 1fr); }
+  body.home .reader-empty { display: none !important; }
+  body.home #listView { border-right: 0; padding: 0 clamp(28px, 3.5vw, 64px) 56px; align-items: center; }
+  body.home #listView > * { width: 100%; max-width: 1560px; }
+  body.home .tools { width: auto; }
+  body.home .tools .search { flex: 0 1 320px; }
+  body.home .head h1 { font-size: 40px; }
+
+  /* The briefing: greeting and notes on the left, the lead story big on the right, four more beneath */
+  body.home .brief { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.55fr); column-gap: 28px; row-gap: 12px; padding: 24px 24px 20px;
+    grid-template-areas: "top lead" "line lead" "later lead" "more more"; grid-template-rows: auto auto 1fr auto; }
+  body.home .b-top { grid-area: top; flex-direction: column; align-items: flex-start; gap: 4px; }
+  body.home .brief h2 { font-size: 38px; }
+  body.home .b-line { grid-area: line; font-size: 16px; }
+  body.home .b-lead { grid-area: lead; align-self: start; }
+  body.home .b-lead img { aspect-ratio: 2 / 1; max-height: 460px; }
+  body.home .b-head { font-size: 28px; }
+  body.home .b-later { grid-area: later; align-self: end; flex-wrap: wrap; border-top: 0; padding-top: 0; }
+  body.home .b-later .b-oldest { white-space: normal; flex-basis: 100%; }
+  body.home .b-later .b-dot { display: none; }
+  body.home .b-more { grid-area: more; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding-top: 6px; }
+
+  /* Folder sections */
+  .h-sec { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+  .h-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .h-head h2 { margin: 0; font-family: var(--font-read); font-size: 24px; font-weight: 600; letter-spacing: var(--tight-sm); }
+  .h-head h2 button { all: unset; cursor: pointer; }
+  .h-head h2 button:hover { color: var(--accent); }
+  .h-count { font-size: 13px; color: var(--muted); }
+  .h-all { margin-left: auto; font-size: 13px; }
+  .h-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 22px 20px; }
+  .h-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .h-card .thumb { width: 100%; max-width: none; aspect-ratio: 16 / 10; border-radius: 10px; }
+  .h-card .thumb.tile span { font-size: 44px; }
+  .h-card.read .thumb { opacity: .55; }
+  .h-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .h-card .meta { position: relative; }
+  .h-save { margin-left: auto; width: 26px !important; height: 26px !important; opacity: 0; }
+  .h-save.on, .h-card:hover .h-save, .h-save:focus-visible { opacity: 1; }
+  .h-card .title { font-size: 17px; line-height: 1.3; }
+  .h-card.read .title { color: var(--muted); font-weight: 400; }
+  .h-card .summary { font-size: 14px; -webkit-line-clamp: 2; }
 }

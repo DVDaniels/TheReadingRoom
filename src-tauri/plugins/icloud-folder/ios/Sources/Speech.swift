@@ -12,6 +12,7 @@ struct SpeakArgs: Decodable {
   let source: String?
   let rate: Float?
   let offset: Int?
+  let voice: String?
 }
 
 struct SpeechControlArgs: Decodable {
@@ -28,6 +29,7 @@ class ArticleSpeaker: NSObject, AVSpeechSynthesizerDelegate {
   var rate: Float = 1.0
   var title = ""
   var source = ""
+  var voiceId: String? = nil
   var commandsReady = false
 
   override init() {
@@ -62,7 +64,7 @@ class ArticleSpeaker: NSObject, AVSpeechSynthesizerDelegate {
       return
     }
     let u = AVSpeechUtterance(string: text.substring(from: base))
-    u.voice = ArticleSpeaker.bestVoice()
+    u.voice = voiceId.flatMap { AVSpeechSynthesisVoice(identifier: $0) } ?? ArticleSpeaker.bestVoice()
     u.rate = min(AVSpeechUtteranceMaximumSpeechRate, AVSpeechUtteranceDefaultSpeechRate * rate)
     u.prefersAssistiveTechnologySettings = false
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [])
@@ -150,6 +152,7 @@ extension ICloudFolderPlugin {
       sp.title = args.title
       sp.source = args.source ?? ""
       sp.rate = max(0.5, min(2.5, args.rate ?? 1.0))
+      sp.voiceId = (args.voice?.isEmpty ?? true) ? nil : args.voice
       sp.start(at: args.offset ?? 0)
       invoke.resolve(self.speechState())
     }
@@ -171,6 +174,17 @@ extension ICloudFolderPlugin {
       }
       invoke.resolve(self.speechState())
     }
+  }
+
+  /// The voices for the phone's language: Premium and Enhanced ones appear once downloaded in Settings.
+  @objc public func speechVoices(_ invoke: Invoke) throws {
+    let prefix = String(AVSpeechSynthesisVoice.currentLanguageCode().prefix(2))
+    let list: [[String: Any]] = AVSpeechSynthesisVoice.speechVoices()
+      .filter { $0.language.hasPrefix(prefix) }
+      .sorted { $0.quality.rawValue != $1.quality.rawValue ? $0.quality.rawValue > $1.quality.rawValue : $0.name < $1.name }
+      .map { v in ["id": v.identifier, "name": v.name, "language": v.language, "quality": v.quality.rawValue] }
+    let best = ArticleSpeaker.bestVoice()?.identifier ?? ""
+    invoke.resolve(["voices": list, "best": best])
   }
 
   @objc public func speechStatus(_ invoke: Invoke) throws {

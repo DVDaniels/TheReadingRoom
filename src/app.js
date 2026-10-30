@@ -248,6 +248,53 @@
     const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     return ownerName ? `${part}, ${ownerName}` : part;
   }
+  // ------------------------------------------------------------ Today as a homepage (wide windows, no story open)
+  // The briefing goes wide, then each folder gets a section of story cards with pictures.
+  let briefShown = new Set();
+  const isHome = () => isSplit() && S.view === 'today' && !S.readerId && !S.q;
+  function syncHome() {
+    document.body.classList.toggle('home', isHome());
+    document.body.classList.toggle('today-view', S.view === 'today');
+  }
+  function cardHtml(it) {
+    const f = feedById(it.feed_id);
+    return `<article class="h-card${it.read ? ' read' : ''}" data-id="${esc(it.id)}">
+      ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
+      <div class="h-body">
+        <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time>
+          <button class="icon h-save${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button></div>
+        <button class="title" data-act="open">${esc(it.title)}</button>
+        ${it.summary ? `<div class="summary">${esc(it.summary)}</div>` : ''}
+      </div>
+    </article>`;
+  }
+  function homeHtml(list) {
+    const brief = briefHtml();
+    const rest = list.filter(i => !briefShown.has(i.id));
+    if (!rest.length && !brief) { const [t, d] = emptyText(); return `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`; }
+    const groups = new Map();
+    for (const it of rest) {
+      const fid = feedById(it.feed_id)?.folder_id;
+      const key = fid && folderById(fid) ? fid : 0;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    }
+    const order = [...S.folders.map(f => f.id).filter(id => groups.has(id)), ...(groups.has(0) ? [0] : [])];
+    const sections = order.map(key => {
+      const items = groups.get(key), shown = items.slice(0, 8);
+      const folder = key ? folderById(key) : null;
+      const view = folder ? `folder:${folder.id}` : 'all';
+      const name = folder ? folder.name : 'More stories';
+      return `<section class="h-sec" aria-label="${esc(name)}">
+        <div class="h-head"><h2><button data-view="${view}">${esc(name)}</button></h2>
+          <span class="h-count">${items.length} ${S.unreadOnly ? 'unread' : (items.length === 1 ? 'story' : 'stories')}</span>
+          ${items.length > shown.length ? `<button class="linkish h-all" data-view="${view}">See all ${items.length}</button>` : ''}</div>
+        <div class="h-grid">${shown.map(cardHtml).join('')}</div>
+      </section>`;
+    }).join('');
+    return brief + sections;
+  }
+
   function briefHtml() {
     if (S.view !== 'today' || S.q) return '';
     if (store.get('briefHidden') === new Date().toDateString()) {
@@ -261,11 +308,13 @@
     const lead = own[0] || withPic[0] || unread[0];
     const seen = new Set([lead?.feed_id]);
     const more = [];
+    const want = isHome() ? 4 : 3;
     for (const i of [...own, ...withPic, ...unread]) {
-      if (more.length >= 3) break;
+      if (more.length >= want) break;
       if (i === lead || more.includes(i) || seen.has(i.feed_id)) continue;
       seen.add(i.feed_id); more.push(i);
     }
+    briefShown = new Set([lead, ...more].filter(Boolean).map(i => i.id));
     const byFeed = new Map();
     for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
     const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => feedById(id)).filter(Boolean);
@@ -300,14 +349,16 @@
         <button class="b-link b-oldest" data-open="${esc(saved[saved.length - 1].id)}">${esc(saved[saved.length - 1].title)}</button>
       </div>` : '';
     return `<section class="brief" aria-label="Today’s briefing">
-      <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button>
-      <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p></div>
+      <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
+        <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
       ${leadHtml}${moreHtml}${laterHtml}
     </section>`;
   }
 
   function renderList() {
+    syncHome();
+    if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
     const brief = briefHtml();
     if (!list.length) {
@@ -423,6 +474,7 @@
   wide.addEventListener('change', () => {
     if (S.readerId) $('listView').hidden = !isSplit() ? true : false;
     if (isSplit()) $('listView').hidden = false;
+    renderList();
   });
 
   function openReader(id) {
@@ -651,7 +703,7 @@
   const PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
   const PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
   const RATES = [0.8, 1, 1.25, 1.5, 2];
-  const aloud = { id: null, title: '', text: '', state: 'idle', position: 0, rate: Number(store.get('listenRate')) || 1, poll: null, utter: null };
+  const aloud = { id: null, title: '', text: '', source: '', state: 'idle', position: 0, rate: Number(store.get('listenRate')) || 1, voice: store.get('listenVoice') || '', poll: null, utter: null };
   const webSpeech = () => !IOS && 'speechSynthesis' in window;
   $('rListen').hidden = !(IOS || webSpeech());
   function bestWebVoice() {
@@ -665,7 +717,7 @@
     let at = Math.max(0, Math.min(offset, aloud.text.length));
     while (at > 0 && !/\s/.test(aloud.text[at - 1])) at--;
     const u = new SpeechSynthesisUtterance(aloud.text.slice(at));
-    const v = bestWebVoice(); if (v) u.voice = v;
+    const v = (aloud.voice && speechSynthesis.getVoices().find(x => x.voiceURI === aloud.voice)) || bestWebVoice(); if (v) u.voice = v;
     u.rate = aloud.rate;
     u.onboundary = e => { aloud.position = at + e.charIndex; paintPlayer(); };
     u.onend = () => { if (aloud.utter === u && aloud.state === 'playing') { aloud.state = 'done'; aloud.position = aloud.text.length; paintPlayer(); } };
@@ -688,9 +740,9 @@
     const body = $('rBody').innerText.replace(/\n{2,}/g, '\n').trim();
     if (!body || !articleHtml) { status('Open the article first: this story has no text to read yet.', true); return; }
     aloud.id = it.id; aloud.title = it.title; aloud.text = `${it.title}.\n${body}`; aloud.position = 0;
-    const f = feedById(it.feed_id);
+    const f = feedById(it.feed_id); aloud.source = f?.title || '';
     try {
-      if (IOS) Object.assign(aloud, await invoke('speak', { text: aloud.text, title: it.title, source: f?.title || '', rate: aloud.rate, offset: 0 }));
+      if (IOS) Object.assign(aloud, await invoke('speak', { text: aloud.text, title: it.title, source: f?.title || '', rate: aloud.rate, offset: 0, voice: aloud.voice || null }));
       else webStart(0);
     } catch (e) { status(msg(e), true); return; }
     $('player').hidden = false; document.body.classList.add('playing');
@@ -713,7 +765,7 @@
   $('rListen').onclick = () => (aloud.id === S.readerId && aloud.state === 'playing') ? listenCmd('pause') : startListening();
   $('plPlay').onclick = () => {
     if (aloud.state === 'playing') listenCmd('pause');
-    else if (aloud.state === 'done' || aloud.state === 'idle') { aloud.position = 0; IOS ? invoke('speak', { text: aloud.text, title: aloud.title, source: '', rate: aloud.rate, offset: 0 }).then(s => { Object.assign(aloud, s); paintPlayer(); }) : webStart(0); }
+    else if (aloud.state === 'done' || aloud.state === 'idle') { aloud.position = 0; IOS ? invoke('speak', { text: aloud.text, title: aloud.title, source: aloud.source, rate: aloud.rate, offset: 0, voice: aloud.voice || null }).then(s => { Object.assign(aloud, s); paintPlayer(); }) : webStart(0); }
     else listenCmd('resume');
   };
   $('plBack').onclick = () => listenCmd('skip', -15);
@@ -721,7 +773,58 @@
   $('plRate').onclick = () => { aloud.rate = RATES[(RATES.indexOf(aloud.rate) + 1) % RATES.length] || 1; store.set('listenRate', String(aloud.rate)); listenCmd('rate', aloud.rate); };
   $('plClose').onclick = closePlayer;
   $('plTitle').onclick = () => { if (aloud.id && item(aloud.id)) openReader(aloud.id); };
-  if (webSpeech()) speechSynthesis.onvoiceschanged = () => {};
+  if (webSpeech()) speechSynthesis.onvoiceschanged = () => { if (!$('voicePanel').hidden) renderVoices(); };
+
+  // ---- choosing the voice
+  const QUALITY = { 3: 'Premium', 2: 'Enhanced' };
+  let voiceList = [], bestVoice = '';
+  async function loadVoices() {
+    if (IOS) {
+      try { const r = await invoke('speech_voices'); voiceList = r.voices || []; bestVoice = r.best || ''; } catch { voiceList = []; }
+    } else if (webSpeech()) {
+      const lang = (navigator.language || 'en-US').slice(0, 2);
+      voiceList = speechSynthesis.getVoices().filter(v => v.lang.startsWith(lang))
+        .map(v => ({ id: v.voiceURI, name: v.name.replace(/\s*\((Premium|Enhanced)\)/i, ''), language: v.lang, quality: /premium/i.test(v.name) ? 3 : /enhanced/i.test(v.name) ? 2 : 1 }))
+        .sort((a, b) => b.quality - a.quality || a.name.localeCompare(b.name));
+      bestVoice = bestWebVoice()?.voiceURI || '';
+    }
+  }
+  function renderVoices() {
+    const current = aloud.voice || bestVoice;
+    $('voiceList').innerHTML = voiceList.length ? voiceList.map(v => `<button type="button" class="voice${v.id === current ? ' on' : ''}" data-voice="${esc(v.id)}">
+        <span class="v-name">${esc(v.name)}</span>
+        ${QUALITY[v.quality] ? `<span class="v-q q${v.quality}">${QUALITY[v.quality]}</span>` : ''}
+        <span class="v-lang">${esc(v.language)}</span>
+        ${v.id === current ? '<span class="v-on" aria-label="In use">✓</span>' : ''}
+      </button>`).join('') : '<p class="note">No voices found.</p>';
+    const hasGood = voiceList.some(v => v.quality >= 2);
+    $('voiceHelp').textContent = IOS
+      ? `${hasGood ? 'More voices:' : 'For natural voices,'} on your iPhone go to Settings › Accessibility › Spoken Content › Voices › English, and download a Premium voice (Ava, Zoe or Evan are good). Then come back here.`
+      : `${hasGood ? 'More voices:' : 'For natural voices,'} go to System Settings › Accessibility › Spoken Content, click ⓘ next to System voice, and download a Premium voice. Then reopen this list.`;
+  }
+  async function openVoices() { hidePops(); await loadVoices(); renderVoices(); $('voicePanel').hidden = false; }
+  async function pickVoice(id) {
+    aloud.voice = id; store.set('listenVoice', id); renderVoices();
+    const reading = aloud.id && (aloud.state === 'playing' || aloud.state === 'paused');
+    try {
+      if (reading) {
+        // Carry on with the article in the new voice, from where it was
+        if (IOS) Object.assign(aloud, await invoke('speak', { text: aloud.text, title: aloud.title, source: aloud.source, rate: aloud.rate, offset: aloud.position, voice: id }));
+        else webStart(aloud.position);
+        paintPlayer();
+      } else {
+        const v = voiceList.find(x => x.id === id);
+        const sample = `Hi, I'm ${v ? v.name : 'this voice'}. I'll read your stories aloud in The Reading Room.`;
+        if (IOS) await invoke('speak', { text: sample, title: 'Voice preview', source: '', rate: aloud.rate, offset: 0, voice: id });
+        else { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(sample); const wv = speechSynthesis.getVoices().find(x => x.voiceURI === id); if (wv) u.voice = wv; u.rate = aloud.rate; speechSynthesis.speak(u); }
+      }
+    } catch (e) { status(msg(e), true); }
+  }
+  $('plVoice').onclick = openVoices;
+  $('typeVoice').onclick = openVoices;
+  $('voiceClose').onclick = () => { $('voicePanel').hidden = true; };
+  $('voicePanel').addEventListener('mousedown', e => { if (e.target.id === 'voicePanel') $('voicePanel').hidden = true; });
+  $('voiceList').addEventListener('click', e => { const b = e.target.closest('[data-voice]'); if (b) pickVoice(b.dataset.voice); });
 
   // ---- text size, width and appearance (remembered on this device)
   const TYPE_DEFAULT = { size: 18, width: 'medium', theme: 'auto' };
@@ -828,7 +931,7 @@
     if (e.target.id === 'deleteFolder') return confirmDeleteFolder();
 
     const act = e.target.closest('[data-act]'); if (!act) return;
-    const id = act.closest('.story').dataset.id, it = item(id); S.selId = id;
+    const id = act.closest('.story, .h-card').dataset.id, it = item(id); S.selId = id;
     if (act.dataset.act === 'open') openReader(id);
     if (act.dataset.act === 'share') openShareMenu(act, it);
     if (act.dataset.act === 'save') mark(id, { saved: !it.saved });
@@ -974,7 +1077,7 @@
 
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (e.key === 'Escape') { if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
     if (!$('syncPanel').hidden) return;
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown);

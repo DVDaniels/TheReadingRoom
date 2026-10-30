@@ -746,8 +746,20 @@ fn set_mutes(state: State<'_, Shared>, words: Vec<String>) -> Result<Vec<String>
 
 #[cfg(mobile)]
 #[tauri::command]
-async fn speak(app: AppHandle, text: String, title: String, source: String, rate: f32, offset: i64) -> Result<tauri_plugin_icloud_folder::SpeechState, String> {
-    app.icloud_folder().speak(&text, &title, &source, rate, offset)
+async fn speak(app: AppHandle, text: String, title: String, source: String, rate: f32, offset: i64, voice: Option<String>) -> Result<tauri_plugin_icloud_folder::SpeechState, String> {
+    app.icloud_folder().speak(&text, &title, &source, rate, offset, voice.as_deref().unwrap_or(""))
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn speech_voices(app: AppHandle) -> Result<tauri_plugin_icloud_folder::Voices, String> {
+    app.icloud_folder().voices()
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn speech_voices() -> Result<(), String> {
+    Err("On the Mac, voices come from the page.".into())
 }
 
 #[cfg(mobile)]
@@ -1018,6 +1030,7 @@ pub fn run() {
             speak,
             speech_control,
             speech_status,
+            speech_voices,
             get_state,
             mark,
             add_feed,
