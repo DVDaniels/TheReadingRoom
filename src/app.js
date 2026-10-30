@@ -1096,7 +1096,7 @@
 
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (e.key === 'Escape') { if (!$('wxPanel').hidden) { $('wxPanel').hidden = true; return; } if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
     if (!$('syncPanel').hidden) return;
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown);
@@ -1310,6 +1310,59 @@
     $('clock').hidden = S.view !== 'today';
   }
   tick(); setInterval(tick, 1000);
+  // ---- weather under the date (Open-Meteo, for the town you choose)
+  const WX = [[[0], '☀️', '🌙', 'Clear'], [[1], '🌤️', '🌙', 'Mostly clear'], [[2], '⛅', '☁️', 'Partly cloudy'], [[3], '☁️', '☁️', 'Cloudy'],
+    [[45, 48], '🌫️', '🌫️', 'Fog'], [[51, 53, 55, 56, 57], '🌦️', '🌧️', 'Drizzle'], [[61, 63, 65, 66, 67], '🌧️', '🌧️', 'Rain'],
+    [[71, 73, 75, 77], '🌨️', '🌨️', 'Snow'], [[80, 81, 82], '🌦️', '🌧️', 'Showers'], [[85, 86], '🌨️', '🌨️', 'Snow showers'], [[95, 96, 99], '⛈️', '⛈️', 'Thunderstorms']];
+  const useF = /-(US|LR|MM)$/i.test(navigator.language || 'en-US') || !/-/.test(navigator.language || '');
+  const wxPlace = () => { try { return JSON.parse(store.get('weatherPlace') || 'null'); } catch { return null; } };
+  let wxData = (() => { try { return JSON.parse(store.get('weatherNow') || 'null'); } catch { return null; } })();
+  function paintWeather() {
+    const place = wxPlace(), el = $('wx');
+    if (!place) { el.innerHTML = '<span class="wx-add">Add weather</span>'; el.title = 'Show the weather for your town'; return; }
+    if (!wxData || wxData.key !== `${place.lat},${place.lon}`) { el.textContent = place.name; return; }
+    const w = WX.find(([codes]) => codes.includes(Number(wxData.code))) || [[], '🌡️', '🌡️', ''];
+    const r = n => Math.round(Number(n));
+    el.innerHTML = `<span class="wx-i" aria-hidden="true">${wxData.day === 0 ? w[2] : w[1]}</span><b>${r(wxData.temp)}°</b> ${esc(w[3])}<span class="wx-hl"> · H ${r(wxData.high)}° L ${r(wxData.low)}°</span>`;
+    el.title = `${place.label}. Click to change.`;
+  }
+  async function loadWeather(force) {
+    const place = wxPlace(); if (!place) { paintWeather(); return; }
+    const key = `${place.lat},${place.lon}`;
+    if (!force && wxData && wxData.key === key && Date.now() - wxData.at < 30 * 60 * 1000) { paintWeather(); return; }
+    try {
+      const w = await invoke('weather_now', { lat: place.lat, lon: place.lon, fahrenheit: useF });
+      wxData = { ...w, key, at: Date.now() }; store.set('weatherNow', JSON.stringify(wxData));
+    } catch {}
+    paintWeather();
+  }
+  function openWeather() {
+    $('wxResults').innerHTML = ''; $('wxInput').value = wxPlace()?.label || '';
+    $('wxRemove').hidden = !wxPlace(); $('wxPanel').hidden = false; $('wxInput').focus(); $('wxInput').select();
+  }
+  $('wx').onclick = openWeather;
+  $('wxClose').onclick = () => { $('wxPanel').hidden = true; };
+  $('wxPanel').addEventListener('mousedown', e => { if (e.target.id === 'wxPanel') $('wxPanel').hidden = true; });
+  $('wxRemove').onclick = () => { store.set('weatherPlace', ''); wxData = null; store.set('weatherNow', ''); paintWeather(); $('wxPanel').hidden = true; };
+  let wxFound = [];
+  $('wxForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('wxResults').innerHTML = '<p class="note">Looking…</p>';
+    try {
+      wxFound = await invoke('weather_place', { query: $('wxInput').value });
+      $('wxResults').innerHTML = wxFound.map((p, i) => `<button type="button" class="voice" data-place="${i}"><span class="v-name">${esc(p.label)}</span></button>`).join('');
+    } catch (err) { $('wxResults').innerHTML = `<p class="note err">${esc(msg(err))}</p>`; }
+  });
+  $('wxResults').addEventListener('click', e => {
+    const b = e.target.closest('[data-place]'); if (!b) return;
+    const p = wxFound[Number(b.dataset.place)];
+    store.set('weatherPlace', JSON.stringify({ name: p.name, label: p.label, lat: p.lat, lon: p.lon }));
+    $('wxPanel').hidden = true; loadWeather(true);
+  });
+  loadWeather();
+  setInterval(() => loadWeather(), 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWeather(); });
+
   // A thin line under the top bar once stories are scrolling beneath it.
   const scrollerOf = () => (isSplit() ? $('listView') : $('main'));
   const markStuck = () => $('listTop').classList.toggle('stuck', scrollerOf().scrollTop > 4);

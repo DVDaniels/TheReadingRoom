@@ -792,6 +792,85 @@ async fn speech_status() -> Result<(), String> {
     Err("On the Mac, reading aloud uses the system voice in the page.".into())
 }
 
+// ---- weather on Today (Open-Meteo: free, no account; only the place you choose is sent)
+
+async fn get_json(state: &Shared, url: &str) -> Result<serde_json::Value, String> {
+    let resp = state.client.get(url).timeout(Duration::from_secs(12)).send().await.map_err(|_| "Couldn't reach the weather service.".to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("The weather service answered with error {}.", resp.status().as_u16()));
+    }
+    let text = resp.text().await.map_err(|_| "The weather service was cut off.".to_string())?;
+    serde_json::from_str(&text).map_err(|_| "The weather service sent something unexpected.".to_string())
+}
+
+/// Find a town (or ZIP code): a few matches with their coordinates.
+#[tauri::command]
+async fn weather_place(state: State<'_, Shared>, query: String) -> Result<serde_json::Value, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Err("Type a town or ZIP code.".into());
+    }
+    // "Fort Mill, SC" → search "Fort Mill", then prefer matches in SC
+    let (name, region) = match q.split_once(',') {
+        Some((n, r)) => (n.trim().to_string(), r.trim().to_lowercase()),
+        None => (q.to_string(), String::new()),
+    };
+    let mut u = url::Url::parse("https://geocoding-api.open-meteo.com/v1/search").expect("static url");
+    u.query_pairs_mut().append_pair("name", &name).append_pair("count", "8").append_pair("language", "en").append_pair("format", "json");
+    let v = get_json(state.inner(), u.as_str()).await?;
+    let mut results: Vec<serde_json::Value> = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    if !region.is_empty() {
+        let abbr = us_state_name(&region).unwrap_or(&region).to_lowercase();
+        results.sort_by_key(|r| {
+            let a1 = r.get("admin1").and_then(|x| x.as_str()).unwrap_or("").to_lowercase();
+            let cc = r.get("country_code").and_then(|x| x.as_str()).unwrap_or("").to_lowercase();
+            !(a1 == abbr || a1 == region || cc == region)
+        });
+    }
+    let out: Vec<serde_json::Value> = results
+        .iter()
+        .map(|r| {
+            let label = [r.get("name"), r.get("admin1"), r.get("country")]
+                .iter()
+                .filter_map(|x| x.and_then(|y| y.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            serde_json::json!({ "name": r.get("name"), "label": label, "lat": r.get("latitude"), "lon": r.get("longitude"), "country": r.get("country_code") })
+        })
+        .collect();
+    if out.is_empty() {
+        return Err(format!("Couldn't find {q}. Try the town's name, like Fort Mill."));
+    }
+    Ok(serde_json::Value::Array(out))
+}
+
+fn us_state_name(abbr: &str) -> Option<&'static str> {
+    const STATES: &[(&str, &str)] = &[("al","Alabama"),("ak","Alaska"),("az","Arizona"),("ar","Arkansas"),("ca","California"),("co","Colorado"),("ct","Connecticut"),("de","Delaware"),("fl","Florida"),("ga","Georgia"),("hi","Hawaii"),("id","Idaho"),("il","Illinois"),("in","Indiana"),("ia","Iowa"),("ks","Kansas"),("ky","Kentucky"),("la","Louisiana"),("me","Maine"),("md","Maryland"),("ma","Massachusetts"),("mi","Michigan"),("mn","Minnesota"),("ms","Mississippi"),("mo","Missouri"),("mt","Montana"),("ne","Nebraska"),("nv","Nevada"),("nh","New Hampshire"),("nj","New Jersey"),("nm","New Mexico"),("ny","New York"),("nc","North Carolina"),("nd","North Dakota"),("oh","Ohio"),("ok","Oklahoma"),("or","Oregon"),("pa","Pennsylvania"),("ri","Rhode Island"),("sc","South Carolina"),("sd","South Dakota"),("tn","Tennessee"),("tx","Texas"),("ut","Utah"),("vt","Vermont"),("va","Virginia"),("wa","Washington"),("wv","West Virginia"),("wi","Wisconsin"),("wy","Wyoming"),("dc","District of Columbia")];
+    STATES.iter().find(|(a, _)| *a == abbr).map(|(_, n)| *n)
+}
+
+/// Current conditions and today's high and low.
+#[tauri::command]
+async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: bool) -> Result<serde_json::Value, String> {
+    let mut u = url::Url::parse("https://api.open-meteo.com/v1/forecast").expect("static url");
+    u.query_pairs_mut()
+        .append_pair("latitude", &format!("{lat:.3}"))
+        .append_pair("longitude", &format!("{lon:.3}"))
+        .append_pair("current", "temperature_2m,weather_code,is_day")
+        .append_pair("daily", "temperature_2m_max,temperature_2m_min")
+        .append_pair("timezone", "auto")
+        .append_pair("forecast_days", "1")
+        .append_pair("temperature_unit", if fahrenheit { "fahrenheit" } else { "celsius" });
+    let v = get_json(state.inner(), u.as_str()).await?;
+    let cur = v.get("current").cloned().unwrap_or_default();
+    let daily = v.get("daily").cloned().unwrap_or_default();
+    let first = |k: &str| daily.get(k).and_then(|a| a.get(0)).cloned().unwrap_or_default();
+    Ok(serde_json::json!({
+        "temp": cur.get("temperature_2m"), "code": cur.get("weather_code"), "day": cur.get("is_day"),
+        "high": first("temperature_2m_max"), "low": first("temperature_2m_min"),
+    }))
+}
+
 /// Which kind of device the page is running on, so it can lay itself out to match.
 #[tauri::command]
 fn app_info() -> serde_json::Value {
@@ -1026,6 +1105,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            weather_place,
+            weather_now,
             set_mutes,
             speak,
             speech_control,
