@@ -95,24 +95,23 @@ button { cursor: pointer; }
 .sep, .sep2 { margin: 0 2px; }
 .brief-off { margin: -4px 0 0; font-size: 13px; }
 /* Today's briefing: the app icon's green and cream, with the day's lead story as the one big picture. */
-.brief { --b-bg: #127A62; --b-ink: #F5EFE0; --b-soft: rgba(245, 239, 224, .72); --b-line: rgba(245, 239, 224, .18);
+.brief { --b-bg: var(--accent-soft); --b-ink: var(--ink); --b-soft: var(--muted); --b-line: color-mix(in srgb, var(--accent) 28%, transparent);
   position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 18px 18px 14px; margin: 2px 0 16px;
   display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="sepia"]) .brief { --b-bg: #0F5A49; } }
-html[data-theme="dark"] .brief { --b-bg: #0F5A49; }
-html[data-theme="sepia"] .brief { --b-bg: #6E4A26; }
 .brief button { color: inherit; font: inherit; text-align: left; }
 .b-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 16px; padding-right: 28px; }
-.brief h2 { margin: 0; font-family: var(--font-read); font-size: 30px; font-weight: 600; letter-spacing: var(--tight); line-height: 1.1; }
+.brief h2 { margin: 0; color: var(--accent); font-family: var(--font-read); font-size: 30px; font-weight: 600; letter-spacing: var(--tight); line-height: 1.1; }
 .b-date { margin: 0; font-size: 14px; color: var(--b-soft); }
 .b-line { margin: 0; font-size: 15px; line-height: 1.5; color: var(--b-soft); max-width: 62ch; }
-.b-link { border: 0; background: none; padding: 0; color: var(--b-ink) !important; font-weight: 600; text-decoration: underline; text-decoration-color: var(--b-line); text-underline-offset: 3px; cursor: pointer; }
-.b-link:hover { text-decoration-color: var(--b-ink); }
+.b-link { border: 0; background: none; padding: 0; color: var(--accent) !important; font-weight: 600; text-decoration: underline; text-decoration-color: var(--b-line); text-underline-offset: 3px; cursor: pointer; }
+.b-link:hover { text-decoration-color: var(--accent); }
 .b-lead { position: relative; display: block; width: 100%; border: 0; padding: 0; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, .2); cursor: pointer; }
 .b-lead img { display: block; width: 100%; aspect-ratio: 16 / 8; object-fit: cover; }
 .b-lead-text { position: absolute; inset: auto 0 0 0; padding: 48px 18px 16px; display: flex; flex-direction: column; gap: 4px;
   background: linear-gradient(to top, rgba(6, 30, 24, .88), rgba(6, 30, 24, 0)); }
-.b-lead.no-pic { background: rgba(0, 0, 0, .14); }
+.b-lead.no-pic { background: var(--surface); }
+.b-lead.no-pic .b-head { color: var(--ink); }
+.b-lead.no-pic .b-src { color: var(--muted); }
 .b-lead.no-pic .b-lead-text { position: static; background: none; padding: 16px 18px; }
 .b-head { font-family: var(--font-read); font-size: 22px; font-weight: 600; line-height: 1.22; letter-spacing: var(--tight-sm); color: #fff; text-wrap: balance; }
 .b-src { display: block; font-size: 12px; font-weight: 600; color: var(--b-soft); }
@@ -127,9 +126,9 @@ html[data-theme="sepia"] .brief { --b-bg: #6E4A26; }
 .b-later .b-link { flex: none; }
 .b-later .b-oldest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
 .b-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--b-soft); flex: none; }
-.brief-x { position: absolute; top: 12px; right: 12px; border: 0; background: rgba(0, 0, 0, .14) !important; width: 30px; height: 30px; border-radius: 50%;
+.brief-x { position: absolute; top: 12px; right: 12px; border: 0; background: color-mix(in srgb, var(--accent) 12%, transparent) !important; width: 30px; height: 30px; border-radius: 50%;
   color: var(--b-ink) !important; font-size: 18px !important; line-height: 1; text-align: center !important; }
-.brief-x:hover { background: rgba(0, 0, 0, .28) !important; }
+.brief-x:hover { background: color-mix(in srgb, var(--accent) 22%, transparent) !important; }
 @media (max-width: 760px) {
   .brief { padding: 18px 16px 14px; border-radius: 16px; }
   .brief h2 { font-size: 26px; }
