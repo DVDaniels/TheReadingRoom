@@ -5,7 +5,7 @@
 
   const $ = id => document.getElementById(id);
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
-  const S = { folders: [], feeds: [], items: [], highlights: [], readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  const S = { folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -80,14 +80,49 @@
     return String(i.feed_id) === String(view);
   }
   const usesUnreadFilter = () => !['saved', 'recent', 'annotated'].includes(S.view);
+  // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
+  let muteRe = null;
+  function buildMutes() {
+    const parts = S.mutes.map(w => w.trim()).filter(Boolean).map(w => {
+      const e = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return /^\w/.test(w) && /\w$/.test(w) ? `\\b${e}\\b` : e;
+    });
+    muteRe = parts.length ? new RegExp(parts.join('|'), 'i') : null;
+  }
+  const isMuted = i => !!muteRe && muteRe.test(i.title + ' ' + (i.summary || '')) && !i.saved;
+  const mutesApply = (view = S.view) => !['saved', 'annotated'].includes(view);
+
+  // ---- the same story from several feeds (news searches especially): show it once
+  const outletOf = i => { const m = /\s[-–—|]\s([^-–—|]{2,60})$/.exec(i.title || ''); return m ? m[1].trim() : (feedById(i.feed_id)?.title || ''); };
+  const storyKey = i => (i.title || '').toLowerCase().replace(/\s[-–—|]\s[^-–—|]{2,60}$/, '').replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 90);
+  function collapseDuplicates(list) {
+    S.also = new Map();
+    const seen = new Map(), out = [];
+    for (const it of list) {
+      const k = storyKey(it);
+      if (k.length < 16) { out.push(it); continue; }
+      const first = seen.get(k);
+      if (first && Math.abs(new Date(first.date) - new Date(it.date)) < 3 * DAY) {
+        const arr = S.also.get(first.id) || []; arr.push(outletOf(it)); S.also.set(first.id, arr);
+        continue;
+      }
+      seen.set(k, it); out.push(it);
+    }
+    return out;
+  }
+
   function visible() {
     let list = S.items.filter(i => inScope(i));
+    S.hiddenMuted = 0;
+    if (mutesApply()) { const before = list.length; list = list.filter(i => !isMuted(i)); S.hiddenMuted = before - list.length; }
     if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || S.keep.has(i.id));
     if (S.q) { const q = S.q.toLowerCase(); list = list.filter(i => (i.title + ' ' + i.summary).toLowerCase().includes(q)); }
     if (S.view === 'recent') list = [...list].sort((a, b) => (b.read_at || '').localeCompare(a.read_at || ''));
+    else if (usesUnreadFilter()) list = collapseDuplicates(list);
+    else S.also = new Map();
     return list;
   }
-  const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view)).length;
+  const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view) && !(mutesApply(view) && isMuted(i))).length;
 
   // ------------------------------------------------------------ render: sidebar
   function navButton(view, label, count, { icon = '', fav = null, err = '', title = '' } = {}) {
@@ -143,7 +178,8 @@
       : S.view === 'annotated' ? `${S.highlights.length} ${S.highlights.length === 1 ? 'highlight' : 'highlights'} in ${new Set(S.highlights.map(h => h.item_id)).size} stories`
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : `${unreadIn(S.view)} unread`;
-    $('viewSub').textContent = `${lead} · ${when}`;
+    const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
+    $('viewSub').textContent = `${lead}${muted} · ${when}`;
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -161,6 +197,10 @@
       $('moveFeed').onchange = e => moveFeed(f.id, e.target.value ? Number(e.target.value) : null);
       if (f.status === 'error') showBanner(`This feed couldn't be read last time: ${esc(f.error)}`, true);
       else if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'annotated' && S.highlights.length) {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn" data-export="all">${IOS ? 'Share all highlights' : 'Export all highlights'}</button>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (folder) {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" id="renameFolder">Rename folder</button><button class="btn danger" id="deleteFolder">Delete folder</button>`;
@@ -183,14 +223,61 @@
     return ['Nothing here yet', 'New stories appear after the next refresh.'];
   }
 
+  function alsoLine(it) {
+    const names = [...new Set(S.also.get(it.id) || [])].filter(Boolean);
+    if (!names.length) return '';
+    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
+    return `<div class="also">Also from ${esc(shown)}</div>`;
+  }
+
+  // ------------------------------------------------------------ Today's briefing
+  // A short note at the top of Today: what's new since you were last here, which feeds are busiest,
+  // and what's waiting in Read later. Close it and it stays away until tomorrow.
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+  const lastVisit = Number(store.get('lastVisit')) || 0;
+  const leave = () => store.set('lastVisit', String(Date.now()));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) leave(); });
+  window.addEventListener('pagehide', leave);
+  setTimeout(leave, 5 * 60 * 1000); // after a few minutes this counts as a visit
+
+  let ownerName = '';
+  function greeting() {
+    const h = new Date().getHours();
+    const part = h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    return ownerName ? `${part}, ${ownerName}` : part;
+  }
+  function briefHtml() {
+    if (S.view !== 'today' || S.q || store.get('briefHidden') === new Date().toDateString()) return '';
+    const today = S.items.filter(i => isToday(i) && !isMuted(i));
+    const unread = today.filter(i => !i.read);
+    const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i)).length : 0;
+    const byFeed = new Map();
+    for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
+    const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([id, n]) => { const f = feedById(id); return f ? `<button class="chip-link" data-view="${f.id}">${esc(f.title)} <b>${n}</b></button>` : ''; }).join('');
+    const saved = S.items.filter(i => i.saved).sort((a, b) => (a.marks_at || a.date).localeCompare(b.marks_at || b.date));
+    let lead;
+    if (!unread.length) lead = 'You’re all caught up for today.';
+    else if (fresh) lead = `${fresh} new ${fresh === 1 ? 'story' : 'stories'} since you were last here, ${unread.length} unread today.`;
+    else lead = `${unread.length} unread ${unread.length === 1 ? 'story' : 'stories'} from the last 24 hours.`;
+    return `<section class="brief" aria-label="Today’s briefing">
+      <button class="brief-x" id="briefClose" type="button" aria-label="Hide until tomorrow" title="Hide until tomorrow">×</button>
+      <h2>${esc(greeting())}</h2>
+      <p>${esc(lead)}</p>
+      ${busiest ? `<div class="brief-row"><span>Busiest</span>${busiest}</div>` : ''}
+      ${saved.length ? `<div class="brief-row"><span>Read later</span><button class="chip-link" data-view="saved">${saved.length} waiting</button><button class="linkish brief-oldest" data-open="${esc(saved[0].id)}">${esc(saved[0].title)}</button></div>` : ''}
+    </section>`;
+  }
+
   function renderList() {
     const all = visible(), list = all.slice(0, S.shown);
+    const brief = briefHtml();
     if (!list.length) {
       const [t, d] = emptyText();
-      $('list').innerHTML = `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`;
+      $('list').innerHTML = brief + `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`;
       return;
     }
-    let out = '', lastDay = '';
+    let out = brief, lastDay = '';
     const groupBy = S.view === 'recent' ? i => dayLabel(i.read_at) : i => dayLabel(i.date);
     for (const it of list) {
       const day = groupBy(it);
@@ -202,6 +289,7 @@
         ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
         <div class="body">
           <div class="meta"><span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
+          ${alsoLine(it)}
           <button class="title" data-act="open">${esc(it.title)}</button>
           ${it.summary && !quotes ? `<div class="summary">${esc(it.summary)}</div>` : ''}
           ${quotes ? `<div class="quotes">${quotes}</div>` : ''}
@@ -245,6 +333,7 @@
     try {
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
+      S.mutes = s.mutes || []; buildMutes(); renderMutes();
       const valid = ['today', 'all', 'saved', 'annotated', 'recent'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render();
@@ -401,13 +490,13 @@
     const mine = S.highlights.filter(h => h.item_id === S.readerId);
     const box = $('rNotes');
     box.hidden = !mine.length;
-    box.innerHTML = mine.length ? `<h2>Your highlights and notes</h2>` + mine.map(h =>
+    box.innerHTML = mine.length ? `<div class="notes-head"><h2>Your highlights and notes</h2><button class="linkish" type="button" data-export="story">${IOS ? 'Share' : 'Export'}</button></div>` + mine.map(h =>
       `<div class="quote" data-jump="${h.id}"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
   }
 
   function hidePops() {
     let any = false;
-    for (const id of ['selPop', 'notePop', 'shareMenu']) if (!$(id).hidden) { $(id).hidden = true; any = true; }
+    for (const id of ['selPop', 'notePop', 'shareMenu', 'typeMenu']) if (!$(id).hidden) { $(id).hidden = true; any = true; }
     return any;
   }
   function placeNear(el, rect) {
@@ -490,6 +579,65 @@
   };
   $('noteText').onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('noteSave').click(); };
 
+  // ---- highlights as Markdown: one story, or everything in Annotated
+  function storyMarkdown(it) {
+    const f = feedById(it.feed_id);
+    const when = new Date(it.date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    const quotes = S.highlights.filter(h => h.item_id === it.id).map(h => `> ${h.text.replace(/\s*\n\s*/g, ' ')}${h.note ? `\n\n${h.note}` : ''}`).join('\n\n');
+    return `## ${it.title}\n${[f?.title, when].filter(Boolean).join(' · ')}\n${it.link}\n\n${quotes}\n`;
+  }
+  function allMarkdown() {
+    const ids = [...new Set(S.highlights.map(h => h.item_id))];
+    const stories = ids.map(item).filter(Boolean).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    return `# Highlights from The Reading Room\n${today}\n\n` + stories.map(storyMarkdown).join('\n');
+  }
+  async function exportText(title, text) {
+    if (IOS && navigator.share) {
+      try { await navigator.share({ title, text }); } catch (e) { if (e?.name !== 'AbortError') status(msg(e), true); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(text); } catch {}
+    try { if (await invoke('save_text', { name: title, text })) status('Saved your highlights (also copied to the clipboard).'); else status('Copied your highlights to the clipboard.'); }
+    catch (e) { status('Copied your highlights to the clipboard.'); }
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-export]'); if (!b) return;
+    if (b.dataset.export === 'story') { const it = item(S.readerId); if (it) exportText(`Highlights – ${it.title}`, storyMarkdown(it)); }
+    else exportText('Highlights', allMarkdown());
+  });
+
+  // ---- text size, width and appearance (remembered on this device)
+  const TYPE_DEFAULT = { size: 18, width: 'medium', theme: 'auto' };
+  let typePrefs = (() => { try { return { ...TYPE_DEFAULT, ...JSON.parse(localStorage.getItem('readerPrefs') || '{}') }; } catch { return { ...TYPE_DEFAULT }; } })();
+  const WIDTHS = { narrow: ['58ch', '680px'], medium: ['68ch', '760px'], wide: ['82ch', '920px'] };
+  function applyType() {
+    const root = document.documentElement;
+    root.style.setProperty('--read-size', typePrefs.size + 'px');
+    root.style.setProperty('--measure', WIDTHS[typePrefs.width][0]);
+    root.style.setProperty('--reader-max', WIDTHS[typePrefs.width][1]);
+    if (typePrefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = typePrefs.theme;
+    $('sizeNow').textContent = typePrefs.size;
+    document.querySelectorAll('#widthSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.width === typePrefs.width)));
+    document.querySelectorAll('#themeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === typePrefs.theme)));
+    try { localStorage.setItem('readerPrefs', JSON.stringify(typePrefs)); } catch {}
+  }
+  applyType();
+  $('rType').onclick = e => {
+    const menu = $('typeMenu');
+    if (!menu.hidden) { menu.hidden = true; return; }
+    hidePops(); placeNear(menu, e.currentTarget.getBoundingClientRect());
+    const r = e.currentTarget.getBoundingClientRect();
+    menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 8) + 'px';
+  };
+  $('typeMenu').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.size) typePrefs.size = Math.max(14, Math.min(28, typePrefs.size + Number(b.dataset.size)));
+    if (b.dataset.width) typePrefs.width = b.dataset.width;
+    if (b.dataset.theme) typePrefs.theme = b.dataset.theme;
+    applyType();
+  });
+
   // ---- sharing
   let shareItem = null;
   function openShareMenu(anchor, it) {
@@ -521,7 +669,7 @@
   }
   $('shareMenu').addEventListener('click', e => { const b = e.target.closest('[data-share]'); if (b) share(b.dataset.share); });
   document.addEventListener('mousedown', e => {
-    if (!e.target.closest('.pop, .menu, [data-act="share"], #rShare')) { $('shareMenu').hidden = true; $('notePop').hidden = true; }
+    if (!e.target.closest('.pop, .menu, [data-act="share"], #rShare, #rType')) { $('shareMenu').hidden = true; $('notePop').hidden = true; $('typeMenu').hidden = true; }
   });
 
   // reader toolbar and article clicks
@@ -553,6 +701,9 @@
 
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
+    if (e.target.id === 'briefClose') { store.set('briefHidden', new Date().toDateString()); renderList(); return; }
+    const op = e.target.closest('[data-open]');
+    if (op) { openReader(op.dataset.open); return; }
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
@@ -671,6 +822,7 @@
       load();
     } catch (e) { status(msg(e), true); }
   }
+  renderMutes();
   async function exportOpml() {
     try { if (await invoke('export_opml')) status('Saved your subscription list.'); }
     catch (e) { status(msg(e), true); }
@@ -678,9 +830,34 @@
   $('importBtn').onclick = importOpml;
   $('exportBtn').onclick = exportOpml;
 
+  // ------------------------------------------------------------ muted words
+  function renderMutes() {
+    $('muteList').innerHTML = S.mutes.length
+      ? S.mutes.map((w, i) => `<span class="chip">${esc(w)}<button type="button" data-unmute="${i}" aria-label="Unmute ${esc(w)}">×</button></span>`).join('')
+      : '<span class="note">Nothing muted yet.</span>';
+    $('muteBtn').textContent = S.mutes.length ? `Muted words (${S.mutes.length})` : 'Muted words';
+  }
+  async function saveMutes(words) {
+    try { S.mutes = await invoke('set_mutes', { words }); buildMutes(); renderMutes(); render(); }
+    catch (e) { status(msg(e), true); }
+  }
+  function openMutes() { renderMutes(); $('mutePanel').hidden = false; $('muteInput').focus(); }
+  $('muteBtn').onclick = openMutes;
+  $('muteClose').onclick = () => { $('mutePanel').hidden = true; };
+  $('mutePanel').addEventListener('mousedown', e => { if (e.target.id === 'mutePanel') $('mutePanel').hidden = true; });
+  $('muteForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const w = $('muteInput').value.trim(); if (!w) return;
+    $('muteInput').value = ''; saveMutes([...S.mutes, w]);
+  });
+  $('muteList').addEventListener('click', e => {
+    const b = e.target.closest('[data-unmute]'); if (!b) return;
+    saveMutes(S.mutes.filter((_, i) => i !== Number(b.dataset.unmute)));
+  });
+
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (e.key === 'Escape') { if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
     if (!$('syncPanel').hidden) return;
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown);
@@ -757,7 +934,10 @@
     $('syncNowBtn').onclick = () => syncAction('sync_now');
     $('syncOff').onclick = () => syncAction('sync_turn_off', IOS ? 'Sync is off here. Your stories stay on this device.' : 'Sync is off for this Mac. Your stories stay here.');
   }
-  async function loadSync() { try { sync = await invoke('sync_status'); renderSyncButton(); renderSyncPanel(); } catch {} }
+  async function loadSync() { try { sync = await invoke('sync_status');
+    const names = [sync.thisMac, ...(sync.peers || []).map(p => p.name)].join('|');
+    const m = /(?:^|\|)([A-Z][\p{L}-]{1,20})[’']s\s/u.exec(names);
+    if (m && m[1] !== ownerName) { ownerName = m[1]; if (S.view === 'today') renderList(); } renderSyncButton(); renderSyncPanel(); } catch {} }
   async function syncAction(cmd, done) {
     try {
       const s = await invoke(cmd);
@@ -818,6 +998,49 @@
     if (d > 80) refresh();
   }, { passive: true });
   phoneSize.addEventListener('change', () => { if (!isPhone()) return; setScreen(S.readerId ? 'reader' : 'list'); });
+
+  // Swipe a story: right to save it for later, left to mark it read (or unread), like Mail.
+  let sw = null;
+  const SW_GO = 90;
+  $('list').addEventListener('touchstart', e => {
+    if (!IOS || e.touches.length !== 1) return;
+    const story = e.target.closest('.story'), t = e.touches[0];
+    if (!story || t.clientX < 28) return; // the left edge is for going back
+    sw = { story, x: t.clientX, y: t.clientY, dx: 0, on: false, bg: null };
+  }, { passive: true });
+  $('list').addEventListener('touchmove', e => {
+    if (!sw) return;
+    const t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // scrolling
+      if (Math.abs(dx) < 12) return;
+      sw.on = true;
+      const it = item(sw.story.dataset.id);
+      sw.bg = document.createElement('div');
+      sw.bg.className = 'swipe-bg';
+      sw.bg.style.top = sw.story.offsetTop + 'px'; sw.bg.style.height = sw.story.offsetHeight + 'px';
+      sw.bg.innerHTML = `<span class="l">${it?.saved ? 'Unsave' : 'Read later'}</span><span class="r">${it?.read ? 'Unread' : 'Read'}</span>`;
+      sw.story.parentElement.insertBefore(sw.bg, sw.story);
+      sw.story.classList.add('swiping');
+    }
+    e.preventDefault();
+    sw.dx = Math.max(-160, Math.min(160, dx));
+    sw.story.style.transform = `translateX(${sw.dx}px)`;
+    sw.bg.dataset.side = sw.dx > 0 ? 'save' : 'read';
+    sw.bg.classList.toggle('go', Math.abs(sw.dx) >= SW_GO);
+  }, { passive: false });
+  const endSwipe = () => {
+    if (!sw) return;
+    const { story, dx, bg, on } = sw; sw = null;
+    if (!on) return;
+    story.style.transition = 'transform .18s ease'; story.style.transform = '';
+    setTimeout(() => { story.style.transition = ''; story.classList.remove('swiping'); bg?.remove(); }, 200);
+    const it = item(story.dataset.id); if (!it) return;
+    if (dx >= SW_GO) mark(it.id, { saved: !it.saved });
+    else if (dx <= -SW_GO) { S.keep.add(it.id); mark(it.id, { read: !it.read }); }
+  };
+  $('list').addEventListener('touchend', endSwipe, { passive: true });
+  $('list').addEventListener('touchcancel', endSwipe, { passive: true });
 
   // events from the app: refresh finished, menu items
   listen('state-changed', load);

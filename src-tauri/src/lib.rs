@@ -55,6 +55,7 @@ struct Snapshot {
     feeds: Vec<db::Feed>,
     items: Vec<db::Item>,
     highlights: Vec<db::Highlight>,
+    mutes: Vec<String>,
     refreshing: bool,
     last_refresh: Option<String>,
 }
@@ -187,6 +188,7 @@ fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
         feeds: db::feeds(&conn).map_err(err)?,
         items: db::items(&conn, ITEM_LIMIT).map_err(err)?,
         highlights: db::highlights(&conn).map_err(err)?,
+        mutes: db::get_meta(&conn, "mutes").map_err(err)?.and_then(|m| serde_json::from_str(&m).ok()).unwrap_or_default(),
         refreshing: state.refreshing.load(Ordering::SeqCst),
         last_refresh: db::get_meta(&conn, "last_refresh").map_err(err)?,
     })
@@ -720,6 +722,26 @@ async fn sync_now(app: AppHandle, state: State<'_, Shared>) -> Result<SyncStatus
     Ok(status_of(state.inner()))
 }
 
+/// Words and phrases whose stories you don't want to see (shared with your other devices).
+#[tauri::command]
+fn set_mutes(state: State<'_, Shared>, words: Vec<String>) -> Result<Vec<String>, String> {
+    let mut clean: Vec<String> = Vec::new();
+    for w in words {
+        let w: String = w.trim().chars().take(60).collect();
+        if !w.is_empty() && !clean.iter().any(|c| c.eq_ignore_ascii_case(&w)) {
+            clean.push(w);
+        }
+    }
+    clean.truncate(300);
+    {
+        let conn = state.db.lock().unwrap();
+        db::set_meta(&conn, "mutes", &serde_json::to_string(&clean).map_err(err)?).map_err(err)?;
+        db::set_meta(&conn, "mutes_at", &chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).map_err(err)?;
+    }
+    changed(state.inner());
+    Ok(clean)
+}
+
 /// Which kind of device the page is running on, so it can lay itself out to match.
 #[tauri::command]
 fn app_info() -> serde_json::Value {
@@ -763,6 +785,25 @@ async fn import_opml(app: AppHandle, state: State<'_, Shared>) -> Result<usize, 
         tauri::async_runtime::spawn(refresh_feeds(app, Some(new_ids.clone())));
     }
     Ok(new_ids.len())
+}
+
+/// Save some text (your highlights as Markdown) to a file you choose. Mac only; iPhone uses the share sheet.
+#[tauri::command]
+async fn save_text(app: AppHandle, name: String, text: String) -> Result<bool, String> {
+    let name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).take(80).collect();
+    let Some(file) = app
+        .dialog()
+        .file()
+        .set_title("Save highlights")
+        .set_file_name(if name.trim().is_empty() { "Highlights.md".to_string() } else { format!("{}.md", name.trim()) })
+        .add_filter("Markdown", &["md", "txt"])
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    let path = file.into_path().map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+    std::fs::write(&path, text).map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -935,6 +976,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            set_mutes,
             get_state,
             mark,
             add_feed,
@@ -958,7 +1000,8 @@ pub fn run() {
             sync_now,
             refresh,
             import_opml,
-            export_opml
+            export_opml,
+            save_text
         ])
         .build(tauri::generate_context!())
         .expect("error while starting The Reading Room")

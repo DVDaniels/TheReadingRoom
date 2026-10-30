@@ -28,6 +28,15 @@ pub struct SyncFile {
     pub marks: Vec<MarkRec>,
     #[serde(default)]
     pub highlights: Vec<HighlightRec>,
+    /// Muted words (version 1.1 and later); the whole list travels together, newest wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutes: Option<MuteRec>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MuteRec {
+    pub words: Vec<String>,
+    pub at: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -206,6 +215,10 @@ pub fn export(conn: &Connection, device_id: &str, device_name: &str) -> rusqlite
             _ => {}
         }
     }
+    f.mutes = match (db::get_meta(conn, "mutes")?, db::get_meta(conn, "mutes_at")?) {
+        (Some(w), Some(at)) => Some(MuteRec { words: serde_json::from_str(&w).unwrap_or_default(), at }),
+        _ => None,
+    };
     Ok(f)
 }
 
@@ -389,6 +402,16 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
         }
     }
 
+    // Muted words: the newest list wins.
+    if let Some(m) = &remote.mutes {
+        let local_at = db::get_meta(&tx, "mutes_at")?;
+        if newer(&Some(m.at.clone()), &local_at) {
+            db::set_meta(&tx, "mutes", &serde_json::to_string(&m.words).unwrap_or_else(|_| "[]".into()))?;
+            db::set_meta(&tx, "mutes_at", &m.at)?;
+            out.changes += 1;
+        }
+    }
+
     db::set_applying(&tx, false)?;
     tx.commit()?;
     Ok(out)
@@ -471,6 +494,26 @@ pub fn device_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn muted_words_travel_newest_wins() {
+        let (mut a, _da) = fresh("mute-a");
+        let (mut b, _db) = fresh("mute-b");
+        db::set_meta(&a, "mutes", r#"["crypto"]"#).unwrap();
+        db::set_meta(&a, "mutes_at", "2026-10-30T08:00:00.000Z").unwrap();
+        let fa = export(&a, "a", "A").unwrap();
+        assert_eq!(fa.mutes.as_ref().unwrap().words, vec!["crypto".to_string()]);
+        merge(&mut b, &fa).unwrap();
+        assert_eq!(db::get_meta(&b, "mutes").unwrap().as_deref(), Some(r#"["crypto"]"#));
+        // an older list doesn't overwrite a newer one
+        db::set_meta(&b, "mutes", r#"["crypto","football"]"#).unwrap();
+        db::set_meta(&b, "mutes_at", "2026-10-30T09:00:00.000Z").unwrap();
+        merge(&mut b, &fa).unwrap();
+        assert!(db::get_meta(&b, "mutes").unwrap().unwrap().contains("football"));
+        let fb = export(&b, "b", "B").unwrap();
+        merge(&mut a, &fb).unwrap();
+        assert!(db::get_meta(&a, "mutes").unwrap().unwrap().contains("football"));
+    }
 
     fn fresh(name: &str) -> (Connection, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("rr-sync-{}-{name}", std::process::id()));
