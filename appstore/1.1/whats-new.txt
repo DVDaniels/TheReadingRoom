@@ -1,0 +1,11 @@
+Written by people. This update is about reading real writers, not whatever gets the most clicks.
+
+• People: a view of just the individuals you follow, writing on their own sites. On a big screen, each person gets a card with their newest post.
+• Discover: blogs recommended by the writers you already read, found through their blogrolls and the links in their posts. Follow with one click.
+• Today is now your morning paper: a short briefing, a clock, the local weather, and posts from people up front.
+• Listen: have any story read aloud, with your choice of voice.
+• Reading settings: text size, line width, and light, sepia or dark.
+• Muted words, and a button to hide a website from your news searches. Both sync across your devices.
+• The same story from several news searches is shown once, and Google News stories name their real source.
+• New to RSS? A short guide explains how it works and suggests a few good people to follow.
+• Pictures for stories that didn't come with one, and many smaller fixes.

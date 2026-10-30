@@ -1,0 +1,34 @@
+The Reading Room is a calm, private place to read the web, written by people.
+
+Follow the blogs, writers and news you choose. There's no algorithm deciding what you see and nothing pushed in because it gets clicks: every post from the sites you follow, newest first, in a clean reader made for reading.
+
+PEOPLE FIRST
+• People: just the individuals writing on their own sites, separate from the big publications
+• Today: a morning briefing with the time, the weather and what's new, with people's posts up front
+• Discover: blogs recommended by the writers you already read, through their blogrolls and links
+
+READ YOUR WAY
+• A clean reader that shows just the article, with its pictures, side by side with your list on iPad
+• Listen to any story read aloud, with your choice of voice
+• Text size, line width, and light, sepia or dark
+• Pull to refresh, swipe a story to save it, swipe from the edge to go back
+
+KEEP WHAT MATTERS
+• Read later for stories you want to come back to
+• Highlight passages and add notes; Annotated collects them all, ready to export
+• Recently read, so nothing gets lost
+
+FOLLOW ANYTHING
+• Paste a website and The Reading Room finds its RSS, Atom or JSON feed
+• Type a few words to follow that topic as a news search
+• Bring your subscriptions from another reader with OPML, folders included
+• Mute words you're tired of and hide websites from your news searches
+
+ON ALL YOUR DEVICES
+• The Reading Room is on the Mac too. Turn on sync and your feeds, folders, Read later, highlights and notes stay the same everywhere, through a folder in your own iCloud Drive
+
+NEW TO RSS?
+A short guide inside the app explains how feeds work and suggests a few good people to follow.
+
+PRIVATE BY DESIGN
+No account, no tracking, no ads. Everything stays on your devices, and in your own iCloud Drive if you turn on sync. The app talks directly to the sites you follow.

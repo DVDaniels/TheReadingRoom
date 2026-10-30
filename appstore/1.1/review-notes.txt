@@ -1,0 +1,11 @@
+The Reading Room is an RSS, Atom and JSON Feed reader. It needs no account or sign-in.
+
+To try it: open the app. It starts with a few sample feeds and refreshes them automatically. Click a story to read it in the built-in reader; select text to highlight it.
+
+New in 1.1, all optional and with no account:
+- People and Discover: Discover reads the public blogroll pages and feeds of the sites the user already follows, directly from those sites, to suggest other blogs.
+- Weather on Today: only if the user types a town. The town name and its coordinates are sent to Open-Meteo (open-meteo.com, free, no key) to get the forecast. Nothing else is sent.
+- Listen: reads an article aloud with the system's own speech voices, on the device.
+- A built-in guide for people new to RSS (sidebar: "New to RSS?", or Help > The Reading Room Guide on the Mac).
+
+Sync between devices is optional and uses a folder the user picks in their own iCloud Drive. No data goes to the developer.
