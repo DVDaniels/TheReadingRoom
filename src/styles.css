@@ -93,18 +93,56 @@ button { cursor: pointer; }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; text-align: left; }
 .linkish:hover { text-decoration: underline; }
 .sep, .sep2 { margin: 0 2px; }
-.brief { position: relative; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 18px 20px; margin: 4px 0 6px;
-  display: flex; flex-direction: column; gap: 10px; }
-.brief h2 { margin: 0; font-family: var(--font-read); font-size: 22px; font-weight: 600; letter-spacing: var(--tight-sm); }
-.brief p { margin: 0; color: var(--muted); font-size: 15px; }
-.brief-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.brief-row > span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); min-width: 78px; }
-.chip-link { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
-.chip-link b { font-family: var(--font-mono); font-weight: 500; color: var(--accent); margin-left: 2px; }
-.chip-link:hover { border-color: var(--accent); color: var(--accent); }
-.brief-oldest { font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brief-x { position: absolute; top: 8px; right: 8px; border: 0; background: none; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); font-size: 20px; }
-.brief-x:hover { background: var(--bg); color: var(--ink); }
+.brief-off { margin: -14px 0 0; font-size: 13px; }
+/* Today's briefing: the app icon's green and cream, with the day's lead story as the one big picture. */
+.brief { --b-bg: #127A62; --b-ink: #F5EFE0; --b-soft: rgba(245, 239, 224, .72); --b-line: rgba(245, 239, 224, .18);
+  position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 22px 22px 18px; margin: 4px 0 8px;
+  display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="sepia"]) .brief { --b-bg: #0F5A49; } }
+html[data-theme="dark"] .brief { --b-bg: #0F5A49; }
+html[data-theme="sepia"] .brief { --b-bg: #6E4A26; }
+.brief button { color: inherit; font: inherit; text-align: left; }
+.b-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 16px; padding-right: 28px; }
+.brief h2 { margin: 0; font-family: var(--font-read); font-size: 30px; font-weight: 600; letter-spacing: var(--tight); line-height: 1.1; }
+.b-date { margin: 0; font-size: 14px; color: var(--b-soft); }
+.b-line { margin: 0; font-size: 15px; line-height: 1.5; color: var(--b-soft); max-width: 62ch; }
+.b-link { border: 0; background: none; padding: 0; color: var(--b-ink) !important; font-weight: 600; text-decoration: underline; text-decoration-color: var(--b-line); text-underline-offset: 3px; cursor: pointer; }
+.b-link:hover { text-decoration-color: var(--b-ink); }
+.b-lead { position: relative; display: block; width: 100%; border: 0; padding: 0; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, .2); cursor: pointer; }
+.b-lead img { display: block; width: 100%; aspect-ratio: 16 / 8; object-fit: cover; }
+.b-lead-text { position: absolute; inset: auto 0 0 0; padding: 48px 18px 16px; display: flex; flex-direction: column; gap: 4px;
+  background: linear-gradient(to top, rgba(6, 30, 24, .88), rgba(6, 30, 24, 0)); }
+.b-lead.no-pic { background: rgba(0, 0, 0, .14); }
+.b-lead.no-pic .b-lead-text { position: static; background: none; padding: 16px 18px; }
+.b-head { font-family: var(--font-read); font-size: 22px; font-weight: 600; line-height: 1.22; letter-spacing: var(--tight-sm); color: #fff; text-wrap: balance; }
+.b-src { display: block; font-size: 12px; font-weight: 600; color: var(--b-soft); }
+.b-lead .b-src { color: rgba(255, 255, 255, .78); }
+.b-more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.b-item { display: flex; flex-direction: column; gap: 8px; border: 0; background: none; padding: 0; cursor: pointer; min-width: 0; }
+.b-item img, .b-tile { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; display: grid; place-items: center; }
+.b-tile { background: hsl(var(--h) 40% 30%); font-family: var(--font-read); font-size: 26px; font-weight: 600; color: rgba(255,255,255,.85); }
+.b-item .b-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.b-item:hover .b-title, .b-lead:hover .b-head { text-decoration: underline; text-underline-offset: 3px; }
+.b-later { display: flex; align-items: center; gap: 10px; min-width: 0; padding-top: 12px; border-top: 1px solid var(--b-line); font-size: 14px; }
+.b-later .b-link { flex: none; }
+.b-later .b-oldest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.b-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--b-soft); flex: none; }
+.brief-x { position: absolute; top: 12px; right: 12px; border: 0; background: rgba(0, 0, 0, .14) !important; width: 30px; height: 30px; border-radius: 50%;
+  color: var(--b-ink) !important; font-size: 18px !important; line-height: 1; text-align: center !important; }
+.brief-x:hover { background: rgba(0, 0, 0, .28) !important; }
+@media (max-width: 760px) {
+  .brief { padding: 18px 16px 14px; border-radius: 16px; }
+  .brief h2 { font-size: 26px; }
+  .b-lead img { aspect-ratio: 4 / 3; }
+  .b-head { font-size: 19px; }
+  .b-more { grid-template-columns: 1fr; gap: 10px; }
+  .b-item { flex-direction: row; align-items: center; gap: 12px; }
+  .b-item img, .b-tile { width: 72px; flex: none; aspect-ratio: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .b-lead img { transition: transform .4s ease; }
+  .b-lead:hover img { transform: scale(1.02); }
+}
 .also { font-size: 12px; color: var(--muted); margin-top: -2px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; background: var(--bg); }

@@ -243,29 +243,65 @@
   let ownerName = '';
   function greeting() {
     const h = new Date().getHours();
-    const part = h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     return ownerName ? `${part}, ${ownerName}` : part;
   }
   function briefHtml() {
-    if (S.view !== 'today' || S.q || store.get('briefHidden') === new Date().toDateString()) return '';
-    const today = S.items.filter(i => isToday(i) && !isMuted(i));
-    const unread = today.filter(i => !i.read);
+    if (S.view !== 'today' || S.q) return '';
+    if (store.get('briefHidden') === new Date().toDateString()) {
+      return `<div class="brief-off"><button class="linkish" id="briefShow" type="button">Show today’s briefing</button></div>`;
+    }
+    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i));
     const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i)).length : 0;
+    // The lead: the newest unread story with a picture (stories from news searches only if nothing else has one)
+    const withPic = unread.filter(i => isWeb(i.image));
+    const own = withPic.filter(i => !/^Google News/.test(feedById(i.feed_id)?.title || ''));
+    const lead = own[0] || withPic[0] || unread[0];
+    const seen = new Set([lead?.feed_id]);
+    const more = [];
+    for (const i of [...own, ...withPic, ...unread]) {
+      if (more.length >= 3) break;
+      if (i === lead || more.includes(i) || seen.has(i.feed_id)) continue;
+      seen.add(i.feed_id); more.push(i);
+    }
     const byFeed = new Map();
     for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
-    const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
-      .map(([id, n]) => { const f = feedById(id); return f ? `<button class="chip-link" data-view="${f.id}">${esc(f.title)} <b>${n}</b></button>` : ''; }).join('');
-    const saved = S.items.filter(i => i.saved).sort((a, b) => (a.marks_at || a.date).localeCompare(b.marks_at || b.date));
-    let lead;
-    if (!unread.length) lead = 'You’re all caught up for today.';
-    else if (fresh) lead = `${fresh} new ${fresh === 1 ? 'story' : 'stories'} since you were last here, ${unread.length} unread today.`;
-    else lead = `${unread.length} unread ${unread.length === 1 ? 'story' : 'stories'} from the last 24 hours.`;
+    const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => feedById(id)).filter(Boolean);
+    const saved = S.items.filter(i => i.saved);
+
+    const since = (() => {
+      if (!lastVisit) return '';
+      const h = (Date.now() - lastVisit) / 36e5, d = new Date(lastVisit);
+      if (h < 3) return 'since you last looked';
+      if (d.toDateString() === new Date().toDateString()) return 'since this morning';
+      if (h < 30) return d.getHours() >= 17 ? 'since last night' : 'since yesterday';
+      return `since ${d.toLocaleDateString(undefined, { weekday: 'long' })}`;
+    })();
+    let line;
+    if (!unread.length) line = 'Nothing new waiting. You’re caught up for today.';
+    else if (fresh && since) line = `${fresh} new ${fresh === 1 ? 'story' : 'stories'} ${since}, ${unread.length} unread today.`;
+    else line = `${unread.length} unread ${unread.length === 1 ? 'story' : 'stories'} from the last day.`;
+    if (busiest.length) line += ` Most from ${busiest.map(f => `<button class="b-link" data-view="${f.id}">${esc(f.title)}</button>`).join(' and ')}.`;
+
+    const date = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const src = it => esc(feedById(it.feed_id)?.title || '');
+    const leadHtml = lead ? `<button class="b-lead${isWeb(lead.image) ? '' : ' no-pic'}" data-open="${esc(lead.id)}">
+        ${isWeb(lead.image) ? `<img src="${esc(lead.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : ''}
+        <span class="b-lead-text"><span class="b-src">${src(lead)}</span><span class="b-head">${esc(lead.title)}</span></span>
+      </button>` : '';
+    const moreHtml = more.length ? `<div class="b-more">${more.map(i => `<button class="b-item" data-open="${esc(i.id)}">
+        ${isWeb(i.image) ? `<img src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : `<span class="b-tile" style="--h:${hueFor(feedById(i.feed_id)?.url || '')}">${esc((feedById(i.feed_id)?.title || '?')[0])}</span>`}
+        <span><span class="b-src">${src(i)}</span><span class="b-title">${esc(i.title)}</span></span></button>`).join('')}</div>` : '';
+    const laterHtml = saved.length ? `<div class="b-later">
+        <button class="b-link" data-view="saved">${saved.length} in Read later</button>
+        <span class="b-dot" aria-hidden="true"></span>
+        <button class="b-link b-oldest" data-open="${esc(saved[saved.length - 1].id)}">${esc(saved[saved.length - 1].title)}</button>
+      </div>` : '';
     return `<section class="brief" aria-label="Today’s briefing">
-      <button class="brief-x" id="briefClose" type="button" aria-label="Hide until tomorrow" title="Hide until tomorrow">×</button>
-      <h2>${esc(greeting())}</h2>
-      <p>${esc(lead)}</p>
-      ${busiest ? `<div class="brief-row"><span>Busiest</span>${busiest}</div>` : ''}
-      ${saved.length ? `<div class="brief-row"><span>Read later</span><button class="chip-link" data-view="saved">${saved.length} waiting</button><button class="linkish brief-oldest" data-open="${esc(saved[0].id)}">${esc(saved[0].title)}</button></div>` : ''}
+      <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button>
+      <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p></div>
+      <p class="b-line">${line}</p>
+      ${leadHtml}${moreHtml}${laterHtml}
     </section>`;
   }
 
@@ -780,6 +816,7 @@
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
     if (e.target.id === 'briefClose') { store.set('briefHidden', new Date().toDateString()); renderList(); return; }
+    if (e.target.id === 'briefShow') { store.set('briefHidden', ''); renderList(); return; }
     const op = e.target.closest('[data-open]');
     if (op) { openReader(op.dataset.open); return; }
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
