@@ -300,7 +300,13 @@
     if (store.get('briefHidden') === new Date().toDateString()) {
       return `<div class="brief-off"><button class="linkish" id="briefShow" type="button">Show today’s briefing</button></div>`;
     }
-    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i));
+    const seenStory = new Set();
+    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i)).filter(i => {
+      const k = storyKey(i);
+      if (k.length < 16) return true;
+      if (seenStory.has(k)) return false;
+      seenStory.add(k); return true;
+    });
     const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i)).length : 0;
     // The lead: the newest unread story with a picture (stories from news searches only if nothing else has one)
     const withPic = unread.filter(i => isWeb(i.image));
@@ -314,7 +320,9 @@
       if (i === lead || more.includes(i) || seen.has(i.feed_id)) continue;
       seen.add(i.feed_id); more.push(i);
     }
-    briefShown = new Set([lead, ...more].filter(Boolean).map(i => i.id));
+    // Wide screens only: six more headlines as text, and a line about your reading
+    const inBrief = isHome() ? unread.filter(i => i !== lead && !more.includes(i)).slice(0, 6) : [];
+    briefShown = new Set([lead, ...more, ...inBrief].filter(Boolean).map(i => i.id));
     const byFeed = new Map();
     for (const i of unread) byFeed.set(i.feed_id, (byFeed.get(i.feed_id) || 0) + 1);
     const busiest = [...byFeed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => feedById(id)).filter(Boolean);
@@ -348,11 +356,22 @@
         <span class="b-dot" aria-hidden="true"></span>
         <button class="b-link b-oldest" data-open="${esc(saved[saved.length - 1].id)}">${esc(saved[saved.length - 1].title)}</button>
       </div>` : '';
+    const inBriefHtml = inBrief.length ? `<div class="b-brief">${inBrief.map(i => `<button class="b-hl" data-open="${esc(i.id)}">
+        <span class="b-hl-src">${src(i)} <time>${esc(ago(i.date))}</time></span><span class="b-hl-t">${esc(i.title)}</span></button>`).join('')}</div>` : '';
+    let statsHtml = '';
+    if (isHome()) {
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      const weekAgo = Date.now() - 7 * DAY;
+      const readToday = S.items.filter(i => i.read_at && new Date(i.read_at) >= dayStart).length;
+      const readWeek = S.items.filter(i => i.read_at && new Date(i.read_at).getTime() >= weekAgo).length;
+      const hlWeek = S.highlights.filter(h => h.created_at && new Date(h.created_at).getTime() >= weekAgo).length;
+      statsHtml = `<p class="b-stats">You’ve read ${readToday} ${readToday === 1 ? 'story' : 'stories'} today and ${readWeek} this week${hlWeek ? `, with ${hlWeek} ${hlWeek === 1 ? 'highlight' : 'highlights'}` : ''}.</p>`;
+    }
     return `<section class="brief" aria-label="Today’s briefing">
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
-      ${leadHtml}${moreHtml}${laterHtml}
+      ${inBriefHtml}${leadHtml}${moreHtml}<div class="b-foot">${statsHtml}${laterHtml}</div>
     </section>`;
   }
 

@@ -122,6 +122,7 @@ button { cursor: pointer; }
 .b-tile { background: hsl(var(--h) 40% 30%); font-family: var(--font-read); font-size: 26px; font-weight: 600; color: rgba(255,255,255,.85); }
 .b-item .b-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.3; }
 .b-item:hover .b-title, .b-lead:hover .b-head { text-decoration: underline; text-underline-offset: 3px; }
+.b-foot:empty { display: none; }
 .b-later { display: flex; align-items: center; gap: 10px; min-width: 0; padding-top: 12px; border-top: 1px solid var(--b-line); font-size: 14px; }
 .b-later .b-link { flex: none; }
 .b-later .b-oldest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
@@ -513,14 +514,24 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 
   /* The briefing: greeting and notes on the left, the lead story big on the right, four more beneath */
   body.home .brief { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.55fr); column-gap: 28px; row-gap: 12px; padding: 24px 24px 20px;
-    grid-template-areas: "top lead" "line lead" "later lead" "more more"; grid-template-rows: auto auto 1fr auto; }
+    grid-template-areas: "top lead" "line lead" "inbrief lead" "foot lead" "more more"; grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
   body.home .b-top { grid-area: top; flex-direction: column; align-items: flex-start; gap: 4px; }
   body.home .brief h2 { font-size: 38px; }
   body.home .b-line { grid-area: line; font-size: 16px; }
   body.home .b-lead { grid-area: lead; align-self: start; }
   body.home .b-lead img { aspect-ratio: 2 / 1; max-height: 460px; }
   body.home .b-head { font-size: 28px; }
-  body.home .b-later { grid-area: later; align-self: end; flex-wrap: wrap; border-top: 0; padding-top: 0; }
+  body.home .b-foot { grid-area: foot; align-self: end; display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--b-line); }
+  body.home .b-later { flex-wrap: wrap; border-top: 0; padding-top: 0; }
+  .b-stats { margin: 0; font-size: 13px; color: var(--b-soft); }
+  /* In brief: more headlines as text */
+  body.home .b-brief { grid-area: inbrief; display: flex; flex-direction: column; min-height: 0; overflow: hidden; margin-top: 4px; }
+  .b-hl { display: flex; flex-direction: column; gap: 1px; border: 0; background: none; padding: 8px 0; cursor: pointer; border-top: 1px solid var(--b-line); }
+  .b-hl:first-child { border-top: 0; padding-top: 2px; }
+  .b-hl-src { font-size: 11.5px; font-weight: 600; color: var(--b-soft); }
+  .b-hl-src time { font-weight: 400; font-family: var(--font-mono); margin-left: 4px; }
+  .b-hl-t { font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--b-ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .b-hl:hover .b-hl-t { color: var(--accent); }
   body.home .b-later .b-oldest { white-space: normal; flex-basis: 100%; }
   body.home .b-later .b-dot { display: none; }
   body.home .b-more { grid-area: more; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding-top: 6px; }
