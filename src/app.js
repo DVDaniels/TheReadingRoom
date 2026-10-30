@@ -169,7 +169,9 @@
   }
 
   function renderHead() {
-    $('viewTitle').textContent = viewName();
+    $('viewTitle').innerHTML = S.view === 'today'
+      ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
+      : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     const a = S.lastRefresh ? ago(S.lastRefresh) : '';
     const when = S.refreshing ? 'Checking feeds…' : S.lastRefresh ? (a === 'now' ? 'Checked just now' : `Checked ${a} ago`) : 'Not checked yet';

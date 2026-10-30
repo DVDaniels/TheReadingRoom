@@ -96,7 +96,7 @@ button { cursor: pointer; }
 .brief-off { margin: -4px 0 0; font-size: 13px; }
 /* Today's briefing: the app icon's green and cream, with the day's lead story as the one big picture. */
 .brief { --b-bg: #127A62; --b-ink: #F5EFE0; --b-soft: rgba(245, 239, 224, .72); --b-line: rgba(245, 239, 224, .18);
-  position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 18px 18px 14px; margin: 2px 0 4px;
+  position: relative; background: var(--b-bg); color: var(--b-ink); border-radius: 18px; padding: 18px 18px 14px; margin: 2px 0 16px;
   display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="sepia"]) .brief { --b-bg: #0F5A49; } }
 html[data-theme="dark"] .brief { --b-bg: #0F5A49; }
@@ -180,6 +180,9 @@ main { min-width: 0; overflow-y: auto; padding: 0 max(16px, 4vw) 64px; }
 .col { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
 .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px 16px; }
 .head .tools { grid-column: 1 / -1; }
+#viewTitle .sun { display: inline-block; width: .82em; height: .82em; margin-right: .22em; vertical-align: -0.08em; color: #F5B700; }
+#viewTitle .sun svg { width: 100%; height: 100%; display: block; }
+html[data-theme="sepia"] #viewTitle .sun { color: #D99A00; }
 /* The top bar (title, date, search and buttons) stays put while the stories scroll under it. */
 .listtop { position: sticky; top: 0; z-index: 6; padding: var(--bar-top) 0 10px;
   background: var(--bg); border-bottom: 1px solid transparent; transition: border-color .15s;
