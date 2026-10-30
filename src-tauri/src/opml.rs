@@ -147,7 +147,7 @@ mod tests {
     fn round_trips_folders() {
         use crate::db::{Feed, Folder};
         let folders = vec![Folder { id: 1, name: "Crypto".into() }];
-        let f = |id, folder_id| Feed { id, url: format!("https://f{id}.com/rss"), title: format!("F{id}"), site: String::new(), status: "ok".into(), error: String::new(), last_fetched: None, folder_id };
+        let f = |id, folder_id| Feed { id, url: format!("https://f{id}.com/rss"), title: format!("F{id}"), site: String::new(), status: "ok".into(), error: String::new(), last_fetched: None, folder_id, recent: 0 };
         let xml = super::export(&folders, &[f(1, Some(1)), f(2, None)], "now");
         let back = super::parse(&xml).unwrap();
         assert_eq!(back[0].folder.as_deref(), Some("Crypto"));

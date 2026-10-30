@@ -32,6 +32,8 @@ pub struct Feed {
     pub error: String,
     pub last_fetched: Option<String>,
     pub folder_id: Option<i64>,
+    /// Stories from the last 30 days, to tell people from publications
+    pub recent: i64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -299,10 +301,12 @@ fn feed_from_row(r: &rusqlite::Row) -> rusqlite::Result<Feed> {
         error: r.get::<_, Option<String>>(5)?.unwrap_or_default(),
         last_fetched: r.get(6)?,
         folder_id: r.get(7)?,
+        recent: r.get(8)?,
     })
 }
 
-const FEED_COLS: &str = "id, url, title, site, status, error, last_fetched, folder_id";
+const FEED_COLS: &str = "id, url, title, site, status, error, last_fetched, folder_id,
+    (SELECT COUNT(*) FROM items i WHERE i.feed_id = feeds.id AND i.date >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')) AS recent";
 
 pub fn feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut st = conn.prepare(&format!("SELECT {FEED_COLS} FROM feeds ORDER BY title COLLATE NOCASE"))?;

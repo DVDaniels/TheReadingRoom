@@ -100,12 +100,14 @@
   const mutesApply = (view = S.view) => !['saved', 'annotated'].includes(view);
 
   // ---- people first: each feed is a person (someone's own site) or a publication.
-  // Automatic: a news search, or a feed posting seven or more times a week, is a publication. You can change any feed.
+  // Automatic: a person posts a few times a week at most (12 or fewer in 30 days) and isn't named like an outlet.
+  // News searches are always publications. You can change any feed, one at a time or all at once in People.
   const isNewsSearch = f => /news\.google\./.test(f?.url || '');
+  const OUTLET = /\b(news|times|post|daily|magazine|tribune|gazette|herald|wire|press|media|insider|report|telegraph|today|weekly|tv|radio)\b/i;
+  const PER_PERSON = 12;
   function buildKinds() {
-    const weekAgo = Date.now() - 7 * DAY, n = new Map();
-    for (const i of S.items) if (Date.parse(i.date) > weekAgo) n.set(i.feed_id, (n.get(i.feed_id) || 0) + 1);
-    S.kinds = new Map(S.feeds.map(f => [f.id, isNewsSearch(f) || (n.get(f.id) || 0) >= 7 ? 'pub' : 'person']));
+    S.kinds = new Map(S.feeds.map(f => [f.id,
+      isNewsSearch(f) || (f.recent || 0) > PER_PERSON || OUTLET.test(f.title || '') ? 'pub' : 'person']));
   }
   const autoKind = f => S.kinds.get(f.id) || 'person';
   const kindOf = f => (f && (S.prefs.kinds || {})[f.url]) || (f ? autoKind(f) : 'pub');
@@ -249,6 +251,11 @@
     } else if (S.view === 'annotated' && S.highlights.length) {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" data-export="all">${IOS ? 'Share all highlights' : 'Export all highlights'}</button>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'people') {
+      bar.hidden = false;
+      const n = S.feeds.filter(f => kindOf(f) === 'person').length;
+      bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'discover') {
       bar.hidden = false;
@@ -572,6 +579,44 @@
   }
 
 
+
+  // ------------------------------------------------------------ choosing who counts as a person
+  function peopleRows() {
+    const rate = f => isNewsSearch(f) ? 'news search' : `${f.recent || 0} ${f.recent === 1 ? 'post' : 'posts'} in 30 days`;
+    const sorted = [...S.feeds].sort((a, b) => (kindOf(a) === kindOf(b) ? (b.recent || 0) - (a.recent || 0) : kindOf(a) === 'person' ? -1 : 1));
+    return sorted.map(f => {
+      const k = kindOf(f), set = (S.prefs.kinds || {})[f.url];
+      return `<div class="prow"><span class="fav" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
+        <span class="pname">${esc(f.title)}<small>${rate(f)}${set ? '' : ' · automatic'}</small></span>
+        <span class="seg"><button data-kind="person" data-url="${esc(f.url)}" aria-pressed="${k === 'person'}">Person</button><button data-kind="pub" data-url="${esc(f.url)}" aria-pressed="${k === 'pub'}">Publication</button></span></div>`;
+    }).join('');
+  }
+  function openPeople() {
+    let el = $('peoplePanel');
+    if (!el) {
+      el = document.createElement('div'); el.className = 'overlay'; el.id = 'peoplePanel';
+      el.innerHTML = `<div class="sheet psheet" role="dialog" aria-modal="true" aria-labelledby="peopleTitle">
+        <h2 id="peopleTitle">Who counts as a person</h2>
+        <p>People are individuals writing on their own sites. They lead Today and fill the People list. Publications still show everywhere else. Your choices sync to your other devices.</p>
+        <div class="plist" id="peopleList"></div>
+        <div class="row sheet-foot"><button class="btn" type="button" id="peopleReset">Back to automatic</button><button class="btn primary" type="button" id="peopleDone">Done</button></div></div>`;
+      document.body.appendChild(el);
+      el.addEventListener('mousedown', e => { if (e.target === el) el.hidden = true; });
+      el.addEventListener('click', e => {
+        if (e.target.id === 'peopleDone') { el.hidden = true; render(); return; }
+        if (e.target.id === 'peopleReset') { S.prefs.kinds = {}; savePrefs(); $('peopleList').innerHTML = peopleRows(); return; }
+        const b = e.target.closest('[data-kind]'); if (!b) return;
+        const f = S.feeds.find(x => x.url === b.dataset.url); if (!f) return;
+        S.prefs.kinds = { ...(S.prefs.kinds || {}) };
+        if (b.dataset.kind === autoKind(f)) delete S.prefs.kinds[f.url]; else S.prefs.kinds[f.url] = b.dataset.kind;
+        savePrefs();
+        b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        const small = b.closest('.prow').querySelector('small');
+        small.textContent = small.textContent.replace(/ · automatic$/, '') + (S.prefs.kinds[f.url] ? '' : ' · automatic');
+      });
+    }
+    $('peopleList').innerHTML = peopleRows(); el.hidden = false;
+  }
 
   // ------------------------------------------------------------ Discover
   // Blogs the sites you follow recommend: in their blogrolls, or by linking to them again and again.
@@ -1137,6 +1182,7 @@
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
+    if (e.target.id === 'choosePeople') return openPeople();
     if (e.target.id === 'myFeedBtn') {
       const f = feedById(S.view); if (!f) return;
       const mineNow = myFeed()?.id === f.id;
