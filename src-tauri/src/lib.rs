@@ -1106,6 +1106,20 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
     menu.append(&go)?;
+    // The guide goes in the standard Help menu
+    let guide = MenuItem::with_id(app, "help", "The Reading Room Guide", true, None::<&str>)?;
+    let mut placed = false;
+    for it in menu.items()? {
+        if let Some(sm) = it.as_submenu() {
+            if sm.text().unwrap_or_default() == "Help" {
+                sm.append(&guide)?;
+                placed = true;
+            }
+        }
+    }
+    if !placed {
+        menu.append(&Submenu::with_items(app, "Help", true, &[&guide])?)?;
+    }
     Ok(menu)
 }
 
@@ -1162,6 +1176,7 @@ pub fn run() {
                     "import" => "menu-import",
                     "export" => "menu-export",
                     "sync" => "menu-sync",
+                    "help" => "menu-help",
                     _ => return,
                 };
                 let _ = app.emit(name, ());

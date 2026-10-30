@@ -80,13 +80,13 @@
     if (view === 'saved') return i.saved;
     if (view === 'recent') return !!i.read_at;
     if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
-    if (view === 'discover') return false;
+    if (view === 'discover' || view === 'guide') return false;
     if (view === 'people') return isPerson(i.feed_id);
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -194,7 +194,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -216,10 +216,11 @@
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
+      : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = S.view === 'discover' ? lead : `${lead}${muted} · ${when}`;
-    document.body.classList.toggle('discover-view', S.view === 'discover');
+    $('viewSub').textContent = ['discover', 'guide'].includes(S.view) ? lead : `${lead}${muted} · ${when}`;
+    document.body.classList.toggle('discover-view', ['discover', 'guide'].includes(S.view));
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -469,6 +470,7 @@
   function renderList() {
     syncHome();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
+    if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
@@ -532,6 +534,11 @@
   function hideBanner() { const b = $('banner'); b.hidden = true; b.dataset.kind = ''; }
 
   // ------------------------------------------------------------ data
+  function welcome() {
+    if (store.get('guideSeen') || S.view !== 'today' || $('banner').dataset.kind === 'welcome') return;
+    showBanner(`<span><b>New to RSS?</b> A five-minute guide shows how it works and where to find good writers.</span>
+      <span class="row"><button class="btn primary" data-view="guide">Read the guide</button><button class="icon" id="welcomeX" aria-label="No thanks" title="No thanks">×</button></span>`, false, 'welcome');
+  }
   async function load() {
     try {
       const s = await invoke('get_state');
@@ -540,9 +547,9 @@
       buildKinds(); buildMutes(); renderMutes();
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
-      render();
+      render(); welcome();
     } catch (e) { status(msg(e), true); }
   }
 
@@ -579,6 +586,7 @@
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
     if (isPhone()) setScreen('list');
     if (S.view === 'discover') openDiscover();
+    if (S.view === 'today') welcome();
   }
 
 
@@ -621,6 +629,106 @@
         ${caught.length ? `<p><span class="b-later-k">All caught up with</span> ${names(caught)}</p>` : ''}
         ${quiet.length ? `<p><span class="b-later-k">Quiet for a month</span> ${names(quiet)}</p>` : ''}</section>`;
     return out;
+  }
+
+
+  // ------------------------------------------------------------ The guide: RSS for people who've never used it
+  const STARTERS = [
+    ['blog.jim-nielsen.com', 'Jim Nielsen', 'Short, thoughtful posts about the web, design and making things.'],
+    ['kevquirk.com', 'Kev Quirk', 'A personal blog about the small web, technology and life.'],
+    ['manuelmoreale.com', 'Manuel Moreale', 'Home of People and Blogs, a weekly interview with someone who writes online.'],
+    ['tracydurnell.com', 'Tracy Durnell', 'Weeknotes and a “mind garden” of ideas, books and making.'],
+    ['rknight.me', 'Robb Knight', 'Small tools and notes for the independent web.'],
+    ['daviddaniels.com', 'David Daniels', 'Personal essays since 2001, from the person who made this app.'],
+  ];
+  const followsDomain = d => S.feeds.some(f => [f.url, f.site].some(u => (u || '').replace(/^https?:\/\/(www\.)?/, '').startsWith(d)));
+  function guideHtml() {
+    const starter = ([d, name, about]) => {
+      const on = followsDomain(d);
+      return `<div class="g-start"><span class="fav" style="background:hsl(${hueFor('https://' + d + '/')} 45% 42%)">${esc(name[0])}</span>
+        <div><strong>${esc(name)}</strong><span>${esc(about)}</span></div>
+        <button class="btn${on ? '' : ' primary'}" data-guide-follow="${esc(d)}"${on ? ' disabled' : ''}>${on ? 'Following' : 'Follow'}</button></div>`;
+    };
+    const keys = IOS ? '' : `<section class="g-sec"><h2>Handy keys on the Mac</h2>
+      <dl class="g-keys"><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next and previous story</dd><dt><kbd>o</kbd></dt><dd>Open the original page</dd>
+      <dt><kbd>s</kbd></dt><dd>Save for Read later</dd><dt><kbd>m</kbd></dt><dd>Mark read or unread</dd><dt><kbd>⌘R</kbd></dt><dd>Check for new posts</dd><dt><kbd>⌘N</kbd></dt><dd>Add a feed</dd></dl></section>`;
+    return `<article class="guide">
+      <p class="g-kicker">The Reading Room Guide</p>
+      <h2 class="g-hero">Read the web the way it was meant to be read: written by people, in the order they wrote it.</h2>
+      <p class="g-lede">If you’ve never used an RSS reader, this is a five-minute introduction. Nothing to sign up for, nothing to learn by heart.</p>
+
+      <section class="g-sec"><h2>What is RSS?</h2>
+        <p>Almost every blog, newsletter and news site quietly publishes a list of its newest posts. That list is called a <b>feed</b> (RSS is the name of the format). A reader like this one checks the feeds you choose and shows you what’s new.</p>
+        <div class="g-how" aria-hidden="true">
+          <div><span class="g-dot">1</span><strong>A writer posts</strong><span>on their own website</span></div>
+          <div class="g-arrow">→</div>
+          <div><span class="g-dot">2</span><strong>Their feed updates</strong><span>a simple list of new posts</span></div>
+          <div class="g-arrow">→</div>
+          <div><span class="g-dot">3</span><strong>It shows up here</strong><span>for you, in order, nothing in between</span></div>
+        </div>
+        <p>Think of it as subscribing to a magazine, except it’s free, it’s every writer you like, and they all arrive in one place.</p></section>
+
+      <section class="g-sec"><h2>Why read this way?</h2>
+        <ul class="g-list">
+          <li><b>You choose everything.</b> No algorithm decides what you see, and nothing is pushed in because it gets clicks.</li>
+          <li><b>Nothing is hidden.</b> Every post from the people you follow shows up, newest first.</li>
+          <li><b>No account, no ads, no tracking.</b> Your reading stays on your own devices.</li>
+          <li><b>It supports real people.</b> Independent writers depend on readers who come to them directly.</li>
+        </ul></section>
+
+      <section class="g-sec"><h2>Start with a few people</h2>
+        <p>Here are some friendly places to begin. Press Follow and their posts appear in Today and People. You can unfollow any time.</p>
+        <div class="g-starts">${STARTERS.map(starter).join('')}</div></section>
+
+      <section class="g-sec"><h2>Follow any site you like</h2>
+        <ol class="g-steps">
+          <li>Copy the address of a blog or site you enjoy, for example <code>kottke.org</code>.</li>
+          <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''} and paste it in.</li>
+          <li>The app finds the site’s feed for you. If it can’t, look on the site for a link called <b>RSS</b>, <b>Feed</b> or <b>Subscribe</b>, or the orange <span class="g-rss" aria-label="RSS icon"></span> icon, and paste that address instead.</li>
+        </ol>
+        <p>Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across.</p></section>
+
+      <section class="g-sec"><h2>Finding more good writers</h2>
+        <p>The best way to find people is through people. Many writers keep a <b>blogroll</b>, a list of other blogs they read. <button class="b-link" data-view="discover">Discover</button> reads the blogrolls of everyone you follow and suggests who they recommend.</p>
+        <p>A few directories of personal sites, too: <a href="https://ooh.directory/">ooh.directory</a>, <a href="https://blogroll.org/">blogroll.org</a>, <a href="https://personalsit.es/">personalsit.es</a> and <a href="https://indieblog.page/">indieblog.page</a>.</p></section>
+
+      <section class="g-sec"><h2>Getting around</h2>
+        <dl class="g-defs">
+          <dt>Today</dt><dd>A morning paper: a short briefing, then everything new from the last day.</dd>
+          <dt>People</dt><dd>Only individuals writing on their own sites. Use “Choose who’s here” to say who counts.</dd>
+          <dt>Read later</dt><dd>Press the bookmark on any story to keep it for later. It syncs to your other devices.</dd>
+          <dt>Annotated</dt><dd>Select a passage in a story to highlight it or add a note. They’re all collected here.</dd>
+          <dt>Discover</dt><dd>Blogs recommended by the people you already read.</dd>
+          <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
+          <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
+          <dt>Aa</dt><dd>Change the text size, width and colors of the reading view.</dd>
+        </dl></section>
+
+      <section class="g-sec"><h2>Keeping it calm</h2>
+        <ul class="g-list">
+          <li><b>Unread isn’t a to-do list.</b> Skim what interests you and press <b>Mark all read</b> without guilt.</li>
+          <li><b>Mute words</b> you’re tired of seeing, from <button class="b-link" id="guideMutes">Muted words</button> in the sidebar.</li>
+          <li><b>Hide a website</b> from your news searches with the ⊘ button on its stories.</li>
+          <li><b>Read on all your devices.</b> Turn on sync at the bottom of the sidebar and your feeds, Read later and highlights follow you through iCloud Drive.</li>
+        </ul></section>
+      ${keys}
+      <section class="g-sec"><h2>A few words you’ll see</h2>
+        <dl class="g-defs">
+          <dt>Feed</dt><dd>A site’s list of new posts. Also called an RSS feed, Atom feed or JSON feed. This app reads them all.</dd>
+          <dt>Follow, subscribe</dt><dd>The same thing: adding a feed to your reader.</dd>
+          <dt>OPML</dt><dd>A file with a list of feeds, for moving between readers or sharing your list.</dd>
+          <dt>Blogroll</dt><dd>A list of blogs a writer recommends.</dd>
+        </dl></section>
+
+      <p class="g-end">That’s all there is to it. Follow a handful of people, check in when you like, and enjoy the web written by people.</p>
+    </article>`;
+  }
+  async function guideFollow(d, btn) {
+    btn.disabled = true; btn.textContent = 'Adding…';
+    try {
+      const r = await invoke('add_feed', { url: 'https://' + d + '/', title: null, folderId: null });
+      status(`Following ${r.title}.`); await load();
+    } catch (e) { btn.disabled = false; btn.textContent = 'Follow'; status(msg(e), true); }
   }
 
   // ------------------------------------------------------------ choosing who counts as a person
@@ -1216,6 +1324,10 @@
 
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
+    const gf = e.target.closest('[data-guide-follow]');
+    if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
+    if (e.target.id === 'guideMutes') { openMutes(); return; }
+    if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
     const dz = e.target.closest('[data-disc]');
     if (dz) { discoverAction(dz.dataset.disc, dz.dataset.domain); return; }
     if (e.target.id === 'briefClose') { store.set('briefHidden', new Date().toDateString()); renderList(); return; }
@@ -1598,6 +1710,7 @@
   listen('menu-import', importOpml);
   listen('menu-export', exportOpml);
   listen('menu-back', () => closeReader());
+  listen('menu-help', () => { closeReader(true); selectView('guide'); });
   listen('menu-forward', () => {});
   listen('menu-browser', () => { const it = item(S.readerId || S.selId); if (it && isWeb(it.link)) invoke('open_external', { url: it.link }); });
   setInterval(renderHead, 60 * 1000); // keep "Checked 5m ago" current
