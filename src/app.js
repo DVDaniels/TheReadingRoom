@@ -540,7 +540,13 @@
     img.replaceWith(t);
   }, true);
 
-  function status(text, err) { const el = $('status'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
+  // Notes fade on their own after a few seconds; problems stay until the next note.
+  let statusTimer = 0;
+  function status(text, err) {
+    const el = $('status'); el.textContent = text || ''; el.classList.toggle('err', !!err);
+    clearTimeout(statusTimer);
+    if (text && !err) statusTimer = setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 6000);
+  }
   function showBanner(html, err, kind = 'feed-error') { const b = $('banner'); b.hidden = false; b.className = 'banner' + (err ? ' err' : ''); b.dataset.kind = kind; b.innerHTML = html; }
   function hideBanner() { const b = $('banner'); b.hidden = true; b.dataset.kind = ''; }
 
@@ -1574,7 +1580,11 @@
 
   // ---- text size, width and appearance (remembered on this device)
   const TYPE_DEFAULT = { size: 18, width: 'medium', theme: 'auto' };
-  let typePrefs = (() => { try { return { ...TYPE_DEFAULT, ...JSON.parse(localStorage.getItem('readerPrefs') || '{}') }; } catch { return { ...TYPE_DEFAULT }; } })();
+  let typePrefs = (() => {
+    // Big screens start with bigger article text
+    const base = { ...TYPE_DEFAULT, font: 'serif', ui: 1, ...(window.innerWidth >= 1700 ? { size: Math.max(TYPE_DEFAULT.size, 20) } : {}) };
+    try { return { ...base, ...JSON.parse(localStorage.getItem('readerPrefs') || '{}') }; } catch { return base; }
+  })();
   const WIDTHS = { narrow: ['58ch', '680px'], medium: ['68ch', '760px'], wide: ['82ch', '920px'] };
   function applyType() {
     const root = document.documentElement;
@@ -1582,6 +1592,10 @@
     root.style.setProperty('--measure', WIDTHS[typePrefs.width][0]);
     root.style.setProperty('--reader-max', WIDTHS[typePrefs.width][1]);
     if (typePrefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = typePrefs.theme;
+    root.dataset.readFont = typePrefs.font;
+    root.style.zoom = typePrefs.ui === 1 ? '' : String(typePrefs.ui); // text size for the whole app
+    document.querySelectorAll('#fontSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.font === typePrefs.font)));
+    document.querySelectorAll('#uiSeg button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.ui) === typePrefs.ui)));
     $('sizeNow').textContent = typePrefs.size;
     document.querySelectorAll('#widthSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.width === typePrefs.width)));
     document.querySelectorAll('#themeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === typePrefs.theme)));
@@ -1600,6 +1614,8 @@
     if (b.dataset.size) typePrefs.size = Math.max(14, Math.min(28, typePrefs.size + Number(b.dataset.size)));
     if (b.dataset.width) typePrefs.width = b.dataset.width;
     if (b.dataset.theme) typePrefs.theme = b.dataset.theme;
+    if (b.dataset.font) typePrefs.font = b.dataset.font;
+    if (b.dataset.ui) typePrefs.ui = Number(b.dataset.ui);
     applyType();
   });
 
@@ -2056,6 +2072,12 @@
   listen('menu-export', exportOpml);
   listen('menu-back', () => closeReader());
   listen('menu-help', () => { closeReader(true); selectView('guide'); });
+  // View › Bigger / Smaller / Actual Size text (⌘+ ⌘− ⌘0)
+  const UI_STEPS = [0.92, 1, 1.1, 1.2, 1.3];
+  const uiStep = d => { const i = UI_STEPS.indexOf(typePrefs.ui); typePrefs.ui = d === 0 ? 1 : UI_STEPS[Math.max(0, Math.min(UI_STEPS.length - 1, (i < 0 ? 1 : i) + d))]; applyType(); };
+  listen('menu-text-bigger', () => uiStep(1));
+  listen('menu-text-smaller', () => uiStep(-1));
+  listen('menu-text-reset', () => uiStep(0));
   listen('menu-forward', () => {});
   listen('menu-browser', () => { const it = item(S.readerId || S.selId); if (it && isWeb(it.link)) invoke('open_external', { url: it.link }); });
   setInterval(renderHead, 60 * 1000); // keep "Checked 5m ago" current

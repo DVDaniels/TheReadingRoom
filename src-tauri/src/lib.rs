@@ -1148,6 +1148,10 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &MenuItem::with_id(app, "forward", "Forward", true, Some("CmdOrCtrl+]"))?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "browser", "Open Page in Browser", true, Some("CmdOrCtrl+Shift+O"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "text-bigger", "Bigger Text", true, Some("CmdOrCtrl+="))?,
+            &MenuItem::with_id(app, "text-smaller", "Smaller Text", true, Some("CmdOrCtrl+-"))?,
+            &MenuItem::with_id(app, "text-reset", "Actual Size Text", true, Some("CmdOrCtrl+0"))?,
         ],
     )?;
     menu.append(&go)?;
@@ -1222,6 +1226,9 @@ pub fn run() {
                     "export" => "menu-export",
                     "sync" => "menu-sync",
                     "help" => "menu-help",
+                    "text-bigger" => "menu-text-bigger",
+                    "text-smaller" => "menu-text-smaller",
+                    "text-reset" => "menu-text-reset",
                     _ => return,
                 };
                 let _ = app.emit(name, ());

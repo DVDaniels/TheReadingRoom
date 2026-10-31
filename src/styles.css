@@ -5,6 +5,9 @@
 @font-face { font-family: "Geist"; src: url("fonts/geist-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 @font-face { font-family: "Geist"; src: url("fonts/geist-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-display: swap; }
 @font-face { font-family: "Geist"; src: url("fonts/geist-latin-700-normal.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+/* Newsreader (Production Type, OFL): a serif made for reading news on screens, for headlines and articles */
+@font-face { font-family: "Newsreader"; src: url("fonts/newsreader-latin-opsz-normal.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Newsreader"; src: url("fonts/newsreader-latin-opsz-italic.woff2") format("woff2"); font-weight: 200 800; font-style: italic; font-display: swap; }
 @font-face { font-family: "Geist Mono"; src: url("fonts/geist-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "Geist Mono"; src: url("fonts/geist-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 
@@ -20,11 +23,12 @@
   --accent-soft: #E3F2EC;
   --saved: #B7791F;
   --danger: #B42318;
-  --font-read: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-read: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans-read: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-ui: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --tight: -0.03em;     /* headings */
-  --tight-sm: -0.015em; /* story titles, article headings */
+  --tight: -0.012em;    /* headings (Newsreader needs less tightening than a sans) */
+  --tight-sm: -0.004em; /* story titles, article headings */
   --titlebar: 38px;
   --top: 52px;        /* space above the content (clears the window buttons) */
   --bar-top: var(--top); /* space inside the pinned bars above their contents */
@@ -33,7 +37,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #94A0B1; --line: #29313C;
+    --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #A6B1C0; --line: #29313C;
     --accent: #3CC39E; --accent-soft: #17302A; --saved: #E0A84A; --danger: #F97066;
     --mark: #6B5418; --mark-ink: #FFF3D1;
     --brief-bg: #142320; --brief-edge: rgba(60, 195, 158, .16);
@@ -474,7 +478,7 @@ html[data-theme="sepia"] {
   --accent: #8A5A2B; --accent-soft: #EADCC0; --saved: #A0621E; --danger: #A63A2B; --mark: #F2D27A; --mark-ink: #3A2E22; color-scheme: light;
 }
 html[data-theme="dark"] {
-  --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #94A0B1; --line: #29313C;
+  --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #A6B1C0; --line: #29313C;
   --accent: #3CC39E; --accent-soft: #17302A; --saved: #E0A84A; --danger: #F97066; --mark: #6B5418; --mark-ink: #FFF3D1; color-scheme: dark;
   --brief-bg: #142320; --brief-edge: rgba(60, 195, 158, .16);
 }
@@ -779,3 +783,40 @@ html:not(.ios) .ios-only { display: none !important; }
 .n-acts .linkish:hover { color: var(--accent); }
 .n-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .n-form .row { justify-content: flex-end; }
+
+/* ---------------------------------------------------------------- type: Newsreader headlines, a bigger scale on big screens */
+* { font-optical-sizing: auto; }
+.b-hl-t, .b-title, .b-ptitle, .p-title, .t-link, .sec-h, .sug h3 { font-family: var(--font-read); }
+.title, .b-head, .b-hl-t, .b-title, .h-card .title, .b-ptitle { font-weight: 560; }
+html[data-read-font="sans"] .prose, html[data-read-font="sans"] .r-title { font-family: var(--font-sans-read); letter-spacing: -0.012em; }
+/* Source names in small spaced capitals, so the eye skips to the headline */
+.b-hl-src, .meta .src, .b-src, .b-pwho { text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+.meta .via { text-transform: none; letter-spacing: 0; }
+body.home .b-hl { padding: 11px 0; gap: 3px; }
+@media (min-width: 1700px) {
+  body { font-size: 16px; }
+  .nav button { font-size: 15px; padding: 8px 10px; }
+  .meta { font-size: 13px; } .meta time { font-size: 12.5px; }
+  .meta .src, .b-hl-src, .b-src, .b-pwho { font-size: 11.5px; }
+  .title { font-size: 22px; line-height: 1.25; }
+  .summary { font-size: 16px; line-height: 1.55; }
+  .head h1, body.home .head h1 { font-size: 48px; }
+  .head .sub { font-size: 14.5px; }
+  .tools .btn, .seg button, .search, .feedbar .btn { font-size: 15px; }
+  body.home .brief h2 { font-size: 50px; }
+  body.home .b-line { font-size: 18px; }
+  body.home .b-hl-t { font-size: 19px; line-height: 1.28; }
+  body.home .b-head { font-size: 36px; }
+  .b-item .b-title { font-size: 17px; }
+  .b-ptitle { font-size: 20px; }
+  .b-psum { font-size: 14.5px; }
+  body.home .b-stats, body.home .b-later { font-size: 14.5px; }
+  .clock .time { font-size: 30px; } .clock .date, .wx { font-size: 14px; }
+  .h-head h2 { font-size: 28px; }
+  body.home .h-card .title { font-size: 19px; }
+  .r-title { font-size: 52px; }
+  .p-title { font-size: 22px !important; }
+  .guide { font-size: 17px; }
+}
+/* One or two people's cards share the row instead of leaving it half empty */
+.b-pgrid, body.home .b-pgrid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
