@@ -45,6 +45,10 @@ pub fn plan(input: &str) -> Plan {
             "youtube.com" => {
                 if segs.first() == Some(&"channel") && segs.len() >= 2 {
                     tries.push(format!("https://www.youtube.com/feeds/videos.xml?channel_id={}", segs[1]));
+                    // The same videos as the channel's uploads playlist (UC… → UU…), a second way in
+                    if let Some(rest) = segs[1].strip_prefix("UC") {
+                        tries.push(format!("https://www.youtube.com/feeds/videos.xml?playlist_id=UU{rest}"));
+                    }
                 } else if let Some(list) = u.query_pairs().find(|(k, _)| k == "list").map(|(_, v)| v.to_string()) {
                     tries.push(format!("https://www.youtube.com/feeds/videos.xml?playlist_id={list}"));
                 }
@@ -98,7 +102,7 @@ mod tests {
         assert_eq!(plan("https://mastodon.social/@Gargron").tries[0], "https://mastodon.social/@Gargron.rss");
         assert_eq!(plan("@jay.bsky.team").tries, vec!["https://bsky.app/profile/jay.bsky.team/rss"]);
         assert_eq!(plan("https://bsky.app/profile/kevquirk.com").tries[0], "https://bsky.app/profile/kevquirk.com/rss");
-        assert_eq!(plan("youtube.com/channel/UC123").tries[0], "https://www.youtube.com/feeds/videos.xml?channel_id=UC123");
+        assert_eq!(plan("youtube.com/channel/UC123").tries[..2], ["https://www.youtube.com/feeds/videos.xml?channel_id=UC123", "https://www.youtube.com/feeds/videos.xml?playlist_id=UU123"]);
         assert_eq!(plan("https://www.youtube.com/@veritasium").tries, vec!["https://www.youtube.com/@veritasium"]);
         assert_eq!(plan("https://podcasts.apple.com/us/podcast/the-talk-show/id528458508").podcast_id.as_deref(), Some("528458508"));
         assert_eq!(plan("https://medium.com/@someone").tries[0], "https://medium.com/feed/@someone");

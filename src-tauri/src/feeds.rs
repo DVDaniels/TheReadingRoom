@@ -143,6 +143,20 @@ pub fn discover(html: &str, base: &str) -> Option<String> {
     fallback
 }
 
+/// Like `fetch`, but patient with YouTube, whose feeds answer "not found" on and off for channels that
+/// exist (a known YouTube problem since late 2025): wait a moment and ask once more.
+pub async fn fetch_patient(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
+    match fetch(client, url).await {
+        Err(e) if url.contains("youtube.com/") && e.contains("404") => {
+            tokio::time::sleep(Duration::from_millis(2500)).await;
+            fetch(client, url).await.map_err(|_| YOUTUBE_HICCUP.to_string())
+        }
+        r => r,
+    }
+}
+
+pub const YOUTUBE_HICCUP: &str = "YouTube's feed didn't answer just now. YouTube has been doing this on and off for every RSS reader; try again in a little while.";
+
 /// Fetch a feed, following a website address to the feed it advertises.
 pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
     let (mut body, mut final_url, ctype) = get(client, url).await?;

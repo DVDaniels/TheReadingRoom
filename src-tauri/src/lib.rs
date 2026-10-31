@@ -103,7 +103,7 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
         .map(|feed| {
             let client = st.client.clone();
             async move {
-                let r = feeds::fetch(&client, &feed.url).await;
+                let r = feeds::fetch_patient(&client, &feed.url).await;
                 (feed, r)
             }
         })
@@ -250,7 +250,7 @@ async fn add_feed(
     let mut first_err = None;
     let mut found = None;
     for t in &tries {
-        match feeds::fetch(&state.client, t).await {
+        match feeds::fetch_patient(&state.client, t).await {
             Ok(f) => {
                 found = Some(f);
                 break;
@@ -260,7 +260,10 @@ async fn add_feed(
             }
         }
     }
-    let fetched = found.ok_or_else(|| first_err.unwrap_or_else(|| "Couldn't read that feed.".into()))?;
+    let youtube = tries.iter().any(|t| t.contains("youtube.com/"));
+    let fetched = found.ok_or_else(|| {
+        if youtube { feeds::YOUTUBE_HICCUP.to_string() } else { first_err.unwrap_or_else(|| "Couldn't read that feed.".into()) }
+    })?;
     let name = title
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
