@@ -1,6 +1,6 @@
 # The Reading Room — Privacy Policy
 
-*Last updated: October 30, 2026*
+*Last updated: October 31, 2026*
 
 The Reading Room is a feed reader for Mac, iPhone and iPad made by David Daniels. This policy explains what the app does with information. The short version: the app does not collect, sell or share any personal information. Everything you put in it stays on your devices, and in your own iCloud Drive if you turn on sync.
 
@@ -29,7 +29,6 @@ To do its job, the app connects directly to:
 - **pages you choose to open** in the app's web window
 - **the websites of blogs you might like**, when you use Discover: the app reads the public blogroll pages and feeds of the sites you follow, and the feeds of the blogs they recommend
 - **Open-Meteo** (open-meteo.com), only if you add the weather to Today: the town you type, and then its map coordinates, are sent to get the forecast. Your exact location is never used
-
 - **Apple's public podcast directory**, only when you paste an Apple Podcasts link, to find that show's feed
 - **YouTube**, only when you play a video, through YouTube's privacy-enhanced player (youtube-nocookie.com). YouTube's own privacy policy applies to playback
 - **the writer's page and feed**, when you press Write back, to find the ways they invite replies. Nothing is sent to the writer unless you choose to write to them in your own mail app or on their site
