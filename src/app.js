@@ -6,6 +6,12 @@
   const $ = id => document.getElementById(id);
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  // Mastodon and Bluesky (see that section)
+  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [] };
+  const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
+  const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
+  const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
+  const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set() };
   const ICONS = {
@@ -21,6 +27,7 @@
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
+    talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
@@ -80,13 +87,13 @@
     if (view === 'saved') return i.saved;
     if (view === 'recent') return !!i.read_at;
     if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
-    if (view === 'discover' || view === 'guide') return false;
+    if (view === 'discover' || view === 'guide' || view === 'talk') return false;
     if (view === 'people') return isPerson(i.feed_id);
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -173,7 +180,8 @@
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
       navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
-      navButton('discover', 'Discover', D.report?.suggestions.length || '', { icon: ICONS.discover });
+      navButton('discover', 'Discover', D.report?.suggestions.length || '', { icon: ICONS.discover }) +
+      (anySocial() ? navButton('talk', 'Conversations', newReplies() || '', { icon: ICONS.talk }) : '');
 
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
@@ -194,7 +202,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -217,10 +225,11 @@
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
+      : S.view === 'talk' ? `Your shared stories and the replies, on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = ['discover', 'guide'].includes(S.view) ? lead : `${lead}${muted} · ${when}`;
-    document.body.classList.toggle('discover-view', ['discover', 'guide'].includes(S.view));
+    $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : `${lead}${muted} · ${when}`;
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk'].includes(S.view));
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -471,6 +480,7 @@
     syncHome();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
+    if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
@@ -520,6 +530,7 @@
   // A picture that fails to load turns into that tile.
   document.addEventListener('error', e => {
     const img = e.target;
+    if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
     if (!img.classList?.contains('thumb') || img.tagName !== 'IMG') return;
     if (img.classList.contains('p-img')) { img.closest('.p-card')?.querySelector('.p-sum')?.classList.add('long'); img.remove(); return; }
     const [h, letter] = (img.dataset.tile || '210|•').split('|');
@@ -547,7 +558,7 @@
       buildKinds(); buildMutes(); renderMutes();
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render(); welcome();
     } catch (e) { status(msg(e), true); }
@@ -587,6 +598,7 @@
     if (isPhone()) setScreen('list');
     if (S.view === 'discover') openDiscover();
     if (S.view === 'today') welcome();
+    if (S.view === 'talk') { loadConversations(); setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 4000); }
   }
 
 
@@ -914,6 +926,225 @@
     const text = it.summary ? `<p class="${kind ? 'r-post' : ''}">${esc(it.summary)}</p>` : '';
     return `${text}${pic}<p class="note">${kind ? `A post on ${kind}.` : 'A video on YouTube.'} <button class="b-link" id="rOnSite">${kind ? `Open it on ${kind}` : 'Watch on YouTube'}</button></p>`;
   }
+
+
+  // ------------------------------------------------------------ Mastodon and Bluesky: share with a note, and talk
+  // Accounts belong to the person: they sign in to their own server, and the sign-in stays in this device's Keychain.
+  async function loadAccounts() { try { SOC.accounts = await invoke('social_accounts'); } catch { SOC.accounts = {}; } }
+  async function loadConversations(quiet) {
+    if (!anySocial() || SOC.loading) return;
+    SOC.loading = true; if (!quiet && S.view === 'talk') renderList();
+    try { const c = await invoke('social_conversations'); SOC.conv = c; SOC.err = c.errors || []; } catch (e) { SOC.err = [msg(e)]; }
+    SOC.loading = false;
+    renderRail(); if (S.view === 'talk') { renderHead(); renderList(); }
+  }
+
+  // ---- connecting accounts
+  function accountsHtml() {
+    const row = (net, a, body) => `<section class="acct"><h3>${ICON_NET[net]}${NET[net]}</h3>${a
+      ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
+      : body}</section>`;
+    return `<h2 id="socialTitle">Mastodon &amp; Bluesky</h2>
+      <p>Connect your own accounts to post stories with your thoughts, and to see and answer the replies in Conversations. You sign in to your own server; the app keeps the sign-in in this device’s Keychain and sends it nowhere else. Connect on each of your devices.</p>
+      ${row('bluesky', SOC.accounts.bluesky, `<p>Use an <b>App Password</b>, not your real password. Make one in Bluesky under Settings › Privacy and security › <button class="b-link" data-open-url="https://bsky.app/settings/app-passwords">App passwords</button>. You can revoke it anytime.</p>
+        <form class="acct-form" id="bskyForm"><input id="bskyHandle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="off" spellcheck="false">
+        <input id="bskyPass" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`)}
+      ${row('mastodon', SOC.accounts.mastodon, `<p>Type your server, then approve The Reading Room in the page that opens. Your server shows a code: paste it here.</p>
+        <form class="acct-form" id="mastoForm"><input id="mastoServer" placeholder="mastodon.social" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Continue</button></form>
+        <form class="acct-form" id="mastoCodeForm" hidden><input id="mastoCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`)}
+      <p class="acct-note" id="acctNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn primary" type="button" id="socialDone">Done</button></div>`;
+  }
+  const ICON_NET = {
+    bluesky: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>',
+    mastodon: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M21.3 13.8c-.3 1.5-2.6 3.1-5.3 3.4-1.4.2-2.8.3-4.3.3-2.4-.1-4.3-.6-4.3-.6v.7c.3 2.4 2.4 2.5 4.3 2.6 2 .1 3.7-.5 3.7-.5l.1 1.8s-1.4.7-3.8.9c-1.4.1-3.1-.1-5.1-.6-4.3-1.1-5-5.5-5.2-10V7.6C1.4 3 4.4 1.7 4.4 1.7 5.9 1 8.6.7 11.3.7h.1c2.7 0 5.4.3 6.9 1 0 0 3 1.3 3 5.9 0 0 .1 3.4-.4 5.7zM18.2 8.4c0-1.2-.3-2.1-.9-2.8-.6-.7-1.4-1-2.4-1-1.2 0-2 .4-2.6 1.3l-.6 1-.6-1c-.6-.9-1.4-1.3-2.6-1.3-1 0-1.8.4-2.4 1-.6.7-.9 1.6-.9 2.8v5.6h2.2V8.6c0-1.1.5-1.7 1.4-1.7 1 0 1.6.7 1.6 2v3h2.2v-3c0-1.3.5-2 1.6-2 .9 0 1.4.6 1.4 1.7V14h2.2z"/></svg>',
+  };
+  function sheet(id, html, label) {
+    let el = $(id);
+    if (!el) {
+      el = document.createElement('div'); el.className = 'overlay'; el.id = id;
+      el.addEventListener('mousedown', e => { if (e.target === el) el.hidden = true; });
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}</div>`;
+    el.hidden = false; return el;
+  }
+  async function openAccounts() {
+    await loadAccounts();
+    const el = sheet('socialPanel', accountsHtml(), 'Mastodon and Bluesky');
+    const note = (t, err) => { $('acctNote').textContent = t; $('acctNote').classList.toggle('err', !!err); };
+    el.onclick = async e => {
+      if (e.target.id === 'socialDone') { el.hidden = true; return; }
+      const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
+      const d = e.target.closest('[data-disconnect]');
+      if (d) { SOC.accounts = await invoke('social_disconnect', { network: d.dataset.disconnect }); SOC.conv = null; openAccounts(); renderRail(); }
+    };
+    $('bskyForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Connecting to Bluesky…');
+      try { SOC.accounts = await invoke('bsky_connect', { handle: $('bskyHandle').value, password: $('bskyPass').value }); openAccounts(); renderRail(); loadConversations(true); }
+      catch (err) { note(msg(err), true); }
+    });
+    $('mastoForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Asking your server…');
+      try {
+        const url = await invoke('masto_begin', { server: $('mastoServer').value });
+        await invoke('open_external', { url });
+        $('mastoForm').hidden = true; $('mastoCodeForm').hidden = false; $('mastoCode').focus();
+        note('Approve The Reading Room on the page that opened, then paste the code it shows.');
+      } catch (err) { note(msg(err), true); }
+    });
+    $('mastoCodeForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Connecting to Mastodon…');
+      try { SOC.accounts = await invoke('masto_finish', { code: $('mastoCode').value }); openAccounts(); renderRail(); loadConversations(true); }
+      catch (err) { note(msg(err), true); }
+    });
+  }
+  $('socialBtn').onclick = openAccounts;
+
+  // ---- posting a story with your note
+  const LIMIT = { bluesky: 300, mastodon: 500 };
+  function openCompose(it, prefer) {
+    if (!anySocial()) { openAccounts(); return; }
+    const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const chosen = new Set(prefer && SOC.accounts[prefer] ? [prefer] : nets.slice(0, 1));
+    const f = feedById(it.feed_id);
+    const quote = S.highlights.find(h => h.item_id === it.id)?.text || '';
+    const el = sheet('composePanel', `<h2>Share with your thoughts</h2>
+      <div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>
+      <textarea id="cText" rows="5" placeholder="What did you think? Mention the writer to let them know."></textarea>
+      ${quote ? `<button class="b-link c-quote" id="cQuote" type="button">Add your highlight as a quote</button>` : ''}
+      <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}"${chosen.has(n) ? ' checked' : ''}>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}
+        <span class="c-count" id="cCount"></span></div>
+      <p class="acct-note" id="cNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="cCancel">Cancel</button><button class="btn primary" type="button" id="cPost">Post</button></div>`, 'Share with your thoughts');
+    const text = $('cText'), boxes = () => [...el.querySelectorAll('.c-net input:checked')].map(x => x.value);
+    const count = () => {
+      const n = [...text.value].length, picks = boxes();
+      const room = Math.min(...picks.map(p => LIMIT[p] - (p === 'mastodon' ? 25 : 0)), 999);
+      $('cCount').textContent = picks.length ? `${room - n}` : '';
+      $('cCount').classList.toggle('over', n > room);
+      $('cPost').disabled = !picks.length || n > room;
+    };
+    text.addEventListener('input', count); el.querySelectorAll('.c-net input').forEach(x => x.addEventListener('change', count)); count();
+    $('cQuote')?.addEventListener('click', () => { text.value = `“${quote}”\n\n${text.value}`.trim() + (text.value ? '' : '\n\n'); text.focus(); count(); });
+    $('cCancel').onclick = () => { el.hidden = true; };
+    $('cPost').onclick = async () => {
+      $('cPost').disabled = true; $('cNote').textContent = 'Posting…'; $('cNote').classList.remove('err');
+      const res = await invoke('social_post', { networks: boxes(), text: text.value, link: it.link, title: headline(it), description: (it.summary || '').slice(0, 280), image: isWeb(it.image) ? it.image : '' });
+      const bad = res.filter(r => r.error);
+      if (!bad.length) { el.hidden = true; status(`Posted to ${res.map(r => NET[r.network]).join(' and ')}. Replies will show in Conversations.`); setTimeout(() => loadConversations(true), 4000); return; }
+      $('cNote').textContent = bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ') + (res.length > bad.length ? ` Posted to ${res.filter(r => !r.error).map(r => NET[r.network]).join(' and ')}.` : '');
+      $('cNote').classList.add('err'); $('cPost').disabled = false;
+    };
+    text.focus();
+  }
+
+  // ---- Conversations: your shared stories and the replies to them
+  const fmtWhen = d => { const a = ago(d); return a === 'now' ? 'just now' : `${a} ago`; };
+  const isMe = a => [SOC.accounts.bluesky?.handle, SOC.accounts.mastodon?.handle].some(h => h && (h === a.handle || h.startsWith(a.handle + '@')));
+  function noteHtml(n, opts = {}) {
+    const a = n.author; opts.mine = opts.mine || isMe(a);
+    return `<div class="n-note${opts.reply ? ' n-reply' : ''}" style="--d:${Math.min(n.depth || 0, 6)}">
+      ${isWeb(a.avatar) ? `<img class="n-av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="n-av fav" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
+      <div class="n-main">
+        <div class="n-who"><b>${esc(a.name)}</b> <span>${esc(a.handle)}</span> <span class="n-net">${ICON_NET[n.network]}</span> <time>${esc(fmtWhen(n.created_at))}</time></div>
+        <div class="n-text">${esc(n.text)}</div>
+        ${opts.actions === false ? '' : `<div class="n-acts">
+          <button class="linkish" data-talk="reply" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" data-root="${esc(n.root_id || opts.rootId || '')}" data-rootcid="${esc(n.root_cid || opts.rootCid || '')}" data-handle="${esc(a.handle)}">Reply</button>
+          <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button>
+          ${opts.mine ? '' : `<button class="linkish n-more" data-talk="more" data-net="${n.network}" data-person="${esc(a.id)}" data-name="${esc(a.handle)}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}">⋯</button>`}
+        </div>`}
+        <div class="n-box" data-box="${esc(n.id)}"></div>
+      </div></div>`;
+  }
+  function postHtml(p) {
+    const open = SOC.open.has(p.id), thread = SOC.threads.get(p.id);
+    const it = S.items.find(i => i.link && p.link && i.link.replace(/\/$/, '') === p.link.replace(/\/$/, ''));
+    return `<article class="t-post">
+      <div class="t-story">${p.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(p.link)}"`}>${esc(p.link_title || p.link.replace(/^https?:\/\//, ''))}</button>` : ''}
+        <span class="t-when">${ICON_NET[p.network]} ${esc(fmtWhen(p.created_at))}</span></div>
+      ${p.text ? `<p class="t-note">${esc(p.text)}</p>` : ''}
+      <button class="t-count linkish" data-talk="thread" data-net="${p.network}" data-id="${esc(p.id)}">${p.replies ? `${p.replies} ${p.replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'}${p.replies ? (open ? ' ▴' : ' ▾') : ''}</button>
+      <div class="n-box" data-box="${esc(p.id)}"></div>
+      ${open ? `<div class="t-thread">${thread === undefined ? '<p class="note">Loading the replies…</p>' : thread.length ? thread.map(n => noteHtml(n, { reply: true, rootId: p.id, rootCid: p.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>` : ''}
+    </article>`;
+  }
+  function talkHtml() {
+    if (!anySocial()) return `<div class="empty"><strong>Talk about what you read</strong><span>Connect your Mastodon or Bluesky account to share stories with your thoughts, then see and answer the replies here.</span><button class="btn primary" id="talkConnect">Connect an account</button></div>`;
+    const c = SOC.conv;
+    if (!c) return `<p class="note">${SOC.loading ? 'Checking Mastodon and Bluesky…' : ''}</p>`;
+    const seen = socialSeen();
+    let out = SOC.err.map(e => `<div class="banner err">${esc(e)}</div>`).join('');
+    const fresh = c.replies.slice(0, 12);
+    if (fresh.length) out += `<section class="h-sec"><div class="h-head"><h2>Replies and mentions</h2><span class="h-count">${newReplies() ? `${newReplies()} new` : 'all caught up'}</span></div>
+      <div class="t-replies">${fresh.map(n => `<div class="${Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n)}</div>`).join('')}</div></section>`;
+    out += `<section class="h-sec"><div class="h-head"><h2>Stories you shared</h2><span class="h-count">${c.posts.length}</span></div>
+      ${c.posts.length ? c.posts.map(postHtml).join('') : '<p class="note">Nothing shared yet. Open a story and choose Share › Post to Bluesky or Mastodon.</p>'}</section>`;
+    return out;
+  }
+  async function toggleThread(net, id) {
+    if (SOC.open.has(id)) { SOC.open.delete(id); renderList(); return; }
+    SOC.open.add(id); renderList();
+    try { SOC.threads.set(id, await invoke('social_thread', { network: net, id })); }
+    catch (e) { SOC.threads.set(id, []); status(msg(e), true); }
+    renderList();
+  }
+  function replyBox(b) {
+    document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
+    const box = [...document.querySelectorAll('.n-box')].find(x => x.dataset.box === b.dataset.id); if (!box) return;
+    const net = b.dataset.net, start = net === 'mastodon' && b.dataset.handle ? `${b.dataset.handle} ` : '';
+    box.innerHTML = `<form class="n-form"><textarea rows="3" maxlength="${LIMIT[net]}">${esc(start)}</textarea><div class="row"><button class="btn" type="button" data-talk="cancel">Cancel</button><button class="btn primary" type="submit">Reply on ${NET[net]}</button></div></form>`;
+    const ta = box.querySelector('textarea'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    box.querySelector('form').onsubmit = async e => {
+      e.preventDefault(); const btn = box.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        await invoke('social_reply', { network: net, text: ta.value, parentId: b.dataset.id, parentCid: b.dataset.cid || '', rootId: b.dataset.root || '', rootCid: b.dataset.rootcid || '' });
+        status('Reply sent.'); box.innerHTML = '';
+        const root = b.dataset.root || b.dataset.id; if (SOC.open.has(root)) { SOC.threads.delete(root); SOC.open.delete(root); toggleThread(net, root); }
+      } catch (err) { status(msg(err), true); btn.disabled = false; btn.textContent = `Reply on ${NET[net]}`; }
+    };
+  }
+  function moreMenu(b) {
+    const menu = $('replyMenu');
+    menu.innerHTML = `<p class="menu-head">${esc(b.dataset.name)}</p>
+      <button type="button" data-mod="mute">Mute ${esc(b.dataset.name)}</button>
+      <button type="button" data-mod="block">Block ${esc(b.dataset.name)}</button>
+      <button type="button" data-mod="report">Report this post…</button>`;
+    placeMenu(menu, b);
+    menu.onclick = async e => {
+      const m = e.target.closest('[data-mod]'); if (!m) return; menu.hidden = true; menu.onclick = null;
+      let reason = '';
+      if (m.dataset.mod === 'report') { reason = await askReason(b.dataset.name); if (reason === null) return; }
+      try {
+        await invoke('social_moderate', { network: b.dataset.net, action: m.dataset.mod, person: b.dataset.person, postId: b.dataset.id, postCid: b.dataset.cid || '', reason });
+        status(m.dataset.mod === 'report' ? 'Reported. Thank you.' : `${m.dataset.mod === 'mute' ? 'Muted' : 'Blocked'} ${b.dataset.name}.`);
+        loadConversations(true);
+      } catch (err) { status(msg(err), true); }
+    };
+  }
+  function askReason(name) {
+    return new Promise(done => {
+      const el = sheet('reportPanel', `<h2>Report a post by ${esc(name)}</h2>
+        <p>Your report goes to the moderators of that network, who decide what happens. Say briefly what’s wrong.</p>
+        <textarea id="repText" rows="3" placeholder="Spam, harassment, something else…"></textarea>
+        <div class="row sheet-foot"><button class="btn" type="button" id="repCancel">Cancel</button><button class="btn primary" type="button" id="repSend">Send report</button></div>`, 'Report a post');
+      $('repText').focus();
+      $('repCancel').onclick = () => { el.hidden = true; done(null); };
+      $('repSend').onclick = () => { el.hidden = true; done($('repText').value.trim() || 'Reported from The Reading Room'); };
+    });
+  }
+  document.addEventListener('click', e => {
+    if (e.target.id === 'talkConnect') { openAccounts(); return; }
+    const b = e.target.closest('[data-talk]'); if (!b) return;
+    const k = b.dataset.talk;
+    if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
+    if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
+    if (k === 'reply') replyBox(b);
+    if (k === 'cancel') b.closest('.n-box').innerHTML = '';
+    if (k === 'more') moreMenu(b);
+  });
+  loadAccounts().then(() => { renderRail(); loadConversations(true); });
+  setInterval(() => { if (!document.hidden) loadConversations(true); }, 15 * 60 * 1000);
 
   // ------------------------------------------------------------ Write back: reply to the writer, not the algorithm
   let replyFor = null;
@@ -1377,7 +1608,7 @@
   function openShareMenu(anchor, it) {
     if (!it) return;
     // iPhone and iPad: the system share sheet (Messages, Mail, X, LinkedIn, Copy and the rest).
-    if (IOS && navigator.share && isWeb(it.link)) {
+    if (IOS && navigator.share && isWeb(it.link) && !anySocial()) {
       navigator.share({ title: it.title, url: it.link }).catch(e => { if (e?.name !== 'AbortError') status(msg(e), true); });
       return;
     }
@@ -1389,6 +1620,8 @@
   }
   async function share(kind) {
     const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
+    if (kind === 'bluesky' || kind === 'mastodon') { openCompose(it, kind); return; }
+    if (kind === 'sheet') { navigator.share?.({ title: it.title, url: it.link }).catch(() => {}); return; }
     const u = encodeURIComponent(it.link), t = encodeURIComponent(it.title);
     try {
       if (kind === 'x') await invoke('open_share', { url: `https://x.com/intent/post?text=${t}&url=${u}` });

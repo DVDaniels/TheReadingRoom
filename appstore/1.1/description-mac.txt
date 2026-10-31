@@ -13,6 +13,9 @@ READ YOUR WAY
 • Text size, line width, and light, sepia or dark
 • Keyboard shortcuts: j and k to move, o to open the original, s to save
 
+WRITE BACK
+• Reply to a writer by email, in their comments, or on Mastodon or Bluesky, whichever they offer
+
 KEEP WHAT MATTERS
 • Read later for stories you want to come back to
 • Highlight passages and add notes; Annotated collects them all, ready to export
@@ -21,6 +24,7 @@ KEEP WHAT MATTERS
 FOLLOW ANYTHING
 • Paste a website and The Reading Room finds its RSS, Atom or JSON feed
 • Type a few words to follow that topic as a news search
+• Follow people on Mastodon and Bluesky, YouTube channels and podcasts, too
 • Bring your subscriptions from another reader with OPML, folders included
 • Mute words you're tired of and hide websites from your news searches
 

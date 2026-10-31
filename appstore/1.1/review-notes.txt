@@ -5,6 +5,8 @@ To try it: open the app. It starts with a few sample feeds and refreshes them au
 New in 1.1, all optional and with no account:
 - People and Discover: Discover reads the public blogroll pages and feeds of the sites the user already follows, directly from those sites, to suggest other blogs.
 - Weather on Today: only if the user types a town. The town name and its coordinates are sent to Open-Meteo (open-meteo.com, free, no key) to get the forecast. Nothing else is sent.
+- Follow anywhere: Mastodon and Bluesky handles, YouTube channels and Apple Podcasts links are turned into their public RSS feeds (Apple's public iTunes lookup finds a podcast's feed). Videos play in YouTube's privacy-enhanced embedded player; podcast audio plays in the app.
+- Write back: reads the story's public page and feed for the writer's own reply links (email, comments, Mastodon or Bluesky). The app sends nothing itself; it opens the user's mail app or the page they choose.
 - Listen: reads an article aloud with the system's own speech voices, on the device.
 - A built-in guide for people new to RSS (sidebar: "New to RSS?", or Help > The Reading Room Guide on the Mac).
 

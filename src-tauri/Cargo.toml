@@ -1,6 +1,6 @@
 [package]
 name = "reading-room"
-version = "1.1.0"
+version = "1.2.0"
 description = "The Reading Room — a private RSS reader"
 authors = ["David Daniels"]
 edition = "2021"
@@ -29,6 +29,7 @@ quick-xml = "0.36"
 futures = "0.3"
 tokio = { version = "1", features = ["time", "sync", "macros"] }
 url = "2"
+keyring = { version = "3", features = ["apple-native"] }
 libc = "0.2"
 
 dom_smoothie = "0.19.0"

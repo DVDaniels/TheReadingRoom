@@ -7,6 +7,7 @@ mod discover;
 mod feeds;
 mod opml;
 mod reply;
+mod social;
 mod sources;
 mod sync;
 
@@ -1264,6 +1265,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             reply_options,
+            social::social_accounts,
+            social::bsky_connect,
+            social::masto_begin,
+            social::masto_finish,
+            social::social_disconnect,
+            social::social_post,
+            social::social_conversations,
+            social::social_thread,
+            social::social_reply,
+            social::social_moderate,
             discover_get,
             discover_scan,
             discover_hide,

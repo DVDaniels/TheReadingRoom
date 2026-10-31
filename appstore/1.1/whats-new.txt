@@ -3,6 +3,8 @@ Written by people. This update is about reading real writers, not whatever gets 
 • People: a view of just the individuals you follow, writing on their own sites. On a big screen, each person gets a card with their newest post.
 • Discover: blogs recommended by the writers you already read, found through their blogrolls and the links in their posts. Follow with one click.
 • Today is now your morning paper: a short briefing, a clock, the local weather, and posts from people up front.
+• Follow people anywhere: paste a Mastodon or Bluesky handle, a YouTube channel or an Apple Podcasts link. Videos and podcast episodes play right in the app.
+• Write back: reply to a writer by email, in their comments, or on Mastodon or Bluesky, whichever they offer.
 • Listen: have any story read aloud, with your choice of voice.
 • Reading settings: text size, line width, and light, sepia or dark.
 • Muted words, and a button to hide a website from your news searches. Both sync across your devices.

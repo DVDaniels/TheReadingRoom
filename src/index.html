@@ -36,6 +36,7 @@
       <span><kbd>j</kbd> <kbd>k</kbd> next / previous · <kbd>o</kbd> open</span>
       <span><kbd>s</kbd> save · <kbd>m</kbd> read / unread · <kbd>⌘R</kbd> refresh</span>
       <span class="row"><button class="linkish" id="importBtn" type="button">Import OPML</button><span class="sep">·</span><button class="linkish" id="exportBtn" type="button">Export OPML</button><span class="sep2">·</span><button class="linkish" id="muteBtn" type="button">Muted words</button></span>
+      <button class="linkish" id="socialBtn" type="button">Mastodon &amp; Bluesky</button>
       <button class="linkish guide-link" type="button" data-view="guide">New to RSS? How to use this app</button>
       <button class="syncbtn" id="syncBtn" type="button"><span class="dot" id="syncDot"></span><span id="syncLabel">Sync between Macs: off</span></button>
     </div>
@@ -133,9 +134,13 @@
 <div class="menu" id="shareMenu" hidden role="menu">
   <button type="button" role="menuitem" data-share="x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.7 3h3.1l-6.8 7.8L22 21h-6.3l-4.9-6.4L5.2 21H2.1l7.3-8.3L1.8 3h6.4l4.4 5.9zm-1.1 16.2h1.7L7.5 4.7H5.7z"/></svg>Post on X</button>
   <button type="button" role="menuitem" data-share="linkedin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.75h4V21H3zM9.5 9.75h3.8v1.54h.06c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.77 2.65 4.77 6.1V21h-4v-5.02c0-1.2-.02-2.74-1.67-2.74-1.67 0-1.93 1.3-1.93 2.65V21h-4z"/></svg>Share on LinkedIn</button>
+  <button type="button" role="menuitem" data-share="bluesky"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>Post to Bluesky…</button>
+  <button type="button" role="menuitem" data-share="mastodon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.3 13.8c-.3 1.5-2.6 3.1-5.3 3.4-1.4.2-2.8.3-4.3.3-2.4-.1-4.3-.6-4.3-.6v.7c.3 2.4 2.4 2.5 4.3 2.6 2 .1 3.7-.5 3.7-.5l.1 1.8s-1.4.7-3.8.9c-1.4.1-3.1-.1-5.1-.6-4.3-1.1-5-5.5-5.2-10V7.6C1.4 3 4.4 1.7 4.4 1.7 5.9 1 8.6.7 11.3.7h.1c2.7 0 5.4.3 6.9 1 0 0 3 1.3 3 5.9 0 0 .1 3.4-.4 5.7zM18.2 8.4c0-1.2-.3-2.1-.9-2.8-.6-.7-1.4-1-2.4-1-1.2 0-2 .4-2.6 1.3l-.6 1-.6-1c-.6-.9-1.4-1.3-2.6-1.3-1 0-1.8.4-2.4 1-.6.7-.9 1.6-.9 2.8v5.6h2.2V8.6c0-1.1.5-1.7 1.4-1.7 1 0 1.6.7 1.6 2v3h2.2v-3c0-1.3.5-2 1.6-2 .9 0 1.4.6 1.4 1.7V14h2.2z"/></svg>Post to Mastodon…</button>
+  <hr>
   <button type="button" role="menuitem" data-share="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link</button>
   <button type="button" role="menuitem" data-share="email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Email</button>
   <hr>
+  <button type="button" role="menuitem" data-share="sheet" class="ios-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>More…</button>
   <button type="button" role="menuitem" data-share="browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Open in your browser</button>
 </div>
 <div class="menu replymenu" id="replyMenu" hidden role="menu" aria-label="Write back"></div>

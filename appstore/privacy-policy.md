@@ -30,7 +30,15 @@ To do its job, the app connects directly to:
 - **the websites of blogs you might like**, when you use Discover: the app reads the public blogroll pages and feeds of the sites you follow, and the feeds of the blogs they recommend
 - **Open-Meteo** (open-meteo.com), only if you add the weather to Today: the town you type, and then its map coordinates, are sent to get the forecast. Your exact location is never used
 
+- **Apple's public podcast directory**, only when you paste an Apple Podcasts link, to find that show's feed
+- **YouTube**, only when you play a video, through YouTube's privacy-enhanced player (youtube-nocookie.com). YouTube's own privacy policy applies to playback
+- **the writer's page and feed**, when you press Write back, to find the ways they invite replies. Nothing is sent to the writer unless you choose to write to them in your own mail app or on their site
+
 Like any web browser, these connections reveal your device's IP address and basic technical details to the site you're contacting. Each site's own privacy policy applies to what it does with that.
+
+## Mastodon and Bluesky
+
+Connecting a Mastodon or Bluesky account is optional. If you do, you sign in to your own server: on Bluesky with an App Password you create (never your main password), on Mastodon by approving the app on your server's own page. What it takes to stay signed in is kept in your device's Keychain, not in the app's files or your sync folder, and it is sent only to your own Bluesky or Mastodon server. The app then posts only what you write and choose to post, and shows your posts, the replies to them and your mentions. Mute, block and report use those networks' own tools, and reports go to their moderators. Disconnect at any time to remove the sign-in from the device; you can also revoke the app from your Bluesky or Mastodon settings.
 
 ## Sharing
 
