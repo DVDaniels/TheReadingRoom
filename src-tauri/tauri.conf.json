@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self' https: http:; frame-src https://www.youtube-nocookie.com; script-src 'self'; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {

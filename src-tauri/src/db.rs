@@ -45,6 +45,7 @@ pub struct Item {
     pub date: String,
     pub summary: String,
     pub image: String,
+    pub audio: String,
     pub read: bool,
     pub saved: bool,
     pub read_at: Option<String>,
@@ -72,6 +73,7 @@ pub struct NewItem {
     pub date: String,
     pub summary: String,
     pub image: String,
+    pub audio: String,
 }
 
 fn has_column(conn: &Connection, table: &str, col: &str) -> rusqlite::Result<bool> {
@@ -145,6 +147,9 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '2')", [])?;
     }
     // Version 1.0.1: whether we've looked for a story's picture on its web page
+    if !has_column(&conn, "items", "audio")? {
+        conn.execute("ALTER TABLE items ADD COLUMN audio TEXT DEFAULT ''", [])?;
+    }
     if !has_column(&conn, "items", "image_checked")? {
         conn.execute("ALTER TABLE items ADD COLUMN image_checked INTEGER DEFAULT 0", [])?;
     }
@@ -367,7 +372,7 @@ pub fn rename_feed(conn: &Connection, id: i64, title: &str) -> rusqlite::Result<
 
 pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
     let mut st = conn.prepare(
-        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at
+        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, '')
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
@@ -385,6 +390,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
             read: r.get::<_, i64>(7)? != 0,
             saved: r.get::<_, i64>(8)? != 0,
             read_at: r.get(9)?,
+            audio: r.get(10)?,
         })
     })?;
     rows.collect()
@@ -460,11 +466,14 @@ pub fn store_fetch(
             if image.is_empty() && !it.image.is_empty() {
                 tx.execute("UPDATE items SET image=?1 WHERE id=?2", params![it.image, id])?;
             }
+            if !it.audio.is_empty() {
+                tx.execute("UPDATE items SET audio=?1 WHERE id=?2 AND COALESCE(audio,'')=''", params![it.audio, id])?;
+            }
             continue;
         }
         tx.execute(
-            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now],
+            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at, audio) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now, it.audio],
         )?;
         added += 1;
     }
@@ -570,7 +579,7 @@ mod tests {
         set_feed_folder(&c, 1, Some(f)).unwrap();
         assert_eq!(feeds(&c).unwrap()[0].folder_id, Some(f));
         let feed = feed(&c, 1).unwrap().unwrap();
-        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into() };
+        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into(), audio: String::new() };
         store_fetch(&mut c, &feed, "A", "", &[it], "2026-10-28T01:00:00Z").unwrap();
         mark(&mut c, &["x".into()], Some(true), None, "2026-10-28T02:00:00Z").unwrap();
         let i = &items(&c, 10).unwrap()[0];

@@ -6,6 +6,8 @@ mod db;
 mod discover;
 mod feeds;
 mod opml;
+mod reply;
+mod sources;
 mod sync;
 
 use futures::stream::{self, StreamExt};
@@ -223,21 +225,42 @@ async fn add_feed(
     }
     // Words rather than an address: follow that search on Google News.
     let mut title = title;
-    if let Some(query) = feeds::news_query(&url) {
+    let looks_social = url.trim().starts_with('@');
+    let mut tries = if let Some(query) = feeds::news_query(&url).filter(|_| !looks_social) {
         if title.as_deref().map_or(true, |t| t.trim().is_empty()) {
             title = Some(format!("Google News: {query}"));
         }
         url = feeds::google_news_url(&query);
-    }
-    if !url.starts_with("http://") && !url.starts_with("https://") {
-        url = format!("https://{url}");
-    }
-    let host = url::Url::parse(&url)
+        vec![url.clone()]
+    } else {
+        // Mastodon, Bluesky, YouTube, Apple Podcasts and Medium addresses become the feeds behind them
+        let plan = sources::plan(&url);
+        let mut tries = plan.tries;
+        if let Some(id) = plan.podcast_id {
+            tries.insert(0, sources::podcast_feed(&state.client, &id).await?);
+        }
+        tries
+    };
+    tries.dedup();
+    let host = url::Url::parse(&tries[0])
         .ok()
         .and_then(|u| u.host_str().map(String::from))
         .ok_or("That doesn't look like a web address. Paste the full feed or site URL.")?;
 
-    let fetched = feeds::fetch(&state.client, &url).await?;
+    let mut first_err = None;
+    let mut found = None;
+    for t in &tries {
+        match feeds::fetch(&state.client, t).await {
+            Ok(f) => {
+                found = Some(f);
+                break;
+            }
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    let fetched = found.ok_or_else(|| first_err.unwrap_or_else(|| "Couldn't read that feed.".into()))?;
     let name = title
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
@@ -970,6 +993,24 @@ fn discover_hide(state: State<'_, Shared>, domain: String) -> Result<(), String>
     db::set_meta(&conn, "discover_hidden", &serde_json::to_string(&hidden).unwrap_or_default()).map_err(err)
 }
 
+/// Write back: the ways this story's writer can be reached (email, comments, Mastodon, Bluesky, contact page).
+#[tauri::command]
+async fn reply_options(state: State<'_, Shared>, item_id: String) -> Result<reply::Options, String> {
+    let (link, feed_url): (String, String) = {
+        let conn = state.db.lock().unwrap();
+        conn.query_row(
+            "SELECT COALESCE(i.link,''), COALESCE(f.url,'') FROM items i LEFT JOIN feeds f ON f.id = i.feed_id WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(err)?
+    };
+    if !link.starts_with("http") {
+        return Err("This story has no web page to reply to.".into());
+    }
+    Ok(reply::find(&state.client, &link, &feed_url).await)
+}
+
 /// Which kind of device the page is running on, so it can lay itself out to match.
 #[tauri::command]
 fn app_info() -> serde_json::Value {
@@ -1219,6 +1260,7 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            reply_options,
             discover_get,
             discover_scan,
             discover_hide,

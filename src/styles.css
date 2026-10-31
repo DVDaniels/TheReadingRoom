@@ -716,3 +716,17 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   .g-defs dd { margin-bottom: 8px; }
   .g-starts { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------- videos, podcasts, social posts, write back */
+.r-media { margin: 4px 0 18px; }
+.r-video { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; }
+.r-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.r-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.r-audio audio { flex: 1; min-width: 240px; }
+.r-rate button { padding: 4px 9px; font-size: 12px; font-family: var(--font-mono); }
+.prose .r-post { font-size: 1.15em; line-height: 1.6; white-space: pre-line; }
+.replymenu { min-width: 280px; max-width: 340px; }
+.replymenu button span { display: flex; flex-direction: column; min-width: 0; }
+.replymenu small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-head { margin: 4px 10px 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.menu-note { margin: 6px 10px; font-size: 13px; color: var(--muted); line-height: 1.45; }

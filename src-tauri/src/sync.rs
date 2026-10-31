@@ -567,7 +567,7 @@ mod tests {
     fn story(conn: &mut Connection, feed: i64, link: &str) -> String {
         let f = db::feed(conn, feed).unwrap().unwrap();
         let it = db::NewItem { id: crate::feeds::item_id(feed, link), title: format!("T {link}"), link: link.into(),
-            date: "2026-10-28T00:00:00Z".into(), summary: "s".into(), image: String::new() };
+            date: "2026-10-28T00:00:00Z".into(), summary: "s".into(), image: String::new(), audio: String::new() };
         db::store_fetch(conn, &f, "", "", &[it], "2026-10-28T00:00:00Z").unwrap();
         crate::feeds::item_id(feed, link)
     }

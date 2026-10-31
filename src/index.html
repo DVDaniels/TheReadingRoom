@@ -25,11 +25,11 @@
     </div>
     <form class="addfeed" id="addForm" hidden>
       <label for="feedUrl">Feed or website address</label>
-      <input id="feedUrl" type="text" placeholder="A site, a feed, or a search like walgreens" autocomplete="off" spellcheck="false" required>
+      <input id="feedUrl" type="text" placeholder="A site, @someone@mastodon.social, a YouTube or podcast link" autocomplete="off" spellcheck="false" required>
       <input id="feedName" type="text" placeholder="Name (optional)" autocomplete="off">
       <select id="feedFolder" aria-label="Folder"></select>
       <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
-      <span class="note" id="addNote">Paste a site and it finds the feed, or type words to follow them on Google News.</span>
+      <span class="note" id="addNote">Paste a site, a Mastodon or Bluesky handle, a YouTube channel or an Apple Podcasts link and it finds the feed. Or type words to follow them on Google News.</span>
     </form>
     <button class="btn" id="showAdd" type="button">+ Add a feed</button>
     <div class="rail-foot">
@@ -87,6 +87,7 @@
           <button class="btn" id="rListen" type="button" title="Read this article aloud" aria-label="Listen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/></svg><span class="lbl">Listen</span></button>
           <button class="btn" id="rType" type="button" aria-haspopup="menu" title="Text size, width and appearance" aria-label="Text settings">Aa</button>
           <button class="btn" id="rSave" type="button">Read later</button>
+          <button class="btn" id="rReply" type="button" aria-haspopup="menu" title="Write back to the writer">Write back</button>
           <button class="btn" id="rShare" type="button" aria-haspopup="menu">Share</button>
           <button class="btn primary" id="rOriginal" type="button" title="View original (o)">View original</button>
         </div>
@@ -94,6 +95,7 @@
       <article class="reader-article">
         <div class="r-meta" id="rMeta"></div>
         <h1 class="r-title" id="rTitle"></h1>
+        <div class="r-media" id="rMedia" hidden></div>
         <div class="prose" id="rBody"></div>
         <section class="r-notes" id="rNotes" hidden></section>
       </article>
@@ -136,6 +138,7 @@
   <hr>
   <button type="button" role="menuitem" data-share="browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Open in your browser</button>
 </div>
+<div class="menu replymenu" id="replyMenu" hidden role="menu" aria-label="Write back"></div>
 <div class="overlay" id="wxPanel" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="wxTitle">
     <h2 id="wxTitle">Weather on Today</h2>

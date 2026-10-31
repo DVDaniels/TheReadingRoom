@@ -25,6 +25,8 @@ pub struct ParsedItem {
     pub date: String,
     pub summary: String,
     pub image: String,
+    /// A podcast episode's audio file
+    pub audio: String,
 }
 
 pub fn client() -> reqwest::Client {
@@ -196,6 +198,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_default();
             let full = e.content.as_ref().and_then(|c| c.body.clone()).unwrap_or_default();
             let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
+            let audio = story_audio(e);
             let summary = plain(&body, SUMMARY_CHARS);
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
             if title.is_empty() {
@@ -208,10 +211,27 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary, image }
+            ParsedItem { key, title, link, date, summary, image, audio }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
+}
+
+/// A podcast episode's audio: an enclosure that's audio, or ends like an audio file.
+fn story_audio(e: &feed_rs::model::Entry) -> String {
+    for m in &e.media {
+        for c in &m.content {
+            let typ = c.content_type.as_ref().map(|t| t.to_string()).unwrap_or_default();
+            let Some(u) = c.url.as_ref() else { continue };
+            let p = u.path().to_ascii_lowercase();
+            if typ.starts_with("audio") || [".mp3", ".m4a", ".aac", ".ogg", ".opus"].iter().any(|x| p.ends_with(x)) {
+                if u.scheme() == "https" || u.scheme() == "http" {
+                    return u.to_string();
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 /// A picture for the story list: the feed's own thumbnail, an image attachment, or the first picture in the post.
@@ -285,6 +305,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             date: p.date.clone(),
             summary: p.summary.clone(),
             image: p.image.clone(),
+            audio: p.audio.clone(),
         })
         .collect()
 }

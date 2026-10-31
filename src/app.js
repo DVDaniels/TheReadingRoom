@@ -107,7 +107,7 @@
   const PER_PERSON = 12;
   function buildKinds() {
     S.kinds = new Map(S.feeds.map(f => [f.id,
-      isNewsSearch(f) || (f.recent || 0) > PER_PERSON || OUTLET.test(f.title || '') ? 'pub' : 'person']));
+      isSocialFeed(f) ? 'person' : isNewsSearch(f) || (f.recent || 0) > PER_PERSON || OUTLET.test(f.title || '') ? 'pub' : 'person']));
   }
   const autoKind = f => S.kinds.get(f.id) || 'person';
   const kindOf = f => (f && (S.prefs.kinds || {})[f.url]) || (f ? autoKind(f) : 'pub');
@@ -491,7 +491,7 @@
       out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
         ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
         <div class="body">
-          <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
+          <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}${kindTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
           ${alsoLine(it)}
           <button class="title" data-act="open">${esc(headline(it))}</button>
           ${it.summary && !quotes ? `<div class="summary">${esc(it.summary)}</div>` : ''}
@@ -686,7 +686,14 @@
           <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''} and paste it in.</li>
           <li>The app finds the site’s feed for you. If it can’t, look on the site for a link called <b>RSS</b>, <b>Feed</b> or <b>Subscribe</b>, or the orange <span class="g-rss" aria-label="RSS icon"></span> icon, and paste that address instead.</li>
         </ol>
-        <p>Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across.</p></section>
+        <p><b>People post in other places too, and you can follow them there:</b></p>
+        <ul class="g-list">
+          <li><b>Mastodon:</b> type their handle, like <code>@name@mastodon.social</code>.</li>
+          <li><b>Bluesky:</b> type <code>@name.bsky.social</code> or paste their profile link.</li>
+          <li><b>YouTube:</b> paste a channel’s address. New videos play right in the app.</li>
+          <li><b>Podcasts:</b> paste a show’s Apple Podcasts link or its feed. Episodes play in the app and remember where you stopped.</li>
+        </ul>
+        <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across.</p></section>
 
       <section class="g-sec"><h2>Finding more good writers</h2>
         <p>The best way to find people is through people. Many writers keep a <b>blogroll</b>, a list of other blogs they read. <button class="b-link" data-view="discover">Discover</button> reads the blogrolls of everyone you follow and suggests who they recommend.</p>
@@ -700,6 +707,7 @@
           <dt>Annotated</dt><dd>Select a passage in a story to highlight it or add a note. They’re all collected here.</dd>
           <dt>Discover</dt><dd>Blogs recommended by the people you already read.</dd>
           <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
+          <dt>Write back</dt><dd>In any story, press Write back to reply to the writer: by email, in their comments, or on Mastodon or Bluesky, whichever they offer.</dd>
           <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
           <dt>Aa</dt><dd>Change the text size, width and colors of the reading view.</dd>
         </dl></section>
@@ -868,6 +876,99 @@
   listen('discover-done', async () => { await loadDiscover(); D.running = false; paintDiscover(); });
   loadDiscover().then(() => renderRail());
 
+
+  // ------------------------------------------------------------ people everywhere: videos, podcasts, social posts
+  const ytId = link => { const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(link || ''); return m ? m[1] : null; };
+  const socialKind = link => /bsky\.app\/profile\/[^/]+\/post\//.test(link || '') ? 'Bluesky'
+    : /^https?:\/\/[^/]+\/@[\w.]+\/\d+$/.test(link || '') ? 'Mastodon' : null;
+  const isSocialFeed = f => /\/@[\w.]+\.rss$/.test(f?.url || '') || /bsky\.app\/profile\/[^/]+\/rss$/.test(f?.url || '');
+  const kindTag = it => it.audio ? '<span class="via">Podcast</span>' : ytId(it.link) ? '<span class="via">Video</span>' : socialKind(it.link) ? `<span class="via">${socialKind(it.link)}</span>` : '';
+
+  function paintMedia(it) {
+    const box = $('rMedia'), yt = ytId(it.link);
+    box.hidden = !(yt || it.audio); box.innerHTML = '';
+    if (yt) {
+      box.innerHTML = `<div class="r-video"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="${esc(it.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+    } else if (it.audio) {
+      const key = 'pos:' + it.id;
+      box.innerHTML = `<div class="r-audio"><audio id="rAudio" controls preload="metadata" src="${esc(it.audio)}"></audio>
+        <div class="seg r-rate" role="group" aria-label="Speed">${[1, 1.25, 1.5, 2].map(r => `<button type="button" data-rate="${r}" aria-pressed="${r === 1}">${r}×</button>`).join('')}</div></div>`;
+      const a = $('rAudio');
+      const saved = Number(store.get(key)) || 0;
+      a.addEventListener('loadedmetadata', () => { if (saved > 5 && saved < a.duration - 10) a.currentTime = saved; }, { once: true });
+      let last = 0;
+      a.addEventListener('timeupdate', () => { if (Math.abs(a.currentTime - last) > 5) { last = a.currentTime; store.set(key, String(Math.floor(a.currentTime))); } });
+      a.addEventListener('ended', () => store.set(key, '0'));
+      box.querySelector('.r-rate').onclick = e => {
+        const b = e.target.closest('[data-rate]'); if (!b) return;
+        a.playbackRate = Number(b.dataset.rate);
+        box.querySelectorAll('[data-rate]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      };
+    }
+  }
+  // Short posts and videos come straight from the feed; their web pages aren't articles.
+  function feedOnlyBody(it) {
+    const kind = socialKind(it.link), yt = ytId(it.link);
+    if (!kind && !yt) return null;
+    const pic = !yt && isWeb(it.image) ? `<figure><img src="${esc(it.image)}" alt=""></figure>` : '';
+    const text = it.summary ? `<p class="${kind ? 'r-post' : ''}">${esc(it.summary)}</p>` : '';
+    return `${text}${pic}<p class="note">${kind ? `A post on ${kind}.` : 'A video on YouTube.'} <button class="b-link" id="rOnSite">${kind ? `Open it on ${kind}` : 'Watch on YouTube'}</button></p>`;
+  }
+
+  // ------------------------------------------------------------ Write back: reply to the writer, not the algorithm
+  let replyFor = null;
+  async function openReply(anchor) {
+    const it = item(S.readerId); if (!it) return;
+    hidePops(); $('shareMenu').hidden = true;
+    const menu = $('replyMenu'); replyFor = it.id;
+    const kind = socialKind(it.link);
+    menu.innerHTML = kind ? replyItems(it, { social: [{ label: kind, url: it.link, post: true }] })
+      : `<p class="menu-note">Looking for how ${esc(feedById(it.feed_id)?.title || 'the writer')} likes to hear from readers…</p>`;
+    placeMenu(menu, anchor);
+    if (kind) return;
+    try {
+      const o = await invoke('reply_options', { itemId: it.id });
+      if (replyFor !== it.id || menu.hidden) return;
+      menu.innerHTML = replyItems(it, o); placeMenu(menu, anchor);
+    } catch (e) { menu.innerHTML = `<p class="menu-note">${esc(msg(e))}</p>`; }
+  }
+  function placeMenu(menu, anchor) {
+    placeNear(menu, anchor.getBoundingClientRect());
+    const r = anchor.getBoundingClientRect();
+    menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 8) + 'px';
+  }
+  const ICON_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+  const ICON_TALK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>';
+  const ICON_AT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>';
+  const ICON_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9H3z"/></svg>';
+  function replyItems(it, o) {
+    const who = feedById(it.feed_id)?.title || 'the writer', rows = [];
+    if (o.email) {
+      const subject = o.email.subject || `Re: ${headline(it)}`;
+      const body = `\n\n\n—\nIn reply to “${headline(it)}”\n${it.link}`;
+      rows.push(`<button type="button" role="menuitem" data-reply="${esc(`mailto:${o.email.address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)}">${ICON_MAIL}<span>Reply by email<small>${esc(o.email.address)}</small></span></button>`);
+    }
+    if (o.comments) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.comments)}">${ICON_TALK}<span>Leave a comment<small>on the post</small></span></button>`);
+    for (const l of o.social || []) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(l.url)}">${ICON_AT}<span>${l.post ? `Reply on ${esc(l.label)}` : `Write to them on ${esc(l.label)}`}<small>${esc(l.post ? 'opens the post' : l.url.replace(/^https?:\/\//, ''))}</small></span></button>`);
+    if (o.contact) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.contact)}">${ICON_HOME}<span>Contact page<small>${esc(who)}</small></span></button>`);
+    const mine = myFeed();
+    const wm = o.webmention ? `<p class="menu-note">This site accepts Webmentions: link to the post from ${mine ? esc(mine.title) : 'your own blog'} and your reply shows up there too.</p>` : '';
+    if (!rows.length) {
+      const site = feedById(it.feed_id)?.site;
+      return `<p class="menu-note">${esc(who)} doesn’t list a way to reply on this post.${o.webmention ? '' : ' You could share it with a note, or say hello through their site.'}</p>${wm}
+        ${isWeb(site) ? `<button type="button" role="menuitem" data-reply-web="${esc(site)}">${ICON_HOME}<span>Visit their site</span></button>` : ''}`;
+    }
+    return `<p class="menu-head">Write back to ${esc(who)}</p>${rows.join('')}${wm}`;
+  }
+  $('replyMenu').addEventListener('click', async e => {
+    const b = e.target.closest('[data-reply], [data-reply-web]'); if (!b) return;
+    $('replyMenu').hidden = true;
+    try {
+      if (b.dataset.reply) await invoke('open_external', { url: b.dataset.reply });
+      else openWeb(b.dataset.replyWeb);
+    } catch (err) { status(msg(err), true); }
+  });
+
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
   let listScroll = 0, articleHtml = '', articleFor = null;
@@ -898,6 +999,8 @@
   function closeReader(silent) {
     if (!S.readerId) return;
     S.readerId = null; articleFor = null; hidePops();
+    // A video stops when you leave it; a podcast that's playing keeps going until the next story
+    const au = $('rAudio'); if (!au || au.paused) { $('rMedia').innerHTML = ''; $('rMedia').hidden = true; }
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false;
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
@@ -909,6 +1012,7 @@
     $('rBackLabel').textContent = viewName();
     $('rSave').textContent = isPhone() ? (it.saved ? 'Saved ✓' : 'Save') : (it.saved ? 'Saved ✓' : 'Read later');
     $('rOriginal').textContent = isPhone() ? 'Web' : 'View original';
+    $('rReply').textContent = isPhone() ? 'Reply' : 'Write back';
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
     $('rTitle').textContent = headline(it);
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -920,6 +1024,13 @@
 
   async function loadArticle(it, refetch = false) {
     articleFor = it.id;
+    paintMedia(it);
+    const only = feedOnlyBody(it);
+    if (only) {
+      articleHtml = only; paintArticle();
+      $('rOnSite')?.addEventListener('click', () => openWeb(it.link));
+      return;
+    }
     $('rBody').innerHTML = `<p class="note">Loading the article…</p>`;
     try {
       const a = await invoke('get_article', { itemId: it.id, refetch });
@@ -990,7 +1101,7 @@
 
   function hidePops() {
     let any = false;
-    for (const id of ['selPop', 'notePop', 'shareMenu', 'typeMenu']) if (!$(id).hidden) { $(id).hidden = true; any = true; }
+    for (const id of ['selPop', 'notePop', 'shareMenu', 'typeMenu', 'replyMenu']) if (!$(id).hidden) { $(id).hidden = true; any = true; }
     return any;
   }
   function placeNear(el, rect) {
@@ -1292,13 +1403,14 @@
   }
   $('shareMenu').addEventListener('click', e => { const b = e.target.closest('[data-share]'); if (b) share(b.dataset.share); });
   document.addEventListener('mousedown', e => {
-    if (!e.target.closest('.pop, .menu, [data-act="share"], #rShare, #rType')) { $('shareMenu').hidden = true; $('notePop').hidden = true; $('typeMenu').hidden = true; }
+    if (!e.target.closest('.pop, .menu, [data-act="share"], #rShare, #rType, #rReply')) { $('shareMenu').hidden = true; $('replyMenu').hidden = true; $('notePop').hidden = true; $('typeMenu').hidden = true; }
   });
 
   // reader toolbar and article clicks
   $('rBack').onclick = () => closeReader();
   $('rSave').onclick = () => { const it = item(S.readerId); if (it) mark(it.id, { saved: !it.saved }); };
   $('rShare').onclick = e => openShareMenu(e.currentTarget, item(S.readerId));
+  $('rReply').onclick = e => openReply(e.currentTarget);
   $('rOriginal').onclick = () => { const it = item(S.readerId); if (it) openWeb(it.link); };
   const step = d => { const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === S.readerId); const n = list[i + d]; if (n) openReader(n.id); };
   $('rPrev').onclick = () => step(-1);
