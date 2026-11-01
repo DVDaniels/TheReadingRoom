@@ -908,3 +908,5 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 .tside .fbtns { display: flex; gap: 6px; flex: none; }
 .fbtn svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 2px; }
 .tside .more-r { margin-top: 8px; font-size: 13px; }
+.tside .fx { all: unset; cursor: pointer; flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); font-size: 17px; line-height: 1; margin-left: -4px; }
+.tside .fx:hover { background: var(--accent-soft); color: var(--ink); }

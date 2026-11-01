@@ -698,14 +698,24 @@ pub async fn social_moderate(network: String, action: String, person: String, po
             let record = json!({ "$type": "app.bsky.graph.block", "subject": person, "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
             bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.graph.block", "record": record }))).await.map(|_| ())
         }
+        // An account itself (a spam follower) when there's no post
+        ("bluesky", "report") if post_id.is_empty() => bsky(false, "com.atproto.moderation.createReport", &[], Some(json!({
+            "reasonType": if reason == "spam" { "com.atproto.moderation.defs#reasonSpam" } else { "com.atproto.moderation.defs#reasonOther" },
+            "reason": if reason == "spam" { "Spam account" } else { reason.as_str() },
+            "subject": { "$type": "com.atproto.admin.defs#repoRef", "did": person },
+        }))).await.map(|_| ()),
         ("bluesky", "report") => bsky(false, "com.atproto.moderation.createReport", &[], Some(json!({
             "reasonType": "com.atproto.moderation.defs#reasonOther", "reason": reason,
             "subject": { "$type": "com.atproto.repo.strongRef", "uri": post_id, "cid": post_cid },
         }))).await.map(|_| ()),
         ("mastodon", "mute") => masto(reqwest::Method::POST, &format!("/api/v1/accounts/{person}/mute"), &[], Some(json!({}))).await.map(|_| ()),
         ("mastodon", "block") => masto(reqwest::Method::POST, &format!("/api/v1/accounts/{person}/block"), &[], Some(json!({}))).await.map(|_| ()),
-        ("mastodon", "report") => masto(reqwest::Method::POST, "/api/v1/reports", &[],
-            Some(json!({ "account_id": person, "status_ids": [post_id], "comment": reason, "forward": true }))).await.map(|_| ()),
+        ("mastodon", "report") => {
+            let ids: Vec<&str> = if post_id.is_empty() { vec![] } else { vec![post_id.as_str()] };
+            let mut body = json!({ "account_id": person, "status_ids": ids, "comment": if reason == "spam" { "Spam account" } else { reason.as_str() }, "forward": true });
+            if reason == "spam" { body["category"] = json!("spam"); }
+            masto(reqwest::Method::POST, "/api/v1/reports", &[], Some(body)).await.map(|_| ())
+        }
         _ => Err("That can't be done here.".into()),
     }
 }

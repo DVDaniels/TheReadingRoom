@@ -1244,6 +1244,15 @@
     for (const t of tasks) t.then(() => { if (S.view === 'talk') renderList(); if (typeof S.view === 'number') renderHead(); });
     await Promise.allSettled(tasks);
   }
+  // Taking people off the Conversations lists (a spam follower, a writer you don't want to follow there). Synced.
+  const hiddenIn = k => new Set(((S.prefs.dismissed || {})[k]) || []);
+  function setHidden(k, key, on) {
+    const d = S.prefs.dismissed = { ...(S.prefs.dismissed || {}) };
+    const set = new Set(d[k] || []); on ? set.add(key) : set.delete(key); d[k] = [...set].slice(-500);
+    savePrefs(); renderList();
+  }
+  const xBtn = (k, key, label, extra = '') => `<button class="fx" data-talk="${k === 'f' ? 'folmenu' : 'dismiss'}" data-k="${k}" data-key="${esc(key)}" ${extra} title="${esc(label)}" aria-label="${esc(label)}">×</button>`;
+  const hiddenFoot = (k, n) => n ? `<button class="linkish more-r" data-talk="showhidden" data-k="${k}">${SOC.showHidden === k ? 'Done' : `${n} hidden`}</button>` : '';
   const readersFor = feedId => (SOC.readers || []).filter(r => r.feedId === personId(feedId));
   function followButtons(f) {
     return readersFor(f.id).map(r => r.following
@@ -1357,9 +1366,11 @@
         <button class="btn primary" data-talk="sharemine" data-id="${esc(post.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button></div>`;
     }
     // New followers, with their blogs
-    const fol = (SOC.followers || []).slice(0, 8);
-    if (fol.length) {
-      const week = (SOC.followers || []).filter(f => Date.now() - Date.parse(f.followed_at) < WEEK_MS);
+    const hidF = hiddenIn('f'), fkey = f => f.network + ':' + f.person.id;
+    const fol = (SOC.followers || []).filter(f => SOC.showHidden === 'f' ? hidF.has(fkey(f)) : !hidF.has(fkey(f))).slice(0, SOC.showHidden === 'f' ? 50 : 8);
+    const folHidden = (SOC.followers || []).filter(f => hidF.has(fkey(f))).length;
+    if (fol.length || folHidden) {
+      const week = (SOC.followers || []).filter(f => Date.now() - Date.parse(f.followed_at) < WEEK_MS && !hidF.has(fkey(f)));
       const blogs = week.filter(f => f.blog).length;
       out += `<div class="box"><h3>New followers</h3><p>${week.length ? `${week.length} this week${blogs ? `. ${blogs === 1 ? 'One of them writes a blog' : `${blogs} of them write blogs`}.` : '.'}` : 'Your most recent followers.'}</p>
         ${fol.map(f => {
@@ -1368,31 +1379,39 @@
             : !f.following ? `<button class="fbtn" data-talk="follow" data-net="${f.network}" data-person="${esc(a.id)}">Follow back</button>`
             : '<span class="fbtn done">Following</span>';
           return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
-            <button class="fol-who" data-talk="open" data-url="${esc(a.url)}">${esc(a.name)}<small class="${f.blog ? 'blog' : ''}">${f.blog ? `writes at ${esc(hostOf(f.blog))}` : esc(a.handle)}</small></button>${btn}</div>`;
-        }).join('')}</div>`;
+            <button class="fol-who" data-talk="open" data-url="${esc(a.url)}">${esc(a.name)}<small class="${f.blog ? 'blog' : ''}">${f.blog ? `writes at ${esc(hostOf(f.blog))}` : esc(a.handle)}</small></button>${SOC.showHidden === 'f' ? `<button class="fbtn" data-talk="unhide" data-k="f" data-key="${esc(fkey(f))}">Show again</button>` : btn + xBtn('f', fkey(f), `Remove ${a.handle} from this list`, `data-net="${f.network}" data-person="${esc(a.id)}" data-name="${esc(a.handle)}"`)}</div>`;
+        }).join('')}${hiddenFoot('f', folHidden)}</div>`;
     }
     // People you read who are on Mastodon or Bluesky and you don't follow there yet
-    const notYet = (SOC.readers || []).filter(r => !r.following && feedById(r.feedId));
-    if (notYet.length) {
+    const hidR = hiddenIn('r');
+    const allNotYet = (SOC.readers || []).filter(r => !r.following && feedById(r.feedId));
+    const notYet = allNotYet.filter(r => SOC.showHidden === 'r' ? hidR.has(String(r.feedId)) : !hidR.has(String(r.feedId)));
+    const readersHidden = new Set(allNotYet.filter(r => hidR.has(String(r.feedId))).map(r => r.feedId)).size;
+    if (notYet.length || readersHidden) {
       const byPerson = new Map();
       for (const r of notYet) { if (!byPerson.has(r.feedId)) byPerson.set(r.feedId, []); byPerson.get(r.feedId).push(r); }
       const people = [...byPerson.entries()], show = SOC.allReaders ? people : people.slice(0, 6);
-      out += `<div class="box"><h3>People you read</h3><p>${people.length === 1 ? 'One writer you read is' : `${people.length} writers you read are`} on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' or ')}. Follow them there to talk with them.</p>
+      out += `<div class="box"><h3>People you read</h3><p>${!people.length ? 'Nobody new to follow.' : people.length === 1 ? 'One writer you read is' : `${people.length} writers you read are`} on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' or ')}. Follow them there to talk with them.</p>
         ${show.map(([fid, rs]) => { const f = feedById(fid), a = rs[0].person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?')[0])}</span>`}
           <button class="fol-who" data-view="${f.id}">${esc(f.title)}<small>${rs.map(r => esc(r.person.handle)).join(' · ')}</small></button>
-          <span class="fbtns">${rs.map(r => `<button class="fbtn" data-talk="follow" data-net="${r.network}" data-person="${esc(r.person.id)}" title="Follow ${esc(r.person.handle)} on ${NET[r.network]}">${ICON_NET[r.network]} Follow</button>`).join('')}</span></div>`; }).join('')}
-        ${people.length > 6 ? `<button class="linkish more-r" data-talk="allreaders">${SOC.allReaders ? 'Show fewer' : `Show all ${people.length}`}</button>` : ''}</div>`;
+          ${SOC.showHidden === 'r' ? `<button class="fbtn" data-talk="unhide" data-k="r" data-key="${fid}">Show again</button>`
+            : `<span class="fbtns">${rs.map(r => `<button class="fbtn" data-talk="follow" data-net="${r.network}" data-person="${esc(r.person.id)}" title="Follow ${esc(r.person.handle)} on ${NET[r.network]}">${ICON_NET[r.network]} Follow</button>`).join('')}</span>${xBtn('r', String(fid), `Don’t suggest ${f.title}`)}`}</div>`; }).join('')}
+        ${people.length > 6 ? `<button class="linkish more-r" data-talk="allreaders">${SOC.allReaders ? 'Show fewer' : `Show all ${people.length}`}</button>` : ''}${hiddenFoot('r', readersHidden)}</div>`;
     }
     // People you follow there who keep a blog you don't read yet
     const have = new Set(S.feeds.flatMap(f => [hostOfU(f.site), hostOfU(f.url)].filter(Boolean).map(bareHost)));
-    const blogs = (SOC.theirBlogs || []).filter(b => !have.has(bareHost(hostOfU(b.blog))));
-    if (blogs.length) {
+    const hidB = hiddenIn('b'), bkey = b => bareHost(hostOfU(b.blog));
+    const allBlogs = (SOC.theirBlogs || []).filter(b => !have.has(bkey(b)));
+    const blogs = allBlogs.filter(b => SOC.showHidden === 'b' ? hidB.has(bkey(b)) : !hidB.has(bkey(b)));
+    const blogsHidden = allBlogs.filter(b => hidB.has(bkey(b))).length;
+    if (blogs.length || blogsHidden) {
       const show = SOC.allBlogs ? blogs : blogs.slice(0, 6);
-      out += `<div class="box"><h3>Their blogs</h3><p>${blogs.length === 1 ? 'Someone you follow keeps a blog' : `${blogs.length} people you follow keep blogs`} you don’t read here yet.</p>
+      out += `<div class="box"><h3>Their blogs</h3><p>${!blogs.length ? 'Nothing new to suggest.' : blogs.length === 1 ? 'Someone you follow keeps a blog' : `${blogs.length} people you follow keep blogs`} you don’t read here yet.</p>
         ${show.map(b => { const a = b.person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
           <button class="fol-who" data-talk="open" data-url="${esc(b.blog)}">${esc(a.name)}<small class="blog">${esc(hostOfU(b.blog))}</small></button>
-          <button class="fbtn p" data-talk="blog" data-url="${esc(b.blog)}">Read their blog</button></div>`; }).join('')}
-        ${blogs.length > 6 ? `<button class="linkish more-r" data-talk="allblogs">${SOC.allBlogs ? 'Show fewer' : `Show all ${blogs.length}`}</button>` : ''}</div>`;
+          ${SOC.showHidden === 'b' ? `<button class="fbtn" data-talk="unhide" data-k="b" data-key="${esc(bkey(b))}">Show again</button>`
+            : `<button class="fbtn p" data-talk="blog" data-url="${esc(b.blog)}">Read their blog</button>${xBtn('b', bkey(b), `Don’t suggest ${hostOfU(b.blog)}`)}`}</div>`; }).join('')}
+        ${blogs.length > 6 ? `<button class="linkish more-r" data-talk="allblogs">${SOC.allBlogs ? 'Show fewer' : `Show all ${blogs.length}`}</button>` : ''}${hiddenFoot('b', blogsHidden)}</div>`;
     }
     // People linking to your blog
     if (myDomain() && SOC.mentions && SOC.mentions.length) out += `<div class="box"><h3>About your blog</h3><p>People linking to ${esc(myDomain())}</p>
@@ -1450,6 +1469,25 @@
       } catch (err) { status(msg(err), true); }
     };
   }
+  // A follower you don't want: just hide them, block them (which also stops them following you), or report as spam
+  function followerMenu(b) {
+    const menu = $('replyMenu'), name = b.dataset.name, net = b.dataset.net;
+    menu.innerHTML = `<p class="menu-head">${esc(name)}</p>
+      <button type="button" data-fm="hide">Hide from this list</button>
+      <button type="button" data-fm="block">Block ${esc(name)}</button>
+      <button type="button" data-fm="spam">Report as spam and block</button>`;
+    placeMenu(menu, b);
+    menu.onclick = async e => {
+      const m = e.target.closest('[data-fm]'); if (!m) return; menu.hidden = true; menu.onclick = null;
+      setHidden('f', b.dataset.key, true);
+      if (m.dataset.fm === 'hide') { status(`Hid ${name}.`); return; }
+      try {
+        if (m.dataset.fm === 'spam') await invoke('social_moderate', { network: net, action: 'report', person: b.dataset.person, postId: '', postCid: '', reason: 'spam' });
+        await invoke('social_moderate', { network: net, action: 'block', person: b.dataset.person, postId: '', postCid: '', reason: '' });
+        status(m.dataset.fm === 'spam' ? `Reported ${name} as spam and blocked them. They no longer follow you.` : `Blocked ${name}. They no longer follow you.`);
+      } catch (err) { status(msg(err), true); }
+    };
+  }
   function askReason(name) {
     return new Promise(done => {
       const el = sheet('reportPanel', `<h2>Report a post by ${esc(name)}</h2>
@@ -1474,6 +1512,10 @@
     if (k === 'tab') { SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
     if (k === 'newpost') openCompose(null);
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
+    if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }
+    if (k === 'unhide') setHidden(b.dataset.k, b.dataset.key, false);
+    if (k === 'showhidden') { SOC.showHidden = SOC.showHidden === b.dataset.k ? null : b.dataset.k; renderList(); }
+    if (k === 'folmenu') followerMenu(b);
     if (k === 'allreaders') { SOC.allReaders = !SOC.allReaders; renderList(); }
     if (k === 'allblogs') { SOC.allBlogs = !SOC.allBlogs; renderList(); }
     if (k === 'follow') {
