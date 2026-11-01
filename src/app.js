@@ -846,6 +846,38 @@
         </ol>
         <p style="margin-top:12px">Keep private things private: a site is public, so leave out your home address, phone number and anything you wouldn’t put on a postcard. For more on why personal sites matter, read <a href="https://daviddaniels.com/">daviddaniels.com</a> and the <a href="https://indieweb.org/POSSE">IndieWeb’s page on POSSE</a>.</p></section>
 
+      <section class="g-sec" id="g-habits"><h2>What indie bloggers do</h2>
+        <p>Personal sites have a culture of small, friendly habits. None are required, but they’re a good way to start writing, and they’re why personal sites feel so human.</p>
+        <p><b>Pages most sites have</b>, called <b>slash pages</b> after their addresses:</p>
+        <dl class="g-defs">
+          <dt>/now</dt><dd>What you’re focused on this month. Thousands of people keep one; <a href="https://nownownow.com/">nownownow.com</a> lists them.</dd>
+          <dt>/about</dt><dd>Who you are and what you write about.</dd>
+          <dt>/blogroll</dt><dd>Blogs you recommend. <button class="b-link" data-view="discover">Discover</button> reads these to suggest new writers.</dd>
+          <dt>/uses</dt><dd>Your gear, apps and setup.</dd>
+          <dt>/colophon</dt><dd>How your site is made.</dd>
+        </dl>
+        <p style="margin-top:12px"><b>Kinds of posts you’ll see:</b></p>
+        <ul class="g-list">
+          <li><b>Weeknotes:</b> a short post each week about what happened, what you read and what you’re looking forward to.</li>
+          <li><b>Link posts:</b> “Things I read this week,” with a line on why each one is worth it.</li>
+          <li><b>Notes:</b> short, tweet-length posts that live on your own site.</li>
+          <li><b>Reply posts:</b> answering another blogger on your own blog, linking to theirs. Whole conversations happen this way.</li>
+        </ul>
+        <p style="margin-top:12px"><b>Talking to each other:</b></p>
+        <ul class="g-list">
+          <li><b>Reply by email.</b> Many bloggers prefer email to comments. <b>Write back</b> in any story finds their address for you.</li>
+          <li><b>Webmentions.</b> When you link to someone’s post, their site is told and can show your reply under theirs (<a href="https://indieweb.org/Webmention">how they work</a>).</li>
+          <li><b>Guestbooks, webrings and little 88×31 buttons</b> linking friends’ sites, revived from the early web.</li>
+        </ul>
+        <p style="margin-top:12px"><b>Join in:</b></p>
+        <ul class="g-list">
+          <li><a href="https://indieweb.org/IndieWeb_Carnival">IndieWeb Carnival</a>: a monthly theme everyone writes about.</li>
+          <li><a href="https://100daystooffload.com/">100 Days to Offload</a>: a challenge to publish 100 posts in a year.</li>
+          <li><a href="https://peopleandblogs.com/">People and Blogs</a>: weekly interviews with people who write online.</li>
+          <li><a href="https://indieweb.org/Homebrew_Website_Club">Homebrew Website Club</a>: small meetups, online and in person, to work on your own site.</li>
+        </ul>
+        <p style="margin-top:12px">An easy first step: write a /now page. It takes ten minutes, and you’ll update it whenever life changes.</p></section>
+
       <section class="g-sec"><h2>Getting around</h2>
         <dl class="g-defs">
           <dt>Today</dt><dd>A morning paper: a short briefing, then everything new from the last day.</dd>
@@ -874,6 +906,9 @@
           <dt>OPML</dt><dd>A file with a list of feeds, for moving between readers or sharing your list.</dd>
           <dt>Blogroll</dt><dd>A list of blogs a writer recommends.</dd>
           <dt>POSSE</dt><dd>Publish on your Own Site, Syndicate Elsewhere: post on your own site first, then share copies that link back to it.</dd>
+          <dt>Weeknote</dt><dd>A short weekly post about what happened that week.</dd>
+          <dt>Slash page</dt><dd>A standard page on a personal site, named by its address: /now, /about, /blogroll, /uses.</dd>
+          <dt>Webmention</dt><dd>A note one site sends another when it links to it, so replies can show up under the original post.</dd>
           <dt>Indie web</dt><dd>People making and reading their own websites, instead of living only on big apps.</dd>
         </dl></section>
 
