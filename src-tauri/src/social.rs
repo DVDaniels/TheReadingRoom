@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 
 const SERVICE: &str = "com.daviddaniels.readingroom";
 const OOB: &str = "urn:ietf:wg:oauth:2.0:oob";
-const MASTO_SCOPES: &str = "read write:statuses write:mutes write:blocks write:reports";
+const MASTO_SCOPES: &str = "read write:statuses write:follows write:mutes write:blocks write:reports";
 /// Bluesky's own moderation service, which receives reports
 const BSKY_MODERATION: &str = "did:plc:ar7c4by46qjdydhdevvrndac#atproto_labeler";
 
@@ -148,6 +148,12 @@ pub struct Note {
     pub parent_cid: String,
     pub depth: usize,
     pub kind: String,
+    pub link_description: String,
+    pub image: String,
+    pub likes: i64,
+    pub reposts: i64,
+    /// Who reposted or boosted it into your timeline, if that's how it arrived
+    pub via: String,
 }
 
 // ------------------------------------------------------------------ Bluesky
@@ -272,8 +278,12 @@ fn bsky_note(post: &Value, kind: &str) -> Note {
         text: st(rec, "text"),
         created_at: st(rec, "createdAt"),
         replies: post.get("replyCount").and_then(|x| x.as_i64()).unwrap_or(0),
-        link: st(post, "embed.external.uri"),
-        link_title: st(post, "embed.external.title"),
+        likes: post.get("likeCount").and_then(|x| x.as_i64()).unwrap_or(0),
+        reposts: post.get("repostCount").and_then(|x| x.as_i64()).unwrap_or(0),
+        link: Some(st(post, "embed.external.uri")).filter(|x| !x.is_empty()).unwrap_or_else(|| st(post, "embed.media.external.uri")),
+        link_title: Some(st(post, "embed.external.title")).filter(|x| !x.is_empty()).unwrap_or_else(|| st(post, "embed.media.external.title")),
+        link_description: Some(st(post, "embed.external.description")).filter(|x| !x.is_empty()).unwrap_or_else(|| st(post, "embed.media.external.description")),
+        image: Some(st(post, "embed.external.thumb")).filter(|x| !x.is_empty()).unwrap_or_else(|| st(post, "embed.media.external.thumb")),
         root_id: st(rec, "reply.root.uri"),
         root_cid: st(rec, "reply.root.cid"),
         parent_id: st(rec, "reply.parent.uri"),
@@ -286,6 +296,19 @@ fn bsky_note(post: &Value, kind: &str) -> Note {
 
 async fn bsky_post(text: &str, link: &str, title: &str, description: &str, image: &str) -> Result<String, String> {
     let s = bsky_session(false).await?;
+    if link.is_empty() {
+        if text.is_empty() {
+            return Err("Write something first.".into());
+        }
+        let mut record = json!({ "$type": "app.bsky.feed.post", "text": text, "langs": ["en"],
+            "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
+        let facets = link_facets(text);
+        if !facets.is_empty() {
+            record["facets"] = Value::Array(facets);
+        }
+        let v = bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.feed.post", "record": record }))).await?;
+        return Ok(bsky_web_url(&st(&v, "uri"), &s.handle));
+    }
     let mut external = json!({ "uri": link, "title": title, "description": description });
     // The story's picture on the card (Bluesky takes pictures up to about 1 MB)
     if image.starts_with("http") {
@@ -359,8 +382,12 @@ fn masto_note(s: &Value, kind: &str) -> Note {
         text: html_text(&st(s, "content")),
         created_at: st(s, "created_at"),
         replies: s.get("replies_count").and_then(|x| x.as_i64()).unwrap_or(0),
+        likes: s.get("favourites_count").and_then(|x| x.as_i64()).unwrap_or(0),
+        reposts: s.get("reblogs_count").and_then(|x| x.as_i64()).unwrap_or(0),
         link: st(s, "card.url"),
         link_title: st(s, "card.title"),
+        link_description: st(s, "card.description"),
+        image: st(s, "card.image"),
         parent_id: st(s, "in_reply_to_id"),
         kind: kind.into(),
         ..Default::default()
@@ -480,7 +507,7 @@ pub async fn social_post(networks: Vec<String>, text: String, link: String, titl
         let r = match n.as_str() {
             "bluesky" => bsky_post(text.trim(), &link, &title, &description, &image).await,
             "mastodon" => {
-                let status = if text.trim().is_empty() { link.clone() } else { format!("{}\n\n{link}", text.trim()) };
+                let status = if link.is_empty() { text.trim().to_string() } else if text.trim().is_empty() { link.clone() } else { format!("{}\n\n{link}", text.trim()) };
                 masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(json!({ "status": status, "visibility": "public" })))
                     .await
                     .map(|v| st(&v, "url"))
@@ -538,7 +565,6 @@ async fn bsky_conversations() -> Result<(Vec<Note>, Vec<Note>), String> {
             a.iter()
                 .filter(|x| x.get("reason").is_none()) // not reposts
                 .map(|x| bsky_note(&x["post"], "post"))
-                .filter(|n| !n.link.is_empty())
                 .collect()
         })
         .unwrap_or_default();
@@ -570,7 +596,6 @@ async fn masto_conversations() -> Result<(Vec<Note>, Vec<Note>), String> {
         .map(|a| {
             a.iter()
                 .map(|s| masto_note(s, "post"))
-                .filter(|n| !n.link.is_empty() || n.text.contains("http"))
                 .collect()
         })
         .unwrap_or_default();
@@ -715,5 +740,234 @@ mod tests {
         let out = order_thread("root", vec![n("b", "root", "2"), n("c", "a", "3"), n("a", "root", "1"), n("x", "elsewhere", "0")]);
         let got: Vec<(String, usize)> = out.iter().map(|n| (n.id.clone(), n.depth)).collect();
         assert_eq!(got, vec![("a".into(), 1), ("c".into(), 2), ("b".into(), 1)]);
+    }
+}
+
+
+// ------------------------------------------------------------------ Conversations: you, your followers, and what people share
+
+#[derive(Serialize, Default, Debug)]
+pub struct Profile {
+    network: String,
+    handle: String,
+    name: String,
+    avatar: String,
+    url: String,
+    followers: i64,
+    following: i64,
+    posts: i64,
+}
+
+/// Your own profile on each connected network, with follower, following and post counts.
+#[tauri::command]
+pub async fn social_profiles() -> Vec<Profile> {
+    let mut out = Vec::new();
+    if secret_get("bluesky").is_some() {
+        if let Ok(s) = bsky_session(false).await {
+            if let Ok(p) = bsky(true, "app.bsky.actor.getProfile", &[("actor", s.did.clone())], None).await {
+                let n = |k: &str| p.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
+                out.push(Profile {
+                    network: "bluesky".into(), handle: format!("@{}", st(&p, "handle")),
+                    name: Some(st(&p, "displayName")).filter(|x| !x.trim().is_empty()).unwrap_or_else(|| st(&p, "handle")),
+                    avatar: st(&p, "avatar"), url: format!("https://bsky.app/profile/{}", st(&p, "handle")),
+                    followers: n("followersCount"), following: n("followsCount"), posts: n("postsCount"),
+                });
+            }
+        }
+    }
+    if let Ok(m) = masto_saved() {
+        if let Ok(p) = masto(reqwest::Method::GET, "/api/v1/accounts/verify_credentials", &[], None).await {
+            let n = |k: &str| p.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
+            out.push(Profile {
+                network: "mastodon".into(), handle: format!("@{}@{}", st(&p, "acct"), st(&m, "instance")),
+                name: Some(st(&p, "display_name")).filter(|x| !x.trim().is_empty()).unwrap_or_else(|| st(&p, "acct")),
+                avatar: st(&p, "avatar_static"), url: st(&p, "url"),
+                followers: n("followers_count"), following: n("following_count"), posts: n("statuses_count"),
+            });
+        }
+    }
+    out
+}
+
+/// The first web address in a bit of text, if it looks like someone's own site (not a social network).
+pub fn own_site(text: &str) -> String {
+    static URL: OnceLock<regex::Regex> = OnceLock::new();
+    let skip = ["bsky.app", "mastodon", "twitter.com", "x.com", "instagram.com", "threads.net", "facebook.com", "linkedin.com",
+        "youtube.com", "tiktok.com", "linktr.ee", "github.com", "patreon.com", "ko-fi.com", "buymeacoffee.com", "paypal", "venmo"];
+    // Without https:// in front, only addresses ending like a website count ("St.Louis" isn't one)
+    let tlds = ["com", "net", "org", "blog", "io", "dev", "me", "co", "uk", "ca", "au", "de", "fr", "nl", "info", "xyz", "page", "site",
+        "website", "online", "ink", "pub", "life", "world", "space", "studio", "design", "photo", "photography", "art", "us", "eu", "ie", "nz"];
+    URL.get_or_init(|| regex::Regex::new(r#"(?i)\b(https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})(/[^\s<>"]*)?"#).unwrap())
+        .captures_iter(text)
+        .filter(|c| c.get(1).is_some() || tlds.contains(&c[2].rsplit('.').next().unwrap_or("").to_lowercase().as_str()))
+        .map(|c| c[2].to_lowercase())
+        .find(|h| !skip.iter().any(|s| h.contains(s)) && !h.ends_with(".social") && h.contains('.'))
+        .map(|h| format!("https://{h}/"))
+        .unwrap_or_default()
+}
+
+#[derive(Serialize, Debug)]
+pub struct Follower {
+    network: String,
+    person: Person,
+    followed_at: String,
+    following: bool,
+    blog: String,
+}
+
+/// People who followed you lately, whether you follow them back, and their blog if they have one.
+#[tauri::command]
+pub async fn social_followers() -> Vec<Follower> {
+    let mut out = Vec::new();
+    if secret_get("bluesky").is_some() {
+        if let Ok(v) = bsky(true, "app.bsky.notification.listNotifications", &[("limit", "60".into()), ("reasons", "follow".into())], None).await {
+            for x in v["notifications"].as_array().cloned().unwrap_or_default() {
+                if st(&x, "reason") != "follow" {
+                    continue;
+                }
+                let a = &x["author"];
+                let handle = st(a, "handle");
+                // Their own domain as a handle is a site; otherwise look in their bio
+                let blog = if !handle.ends_with(".bsky.social") && handle.contains('.') { format!("https://{handle}/") } else { own_site(&st(a, "description")) };
+                out.push(Follower {
+                    network: "bluesky".into(), person: bsky_person(a), followed_at: st(&x, "indexedAt"),
+                    following: a.get("viewer").and_then(|v| v.get("following")).map(|f| !f.is_null()).unwrap_or(false),
+                    blog,
+                });
+            }
+        }
+    }
+    if masto_saved().is_ok() {
+        if let Ok(v) = masto(reqwest::Method::GET, "/api/v1/notifications", &[("types[]", "follow".into()), ("limit", "40".into())], None).await {
+            let list = v.as_array().cloned().unwrap_or_default();
+            let ids: Vec<(&str, String)> = list.iter().map(|x| ("id[]", st(x, "account.id"))).collect();
+            let rel = if ids.is_empty() { Value::Null } else { masto(reqwest::Method::GET, "/api/v1/accounts/relationships", &ids, None).await.unwrap_or(Value::Null) };
+            for x in &list {
+                let a = &x["account"];
+                let id = st(a, "id");
+                let following = rel.as_array().and_then(|r| r.iter().find(|r| st(r, "id") == id)).and_then(|r| r.get("following")).and_then(|f| f.as_bool()).unwrap_or(false);
+                // A verified website field first, then any site in their fields or bio
+                let fields = a.get("fields").and_then(|f| f.as_array()).cloned().unwrap_or_default();
+                let verified = fields.iter().find(|f| !st(f, "verified_at").is_empty()).map(|f| own_site(&html_text(&st(f, "value")))).unwrap_or_default();
+                let any = fields.iter().map(|f| own_site(&html_text(&st(f, "value")))).find(|u| !u.is_empty()).unwrap_or_default();
+                let blog = [verified, any, own_site(&html_text(&st(a, "note")))].into_iter().find(|u| !u.is_empty()).unwrap_or_default();
+                out.push(Follower { network: "mastodon".into(), person: masto_person(a), followed_at: st(x, "created_at"), following, blog });
+            }
+        }
+    }
+    out.sort_by(|a, b| b.followed_at.cmp(&a.followed_at));
+    out
+}
+
+/// Follow someone back.
+#[tauri::command]
+pub async fn social_follow(network: String, person: String) -> Result<(), String> {
+    if network == "bluesky" {
+        let s = bsky_session(false).await?;
+        let record = json!({ "$type": "app.bsky.graph.follow", "subject": person, "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
+        bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.graph.follow", "record": record }))).await.map(|_| ())
+    } else {
+        masto(reqwest::Method::POST, &format!("/api/v1/accounts/{person}/follow"), &[], Some(json!({}))).await.map(|_| ()).map_err(|e| {
+            if e.contains("403") || e.to_lowercase().contains("scope") || e.contains("signed the app out") {
+                "Following needs a newer permission. Disconnect Mastodon and connect it again (Mastodon & Bluesky in the sidebar), then try once more.".into()
+            } else { e }
+        })
+    }
+}
+
+/// Posts from people you follow that share something to read (your own left out).
+#[tauri::command]
+pub async fn social_shared() -> Conversations {
+    let mut c = Conversations::default();
+    if secret_get("bluesky").is_some() {
+        match bsky_session(false).await {
+            Ok(s) => match bsky(true, "app.bsky.feed.getTimeline", &[("limit", "100".into())], None).await {
+                Ok(v) => {
+                    for x in v["feed"].as_array().cloned().unwrap_or_default() {
+                        let mut n = bsky_note(&x["post"], "shared");
+                        if n.link.is_empty() || n.author.id == s.did || !st(&x, "reply.parent.uri").is_empty() {
+                            continue;
+                        }
+                        if st(&x, "reason.$type").ends_with("reasonRepost") {
+                            if st(&x, "reason.by.did") == s.did { continue; }
+                            n.via = bsky_person(&x["reason"]["by"]).name;
+                        }
+                        c.posts.push(n);
+                    }
+                }
+                Err(e) => c.errors.push(format!("Bluesky: {e}")),
+            },
+            Err(e) => c.errors.push(format!("Bluesky: {e}")),
+        }
+    }
+    if let Ok(m) = masto_saved() {
+        let me = st(&m, "id");
+        match masto(reqwest::Method::GET, "/api/v1/timelines/home", &[("limit", "40".into())], None).await {
+            Ok(v) => {
+                for x in v.as_array().cloned().unwrap_or_default() {
+                    let boosted = x.get("reblog").is_some_and(|r| r.is_object());
+                    let inner = if boosted { &x["reblog"] } else { &x };
+                    let mut n = masto_note(inner, "shared");
+                    if n.link.is_empty() || n.author.id == me || !st(inner, "in_reply_to_id").is_empty() || st(&x, "account.id") == me {
+                        continue;
+                    }
+                    if boosted {
+                        n.via = masto_person(&x["account"]).name;
+                    }
+                    c.posts.push(n);
+                }
+            }
+            Err(e) => c.errors.push(format!("Mastodon: {e}")),
+        }
+    }
+    c.posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    c
+}
+
+/// People on Bluesky (and Mastodon, where its search allows) linking to your site.
+#[tauri::command]
+pub async fn social_blog_mentions(domain: String) -> Vec<Note> {
+    let domain = domain.trim().trim_start_matches("https://").trim_start_matches("http://").trim_start_matches("www.").trim_end_matches('/').to_lowercase();
+    let mut out = Vec::new();
+    if domain.is_empty() || !domain.contains('.') {
+        return out;
+    }
+    if secret_get("bluesky").is_some() {
+        if let Ok(s) = bsky_session(false).await {
+            if let Ok(v) = bsky(true, "app.bsky.feed.searchPosts", &[("q", domain.clone()), ("domain", domain.clone()), ("sort", "latest".into()), ("limit", "40".into())], None).await {
+                for p in v["posts"].as_array().cloned().unwrap_or_default() {
+                    let n = bsky_note(&p, "mention");
+                    if n.author.id != s.did {
+                        out.push(n);
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(m) = masto_saved() {
+        let me = st(&m, "id");
+        if let Ok(v) = masto(reqwest::Method::GET, "/api/v2/search", &[("q", domain.clone()), ("type", "statuses".into()), ("limit", "20".into())], None).await {
+            for x in v["statuses"].as_array().cloned().unwrap_or_default() {
+                let n = masto_note(&x, "mention");
+                if n.author.id != me && (n.link.contains(&domain) || n.text.to_lowercase().contains(&domain)) {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    out
+}
+
+#[cfg(test)]
+mod more_tests {
+    use super::own_site;
+
+    #[test]
+    fn finds_a_persons_own_site_not_their_socials() {
+        assert_eq!(own_site("Writer. Posts at https://rosa.example/blog and @rosa@mastodon.social"), "https://rosa.example/");
+        assert_eq!(own_site("bsky.app/profile/x · linktr.ee/x"), "");
+        assert_eq!(own_site("writing at samokafor.net"), "https://samokafor.net/");
+        assert_eq!(own_site("Born in St.Louis, now in Mr.Smith's town"), "");
     }
 }

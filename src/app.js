@@ -7,7 +7,7 @@
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
-  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [] };
+  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
@@ -225,7 +225,7 @@
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
-      : S.view === 'talk' ? `Your shared stories and the replies, on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
+      : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : `${lead}${muted} · ${when}`;
@@ -266,6 +266,10 @@
       bar.hidden = false;
       const n = S.feeds.filter(f => kindOf(f) === 'person').length;
       bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'talk' && anySocial()) {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn primary" data-talk="newpost">New post</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'shared'}" id="talkRefresh">Check again</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'discover') {
       bar.hidden = false;
@@ -319,7 +323,13 @@
     const f = pick && S.feeds.find(x => x.url === pick);
     if (f) return f;
     const n = ownerName.toLowerCase();
-    return n.length >= 3 ? S.feeds.find(f => (f.site + ' ' + f.url).toLowerCase().includes(n)) || null : null;
+    const byName = n.length >= 3 ? S.feeds.find(f => (f.site + ' ' + f.url).toLowerCase().includes(n)) : null;
+    if (byName) return byName;
+    // A Bluesky handle on your own domain (@daviddaniels.com) names your site
+    const h = (SOC.accounts.bluesky?.handle || '').replace(/^@/, '').toLowerCase();
+    if (!h || h.endsWith('.bsky.social')) return null;
+    const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+    return S.feeds.find(f => host(f.site) === h || host(f.url) === h) || null;
   }
   function greeting() {
     const h = new Date().getHours();
@@ -530,6 +540,8 @@
   // A picture that fails to load turns into that tile.
   document.addEventListener('error', e => {
     const img = e.target;
+    if (img.tagName === 'IMG' && img.closest?.('.newpost, .pav')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph' })); return; }
+    if (img.tagName === 'IMG' && img.closest?.('.tcols') && img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
     if (!img.classList?.contains('thumb') || img.tagName !== 'IMG') return;
     if (img.classList.contains('p-img')) { img.closest('.p-card')?.querySelector('.p-sum')?.classList.add('long'); img.remove(); return; }
@@ -604,7 +616,7 @@
     if (isPhone()) setScreen('list');
     if (S.view === 'discover') openDiscover();
     if (S.view === 'today') welcome();
-    if (S.view === 'talk') { loadConversations(); setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 4000); }
+    if (S.view === 'talk') loadTalk();
   }
 
 
@@ -1009,15 +1021,15 @@
 
   // ---- posting a story with your note
   const LIMIT = { bluesky: 300, mastodon: 500 };
-  function openCompose(it, prefer) {
+  function openCompose(it, prefer, all) {
     if (!anySocial()) { openAccounts(); return; }
     const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
-    const chosen = new Set(prefer && SOC.accounts[prefer] ? [prefer] : nets.slice(0, 1));
-    const f = feedById(it.feed_id);
-    const quote = S.highlights.find(h => h.item_id === it.id)?.text || '';
-    const el = sheet('composePanel', `<h2>Share with your thoughts</h2>
-      <div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>
-      <textarea id="cText" rows="5" placeholder="What did you think? Mention the writer to let them know."></textarea>
+    const chosen = new Set(all ? nets : prefer && SOC.accounts[prefer] ? [prefer] : nets.slice(0, 1));
+    const f = it && feedById(it.feed_id);
+    const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
+    const el = sheet('composePanel', `<h2>${it ? 'Share with your thoughts' : 'New post'}</h2>
+      ${it ? `<div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>` : ''}
+      <textarea id="cText" rows="5" placeholder="${it ? 'What did you think? Mention the writer to let them know.' : 'What’s on your mind?'}"></textarea>
       ${quote ? `<button class="b-link c-quote" id="cQuote" type="button">Add your highlight as a quote</button>` : ''}
       <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}"${chosen.has(n) ? ' checked' : ''}>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}
         <span class="c-count" id="cCount"></span></div>
@@ -1026,7 +1038,7 @@
     const text = $('cText'), boxes = () => [...el.querySelectorAll('.c-net input:checked')].map(x => x.value);
     const count = () => {
       const n = [...text.value].length, picks = boxes();
-      const room = Math.min(...picks.map(p => LIMIT[p] - (p === 'mastodon' ? 25 : 0)), 999);
+      const room = Math.min(...picks.map(p => LIMIT[p] - (p === 'mastodon' && it ? 25 : 0)), 999);
       $('cCount').textContent = picks.length ? `${room - n}` : '';
       $('cCount').classList.toggle('over', n > room);
       $('cPost').disabled = !picks.length || n > room;
@@ -1036,9 +1048,13 @@
     $('cCancel').onclick = () => { el.hidden = true; };
     $('cPost').onclick = async () => {
       $('cPost').disabled = true; $('cNote').textContent = 'Posting…'; $('cNote').classList.remove('err');
-      const res = await invoke('social_post', { networks: boxes(), text: text.value, link: it.link, title: headline(it), description: (it.summary || '').slice(0, 280), image: isWeb(it.image) ? it.image : '' });
+      const res = await invoke('social_post', { networks: boxes(), text: text.value, link: it ? it.link : '', title: it ? headline(it) : '', description: it ? (it.summary || '').slice(0, 280) : '', image: it && isWeb(it.image) ? it.image : '' });
       const bad = res.filter(r => r.error);
-      if (!bad.length) { el.hidden = true; status(`Posted to ${res.map(r => NET[r.network]).join(' and ')}. Replies will show in Conversations.`); setTimeout(() => loadConversations(true), 4000); return; }
+      if (!bad.length) {
+        el.hidden = true; if (it) store.set('shared:' + it.id, '1');
+        status(`Posted to ${res.map(r => NET[r.network]).join(' and ')}. Replies will show in Conversations.`);
+        setTimeout(() => { loadConversations(true); if (S.view === 'talk') renderList(); }, 4000); return;
+      }
       $('cNote').textContent = bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ') + (res.length > bad.length ? ` Posted to ${res.filter(r => !r.error).map(r => NET[r.network]).join(' and ')}.` : '');
       $('cNote').classList.add('err'); $('cPost').disabled = false;
     };
@@ -1067,26 +1083,150 @@
     const open = SOC.open.has(p.id), thread = SOC.threads.get(p.id);
     const it = S.items.find(i => i.link && p.link && i.link.replace(/\/$/, '') === p.link.replace(/\/$/, ''));
     return `<article class="t-post">
-      <div class="t-story">${p.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(p.link)}"`}>${esc(p.link_title || p.link.replace(/^https?:\/\//, ''))}</button>` : ''}
+      <div class="t-story">${!p.link ? `<span class="t-plain">${ICON_NET[p.network]}</span>` : ''}${p.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(p.link)}"`}>${esc(p.link_title || p.link.replace(/^https?:\/\//, ''))}</button>` : ''}
         <span class="t-when">${ICON_NET[p.network]} ${esc(fmtWhen(p.created_at))}</span></div>
       ${p.text ? `<p class="t-note">${esc(p.text)}</p>` : ''}
-      <button class="t-count linkish" data-talk="thread" data-net="${p.network}" data-id="${esc(p.id)}">${p.replies ? `${p.replies} ${p.replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'}${p.replies ? (open ? ' ▴' : ' ▾') : ''}</button>
+      <div class="t-meta"><button class="t-count linkish" data-talk="thread" data-net="${p.network}" data-id="${esc(p.id)}">${p.replies ? `${p.replies} ${p.replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'}${p.replies ? (open ? ' ▴' : ' ▾') : ''}</button>
+        ${p.reposts ? `<span>${p.reposts} ${p.network === 'mastodon' ? (p.reposts === 1 ? 'boost' : 'boosts') : (p.reposts === 1 ? 'repost' : 'reposts')}</span>` : ''}${p.likes ? `<span>${p.likes} ${p.network === 'mastodon' ? (p.likes === 1 ? 'favorite' : 'favorites') : (p.likes === 1 ? 'like' : 'likes')}</span>` : ''}
+        <button class="linkish" data-talk="open" data-url="${esc(p.url)}">Open on ${NET[p.network]}</button></div>
       <div class="n-box" data-box="${esc(p.id)}"></div>
       ${open ? `<div class="t-thread">${thread === undefined ? '<p class="note">Loading the replies…</p>' : thread.length ? thread.map(n => noteHtml(n, { reply: true, rootId: p.id, rootCid: p.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>` : ''}
     </article>`;
   }
-  function talkHtml() {
-    if (!anySocial()) return `<div class="empty"><strong>Talk about what you read</strong><span>Connect your Mastodon or Bluesky account to share stories with your thoughts, then see and answer the replies here.</span><button class="btn primary" id="talkConnect">Connect an account</button></div>`;
-    const c = SOC.conv;
-    if (!c) return `<p class="note">${SOC.loading ? 'Checking Mastodon and Bluesky…' : ''}</p>`;
-    const seen = socialSeen();
-    let out = SOC.err.map(e => `<div class="banner err">${esc(e)}</div>`).join('');
-    const fresh = c.replies.slice(0, 12);
-    if (fresh.length) out += `<section class="h-sec"><div class="h-head"><h2>Replies and mentions</h2><span class="h-count">${newReplies() ? `${newReplies()} new` : 'all caught up'}</span></div>
-      <div class="t-replies">${fresh.map(n => `<div class="${Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n)}</div>`).join('')}</div></section>`;
-    out += `<section class="h-sec"><div class="h-head"><h2>Stories you shared</h2><span class="h-count">${c.posts.length}</span></div>
-      ${c.posts.length ? c.posts.map(postHtml).join('') : '<p class="note">Nothing shared yet. Open a story and choose Share › Post to Bluesky or Mastodon.</p>'}</section>`;
+  // Tabs: what people share, replies to you, your posts, and people linking to your blog
+  const TALK_TABS = [['shared', 'From people you follow'], ['replies', 'Replies'], ['posts', 'Your posts'], ['blog', 'About your blog']];
+  const WEEK_MS = 7 * DAY;
+  const myDomain = () => {
+    const f = myFeed(); if (!f) return '';
+    const h = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+    return (isWeb(f.site) && h(f.site)) || h(f.url);
+  };
+  async function loadTalk() {
+    if (!anySocial()) return;
+    const tasks = [
+      loadConversations(true),
+      invoke('social_profiles').then(p => { SOC.profiles = p; }).catch(() => {}),
+      invoke('social_followers').then(f => { SOC.followers = f; }).catch(() => {}),
+      invoke('social_shared').then(c => { SOC.shared = c; }).catch(e => { SOC.shared = { posts: [], errors: [msg(e)] }; }),
+    ];
+    const d = myDomain();
+    if (d) tasks.push(invoke('social_blog_mentions', { domain: d }).then(m => { SOC.mentions = m; }).catch(() => { SOC.mentions = []; }));
+    else SOC.mentions = [];
+    for (const t of tasks) t.then(() => { if (S.view === 'talk') { renderHead(); renderList(); } });
+    await Promise.allSettled(tasks);
+  }
+  const fmtN = n => n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n || 0);
+  function profilesHtml() {
+    const ps = SOC.profiles || [];
+    if (!ps.length) return '';
+    return `<div class="pstrip">${ps.map(p => {
+      const fresh = (SOC.followers || []).filter(f => f.network === p.network && Date.now() - Date.parse(f.followed_at) < WEEK_MS).length;
+      return `<button class="pcard" data-talk="open" data-url="${esc(p.url)}" title="Open your ${NET[p.network]} profile">
+        <span class="pav">${isWeb(p.avatar) ? `<img src="${esc(p.avatar)}" alt="" referrerpolicy="no-referrer">` : esc((p.name || '?')[0])}<span class="net">${ICON_NET[p.network]}</span></span>
+        <span class="pwho"><b>${esc(p.name)}</b><span>${esc(p.handle)}</span></span>
+        <span class="pnums"><span class="pnum"><strong>${fmtN(p.followers)}</strong><small>Followers</small>${fresh ? `<em>+${fresh} this week</em>` : ''}</span>
+          <span class="pnum"><strong>${fmtN(p.following)}</strong><small>Following</small></span><span class="pnum"><strong>${fmtN(p.posts)}</strong><small>Posts</small></span></span></button>`;
+    }).join('')}</div>`;
+  }
+  const normLink = u => (u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
+  const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+  function sharedHtml() {
+    const c = SOC.shared;
+    if (!c) return '<p class="note">Looking at what the people you follow are sharing…</p>';
+    const groups = new Map();
+    for (const n of c.posts) {
+      const k = normLink(n.link); if (!k) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(n);
+    }
+    let out = (c.errors || []).map(e => `<div class="banner err">${esc(e)}</div>`).join('');
+    if (!groups.size) return out + '<p class="note">Nobody you follow has shared a link lately. As they do, the stories collect here.</p>';
+    out += [...groups.values()].slice(0, 40).map(g => {
+      const n = g.find(x => x.text && x.text.replace(/https?:\/\/\S+/g, '').trim()) || g[0];
+      const people = [...new Map(g.map(x => [x.author.handle, x])).values()];
+      const who = people[0], more = people.length - 1;
+      const comment = (n.text || '').replace(/https?:\/\/\S+/g, '').trim();
+      const site = hostOf(n.link);
+      const it = S.items.find(i => normLink(i.link) === normLink(n.link));
+      const followed = S.feeds.some(f => hostOf(f.site || f.url) === site || hostOf(f.url) === site);
+      const own = who.author.handle.replace(/^@/, '').toLowerCase() === site;
+      const thumb = isWeb(n.image) ? `<img class="thumb" src="${esc(n.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-tile="${hueFor(site)}|${esc((site[0] || '•').toUpperCase())}">`
+        : `<div class="thumb tile" style="--h:${hueFor(site)}"><span>${esc((site[0] || '•').toUpperCase())}</span></div>`;
+      return `<article class="shared">${thumb}<div class="sh-body">
+        <div class="sby">${isWeb(who.author.avatar) ? `<img class="av" src="${esc(who.author.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(who.author.handle)} 45% 42%)">${esc((who.author.name || '?')[0])}</span>`}
+          <b>${esc(who.author.name)}</b>${more ? ` and <b>${more} other${more > 1 ? 's' : ''}</b>` : ''} ${who.via ? `(via ${esc(who.via)})` : 'shared'} · ${esc(fmtWhen(who.created_at))} <span class="n-net">${ICON_NET[who.network]}</span></div>
+        <span class="site">${esc(site)}</span>
+        <button class="sh-title" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(n.link)}"`}>${esc(n.link_title || site)}</button>
+        ${n.link_description && !comment ? `<p class="sh-desc">${esc(n.link_description)}</p>` : ''}
+        ${comment ? `<q>${esc(comment.length > 280 ? comment.slice(0, 280) + '…' : comment)}</q>` : ''}
+        <div class="sacts"><button class="linkish" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(n.link)}"`}>Read</button>
+          <button class="linkish" data-talk="reply" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" data-root="${esc(n.root_id)}" data-rootcid="${esc(n.root_cid)}" data-handle="${esc(n.author.handle)}">Reply</button>
+          ${followed ? '<span class="sh-following">You follow this site</span>' : `<button class="linkish" data-talk="site" data-url="${esc('https://' + site + '/')}">${own ? 'Follow their blog' : 'Follow this site'}</button>`}
+          <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button></div>
+        <div class="n-box" data-box="${esc(n.id)}"></div></div></article>`;
+    }).join('');
     return out;
+  }
+  function repliesHtml() {
+    const c = SOC.conv; if (!c) return '<p class="note">Checking Mastodon and Bluesky…</p>';
+    const seen = socialSeen();
+    return (SOC.err || []).map(e => `<div class="banner err">${esc(e)}</div>`).join('') + (c.replies.length
+      ? `<div class="t-replies">${c.replies.slice(0, 40).map(n => `<div class="${Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n)}</div>`).join('')}</div>`
+      : '<p class="note">No replies or mentions yet. When someone answers you, it shows up here.</p>');
+  }
+  function postsHtml() {
+    const c = SOC.conv; if (!c) return '<p class="note">Checking Mastodon and Bluesky…</p>';
+    return c.posts.length ? c.posts.map(postHtml).join('') : '<p class="note">Nothing posted yet. Open a story and choose Share › Post to Bluesky or Mastodon, or press New post.</p>';
+  }
+  function blogHtml(limit) {
+    const d = myDomain();
+    if (!d) return '<p class="note">Mark your own site first: open its feed and choose “This is my site.”</p>';
+    const m = SOC.mentions;
+    if (!m) return '<p class="note">Looking for people linking to your site…</p>';
+    if (!m.length) return `<p class="note">Nobody has linked to ${esc(d)} lately${SOC.accounts.mastodon && !SOC.accounts.bluesky ? ' (Mastodon’s search only finds some posts)' : ''}.</p>`;
+    return `<div class="t-replies">${m.slice(0, limit || 40).map(n => `<div>${noteHtml(n)}</div>`).join('')}</div>`;
+  }
+  function sideHtml() {
+    let out = '';
+    // Your newest post on your own site, ready to share
+    const mine = myFeed();
+    const post = mine && S.items.filter(i => i.feed_id === mine.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+    const shared = post && (store.get('shared:' + post.id) || (SOC.conv?.posts || []).some(p => normLink(p.link) === normLink(post.link)));
+    if (post && !shared && Date.now() - Date.parse(post.date) < 4 * DAY) {
+      out += `<div class="box"><h3>Your new post</h3><p>Published on ${esc(mine.title)} ${esc(fmtWhen(post.date))}</p>
+        <div class="newpost">${isWeb(post.image) ? `<img src="${esc(post.image)}" alt="" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}<b>${esc(post.title)}</b></div>
+        <button class="btn primary" data-talk="sharemine" data-id="${esc(post.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button></div>`;
+    }
+    // New followers, with their blogs
+    const fol = (SOC.followers || []).slice(0, 8);
+    if (fol.length) {
+      const week = (SOC.followers || []).filter(f => Date.now() - Date.parse(f.followed_at) < WEEK_MS);
+      const blogs = week.filter(f => f.blog).length;
+      out += `<div class="box"><h3>New followers</h3><p>${week.length ? `${week.length} this week${blogs ? `. ${blogs === 1 ? 'One of them writes a blog' : `${blogs} of them write blogs`}.` : '.'}` : 'Your most recent followers.'}</p>
+        ${fol.map(f => {
+          const a = f.person, followingSite = f.blog && S.feeds.some(x => hostOf(x.site || x.url) === hostOf(f.blog));
+          const btn = f.blog && !followingSite ? `<button class="fbtn p" data-talk="blog" data-url="${esc(f.blog)}">Read their blog</button>`
+            : !f.following ? `<button class="fbtn" data-talk="follow" data-net="${f.network}" data-person="${esc(a.id)}">Follow back</button>`
+            : '<span class="fbtn done">Following</span>';
+          return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
+            <button class="fol-who" data-talk="open" data-url="${esc(a.url)}">${esc(a.name)}<small class="${f.blog ? 'blog' : ''}">${f.blog ? `writes at ${esc(hostOf(f.blog))}` : esc(a.handle)}</small></button>${btn}</div>`;
+        }).join('')}</div>`;
+    }
+    // People linking to your blog
+    if (myDomain() && SOC.mentions && SOC.mentions.length) out += `<div class="box"><h3>About your blog</h3><p>People linking to ${esc(myDomain())}</p>
+      ${SOC.mentions.slice(0, 3).map(n => `<button class="talk" data-talk="tab" data-tab="blog"><small>${esc(n.author.name)} · ${NET[n.network]} · ${esc(fmtWhen(n.created_at))}</small>${esc(n.text.length > 160 ? n.text.slice(0, 160) + '…' : n.text)}</button>`).join('')}</div>`;
+    return out;
+  }
+  function talkHtml() {
+    if (!anySocial()) return `<div class="empty"><strong>Talk about what you read</strong><span>Connect your Mastodon or Bluesky account to share stories with your thoughts, see what the people you follow are sharing, and answer replies here.</span><button class="btn primary" id="talkConnect">Connect an account</button></div>`;
+    const tab = SOC.tab || 'shared';
+    const counts = { replies: newReplies(), blog: (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length };
+    const body = tab === 'replies' ? repliesHtml() : tab === 'posts' ? postsHtml() : tab === 'blog' ? blogHtml() : sharedHtml();
+    const titles = { shared: ['Shared by people you follow', 'Only the posts that share something to read. No doom-scrolling.'], replies: ['Replies and mentions', ''], posts: ['Your posts', 'Open one to read and answer the replies.'], blog: ['About your blog', `People linking to ${esc(myDomain() || 'your site')}.`] };
+    return `${profilesHtml()}
+      <div class="ttabs" role="tablist">${TALK_TABS.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>
+      <div class="tcols"><div class="tmain"><h2 class="sec-t">${titles[tab][0]}</h2>${titles[tab][1] ? `<p class="sec-s">${titles[tab][1]}</p>` : ''}${body}</div>
+        <aside class="tside">${sideHtml()}</aside></div>`;
   }
   async function toggleThread(net, id) {
     if (SOC.open.has(id)) { SOC.open.delete(id); renderList(); return; }
@@ -1141,6 +1281,7 @@
   }
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; loadTalk(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
@@ -1148,6 +1289,22 @@
     if (k === 'reply') replyBox(b);
     if (k === 'cancel') b.closest('.n-box').innerHTML = '';
     if (k === 'more') moreMenu(b);
+    if (k === 'tab') { SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
+    if (k === 'newpost') openCompose(null);
+    if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
+    if (k === 'follow') {
+      b.disabled = true; b.textContent = 'Following…';
+      invoke('social_follow', { network: b.dataset.net, person: b.dataset.person })
+        .then(() => { const f = (SOC.followers || []).find(x => x.person.id === b.dataset.person); if (f) f.following = true; renderList(); status('Followed back.'); })
+        .catch(e => { b.disabled = false; b.textContent = 'Follow back'; status(msg(e), true); });
+    }
+    if (k === 'blog' || k === 'site') {
+      b.disabled = true; b.textContent = 'Adding…';
+      invoke('add_feed', { url: b.dataset.url, title: null, folderId: null })
+        .then(r => { status(`Following ${r.title}. Their posts are in All${k === 'blog' ? ' and People' : ''}.`); return load(); })
+        .then(() => renderList())
+        .catch(e => { b.disabled = false; b.textContent = k === 'blog' ? 'Read their blog' : 'Follow this site'; status(msg(e), true); });
+    }
   });
   loadAccounts().then(() => { renderRail(); loadConversations(true); });
   setInterval(() => { if (!document.hidden) loadConversations(true); }, 15 * 60 * 1000);
