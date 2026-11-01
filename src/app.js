@@ -251,14 +251,17 @@
   const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
 
   function renderRail() {
+    // Read · Find and talk · Your library
     $('views').innerHTML =
       navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
       navButton('people', 'People', unreadIn('people'), { icon: ICONS.people }) +
+      '<hr class="nav-gap">' +
+      navButton('discover', 'Discover', newSuggestions() || '', { icon: ICONS.discover }) +
+      (anySocial() ? navButton('talk', 'Conversations', newReplies() || '', { icon: ICONS.talk }) : '') +
+      '<hr class="nav-gap">' +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
-      navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
-      navButton('discover', 'Discover', D.report?.suggestions.length || '', { icon: ICONS.discover }) +
-      (anySocial() ? navButton('talk', 'Conversations', newReplies() || '', { icon: ICONS.talk }) : '');
+      navButton('recent', 'Recently read', '', { icon: ICONS.recent });
 
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
@@ -1088,7 +1091,15 @@
       : 'None of the sites you follow publish a blogroll the app could read, so these come from links in their posts.'} Blogrolls are found through a site’s <code>rel="blogroll"</code> link, <code>/.well-known/recommendations.opml</code>, or a Blogroll page.</p>`;
     return out;
   }
-  function paintDiscover() { if (S.view === 'discover') { renderHead(); renderList(); } renderRail(); }
+  // Discover's count: suggestions you haven't seen yet, not every suggestion
+  const seenSuggestions = () => { try { return new Set(JSON.parse(store.get('discoverSeen') || '[]')); } catch { return new Set(); } };
+  const newSuggestions = () => { const seen = seenSuggestions(); return (D.report?.suggestions || []).filter(x => !seen.has(x.domain)).length; };
+  function markSuggestionsSeen() {
+    const all = [...seenSuggestions(), ...(D.report?.suggestions || []).map(x => x.domain)];
+    store.set('discoverSeen', JSON.stringify([...new Set(all)].slice(-1000)));
+  }
+  function paintDiscover() {
+    if (S.view === 'discover') markSuggestionsSeen(); if (S.view === 'discover') { renderHead(); renderList(); } renderRail(); }
   async function loadDiscover() {
     try { const r = await invoke('discover_get'); D.report = r.report; D.running = r.running; } catch {}
   }
