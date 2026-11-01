@@ -7,7 +7,7 @@
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
-  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null };
+  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
@@ -151,8 +151,85 @@
     return out;
   }
 
+  // ---- one person, several feeds. Someone's blog, their Mastodon and their Bluesky are the same person when their
+  // site says so (rel="me" links, fediverse:creator) or their Bluesky handle is their own domain.
+  const hostOfU = u => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+  const bareHost = h => h.replace(/^(blog|www|en)\./, '');
+  const socialNet = f => /bsky\.app\/profile\//.test(f?.url || '') ? 'bluesky' : isSocialFeed(f) ? 'mastodon' : '';
+  const profileOf = f => (f.url || '').replace(/\/rss$/, '').replace(/\.rss$/, '');
+  const siteOf = f => { try { return new URL(isWeb(f.site) ? f.site : f.url).origin + '/'; } catch { return ''; } };
+  let PL = (() => { try { return JSON.parse(store.get('plinks') || '{}') || {}; } catch { return {}; } })(); // site → {at, links}
+  let PV = 0; // bumps when the people map changes
+  function buildPersons() {
+    S.personOf = new Map(); S.alsoFeeds = new Map();
+    const blogs = S.feeds.filter(f => !isSocialFeed(f) && !isNewsSearch(f));
+    const byHost = new Map(), byProfile = new Map();
+    for (const b of blogs) for (const h of [hostOfU(b.site), hostOfU(b.url)]) if (h) { byHost.set(h, b); if (!byHost.has(bareHost(h))) byHost.set(bareHost(h), b); }
+    for (const b of blogs) for (const l of (PL[siteOf(b)]?.links || [])) byProfile.set(l.url.toLowerCase().replace(/\/$/, ''), b);
+    for (const f of S.feeds) {
+      if (!isSocialFeed(f)) continue;
+      let b = byProfile.get(profileOf(f).toLowerCase());
+      if (!b && socialNet(f) === 'bluesky') {
+        const h = (f.url.split('/profile/')[1] || '').split('/')[0].toLowerCase();
+        if (h.includes('.') && !h.endsWith('.bsky.social')) b = byHost.get(h) || byHost.get(bareHost(h));
+      }
+      if (b) { S.personOf.set(f.id, b.id); if (!S.alsoFeeds.has(b.id)) S.alsoFeeds.set(b.id, []); S.alsoFeeds.get(b.id).push(f); }
+    }
+    PV++;
+  }
+  const personId = feedId => S.personOf?.get(feedId) || feedId;
+  // Look at the sites of the people you read (once a week each) for their Mastodon and Bluesky accounts
+  let scanningSites = false;
+  async function scanSites() {
+    if (scanningSites) return;
+    const weekAgo = Date.now() - 7 * DAY;
+    const sites = [...new Set(S.feeds.filter(f => !isSocialFeed(f) && !isNewsSearch(f) && kindOf(f) === 'person').map(siteOf).filter(Boolean))]
+      .filter(site => !(PL[site]?.at > weekAgo));
+    if (!sites.length) return;
+    scanningSites = true;
+    try {
+      const res = await invoke('site_accounts', { sites });
+      for (const r of res) PL[r.site] = { at: Date.now(), links: r.links };
+      store.set('plinks', JSON.stringify(PL));
+      buildPersons(); render();
+      if (S.view === 'talk') loadReaders();
+    } catch {} finally { scanningSites = false; }
+  }
+
+  // ---- POSSE copies: a toot or skeet that only shares a post you already get from the writer's blog folds into it.
+  // Someone else sharing it with a few words of their own stays; a bare share by someone else folds too.
+  const normU = u => (u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '');
+  let FOLD = { items: null };
+  function folds() {
+    if (FOLD.items === S.items && FOLD.feeds === S.feeds && FOLD.pv === PV) return FOLD;
+    const idx = new Map();
+    for (const i of S.items) { const f = feedById(i.feed_id); if (f && !isSocialFeed(f) && i.link) idx.set(normU(i.link), i); }
+    const keys = [...idx.keys()], hidden = new Map(), on = new Map();
+    for (const c of S.items) {
+      const sf = feedById(c.feed_id);
+      if (!c.shares || !sf || !isSocialFeed(sf)) continue;
+      const k = normU(c.shares);
+      let orig = idx.get(k);
+      if (!orig && !/^https?:/i.test(c.shares) && k.length > 8) { const hit = keys.find(x => x.startsWith(k)); if (hit) orig = idx.get(hit); }
+      if (!orig) continue;
+      const same = personId(sf.id) === orig.feed_id;
+      if (!same) {
+        const extra = (c.summary || '').replace(/(https?:\/\/)?[\w-]+(\.[\w-]+)+\/\S*/g, '').replace(orig.title || '', '').replace(/[\s\p{P}\p{S}]+/gu, ' ').trim();
+        if (extra.length > 40) continue;
+      }
+      hidden.set(c.id, orig.id);
+      if (!on.has(orig.id)) on.set(orig.id, []);
+      on.get(orig.id).push({ item: c, feed: sf, same });
+    }
+    FOLD = { items: S.items, feeds: S.feeds, pv: PV, hidden, on };
+    return FOLD;
+  }
+  const foldsIn = view => !(typeof view === 'number' && isSocialFeed(feedById(view)));
+  const isFolded = (i, view = S.view) => foldsIn(view) && folds().hidden.has(i.id);
+
   function visible() {
     let list = S.items.filter(i => inScope(i));
+    if (foldsIn(S.view)) { const F = folds(); list = list.filter(i => !F.hidden.has(i.id)); }
     S.hiddenMuted = 0;
     if (mutesApply()) { const before = list.length; list = list.filter(i => !isMuted(i)); S.hiddenMuted = before - list.length; }
     if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || S.keep.has(i.id));
@@ -162,7 +239,7 @@
     else S.also = new Map();
     return list;
   }
-  const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view) && !(mutesApply(view) && isMuted(i))).length;
+  const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view) && !(mutesApply(view) && isMuted(i)) && !isFolded(i, view)).length;
 
   // ------------------------------------------------------------ render: sidebar
   function navButton(view, label, count, { icon = '', fav = null, err = '', title = '' } = {}) {
@@ -243,6 +320,7 @@
       bar.hidden = false;
       bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
         ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+        ${anySocial() ? followButtons(f) : ''}
         <label class="kindpick">This feed is <select id="kindFeed" aria-label="This feed is">
           <option value=""${(S.prefs.kinds || {})[f.url] ? '' : ' selected'}>${autoKind(f) === 'person' ? 'A person (automatic)' : 'A publication (automatic)'}</option>
           <option value="person"${(S.prefs.kinds || {})[f.url] === 'person' ? ' selected' : ''}>A person</option>
@@ -299,10 +377,20 @@
   }
 
   function alsoLine(it) {
+    let out = '';
     const names = [...new Set(S.also.get(it.id) || [])].filter(Boolean);
-    if (!names.length) return '';
-    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
-    return `<div class="also">Also from ${esc(shown)}</div>`;
+    if (names.length) {
+      const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
+      out += `<div class="also">Also from ${esc(shown)}</div>`;
+    }
+    const copies = foldsIn(S.view) ? folds().on.get(it.id) || [] : [];
+    if (copies.length) {
+      const own = copies.filter(c => c.same), others = copies.filter(c => !c.same);
+      const chip = c => `<button class="also-on" data-open="${esc(c.item.id)}" title="Open the ${NET[socialNet(c.feed)]} post">${ICON_NET[socialNet(c.feed)]}${esc(c.same ? NET[socialNet(c.feed)] : c.feed.title)}</button>`;
+      const ownChips = [...new Map(own.map(c => [socialNet(c.feed), c])).values()];
+      out += `<div class="also also-social">${ownChips.length ? `Also shared on ${ownChips.map(chip).join(' ')}` : ''}${ownChips.length && others.length ? ' · ' : ''}${others.length ? `Shared by ${others.slice(0, 3).map(chip).join(' ')}` : ''}</div>`;
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ Today's briefing
@@ -573,7 +661,8 @@
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
       S.mutes = s.mutes || []; S.prefs = s.prefs && typeof s.prefs === 'object' ? s.prefs : {};
-      buildKinds(); buildMutes(); renderMutes();
+      buildKinds(); buildPersons(); buildMutes(); renderMutes();
+      setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
       const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk'].includes(S.view) || folderOf(S.view) || feedById(S.view);
@@ -584,6 +673,7 @@
 
   async function mark(ids, patch) {
     ids = [].concat(ids);
+    if ('read' in patch) { const F = folds(); ids = [...new Set(ids.flatMap(id => [id, ...(F.on.get(id) || []).map(c => c.item.id)]))]; }
     const now = new Date().toISOString();
     for (const it of S.items) if (ids.includes(it.id)) {
       Object.assign(it, patch);
@@ -617,6 +707,7 @@
     if (S.view === 'discover') openDiscover();
     if (S.view === 'today') welcome();
     if (S.view === 'talk') loadTalk();
+    if (typeof S.view === 'number' && anySocial()) loadReaders();
   }
 
 
@@ -630,6 +721,7 @@
     return `<article class="p-card${top.read ? ' read' : ''}" data-id="${esc(top.id)}">
       <header class="p-who"><span class="fav" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
         <button class="p-name" data-view="${f.id}">${esc(f.title)}</button>
+        ${(S.alsoFeeds?.get(f.id) || []).map(sf => `<button class="p-net" data-view="${sf.id}" title="${esc(f.title)} on ${NET[socialNet(sf)]}" aria-label="${NET[socialNet(sf)]}">${ICON_NET[socialNet(sf)]}</button>`).join('')}
         ${isWeb(f.site) ? `<a class="p-site" href="${esc(f.site)}" title="Visit ${esc(f.title)}">${esc(f.site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : ''}</header>
       ${pic ? `<img class="thumb p-img" src="${esc(top.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : ''}
       <div class="p-meta"><time datetime="${esc(top.date)}">${esc(ago(top.date) === 'now' ? 'just now' : ago(top.date) + ' ago')}</time>
@@ -642,8 +734,8 @@
   }
   function peopleHomeHtml(list) {
     const by = new Map();
-    for (const it of list) { if (!by.has(it.feed_id)) by.set(it.feed_id, []); by.get(it.feed_id).push(it); }
-    const people = S.feeds.filter(f => kindOf(f) === 'person');
+    for (const it of list) { const k = personId(it.feed_id); if (!by.has(k)) by.set(k, []); by.get(k).push(it); }
+    const people = S.feeds.filter(f => kindOf(f) === 'person' && personId(f.id) === f.id);
     const active = people.filter(f => by.has(f.id)).sort((a, b) => by.get(b.id)[0].date.localeCompare(by.get(a.id)[0].date));
     const fresh = active.filter(f => Date.now() - Date.parse(by.get(f.id)[0].date) < 7 * DAY);
     const older = active.filter(f => !fresh.includes(f));
@@ -1120,6 +1212,45 @@
       ${open ? `<div class="t-thread">${thread === undefined ? '<p class="note">Loading the replies…</p>' : thread.length ? thread.map(n => noteHtml(n, { reply: true, rootId: p.id, rootCid: p.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>` : ''}
     </article>`;
   }
+  // ---- The people you read, on Mastodon and Bluesky: their accounts come from their sites, the social feeds you
+  // already follow, and Bluesky handles on their own domain. Looked up through your accounts to see if you follow them.
+  function readerCandidates() {
+    const want = new Map(); // profile url → feed id (the person)
+    const add = (u, fid) => { if (u && !want.has(u)) want.set(u, fid); };
+    const nets = new Set(['bluesky', 'mastodon'].filter(n => SOC.accounts[n]));
+    for (const f of S.feeds) {
+      if (kindOf(f) !== 'person' || isNewsSearch(f)) continue;
+      const who = personId(f.id);
+      if (isSocialFeed(f)) { if (nets.has(socialNet(f))) add(profileOf(f), who); continue; }
+      for (const l of (PL[siteOf(f)]?.links || [])) if (nets.has(l.label.toLowerCase())) add(l.url.replace(/\/$/, ''), who);
+      const h = bareHost(hostOfU(f.site) || hostOfU(f.url));
+      if (nets.has('bluesky') && h && h.includes('.')) add('https://bsky.app/profile/' + h, who);
+    }
+    return want;
+  }
+  let readersAt = 0;
+  async function loadReaders(force) {
+    if (!anySocial() || (!force && Date.now() - readersAt < 10 * 60 * 1000 && SOC.readers)) return;
+    readersAt = Date.now();
+    const want = readerCandidates();
+    const tasks = [
+      invoke('social_lookup', { urls: [...want.keys()] }).then(list => {
+        // Once per person and network
+        const seen = new Set();
+        SOC.readers = list.map(l => ({ ...l, feedId: want.get(l.url) })).filter(r => r.feedId && !seen.has(r.feedId + r.network) && seen.add(r.feedId + r.network));
+      }).catch(() => { SOC.readers = SOC.readers || []; }),
+      invoke('social_following_blogs').then(b => { SOC.theirBlogs = b; }).catch(() => { SOC.theirBlogs = SOC.theirBlogs || []; }),
+    ];
+    for (const t of tasks) t.then(() => { if (S.view === 'talk') renderList(); if (typeof S.view === 'number') renderHead(); });
+    await Promise.allSettled(tasks);
+  }
+  const readersFor = feedId => (SOC.readers || []).filter(r => r.feedId === personId(feedId));
+  function followButtons(f) {
+    return readersFor(f.id).map(r => r.following
+      ? `<span class="btn ghost-done" title="You follow ${esc(r.person.handle)}">${ICON_NET[r.network]} Following on ${NET[r.network]}</span>`
+      : `<button class="btn" data-talk="follow" data-net="${r.network}" data-person="${esc(r.person.id)}" title="${esc(r.person.handle)}">${ICON_NET[r.network]} Follow on ${NET[r.network]}</button>`).join('');
+  }
+
   // Tabs: what people share, replies to you, your posts, and people linking to your blog
   const TALK_TABS = [['shared', 'From people you follow'], ['replies', 'Replies'], ['posts', 'Your posts'], ['blog', 'About your blog']];
   const WEEK_MS = 7 * DAY;
@@ -1140,6 +1271,7 @@
     if (d) tasks.push(invoke('social_blog_mentions', { domain: d }).then(m => { SOC.mentions = m; }).catch(() => { SOC.mentions = []; }));
     else SOC.mentions = [];
     for (const t of tasks) t.then(() => { if (S.view === 'talk') { renderHead(); renderList(); } });
+    loadReaders();
     await Promise.allSettled(tasks);
   }
   const fmtN = n => n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n || 0);
@@ -1175,7 +1307,7 @@
       const comment = (n.text || '').replace(/https?:\/\/\S+/g, '').trim();
       const site = hostOf(n.link);
       const it = S.items.find(i => normLink(i.link) === normLink(n.link));
-      const followed = S.feeds.some(f => hostOf(f.site || f.url) === site || hostOf(f.url) === site);
+      const followed = S.feeds.some(f => [hostOf(f.site || f.url), hostOf(f.url)].some(h => h && bareHost(h) === bareHost(site)));
       const own = who.author.handle.replace(/^@/, '').toLowerCase() === site;
       const thumb = isWeb(n.image) ? `<img class="thumb" src="${esc(n.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-tile="${hueFor(site)}|${esc((site[0] || '•').toUpperCase())}">`
         : `<div class="thumb tile" style="--h:${hueFor(site)}"><span>${esc((site[0] || '•').toUpperCase())}</span></div>`;
@@ -1238,6 +1370,29 @@
           return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
             <button class="fol-who" data-talk="open" data-url="${esc(a.url)}">${esc(a.name)}<small class="${f.blog ? 'blog' : ''}">${f.blog ? `writes at ${esc(hostOf(f.blog))}` : esc(a.handle)}</small></button>${btn}</div>`;
         }).join('')}</div>`;
+    }
+    // People you read who are on Mastodon or Bluesky and you don't follow there yet
+    const notYet = (SOC.readers || []).filter(r => !r.following && feedById(r.feedId));
+    if (notYet.length) {
+      const byPerson = new Map();
+      for (const r of notYet) { if (!byPerson.has(r.feedId)) byPerson.set(r.feedId, []); byPerson.get(r.feedId).push(r); }
+      const people = [...byPerson.entries()], show = SOC.allReaders ? people : people.slice(0, 6);
+      out += `<div class="box"><h3>People you read</h3><p>${people.length === 1 ? 'One writer you read is' : `${people.length} writers you read are`} on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' or ')}. Follow them there to talk with them.</p>
+        ${show.map(([fid, rs]) => { const f = feedById(fid), a = rs[0].person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?')[0])}</span>`}
+          <button class="fol-who" data-view="${f.id}">${esc(f.title)}<small>${rs.map(r => esc(r.person.handle)).join(' · ')}</small></button>
+          <span class="fbtns">${rs.map(r => `<button class="fbtn" data-talk="follow" data-net="${r.network}" data-person="${esc(r.person.id)}" title="Follow ${esc(r.person.handle)} on ${NET[r.network]}">${ICON_NET[r.network]} Follow</button>`).join('')}</span></div>`; }).join('')}
+        ${people.length > 6 ? `<button class="linkish more-r" data-talk="allreaders">${SOC.allReaders ? 'Show fewer' : `Show all ${people.length}`}</button>` : ''}</div>`;
+    }
+    // People you follow there who keep a blog you don't read yet
+    const have = new Set(S.feeds.flatMap(f => [hostOfU(f.site), hostOfU(f.url)].filter(Boolean).map(bareHost)));
+    const blogs = (SOC.theirBlogs || []).filter(b => !have.has(bareHost(hostOfU(b.blog))));
+    if (blogs.length) {
+      const show = SOC.allBlogs ? blogs : blogs.slice(0, 6);
+      out += `<div class="box"><h3>Their blogs</h3><p>${blogs.length === 1 ? 'Someone you follow keeps a blog' : `${blogs.length} people you follow keep blogs`} you don’t read here yet.</p>
+        ${show.map(b => { const a = b.person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
+          <button class="fol-who" data-talk="open" data-url="${esc(b.blog)}">${esc(a.name)}<small class="blog">${esc(hostOfU(b.blog))}</small></button>
+          <button class="fbtn p" data-talk="blog" data-url="${esc(b.blog)}">Read their blog</button></div>`; }).join('')}
+        ${blogs.length > 6 ? `<button class="linkish more-r" data-talk="allblogs">${SOC.allBlogs ? 'Show fewer' : `Show all ${blogs.length}`}</button>` : ''}</div>`;
     }
     // People linking to your blog
     if (myDomain() && SOC.mentions && SOC.mentions.length) out += `<div class="box"><h3>About your blog</h3><p>People linking to ${esc(myDomain())}</p>
@@ -1319,11 +1474,19 @@
     if (k === 'tab') { SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
     if (k === 'newpost') openCompose(null);
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
+    if (k === 'allreaders') { SOC.allReaders = !SOC.allReaders; renderList(); }
+    if (k === 'allblogs') { SOC.allBlogs = !SOC.allBlogs; renderList(); }
     if (k === 'follow') {
+      const was = b.innerHTML;
       b.disabled = true; b.textContent = 'Following…';
       invoke('social_follow', { network: b.dataset.net, person: b.dataset.person })
-        .then(() => { const f = (SOC.followers || []).find(x => x.person.id === b.dataset.person); if (f) f.following = true; renderList(); status('Followed back.'); })
-        .catch(e => { b.disabled = false; b.textContent = 'Follow back'; status(msg(e), true); });
+        .then(() => {
+          const id = b.dataset.person;
+          for (const x of SOC.followers || []) if (x.person.id === id) x.following = true;
+          for (const x of SOC.readers || []) if (x.person.id === id) x.following = true;
+          renderList(); renderHead(); status('Following.');
+        })
+        .catch(e => { b.disabled = false; b.innerHTML = was; status(msg(e), true); });
     }
     if (k === 'blog' || k === 'site') {
       b.disabled = true; b.textContent = 'Adding…';

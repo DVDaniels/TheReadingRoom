@@ -27,6 +27,9 @@ pub struct ParsedItem {
     pub image: String,
     /// A podcast episode's audio file
     pub audio: String,
+    /// The page a post points to (a toot or skeet sharing a blog post); a full address, or the start of one
+    /// when the feed only has the shortened text
+    pub shares: String,
 }
 
 pub fn client() -> reqwest::Client {
@@ -213,6 +216,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             let full = e.content.as_ref().and_then(|c| c.body.clone()).unwrap_or_default();
             let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
             let audio = story_audio(e);
+            let shares = story_shares(&format!("{full} {body}"), &link);
             let summary = plain(&body, SUMMARY_CHARS);
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
             if title.is_empty() {
@@ -225,10 +229,44 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary, image, audio }
+            ParsedItem { key, title, link, date, summary, image, audio, shares }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
+}
+
+/// The outside page a post links to: the first link that isn't a mention, a hashtag, or the post's own site.
+/// Bluesky's feeds only carry the shortened text ("kevquirk.com/blog/pure-c..."), so that start is kept instead.
+pub fn story_shares(html: &str, own_link: &str) -> String {
+    static A: OnceLock<Regex> = OnceLock::new();
+    static BARE: OnceLock<Regex> = OnceLock::new();
+    let own_host = url::Url::parse(own_link).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default();
+    let social = |h: &str| h == own_host || h.ends_with("bsky.app") || h.contains("mastodon") || h.ends_with(".social") || h == "t.co";
+    for c in A.get_or_init(|| Regex::new(r#"(?is)<a\b([^>]*)>"#).unwrap()).captures_iter(html) {
+        let attrs = &c[1];
+        let low = attrs.to_ascii_lowercase();
+        if low.contains("mention") || low.contains("hashtag") || low.contains("u-url") {
+            continue;
+        }
+        let Some(h) = Regex::new(r#"(?i)href\s*=\s*["']([^"']+)["']"#).ok().and_then(|r| r.captures(attrs).map(|m| html_escape::decode_html_entities(&m[1]).to_string())) else { continue };
+        let Ok(u) = url::Url::parse(&h) else { continue };
+        if !matches!(u.scheme(), "http" | "https") || u.path().starts_with("/tags/") || u.path().starts_with("/hashtag/") {
+            continue;
+        }
+        let host = u.host_str().unwrap_or("").trim_start_matches("www.").to_string();
+        if !social(&host) {
+            return u.to_string();
+        }
+    }
+    let text = plain(html, 2000);
+    for c in BARE.get_or_init(|| Regex::new(r"(?i)\b(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,}/[^\s<>\x22]*)").unwrap()).captures_iter(&text) {
+        let frag = c[1].trim_end_matches(['…', '.', ',', ')', '!', '?']).trim_end_matches("...").to_string();
+        let host = frag.split('/').next().unwrap_or("").trim_start_matches("www.").to_lowercase();
+        if !social(&host) && frag.len() > host.len() + 1 {
+            return frag;
+        }
+    }
+    String::new()
 }
 
 /// A podcast episode's audio: an enclosure that's audio, or ends like an audio file.
@@ -320,6 +358,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             summary: p.summary.clone(),
             image: p.image.clone(),
             audio: p.audio.clone(),
+            shares: p.shares.clone(),
         })
         .collect()
 }
@@ -327,6 +366,14 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_what_a_post_shares() {
+        let toot = r#"<p>New post: Pure comments <a href="https://fosstodon.org/tags/indieweb" class="mention hashtag">#<span>indieweb</span></a> <a href="https://kevquirk.com/blog/pure-comments" rel="nofollow"><span class="invisible">https://</span>kevquirk.com/blog/pure-c<span class="invisible">omments</span></a> cc <a href="https://m.s/@jim" class="u-url mention">@jim</a></p>"#;
+        assert_eq!(story_shares(toot, "https://fosstodon.org/@kev/1"), "https://kevquirk.com/blog/pure-comments");
+        assert_eq!(story_shares("Wrote about feeds: jim-nielsen.com/blog/2026/fe...", "https://bsky.app/profile/jim/post/1"), "jim-nielsen.com/blog/2026/fe");
+        assert_eq!(story_shares("Just a thought, no links. See bsky.app/profile/x", "https://bsky.app/profile/a/post/1"), "");
+    }
 
     #[test]
     fn parses_rss_and_strips_html() {

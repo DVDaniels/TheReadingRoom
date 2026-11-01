@@ -826,13 +826,9 @@ pub async fn social_followers() -> Vec<Follower> {
                     continue;
                 }
                 let a = &x["author"];
-                let handle = st(a, "handle");
-                // Their own domain as a handle is a site; otherwise look in their bio
-                let blog = if !handle.ends_with(".bsky.social") && handle.contains('.') { format!("https://{handle}/") } else { own_site(&st(a, "description")) };
                 out.push(Follower {
                     network: "bluesky".into(), person: bsky_person(a), followed_at: st(&x, "indexedAt"),
-                    following: a.get("viewer").and_then(|v| v.get("following")).map(|f| !f.is_null()).unwrap_or(false),
-                    blog,
+                    following: bsky_following(a), blog: bsky_blog(a),
                 });
             }
         }
@@ -846,16 +842,160 @@ pub async fn social_followers() -> Vec<Follower> {
                 let a = &x["account"];
                 let id = st(a, "id");
                 let following = rel.as_array().and_then(|r| r.iter().find(|r| st(r, "id") == id)).and_then(|r| r.get("following")).and_then(|f| f.as_bool()).unwrap_or(false);
-                // A verified website field first, then any site in their fields or bio
-                let fields = a.get("fields").and_then(|f| f.as_array()).cloned().unwrap_or_default();
-                let verified = fields.iter().find(|f| !st(f, "verified_at").is_empty()).map(|f| own_site(&html_text(&st(f, "value")))).unwrap_or_default();
-                let any = fields.iter().map(|f| own_site(&html_text(&st(f, "value")))).find(|u| !u.is_empty()).unwrap_or_default();
-                let blog = [verified, any, own_site(&html_text(&st(a, "note")))].into_iter().find(|u| !u.is_empty()).unwrap_or_default();
-                out.push(Follower { network: "mastodon".into(), person: masto_person(a), followed_at: st(x, "created_at"), following, blog });
+                out.push(Follower { network: "mastodon".into(), person: masto_person(a), followed_at: st(x, "created_at"), following, blog: masto_blog(a) });
             }
         }
     }
     out.sort_by(|a, b| b.followed_at.cmp(&a.followed_at));
+    out
+}
+
+/// A Bluesky account's own site: a handle on their own domain, or an address in their bio.
+fn bsky_blog(a: &Value) -> String {
+    let handle = st(a, "handle");
+    if !handle.ends_with(".bsky.social") && handle.contains('.') && !handle.ends_with(".bsky.team") { format!("https://{handle}/") } else { own_site(&st(a, "description")) }
+}
+fn bsky_following(a: &Value) -> bool {
+    a.get("viewer").and_then(|v| v.get("following")).map(|f| f.is_string()).unwrap_or(false)
+}
+/// A Mastodon account's own site: a verified website field first, then any site in their fields or bio.
+fn masto_blog(a: &Value) -> String {
+    let fields = a.get("fields").and_then(|f| f.as_array()).cloned().unwrap_or_default();
+    let verified = fields.iter().find(|f| !st(f, "verified_at").is_empty()).map(|f| own_site(&html_text(&st(f, "value")))).unwrap_or_default();
+    let any = fields.iter().map(|f| own_site(&html_text(&st(f, "value")))).find(|u| !u.is_empty()).unwrap_or_default();
+    [verified, any, own_site(&html_text(&st(a, "note")))].into_iter().find(|u| !u.is_empty()).unwrap_or_default()
+}
+
+#[derive(Serialize, Debug)]
+pub struct SiteAccounts {
+    site: String,
+    links: Vec<crate::reply::Link>,
+}
+
+/// The Mastodon and Bluesky accounts people list on their own sites (rel="me" links, fediverse:creator),
+/// so their blog, toots and skeets can be known as one person, and you can follow them there.
+#[tauri::command]
+pub async fn site_accounts(sites: Vec<String>) -> Vec<SiteAccounts> {
+    use futures::stream::{self, StreamExt};
+    stream::iter(sites.into_iter().take(200))
+        .map(|site| async move {
+            let mut o = crate::reply::Options::default();
+            if let Ok(page) = url::Url::parse(&site) {
+                if let Ok(Ok((body, final_url, _))) = tokio::time::timeout(Duration::from_secs(12), crate::feeds::get(client(), &site)).await {
+                    let base = url::Url::parse(&final_url).unwrap_or(page);
+                    crate::reply::scan(&String::from_utf8_lossy(&body), &base, &mut o);
+                }
+            }
+            SiteAccounts { site, links: o.social }
+        })
+        .buffer_unordered(6)
+        .collect()
+        .await
+}
+
+#[derive(Serialize, Debug)]
+pub struct Lookup {
+    url: String,
+    network: String,
+    person: Person,
+    following: bool,
+}
+
+/// Find people's accounts from their profile addresses, and whether you already follow them.
+/// Bluesky in batches of 25; Mastodon one by one, through your own server so they can be followed.
+#[tauri::command]
+pub async fn social_lookup(urls: Vec<String>) -> Vec<Lookup> {
+    let mut out = Vec::new();
+    let bsky_urls: Vec<(String, String)> = urls.iter()
+        .filter_map(|u| u.split("bsky.app/profile/").nth(1).map(|h| (u.clone(), h.trim_end_matches('/').split('/').next().unwrap_or("").to_lowercase())))
+        .filter(|(_, h)| !h.is_empty())
+        .collect();
+    if secret_get("bluesky").is_some() {
+        for chunk in bsky_urls.chunks(25) {
+            let q: Vec<(&str, String)> = chunk.iter().map(|(_, h)| ("actors", h.clone())).collect();
+            if let Ok(v) = bsky(true, "app.bsky.actor.getProfiles", &q, None).await {
+                for p in v["profiles"].as_array().cloned().unwrap_or_default() {
+                    let (h, did) = (st(&p, "handle").to_lowercase(), st(&p, "did"));
+                    if let Some((u, _)) = chunk.iter().find(|(_, x)| *x == h || *x == did) {
+                        out.push(Lookup { url: u.clone(), network: "bluesky".into(), person: bsky_person(&p), following: bsky_following(&p) });
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(m) = masto_saved() {
+        let mine = st(&m, "instance").trim_start_matches("https://").trim_end_matches('/').to_lowercase();
+        static ACCT: OnceLock<regex::Regex> = OnceLock::new();
+        let re = ACCT.get_or_init(|| regex::Regex::new(r"(?i)^https?://([^/]+)/@([A-Za-z0-9_.]+)/?$").unwrap());
+        let wanted: Vec<(String, String)> = urls.iter().filter(|u| !u.contains("bsky.app/"))
+            .filter_map(|u| re.captures(u).map(|c| (u.clone(), if c[1].to_lowercase() == mine { c[2].to_string() } else { format!("{}@{}", &c[2], &c[1]) })))
+            .take(40).collect();
+        let mut found: Vec<(String, Value)> = Vec::new();
+        for (u, acct) in wanted {
+            let a = if acct.contains('@') {
+                masto(reqwest::Method::GET, "/api/v2/search", &[("q", format!("@{acct}")), ("type", "accounts".into()), ("resolve", "true".into()), ("limit", "1".into())], None).await
+                    .ok().and_then(|v| v["accounts"].as_array().and_then(|a| a.first().cloned()))
+            } else {
+                masto(reqwest::Method::GET, "/api/v1/accounts/lookup", &[("acct", acct)], None).await.ok()
+            };
+            if let Some(a) = a.filter(|a| !st(a, "id").is_empty()) {
+                found.push((u, a));
+            }
+        }
+        if !found.is_empty() {
+            let ids: Vec<(&str, String)> = found.iter().map(|(_, a)| ("id[]", st(a, "id"))).collect();
+            let rel = masto(reqwest::Method::GET, "/api/v1/accounts/relationships", &ids, None).await.unwrap_or(Value::Null);
+            for (u, a) in &found {
+                let id = st(a, "id");
+                let r = rel.as_array().and_then(|r| r.iter().find(|r| st(r, "id") == id));
+                let following = r.map(|r| r.get("following").and_then(|f| f.as_bool()).unwrap_or(false) || r.get("requested").and_then(|f| f.as_bool()).unwrap_or(false)).unwrap_or(false);
+                out.push(Lookup { url: u.clone(), network: "mastodon".into(), person: masto_person(a), following });
+            }
+        }
+    }
+    out
+}
+
+#[derive(Serialize, Debug)]
+pub struct FollowedBlog {
+    network: String,
+    person: Person,
+    blog: String,
+}
+
+/// People you follow on Bluesky and Mastodon who keep a site of their own, so you can read them here.
+#[tauri::command]
+pub async fn social_following_blogs() -> Vec<FollowedBlog> {
+    let mut out = Vec::new();
+    if secret_get("bluesky").is_some() {
+        if let Ok(s) = bsky_session(false).await {
+            let mut cursor = String::new();
+            for _ in 0..3 {
+                let mut q = vec![("actor", s.did.clone()), ("limit", "100".to_string())];
+                if !cursor.is_empty() { q.push(("cursor", cursor.clone())); }
+                let Ok(v) = bsky(true, "app.bsky.graph.getFollows", &q, None).await else { break };
+                for a in v["follows"].as_array().cloned().unwrap_or_default() {
+                    let blog = bsky_blog(&a);
+                    if !blog.is_empty() { out.push(FollowedBlog { network: "bluesky".into(), person: bsky_person(&a), blog }); }
+                }
+                cursor = st(&v, "cursor");
+                if cursor.is_empty() { break; }
+            }
+        }
+    }
+    if masto_saved().is_ok() {
+        if let Ok(me) = masto(reqwest::Method::GET, "/api/v1/accounts/verify_credentials", &[], None).await {
+            if let Ok(v) = masto(reqwest::Method::GET, &format!("/api/v1/accounts/{}/following", st(&me, "id")), &[("limit", "80".into())], None).await {
+                for a in v.as_array().cloned().unwrap_or_default() {
+                    let blog = masto_blog(&a);
+                    if !blog.is_empty() { out.push(FollowedBlog { network: "mastodon".into(), person: masto_person(&a), blog }); }
+                }
+            }
+        }
+    }
+    // Once per site, even when you follow them on both
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|f| seen.insert(f.blog.trim_end_matches('/').trim_start_matches("https://").trim_start_matches("www.").to_lowercase()));
     out
 }
 
