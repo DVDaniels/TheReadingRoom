@@ -729,6 +729,31 @@
         <p>The best way to find people is through people. Many writers keep a <b>blogroll</b>, a list of other blogs they read. <button class="b-link" data-view="discover">Discover</button> reads the blogrolls of everyone you follow and suggests who they recommend.</p>
         <p>A few directories of personal sites, too: <a href="https://ooh.directory/">ooh.directory</a>, <a href="https://blogroll.org/">blogroll.org</a>, <a href="https://personalsit.es/">personalsit.es</a> and <a href="https://indieblog.page/">indieblog.page</a>.</p></section>
 
+      <section class="g-sec" id="g-posse"><h2>Start your own site</h2>
+        <p>Reading people is half of it. The other half is being one of them. The indie web has a simple habit for this called <b>POSSE</b>: <b>P</b>ublish on your <b>O</b>wn <b>S</b>ite, <b>S</b>yndicate <b>E</b>lsewhere. You post on your own site first, then share a copy everywhere else, each one linking back home.</p>
+        <div class="g-how" aria-hidden="true">
+          <div><span class="g-dot">1</span><strong>Post on your site</strong><span>the original lives at your address</span></div>
+          <div class="g-arrow">→</div>
+          <div><span class="g-dot">2</span><strong>Share copies</strong><span>Bluesky, Mastodon, email, anywhere, each linking home</span></div>
+          <div class="g-arrow">→</div>
+          <div><span class="g-dot">3</span><strong>Talk comes back</strong><span>replies find you, and your readers follow your feed</span></div>
+        </div>
+        <ul class="g-list">
+          <li><b>You own it.</b> Apps close, change their rules or lock accounts. Your site stays, and so does everything you wrote there.</li>
+          <li><b>No algorithm in the way.</b> People who follow your feed see every post, in order.</li>
+          <li><b>It looks like you.</b> Your own colors, your own layout, your own address.</li>
+          <li><b>Move freely.</b> When a new app comes along, share your same posts there too. You never start over.</li>
+        </ul>
+        <p style="margin-top:12px"><b>Your first post in an afternoon:</b></p>
+        <ol class="g-steps">
+          <li>Pick a home. Simple, free places to start include <a href="https://bearblog.dev/">Bear Blog</a>, <a href="https://neocities.org/">Neocities</a> and <a href="https://wordpress.com/">WordPress.com</a>. A domain of your own, like <code>yourname.com</code>, can come later.</li>
+          <li>Write a short About page: who you are and what you’ll write about.</li>
+          <li>Publish one post. A review, a recipe, something you learned this week. Short is fine.</li>
+          <li>Follow your own site here with <b>+ Add a feed</b>, open it and choose <b>This is my site</b>.</li>
+          <li>Connect Mastodon or Bluesky in <button class="b-link" data-view="talk">Conversations</button>. When you post something new, it offers to share it there for you, with a link back home, and the replies show up in the app.</li>
+        </ol>
+        <p style="margin-top:12px">Keep private things private: a site is public, so leave out your home address, phone number and anything you wouldn’t put on a postcard. For more on why personal sites matter, read <a href="https://daviddaniels.com/">daviddaniels.com</a> and the <a href="https://indieweb.org/POSSE">IndieWeb’s page on POSSE</a>.</p></section>
+
       <section class="g-sec"><h2>Getting around</h2>
         <dl class="g-defs">
           <dt>Today</dt><dd>A morning paper: a short briefing, then everything new from the last day.</dd>
@@ -756,6 +781,8 @@
           <dt>Follow, subscribe</dt><dd>The same thing: adding a feed to your reader.</dd>
           <dt>OPML</dt><dd>A file with a list of feeds, for moving between readers or sharing your list.</dd>
           <dt>Blogroll</dt><dd>A list of blogs a writer recommends.</dd>
+          <dt>POSSE</dt><dd>Publish on your Own Site, Syndicate Elsewhere: post on your own site first, then share copies that link back to it.</dd>
+          <dt>Indie web</dt><dd>People making and reading their own websites, instead of living only on big apps.</dd>
         </dl></section>
 
       <p class="g-end">That’s all there is to it. Follow a handful of people, check in when you like, and enjoy the web written by people.</p>
@@ -1193,7 +1220,7 @@
     const post = mine && S.items.filter(i => i.feed_id === mine.id).sort((a, b) => b.date.localeCompare(a.date))[0];
     const shared = post && (store.get('shared:' + post.id) || (SOC.conv?.posts || []).some(p => normLink(p.link) === normLink(post.link)));
     if (post && !shared && Date.now() - Date.parse(post.date) < 4 * DAY) {
-      out += `<div class="box"><h3>Your new post</h3><p>Published on ${esc(mine.title)} ${esc(fmtWhen(post.date))}</p>
+      out += `<div class="box"><h3>Your new post</h3><p>Published on ${esc(mine.title)} ${esc(fmtWhen(post.date))}. Share a copy that links home. <button class="b-link" data-guide-posse>What’s this?</button></p>
         <div class="newpost">${isWeb(post.image) ? `<img src="${esc(post.image)}" alt="" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}<b>${esc(post.title)}</b></div>
         <button class="btn primary" data-talk="sharemine" data-id="${esc(post.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button></div>`;
     }
@@ -1218,7 +1245,7 @@
     return out;
   }
   function talkHtml() {
-    if (!anySocial()) return `<div class="empty"><strong>Talk about what you read</strong><span>Connect your Mastodon or Bluesky account to share stories with your thoughts, see what the people you follow are sharing, and answer replies here.</span><button class="btn primary" id="talkConnect">Connect an account</button></div>`;
+    if (!anySocial()) return `<div class="empty"><strong>Talk about what you read</strong><span>Connect your Mastodon or Bluesky account to share stories with your thoughts, see what the people you follow are sharing, and answer replies here.</span><span>Have a site of your own? Post there first, then share it here. <button class="b-link" data-guide-posse>How that works</button></span><button class="btn primary" id="talkConnect">Connect an account</button></div>`;
     const tab = SOC.tab || 'shared';
     const counts = { replies: newReplies(), blog: (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length };
     const body = tab === 'replies' ? repliesHtml() : tab === 'posts' ? postsHtml() : tab === 'blog' ? blogHtml() : sharedHtml();
@@ -1842,6 +1869,7 @@
 
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
+    if (e.target.closest('[data-guide-posse]')) { closeReader(true); selectView('guide'); setTimeout(() => document.getElementById('g-posse')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80); return; }
     const gf = e.target.closest('[data-guide-follow]');
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }

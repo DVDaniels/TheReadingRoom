@@ -892,3 +892,4 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
   .tcols .shared { grid-template-columns: 76px minmax(0, 1fr); }
   .tcols .shared .thumb { width: 76px; height: 64px; }
 }
+#g-posse { scroll-margin-top: 170px; }
