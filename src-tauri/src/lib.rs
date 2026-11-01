@@ -10,6 +10,7 @@ mod reply;
 mod social;
 mod sources;
 mod sync;
+mod topics;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -955,6 +956,13 @@ fn discover_get(state: State<'_, Shared>) -> serde_json::Value {
     serde_json::json!({ "report": discover_cached(&conn), "running": state.discovering.load(Ordering::SeqCst) })
 }
 
+/// Search a topic for Discover: news coverage and personal sites, without following anything yet.
+#[tauri::command]
+async fn topic_search(state: State<'_, Shared>, query: String) -> Result<topics::Results, String> {
+    if query.trim().len() < 2 { return Err("Type a few words to search for.".into()); }
+    Ok(topics::search(&state.client, &query).await)
+}
+
 #[tauri::command]
 async fn discover_scan(app: AppHandle, state: State<'_, Shared>) -> Result<Option<discover::Report>, String> {
     if state.discovering.swap(true, Ordering::SeqCst) {
@@ -1287,6 +1295,7 @@ pub fn run() {
             social::social_follow,
             social::social_shared,
             social::social_blog_mentions,
+            topic_search,
             social::site_accounts,
             social::social_lookup,
             social::social_following_blogs,

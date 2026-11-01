@@ -13,7 +13,7 @@
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
   // Discover's results (see the Discover section)
-  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set() };
+  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map() };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -970,8 +970,8 @@
 
   function discoverSub() {
     if (D.running) return D.total ? `Reading ${D.done} of ${D.total} sites…` : 'Looking through the sites you follow…';
-    if (D.report) return `From the blogrolls and links of the ${D.report.sites} sites you follow · updated ${ago(D.report.at) === 'now' ? 'just now' : ago(D.report.at) + ' ago'}`;
-    return 'Blogs recommended by the sites you follow';
+    if (D.report) return `Search any topic, or see what the ${D.report.sites} sites you follow recommend · updated ${ago(D.report.at) === 'now' ? 'just now' : ago(D.report.at) + ' ago'}`;
+    return 'Search any topic, or see blogs recommended by the sites you follow';
   }
   function whyLine(s) {
     const parts = [];
@@ -999,8 +999,65 @@
       </div>
     </div>`;
   }
+  // ---- Search a topic: personal sites first (Marginalia, a search engine for the independent web), then the news.
+  const recentSearches = () => { try { return JSON.parse(store.get('topicSearches') || '[]'); } catch { return []; } };
+  async function topicSearch(q) {
+    q = (q || '').trim(); if (q.length < 2) return;
+    D.q = q; D.searching = true; D.res = null; renderList();
+    store.set('topicSearches', JSON.stringify([q, ...recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8)));
+    try { D.res = await invoke('topic_search', { query: q }); } catch (e) { D.res = { query: q, news: [], web: [], news_error: msg(e), web_error: '' }; }
+    D.searching = false; if (S.view === 'discover') renderList();
+  }
+  const followsHost = h => S.feeds.some(f => [hostOfU(f.site), hostOfU(f.url)].some(x => x && bareHost(x) === bareHost(h)));
+  function searchHtml() {
+    const recent = recentSearches();
+    let out = `<form class="t-search" id="topicForm" role="search"><input id="topicQ" type="search" placeholder="Search a topic, like slow travel or home espresso" value="${esc(D.q)}" autocomplete="off" aria-label="Search a topic">
+      <button class="btn primary" type="submit"${D.searching ? ' disabled' : ''}>${D.searching ? 'Searching…' : 'Search'}</button></form>`;
+    if (recent.length && !D.res && !D.searching) out += `<div class="t-recent">${recent.map(r => `<button class="chip" data-topic="again" data-q="${esc(r)}">${esc(r)}</button>`).join('')}<button class="linkish" data-topic="clear">Clear</button></div>`;
+    if (D.searching) return out + `<p class="note">Looking for personal sites and news about “${esc(D.q)}”…</p>`;
+    const r = D.res; if (!r) return out;
+    const topicOn = S.feeds.some(f => f.url === r.feed);
+    // Personal sites first when there are some; otherwise the news leads and a quiet note follows
+    let webPart = `<div class="t-head"><h2 class="sec-h">Personal sites about “${esc(r.query)}”</h2></div>`;
+    if (r.web.length) webPart += `<div class="t-results">${r.web.map(w => {
+      const on = followsHost(w.site) || D.added.has(w.site);
+      return `<article class="t-hit"><a class="t-title" href="${esc(w.url)}">${esc(w.title || w.site)}</a><span class="t-site">${esc(w.site)}</span>
+        ${w.description ? `<p>${esc(w.description)}</p>` : ''}
+        <div class="t-acts">${on ? `<span class="t-on">✓ Following</span>` : `<button class="btn" data-topic="site" data-url="${esc('https://' + w.site + '/')}" data-site="${esc(w.site)}">Follow ${esc(w.site)}</button>`}
+          ${D.err?.[w.site] ? `<span class="fol-err">${esc(D.err[w.site])}</span>` : ''}</div></article>`;
+    }).join('')}</div><p class="disc-foot">Personal sites found with <a href="https://marginalia-search.com/">Marginalia Search</a>, a search engine for the small, independent web.</p>`;
+    else webPart = `<p class="note t-webnote">${esc(r.web_error || 'No personal sites came up for this one. Try fewer or different words.')}</p>`;
+    if (r.web.length) out += webPart;
+    // News
+    out += `<div class="t-head"><h2 class="sec-h">In the news</h2>${r.news.length ? (topicOn ? '<span class="t-on">✓ Following this topic</span>' : `<button class="btn primary" data-topic="topic" data-q="${esc(r.query)}">Follow this topic</button>`) : ''}</div>`;
+    if (r.news.length) out += `<p class="sec-p">Following the topic adds a news search to your feeds, so new stories about it arrive with everything else.</p><div class="t-results">${r.news.slice(0, 15).map(n => {
+      const h = hostOfU(n.source_url), on = h && (followsHost(h) || D.added.has(h));
+      return `<article class="t-hit"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(ago(n.date))} ago` : ''}</span>
+        ${h ? `<div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="linkish" data-topic="site" data-url="${esc(n.source_url)}" data-site="${esc(h)}">Follow ${esc(n.source)}</button>`}${D.err?.[h] ? `<span class="fol-err">${esc(D.err[h])}</span>` : ''}</div>` : ''}</article>`;
+    }).join('')}</div>`;
+    else out += `<p class="note">${esc(r.news_error || 'No news stories came up.')}</p>`;
+    if (!r.web.length) out += webPart;
+    return out + `<hr class="t-rule">`;
+  }
+  async function topicAction(b) {
+    const k = b.dataset.topic;
+    if (k === 'again') return topicSearch(b.dataset.q);
+    if (k === 'clear') { store.set('topicSearches', '[]'); renderList(); return; }
+    const site = b.dataset.site || '';
+    b.disabled = true; b.textContent = 'Adding…';
+    try {
+      const r = await invoke('add_feed', { url: k === 'topic' ? b.dataset.q : b.dataset.url, title: null, folderId: null });
+      if (site) D.added.set(site, r.id);
+      status(`Following ${r.title}.`); await load();
+    } catch (e) { D.err = { ...(D.err || {}), [site || 'topic']: msg(e) }; status(msg(e), true); }
+    renderList();
+  }
+
   function discoverHtml() {
-    const intro = `<p class="disc-intro">The writers you read recommend these blogs, in their blogrolls or by linking to them often. The more of your sites that point to one, the higher it appears.</p>`;
+    return searchHtml() + blogrollHtml();
+  }
+  function blogrollHtml() {
+    const intro = `<h2 class="sec-h">Recommended by the writers you read</h2><p class="disc-intro">The writers you read recommend these blogs, in their blogrolls or by linking to them often. The more of your sites that point to one, the higher it appears.</p>`;
     if (D.running && !D.report) {
       const pct = D.total ? Math.round(100 * D.done / D.total) : 5;
       return intro + `<div class="disc-wait"><strong>Reading the sites you follow</strong><span>Checking blogrolls and recent links. This takes a minute or so.</span><div class="disc-bar"><div style="width:${pct}%"></div></div></div>`;
@@ -2116,6 +2173,8 @@
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
+    const tz = e.target.closest('[data-topic]');
+    if (tz) { topicAction(tz); return; }
     const dz = e.target.closest('[data-disc]');
     if (dz) { discoverAction(dz.dataset.disc, dz.dataset.domain); return; }
     if (e.target.id === 'briefClose') { store.set('briefHidden', new Date().toDateString()); renderList(); return; }
@@ -2213,6 +2272,10 @@
   function openNewFolder() { $('folderForm').hidden = false; $('folderName').value = ''; $('folderName').focus(); }
   $('newFolderBtn').onclick = () => $('folderForm').hidden ? openNewFolder() : ($('folderForm').hidden = true);
   $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
+  document.addEventListener('submit', e => {
+    if (e.target.id !== 'topicForm') return;
+    e.preventDefault(); topicSearch($('topicQ').value);
+  });
   $('folderForm').addEventListener('submit', async e => {
     e.preventDefault();
     const name = $('folderName').value.trim(); if (!name) return;

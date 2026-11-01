@@ -23,6 +23,7 @@ jobs:
   store:
     runs-on: ubuntu-latest
     env:
+      MARGINALIA_KEY: ${{ secrets.MARGINALIA_KEY }}
       API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}

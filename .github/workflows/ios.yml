@@ -15,6 +15,7 @@ jobs:
   ios:
     runs-on: macos-latest
     env:
+      MARGINALIA_KEY: ${{ secrets.MARGINALIA_KEY }}
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
       API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
