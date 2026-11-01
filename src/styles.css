@@ -1032,3 +1032,5 @@ html[data-theme="dark"] .mast h2 { background-image: linear-gradient(90deg, #f3f
 /* A highlighter swipe on ads from the last day */
 .hl-new { display: inline-block; font-family: var(--font-sans, system-ui); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #1d1d1b; padding: 1px 6px; margin-right: 2px; vertical-align: 2px;
   background: linear-gradient(100deg, rgba(255, 233, 77, 0) 2%, rgba(255, 233, 77, .95) 6%, rgba(255, 226, 60, .85) 94%, rgba(255, 233, 77, 0) 98%); border-radius: 2px; transform: rotate(-1.5deg); }
+.cat.solo h3 { margin-bottom: 10px; }
+.solo-cols { column-width: 300px; column-gap: 28px; column-rule: 1px solid color-mix(in srgb, var(--cc) 25%, var(--line)); }

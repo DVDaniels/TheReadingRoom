@@ -1148,7 +1148,11 @@
     if (!shown.length) return head + filters + `<div class="empty"><strong>No ads here right now</strong><span>${ads.length ? 'Try another section, or check back after the next refresh.' : S.refreshing ? 'Checking your job feeds now.' : 'Press Refresh to pull the latest listings.'}</span></div>`;
     const order = [...CATS.map(x => x[0]), 'local', 'other'];
     const groups = order.map(k => [k, shown.filter(a => a.cat === k).slice(0, 40)]).filter(([, l]) => l.length);
-    return head + filters + `<div class="classifieds">${groups.map(([k, l]) => `<section class="cat" style="--c:${CAT_HUE[k]}"><h3>${esc(CAT_NAME[k].toUpperCase())}</h3>${l.map(adHtml).join('')}</section>`).join('')}</div>
+    // One section (a category picked, or only one has ads): its ads flow across the whole page
+    const body = groups.length === 1
+      ? `<section class="cat solo" style="--c:${CAT_HUE[groups[0][0]]}"><h3>${esc(CAT_NAME[groups[0][0]].toUpperCase())}</h3><div class="solo-cols">${groups[0][1].map(adHtml).join('')}</div></section>`
+      : `<div class="classifieds">${groups.map(([k, l]) => `<section class="cat" style="--c:${CAT_HUE[k]}"><h3>${esc(CAT_NAME[k].toUpperCase())}</h3>${l.map(adHtml).join('')}</section>`).join('')}</div>`;
+    return head + filters + body + `
       <p class="hw-foot">Listings come from the job feeds you turn on (<button class="b-link" data-job="manage">Manage job feeds</button>). Ads open on the original site. Always check a job on the company’s own site before applying, and never pay to apply.</p>`;
   }
   // ---- Circled: your clippings, moved along as things happen
