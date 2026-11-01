@@ -2442,6 +2442,7 @@
 
   // reader toolbar and article clicks
   $('rBack').onclick = () => closeReader();
+  $('rClose').onclick = () => closeReader();
   $('rSave').onclick = () => { const it = item(S.readerId); if (it) mark(it.id, { saved: !it.saved }); };
   $('rShare').onclick = e => openShareMenu(e.currentTarget, item(S.readerId));
   $('rReply').onclick = e => openReply(e.currentTarget);

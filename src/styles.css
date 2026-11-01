@@ -1037,3 +1037,9 @@ html[data-theme="dark"] .mast h2 { background-image: linear-gradient(90deg, #f3f
 /* Help Wanted: wider than Discover when it has the window; Back closes an open ad */
 @media (min-width: 1280px) { body.discover-view.jobs-view #listView > * { max-width: 1500px; } }
 body.jobs-view #rBack { visibility: visible; }
+/* × to close a story, top right, wherever the list can take the window back */
+.r-close { display: none; margin-left: 4px; }
+.r-close svg { width: 18px; height: 18px; }
+body.jobs-view .r-close { display: inline-grid; }
+@media (min-width: 1280px) { body.today-view .r-close { display: inline-grid; } }
+html.ios .r-close { display: none !important; }
