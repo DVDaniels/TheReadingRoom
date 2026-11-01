@@ -296,6 +296,12 @@
     return `<option value="">No folder</option>` + S.folders.map(f => `<option value="${f.id}"${f.id === selected ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
   }
 
+  // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
+  // then it sits beside the reader like any list, with Back to close the ad.
+  function syncWide() {
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk'].includes(S.view) || (S.view === 'jobs' && !S.readerId));
+    document.body.classList.toggle('jobs-view', S.view === 'jobs');
+  }
   function renderHead() {
     $('viewTitle').innerHTML = S.view === 'today'
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
@@ -315,7 +321,7 @@
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'jobs'].includes(S.view));
+    syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -1063,14 +1069,19 @@
       loc = parts.find(p => /remote|on-?site|hybrid|,\s*[A-Z]{2}\b|\b(NYC|SF|London|Berlin)\b/i.test(p) && p !== title) || '';
     } else if ((m = /^([^:]{2,60}):\s+(.+)$/.exec(title))) { company = m[1]; title = m[2]; }
     else if ((m = /^(.+?)\s+at\s+([^,]{2,60})$/.exec(title))) { title = m[1]; company = m[2]; }
+    const remoteBoard = /weworkremotely|remotive|remoteok/.test(f.url || '');
+    if (!loc && remoteBoard) loc = 'Remote';
     if (!loc) {
       const hay = `${it.title} ${sum}`;
-      loc = (m = /\b([A-Z][a-zA-Z .'-]{2,24},\s*(?:[A-Z]{2}|[A-Z][a-z]+))\b/.exec(hay)) ? m[1]
+      loc = (m = /\b([A-Z][a-zA-Z .'-]{2,24},\s*[A-Z]{2})\b/.exec(hay)) ? m[1]
         : /\bhybrid\b/i.test(hay) ? 'Hybrid'
         : /weworkremotely|remotive|remoteok/.test(f.url || '') || /\bremote\b/i.test(hay) ? 'Remote' : '';
     }
     title = title.replace(/\s*\((remote|hybrid)\)\s*$/i, '');
-    let blurb = sum.replace(title, '').replace(company, '').replace(/^[\s|:·,-]+/, '');
+    let blurb = sum.replace(title, '').replace(company, '')
+      .replace(/Headquarters:\s*[^:]*?(?=\s+URL:)/i, '').replace(/Headquarters:\s*[A-Z][\w ,.'-]*?\b(United States|USA|Canada|United Kingdom|Remote|Worldwide|Anywhere)\b/i, '').replace(/Headquarters:\s*/gi, '').replace(/URL:\s*\S+/gi, '')
+      .replace(/\b(Job Description|About the (Role|Company|Job)|Position|Primary Location|Description)\s*:\s*/gi, ' ')
+      .replace(/\s+/g, ' ').replace(/^[\s|:·,.-]+/, '').trim();
     if (blurb.length > 160) blurb = blurb.slice(0, 157).replace(/\s+\S*$/, '') + '…';
     const fc = FEED_CAT.find(([re]) => re.test(f.url || ''));
     const cat = isNewsSearch(f) ? 'local' : fc ? fc[1] : (CATS.find(c => c[2].test(title)) || CATS.find(c => c[2].test(`${title} ${sum.slice(0, 200)}`)) || ['other'])[0];
@@ -1998,7 +2009,7 @@
     if (!S.readerId && !isSplit()) listScroll = $('main').scrollTop;
     S.readerId = S.selId = id; S.keep.add(id);
     hidePops();
-    $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true;
+    $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true; syncWide();
     if (isPhone()) setScreen('reader');
     if (isSplit()) $('reader').scrollTo({ top: 0 }); else $('main').scrollTo({ top: 0 });
     if (!it.read) mark(id, { read: true }); else render();
@@ -2012,7 +2023,7 @@
     S.readerId = null; articleFor = null; hidePops();
     // A video stops when you leave it; a podcast that's playing keeps going until the next story
     const au = $('rAudio'); if (!au || au.paused) { $('rMedia').innerHTML = ''; $('rMedia').hidden = true; }
-    $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false;
+    $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide();
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
   }

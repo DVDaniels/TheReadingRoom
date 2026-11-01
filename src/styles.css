@@ -1034,3 +1034,6 @@ html[data-theme="dark"] .mast h2 { background-image: linear-gradient(90deg, #f3f
   background: linear-gradient(100deg, rgba(255, 233, 77, 0) 2%, rgba(255, 233, 77, .95) 6%, rgba(255, 226, 60, .85) 94%, rgba(255, 233, 77, 0) 98%); border-radius: 2px; transform: rotate(-1.5deg); }
 .cat.solo h3 { margin-bottom: 10px; }
 .solo-cols { column-width: 300px; column-gap: 28px; column-rule: 1px solid color-mix(in srgb, var(--cc) 25%, var(--line)); }
+/* Help Wanted: wider than Discover when it has the window; Back closes an open ad */
+@media (min-width: 1280px) { body.discover-view.jobs-view #listView > * { max-width: 1500px; } }
+body.jobs-view #rBack { visibility: visible; }
