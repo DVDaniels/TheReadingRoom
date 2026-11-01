@@ -13,7 +13,7 @@
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
   // Discover's results (see the Discover section)
-  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map() };
+  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map() };
   const ICONS = {
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -1007,6 +1007,12 @@
     store.set('topicSearches', JSON.stringify([q, ...recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8)));
     try { D.res = await invoke('topic_search', { query: q }); } catch (e) { D.res = { query: q, news: [], web: [], news_error: msg(e), web_error: '' }; }
     D.searching = false; if (S.view === 'discover') renderList();
+    // Featured pictures fill in as they arrive
+    const want = (D.res.web || []).map(w => w.url).filter(u => !D.imgs.has(u));
+    if (want.length) invoke('page_images', { urls: want }).then(list => {
+      for (const [u, img] of list) D.imgs.set(u, img || '');
+      if (S.view === 'discover' && D.res?.query === q) renderList();
+    }).catch(() => {});
   }
   const followsHost = h => S.feeds.some(f => [hostOfU(f.site), hostOfU(f.url)].some(x => x && bareHost(x) === bareHost(h)));
   function searchHtml() {
@@ -1021,10 +1027,10 @@
     let webPart = `<div class="t-head"><h2 class="sec-h">Personal sites about “${esc(r.query)}”</h2></div>`;
     if (r.web.length) webPart += `<div class="t-results">${r.web.map(w => {
       const on = followsHost(w.site) || D.added.has(w.site);
-      return `<article class="t-hit"><a class="t-title" href="${esc(w.url)}">${esc(w.title || w.site)}</a><span class="t-site">${esc(w.site)}</span>
+      return `<article class="t-hit">${tThumb(D.imgs.get(w.url), w.site, w.url, !D.imgs.has(w.url))}<div class="t-body"><a class="t-title" href="${esc(w.url)}">${esc(w.title || w.site)}</a><span class="t-site">${esc(w.site)}</span>
         ${w.description ? `<p>${esc(w.description)}</p>` : ''}
         <div class="t-acts">${on ? `<span class="t-on">✓ Following</span>` : `<button class="btn" data-topic="site" data-url="${esc('https://' + w.site + '/')}" data-site="${esc(w.site)}">Follow ${esc(w.site)}</button>`}
-          ${D.err?.[w.site] ? `<span class="fol-err">${esc(D.err[w.site])}</span>` : ''}</div></article>`;
+          ${D.err?.[w.site] ? `<span class="fol-err">${esc(D.err[w.site])}</span>` : ''}</div></div></article>`;
     }).join('')}</div><p class="disc-foot">Personal sites found with <a href="https://marginalia-search.com/">Marginalia Search</a>, a search engine for the small, independent web.</p>`;
     else webPart = `<p class="note t-webnote">${esc(r.web_error || 'No personal sites came up for this one. Try fewer or different words.')}</p>`;
     if (r.web.length) out += webPart;
@@ -1032,12 +1038,18 @@
     out += `<div class="t-head"><h2 class="sec-h">In the news</h2>${r.news.length ? (topicOn ? '<span class="t-on">✓ Following this topic</span>' : `<button class="btn primary" data-topic="topic" data-q="${esc(r.query)}">Follow this topic</button>`) : ''}</div>`;
     if (r.news.length) out += `<p class="sec-p">Following the topic adds a news search to your feeds, so new stories about it arrive with everything else.</p><div class="t-results">${r.news.slice(0, 15).map(n => {
       const h = hostOfU(n.source_url), on = h && (followsHost(h) || D.added.has(h));
-      return `<article class="t-hit"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(ago(n.date))} ago` : ''}</span>
-        ${h ? `<div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="linkish" data-topic="site" data-url="${esc(n.source_url)}" data-site="${esc(h)}">Follow ${esc(n.source)}</button>`}${D.err?.[h] ? `<span class="fol-err">${esc(D.err[h])}</span>` : ''}</div>` : ''}</article>`;
+      return `<article class="t-hit">${tThumb('', n.source || h, n.link)}<div class="t-body"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(ago(n.date))} ago` : ''}</span>
+        ${h ? `<div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="linkish" data-topic="site" data-url="${esc(n.source_url)}" data-site="${esc(h)}">Follow ${esc(n.source)}</button>`}${D.err?.[h] ? `<span class="fol-err">${esc(D.err[h])}</span>` : ''}</div>` : ''}</div></article>`;
     }).join('')}</div>`;
     else out += `<p class="note">${esc(r.news_error || 'No news stories came up.')}</p>`;
     if (!r.web.length) out += webPart;
     return out + `<hr class="t-rule">`;
+  }
+  // A result's picture: the page's featured image, a soft placeholder while it loads, or a tile with the site's initial
+  function tThumb(img, name, href, loading) {
+    const letter = esc(((name || '•').replace(/^www\./, '')[0] || '•').toUpperCase()), hue = hueFor((name || '').toLowerCase());
+    if (isWeb(img)) return `<a class="t-thumb" href="${esc(href)}" tabindex="-1" aria-hidden="true"><img class="thumb" src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-tile="${hue}|${letter}"></a>`;
+    return `<a class="t-thumb" href="${esc(href)}" tabindex="-1" aria-hidden="true"><div class="thumb tile${loading ? ' t-loading' : ''}" style="--h:${hue}"><span>${loading ? '' : letter}</span></div></a>`;
   }
   async function topicAction(b) {
     const k = b.dataset.topic;

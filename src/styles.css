@@ -935,3 +935,11 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 .fol-err { color: var(--danger, #b42318); font-size: 12px; }
 .t-rule { border: 0; border-top: 1px solid var(--line); margin: 28px 0 8px; }
 .disc-foot a { color: var(--accent); }
+.t-hit { flex-direction: row; gap: 14px; align-items: flex-start; }
+.t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.t-thumb { flex: none; display: block; text-decoration: none; }
+.t-thumb .thumb, .t-thumb .thumb.tile { width: 120px; height: 84px; max-width: none; aspect-ratio: auto; border-radius: 9px; object-fit: cover; }
+.t-thumb .thumb.tile span { font-size: 28px; }
+.t-thumb .t-loading { background: var(--line); animation: t-pulse 1.4s ease-in-out infinite; }
+@keyframes t-pulse { 50% { opacity: .55; } }
+@media (max-width: 760px) { .t-thumb .thumb, .t-thumb .thumb.tile { width: 84px; height: 70px; } }

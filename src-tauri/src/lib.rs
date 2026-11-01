@@ -956,6 +956,18 @@ fn discover_get(state: State<'_, Shared>) -> serde_json::Value {
     serde_json::json!({ "report": discover_cached(&conn), "running": state.discovering.load(Ordering::SeqCst) })
 }
 
+/// The featured pictures of a few web pages (search results), looked up side by side.
+#[tauri::command]
+async fn page_images(state: State<'_, Shared>, urls: Vec<String>) -> Result<Vec<(String, String)>, String> {
+    use futures::stream::{self, StreamExt};
+    let client = state.client.clone();
+    Ok(stream::iter(urls.into_iter().take(40))
+        .map(|u| { let c = client.clone(); async move { let img = feeds::page_image(&c, &u).await.unwrap_or_default(); (u, img) } })
+        .buffer_unordered(8)
+        .collect()
+        .await)
+}
+
 /// Search a topic for Discover: news coverage and personal sites, without following anything yet.
 #[tauri::command]
 async fn topic_search(state: State<'_, Shared>, query: String) -> Result<topics::Results, String> {
@@ -1296,6 +1308,7 @@ pub fn run() {
             social::social_shared,
             social::social_blog_mentions,
             topic_search,
+            page_images,
             social::site_accounts,
             social::social_lookup,
             social::social_following_blogs,
