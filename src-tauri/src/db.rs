@@ -15,6 +15,12 @@ pub const DEFAULT_FEEDS: &[(&str, &str)] = &[
     ("Jim Nielsen", "https://blog.jim-nielsen.com/feed.xml"),
     ("DavidDaniels.com", "https://daviddaniels.com/feed/"),
     ("New York Post", "https://nypost.com/feed/"),
+    // Help Wanted: job boards that still publish feeds (kept apart from your reading)
+    ("We Work Remotely", "https://weworkremotely.com/remote-jobs.rss"),
+    ("Remotive", "https://remotive.com/remote-jobs/feed"),
+    ("Remote OK", "https://remoteok.com/remote-jobs.rss"),
+    ("Authentic Jobs", "https://authenticjobs.com/?feed=job_feed"),
+    ("Hacker News: Who is hiring?", "https://hnrss.org/whoishiring/jobs"),
 ];
 
 #[derive(Serialize, Clone, Debug)]
