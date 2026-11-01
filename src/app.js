@@ -1374,8 +1374,9 @@
       const blogs = week.filter(f => f.blog).length;
       out += `<div class="box"><h3>New followers</h3><p>${week.length ? `${week.length} this week${blogs ? `. ${blogs === 1 ? 'One of them writes a blog' : `${blogs} of them write blogs`}.` : '.'}` : 'Your most recent followers.'}</p>
         ${fol.map(f => {
-          const a = f.person, followingSite = f.blog && S.feeds.some(x => hostOf(x.site || x.url) === hostOf(f.blog));
-          const btn = f.blog && !followingSite ? `<button class="fbtn p" data-talk="blog" data-url="${esc(f.blog)}">Read their blog</button>`
+          const a = f.person, fh = f.blog && bareHost(hostOfU(f.blog)), followingSite = f.blog && S.feeds.some(x => [hostOfU(x.site), hostOfU(x.url)].some(h => h && bareHost(h) === fh));
+          const btn = f.blog && SOC.added?.has(fh) ? `<button class="fbtn done-open" data-view="${SOC.added.get(fh)}">✓ Following · Open</button>`
+            : f.blog && !followingSite ? `<button class="fbtn p" data-talk="blog" data-url="${esc(f.blog)}">Read their blog</button>`
             : !f.following ? `<button class="fbtn" data-talk="follow" data-net="${f.network}" data-person="${esc(a.id)}">Follow back</button>`
             : '<span class="fbtn done">Following</span>';
           return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
@@ -1401,15 +1402,15 @@
     // People you follow there who keep a blog you don't read yet
     const have = new Set(S.feeds.flatMap(f => [hostOfU(f.site), hostOfU(f.url)].filter(Boolean).map(bareHost)));
     const hidB = hiddenIn('b'), bkey = b => bareHost(hostOfU(b.blog));
-    const allBlogs = (SOC.theirBlogs || []).filter(b => !have.has(bkey(b)));
+    const allBlogs = (SOC.theirBlogs || []).filter(b => !have.has(bkey(b)) || SOC.added?.has(bkey(b)));
     const blogs = allBlogs.filter(b => SOC.showHidden === 'b' ? hidB.has(bkey(b)) : !hidB.has(bkey(b)));
     const blogsHidden = allBlogs.filter(b => hidB.has(bkey(b))).length;
     if (blogs.length || blogsHidden) {
       const show = SOC.allBlogs ? blogs : blogs.slice(0, 6);
       out += `<div class="box"><h3>Their blogs</h3><p>${!blogs.length ? 'Nothing new to suggest.' : blogs.length === 1 ? 'Someone you follow keeps a blog' : `${blogs.length} people you follow keep blogs`} you don’t read here yet.</p>
         ${show.map(b => { const a = b.person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
-          <button class="fol-who" data-talk="open" data-url="${esc(b.blog)}">${esc(a.name)}<small class="blog">${esc(hostOfU(b.blog))}</small></button>
-          ${SOC.showHidden === 'b' ? `<button class="fbtn" data-talk="unhide" data-k="b" data-key="${esc(bkey(b))}">Show again</button>`
+          <button class="fol-who" data-talk="open" data-url="${esc(b.blog)}">${esc(a.name)}<small class="blog">${esc(hostOfU(b.blog))}</small>${SOC.blogErr?.has(bkey(b)) ? `<small class="fol-err">${esc(SOC.blogErr.get(bkey(b)))}</small>` : ''}</button>
+          ${SOC.added?.has(bkey(b)) ? `<button class="fbtn done-open" data-view="${SOC.added.get(bkey(b))}">✓ Following · Open</button>` : SOC.showHidden === 'b' ? `<button class="fbtn" data-talk="unhide" data-k="b" data-key="${esc(bkey(b))}">Show again</button>`
             : `<button class="fbtn p" data-talk="blog" data-url="${esc(b.blog)}">Read their blog</button>${xBtn('b', bkey(b), `Don’t suggest ${hostOfU(b.blog)}`)}`}</div>`; }).join('')}
         ${blogs.length > 6 ? `<button class="linkish more-r" data-talk="allblogs">${SOC.allBlogs ? 'Show fewer' : `Show all ${blogs.length}`}</button>` : ''}${hiddenFoot('b', blogsHidden)}</div>`;
     }
@@ -1531,11 +1532,12 @@
         .catch(e => { b.disabled = false; b.innerHTML = was; status(msg(e), true); });
     }
     if (k === 'blog' || k === 'site') {
-      b.disabled = true; b.textContent = 'Adding…';
+      const host = bareHost(hostOfU(b.dataset.url));
+      b.disabled = true; b.textContent = 'Adding…'; SOC.blogErr?.delete(host);
       invoke('add_feed', { url: b.dataset.url, title: null, folderId: null })
-        .then(r => { status(`Following ${r.title}. Their posts are in All${k === 'blog' ? ' and People' : ''}.`); return load(); })
+        .then(r => { (SOC.added = SOC.added || new Map()).set(host, r.id); status(`Following ${r.title}. Their posts are in All${k === 'blog' ? ' and People' : ''}.`); return load(); })
         .then(() => renderList())
-        .catch(e => { b.disabled = false; b.textContent = k === 'blog' ? 'Read their blog' : 'Follow this site'; status(msg(e), true); });
+        .catch(e => { (SOC.blogErr = SOC.blogErr || new Map()).set(host, msg(e)); b.disabled = false; b.textContent = k === 'blog' ? 'Read their blog' : 'Follow this site'; status(msg(e), true); renderList(); });
     }
   });
   loadAccounts().then(() => { renderRail(); loadConversations(true); });
