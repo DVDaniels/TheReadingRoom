@@ -1016,3 +1016,19 @@ html.ios .ad-x { opacity: .6; }
 .jf span { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jf-h { margin: 16px 0 2px; font-size: 15px; }
 @media (max-width: 900px) { .board { grid-template-columns: 1fr; } .lane { min-height: 0; } .hw-filters .circled-btn { margin-left: 0; } }
+/* Help Wanted in color: each section has its own ink */
+.cat { --cc: hsl(var(--c, 220) 62% 40%); --ct: hsl(var(--c, 220) 70% 50% / .09); }
+@media (prefers-color-scheme: dark) { .cat { --cc: hsl(var(--c, 220) 75% 68%); --ct: hsl(var(--c, 220) 70% 55% / .13); } }
+html[data-theme="dark"] .cat { --cc: hsl(var(--c, 220) 75% 68%); --ct: hsl(var(--c, 220) 70% 55% / .13); }
+.cat h3 { color: var(--cc); border-top: 3px solid var(--cc); border-bottom: 1px solid var(--cc); background: var(--ct); }
+.cat .ad .co { color: var(--cc); }
+.cat .ad .co .loc { color: var(--muted); }
+.cat .ad { border-bottom-color: color-mix(in srgb, var(--cc) 25%, var(--line)); }
+.hw-filters .c-chip { border-color: hsl(var(--c) 60% 50% / .45); }
+.hw-filters .c-chip[aria-pressed="true"] { background: hsl(var(--c) 62% 42%); border-color: hsl(var(--c) 62% 42%); color: #fff; }
+.mast h2 { background: linear-gradient(90deg, var(--ink), hsl(172 55% 38%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@media (prefers-color-scheme: dark) { .mast h2 { background-image: linear-gradient(90deg, #f3f1ea, hsl(172 60% 62%)); } }
+html[data-theme="dark"] .mast h2 { background-image: linear-gradient(90deg, #f3f1ea, hsl(172 60% 62%)); }
+/* A highlighter swipe on ads from the last day */
+.hl-new { display: inline-block; font-family: var(--font-sans, system-ui); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #1d1d1b; padding: 1px 6px; margin-right: 2px; vertical-align: 2px;
+  background: linear-gradient(100deg, rgba(255, 233, 77, 0) 2%, rgba(255, 233, 77, .95) 6%, rgba(255, 226, 60, .85) 94%, rgba(255, 233, 77, 0) 98%); border-radius: 2px; transform: rotate(-1.5deg); }

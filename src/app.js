@@ -722,7 +722,7 @@
     if (S.view === 'today') welcome();
     if (S.view === 'talk') loadTalk();
     if (typeof S.view === 'number' && anySocial()) loadReaders();
-    if (S.view === 'jobs') { store.set('jobsSeen', String(Date.now())); setTimeout(renderRail, 50); }
+    if (S.view === 'jobs') { store.set('jobsSeen', String(Date.now())); setTimeout(renderRail, 50); upgradeLocalSearch(); }
   }
 
 
@@ -1041,6 +1041,7 @@
     ['sales', 'Sales', /\b(sales|account executive|business development|bdr|sdr|marketing|growth|partnerships|retail associate)\b/i],
     ['mgmt', 'Management', /\b(manager|management|director|lead|head of|finance|accountant|accounting|bookkeep|operations|coordinator|administrator|hr|recruit)\b/i],
   ];
+  const CAT_HUE = { gov: 215, tech: 265, design: 330, support: 172, sales: 24, mgmt: 140, local: 44, other: 220 };
   const CAT_NAME = Object.fromEntries([...CATS.map(([k, n]) => [k, n]), ['local', 'Around town'], ['other', 'All other']]);
   const FEED_CAT = [[/customer-support/, 'support'], [/sales-and-marketing/, 'sales'], [/management-and-finance/, 'mgmt'], [/design/, 'design'], [/programming|devops/, 'tech']];
   function jobVia(f) {
@@ -1054,7 +1055,7 @@
     let title = (it.title || '').trim(), company = '', loc = '';
     const sum = (it.summary || '').replace(/\s+/g, ' ').trim();
     let m;
-    if (isNewsSearch(f)) { title = headline(it); company = outletOf(it); }
+    if (isNewsSearch(f)) { title = headline(it); company = outletOf(it); loc = S.prefs.jobPlace || ''; }
     else if (/hnrss\.org/.test(f.url) || / \| .+ \| /.test(title)) {
       const parts = (/ \| /.test(title) ? title : sum.slice(0, 300)).split(/\s+\|\s+/).map(x => x.trim()).filter(Boolean);
       company = parts[0] || '';
@@ -1081,6 +1082,7 @@
     const hid = jobHidden(), seen = new Set(), out = [];
     for (const it of S.items) {
       if (!isJobItem(it)) continue;
+      if (isNewsSearch(feedById(it.feed_id)) && !goodLocal(it)) continue;
       const a = adOf(it);
       if (a.company && hid.has(a.company.toLowerCase())) continue;
       const k = (a.title + '|' + a.company).toLowerCase(); // the same job from two feeds, once
@@ -1088,16 +1090,37 @@
     }
     return out.sort((a, b) => b.date.localeCompare(a.date));
   }
+  // Local hiring news: the town by name, hiring words, no sports hires, the last month only
+  const localJobsQuery = place => `"${place.split(',')[0].trim()}" ("now hiring" OR "hiring event" OR "job fair" OR "new jobs" OR hiring OR jobs) -coach -quarterback -football -basketball -baseball -hockey -NFL -NBA -MLB -NHL -NCAA -athletics when:30d`;
+  const HIRING_WORDS = /\b(hir(e|es|ed|ing)|jobs?|job fair|openings?|positions|workers|workforce|employ(er|ers|ees|ment)?|recruit(ing|s)?|staffing|layoffs?|expan(d|ds|sion))\b/i;
+  const SPORTS_WORDS = /\b(coach(es|ing)?|quarterback|coordinator|athletic director|draft|roster|playoffs?|NFL|NBA|MLB|NHL|NCAA|basketball|football|baseball|hockey|soccer|panthers|hornets|knights)\b/i;
+  function goodLocal(it) {
+    const text = `${it.title} ${it.summary || ''}`, town = nearPlace();
+    if (Date.now() - Date.parse(it.date) > 45 * DAY) return false;
+    if (SPORTS_WORDS.test(it.title) || !HIRING_WORDS.test(it.title)) return false;
+    return !town || text.toLowerCase().includes(town);
+  }
+  // Earlier builds searched just “hiring <town>”: swap it for the tighter search once
+  let localChecked = false;
+  async function upgradeLocalSearch() {
+    if (localChecked || !S.prefs.jobPlace) return; localChecked = true;
+    const old = S.feeds.filter(f => isJobFeed(f) && isNewsSearch(f) && /[?&]q=hiring(\+|%20)/.test(f.url));
+    if (!old.length) return;
+    for (const f of old) { try { await invoke('remove_feed', { id: f.id }); } catch {} }
+    await addJobFeeds([localJobsQuery(S.prefs.jobPlace)]);
+  }
+  // "3h ago", "just now", or a plain date for older things (never "Sep 26 ago")
+  const agoWords = d => { const a = ago(d); return a === 'now' ? 'just now' : /^\d+[a-z]+$/.test(a) ? a + ' ago' : a; };
   const nearPlace = () => (S.prefs.jobPlace || '').split(',')[0].trim().toLowerCase();
   const newJobs = () => { const t = Number(store.get('jobsSeen')) || 0; return S.items.filter(i => isJobItem(i) && Date.parse(i.date) > t).length; };
   const RING = (anim) => `<svg class="ring${anim ? ' draw' : ''}" viewBox="0 0 200 100" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M40 8C100 0 186 4 196 42C202 82 132 98 72 95C22 92 0 72 4 46C8 20 44 6 104 4" fill="none" stroke="var(--pen)" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
   function adHtml(a) {
     const c = circled()[a.id];
     return `<article class="ad${c ? ' circled' : ''}">${c ? RING(J.anim === a.id) : ''}
-      <h4><button class="ad-t" data-job="open" data-id="${esc(a.id)}">${esc(a.title)}</button></h4>
+      <h4>${Date.now() - Date.parse(a.date) < DAY ? '<span class="hl-new">New</span> ' : ''}<button class="ad-t" data-job="open" data-id="${esc(a.id)}">${esc(a.title)}</button></h4>
       ${a.company || a.loc ? `<p class="co">${esc(a.company)}${a.company && a.loc ? ' · ' : ''}<span class="loc">${esc(a.loc)}</span></p>` : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
-      <p class="meta">${esc(ago(a.date))} ago · via ${esc(a.via)}
+      <p class="meta">${esc(agoWords(a.date))} · via ${esc(a.via)}
         ${a.company ? `<button class="ad-x" data-job="hide" data-company="${esc(a.company)}" title="Hide ads from ${esc(a.company)}" aria-label="Hide ads from ${esc(a.company)}">⊘</button>` : ''}
         <button class="circ" data-job="circle" data-id="${esc(a.id)}" aria-pressed="${!!c}">${c ? '✓ Circled' : '◯ Circle'}</button></p></article>`;
   }
@@ -1115,7 +1138,7 @@
     const head = `<div class="mast"><h2>Help Wanted</h2><p>${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))} · Classifieds</p></div>`;
     const n = Object.keys(c).filter(k => c[k].s !== 'no').length;
     const present = new Set(ads.map(a => a.cat));
-    const chip = (k, label) => `<button data-job="filter" data-f="${k}" aria-pressed="${J.filter === k}">${esc(label)}</button>`;
+    const chip = (k, label) => `<button data-job="filter" data-f="${k}" aria-pressed="${J.filter === k}"${CAT_HUE[k] != null ? ` class="c-chip" style="--c:${CAT_HUE[k]}"` : ''}>${esc(label)}</button>`;
     const filters = `<div class="hw-filters">${chip('all', 'All')}${chip('remote', 'Remote')}${S.prefs.jobPlace ? chip('near', 'Near ' + S.prefs.jobPlace.split(',')[0]) : ''}<span class="sep"></span>
       ${[...CATS.map(x => x[0]), 'local', 'other'].filter(k => present.has(k)).map(k => chip(k, CAT_NAME[k])).join('')}
       <button class="circled-btn" data-job="filter" data-f="circled" aria-pressed="${J.filter === 'circled'}">◯ Circled${n ? ` (${n})` : ''}</button></div>`;
@@ -1125,7 +1148,7 @@
     if (!shown.length) return head + filters + `<div class="empty"><strong>No ads here right now</strong><span>${ads.length ? 'Try another section, or check back after the next refresh.' : S.refreshing ? 'Checking your job feeds now.' : 'Press Refresh to pull the latest listings.'}</span></div>`;
     const order = [...CATS.map(x => x[0]), 'local', 'other'];
     const groups = order.map(k => [k, shown.filter(a => a.cat === k).slice(0, 40)]).filter(([, l]) => l.length);
-    return head + filters + `<div class="classifieds">${groups.map(([k, l]) => `<section class="cat"><h3>${esc(CAT_NAME[k].toUpperCase())}</h3>${l.map(adHtml).join('')}</section>`).join('')}</div>
+    return head + filters + `<div class="classifieds">${groups.map(([k, l]) => `<section class="cat" style="--c:${CAT_HUE[k]}"><h3>${esc(CAT_NAME[k].toUpperCase())}</h3>${l.map(adHtml).join('')}</section>`).join('')}</div>
       <p class="hw-foot">Listings come from the job feeds you turn on (<button class="b-link" data-job="manage">Manage job feeds</button>). Ads open on the original site. Always check a job on the company’s own site before applying, and never pay to apply.</p>`;
   }
   // ---- Circled: your clippings, moved along as things happen
@@ -1197,7 +1220,7 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
     const jobs = { ...(S.prefs.jobs || {}) }; let added = 0, last = '';
     for (const u of urls) {
-      try { const r = await invoke('add_feed', { url: u, title: JOB_FEEDS.find(x => x[1] === u)?.[0] || null, folderId: null }); jobs[u] = 1; jobs['id:' + r.id] = 1; added++; }
+      try { const r = await invoke('add_feed', { url: u, title: JOB_FEEDS.find(x => x[1] === u)?.[0] || (S.prefs.jobPlace && u === localJobsQuery(S.prefs.jobPlace) ? `Jobs around ${S.prefs.jobPlace.split(',')[0]}` : null), folderId: null }); jobs[u] = 1; jobs['id:' + r.id] = 1; added++; }
       catch (e) { last = msg(e); }
     }
     S.prefs.jobs = jobs; await savePrefs(); await load();
@@ -1238,7 +1261,7 @@
       e.preventDefault();
       const place = $('jobPlace').value.trim(); if (!place) return;
       S.prefs.jobPlace = place; savePrefs();
-      await addJobFeeds([`hiring "${place.split(',')[0]}"`]);
+      await addJobFeeds([localJobsQuery(place)]);
       J.filter = 'near';
     };
   }
@@ -1282,7 +1305,7 @@
     out += `<div class="t-head"><h2 class="sec-h">In the news</h2>${r.news.length ? (topicOn ? '<span class="t-on">✓ Following this topic</span>' : `<button class="btn primary" data-topic="topic" data-q="${esc(r.query)}">Follow this topic</button>`) : ''}</div>`;
     if (r.news.length) out += `<p class="sec-p">Following the topic adds a news search to your feeds, so new stories about it arrive with everything else.</p><div class="t-results">${r.news.slice(0, 15).map(n => {
       const h = hostOfU(n.source_url), on = h && (followsHost(h) || D.added.has(h));
-      return `<article class="t-hit">${tThumb('', n.source || h, n.link)}<div class="t-body"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(ago(n.date))} ago` : ''}</span>
+      return `<article class="t-hit">${tThumb('', n.source || h, n.link)}<div class="t-body"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(agoWords(n.date))}` : ''}</span>
         ${h ? `<div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="linkish" data-topic="site" data-url="${esc(n.source_url)}" data-site="${esc(h)}">Follow ${esc(n.source)}</button>`}${D.err?.[h] ? `<span class="fol-err">${esc(D.err[h])}</span>` : ''}</div>` : ''}</div></article>`;
     }).join('')}</div>`;
     else out += `<p class="note">${esc(r.news_error || 'No news stories came up.')}</p>`;
