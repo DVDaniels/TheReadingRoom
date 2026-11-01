@@ -15,6 +15,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map() };
   const ICONS = {
+    jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/></svg>',
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     read: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>',
@@ -82,6 +83,8 @@
   // ------------------------------------------------------------ which stories show
   const isToday = i => Date.now() - new Date(i.date).getTime() < DAY;
   function inScope(i, view = S.view) {
+    if (view === 'jobs') return isJobItem(i);
+    if ((view === 'all' || view === 'today' || view === 'people') && isJobItem(i)) return false;
     if (view === 'all') return true;
     if (view === 'today') return isToday(i);
     if (view === 'saved') return i.saved;
@@ -93,7 +96,7 @@
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -114,7 +117,7 @@
   const PER_PERSON = 12;
   function buildKinds() {
     S.kinds = new Map(S.feeds.map(f => [f.id,
-      isSocialFeed(f) ? 'person' : isNewsSearch(f) || (f.recent || 0) > PER_PERSON || OUTLET.test(f.title || '') ? 'pub' : 'person']));
+      isSocialFeed(f) ? 'person' : isJobFeed(f) || isNewsSearch(f) || (f.recent || 0) > PER_PERSON || OUTLET.test(f.title || '') ? 'pub' : 'person']));
   }
   const autoKind = f => S.kinds.get(f.id) || 'person';
   const kindOf = f => (f && (S.prefs.kinds || {})[f.url]) || (f ? autoKind(f) : 'pub');
@@ -261,19 +264,21 @@
       '<hr class="nav-gap">' +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
-      navButton('recent', 'Recently read', '', { icon: ICONS.recent });
+      navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
+      '<hr class="nav-gap">' +
+      navButton('jobs', 'Help Wanted', newJobs() || '', { icon: ICONS.jobs });
 
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
       const open = !collapsed.has(folder.id);
-      const inside = S.feeds.filter(f => f.folder_id === folder.id);
+      const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f));
       html += `<div class="folder" data-folder="${folder.id}">
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
           ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id))}
         </div>`;
       if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
     }
-    const loose = S.feeds.filter(f => !f.folder_id || !folderById(f.folder_id));
+    const loose = S.feeds.filter(f => (!f.folder_id || !folderById(f.folder_id)) && !isJobFeed(f));
     if (loose.length && S.folders.length) html += '<hr>';
     html += loose.map(feedButton).join('');
     if (!S.feeds.length) html += '<span class="note" style="padding:0 10px">No feeds yet. Add one below.</span>';
@@ -282,7 +287,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations', jobs: 'Help Wanted' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -305,11 +310,12 @@
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
+      : S.view === 'jobs' ? jobsSub()
       : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : `${lead}${muted} · ${when}`;
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk'].includes(S.view));
+    $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'jobs'].includes(S.view));
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
@@ -351,6 +357,10 @@
     } else if (S.view === 'talk' && anySocial()) {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn primary" data-talk="newpost">New post</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'shared'}" id="talkRefresh">Check again</button>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'jobs') {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn" data-job="manage">Manage job feeds</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'discover') {
       bar.hidden = false;
@@ -582,6 +592,7 @@
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
+    if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
@@ -668,7 +679,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render(); welcome();
     } catch (e) { status(msg(e), true); }
@@ -711,6 +722,7 @@
     if (S.view === 'today') welcome();
     if (S.view === 'talk') loadTalk();
     if (typeof S.view === 'number' && anySocial()) loadReaders();
+    if (S.view === 'jobs') { store.set('jobsSeen', String(Date.now())); setTimeout(renderRail, 50); }
   }
 
 
@@ -1002,6 +1014,235 @@
       </div>
     </div>`;
   }
+  // ------------------------------------------------------------ Help Wanted: job feeds as newspaper classifieds
+  // Job feeds live apart from your reading (never in Today, People or All). Circle an ad to clip it and track it.
+  const JOB_FEEDS = [
+    ['We Work Remotely · all jobs', 'https://weworkremotely.com/remote-jobs.rss', 'Remote jobs of every kind'],
+    ['We Work Remotely · customer support', 'https://weworkremotely.com/categories/remote-customer-support-jobs.rss', ''],
+    ['We Work Remotely · sales and marketing', 'https://weworkremotely.com/categories/remote-sales-and-marketing-jobs.rss', ''],
+    ['We Work Remotely · management and finance', 'https://weworkremotely.com/categories/remote-management-and-finance-jobs.rss', ''],
+    ['We Work Remotely · design', 'https://weworkremotely.com/categories/remote-design-jobs.rss', ''],
+    ['We Work Remotely · programming', 'https://weworkremotely.com/categories/remote-programming-jobs.rss', ''],
+    ['Remotive', 'https://remotive.com/remote-jobs/feed', 'Remote jobs, many outside tech'],
+    ['Remote OK', 'https://remoteok.com/remote-jobs.rss', 'Remote jobs, mostly tech'],
+    ['Authentic Jobs', 'https://authenticjobs.com/?feed=job_feed', 'Design and web jobs'],
+    ['Hacker News: Who is hiring?', 'https://hnrss.org/whoishiring/jobs', 'Companies posting openings themselves, monthly'],
+  ];
+  const JOB_STARTERS = [JOB_FEEDS[0][1], JOB_FEEDS[6][1], JOB_FEEDS[9][1]];
+  const JOB_HOSTS = /weworkremotely\.com|remotive\.com|remoteok\.(com|io)|authenticjobs\.com|hnrss\.org\/whoishiring/;
+  const isJobFeed = f => !!f && (!!(S.prefs.jobs || {})[f.url] || !!(S.prefs.jobs || {})['id:' + f.id] || JOB_HOSTS.test(f.url || ''));
+  const isJobItem = i => isJobFeed(feedById(i.feed_id));
+  const J = { filter: 'all', anim: null };
+  const CATS = [
+    ['gov', 'Government', /\b(federal|government|county|city of|state of|usajobs|park ranger|gs-\d+)\b/i],
+    ['tech', 'Tech', /\b(developer|engineer|engineering|programmer|devops|sysadmin|software|data|it specialist|security|qa|full[- ]stack|front[- ]end|back[- ]end|ios|android|machine learning|ai)\b/i],
+    ['design', 'Design', /\b(design|designer|ux|ui|graphic|illustrat|creative|brand)\b/i],
+    ['support', 'Customer service', /\b(support|customer|success|service|front desk|receptionist|help ?desk|concierge|call center)\b/i],
+    ['sales', 'Sales', /\b(sales|account executive|business development|bdr|sdr|marketing|growth|partnerships|retail associate)\b/i],
+    ['mgmt', 'Management', /\b(manager|management|director|lead|head of|finance|accountant|accounting|bookkeep|operations|coordinator|administrator|hr|recruit)\b/i],
+  ];
+  const CAT_NAME = Object.fromEntries([...CATS.map(([k, n]) => [k, n]), ['local', 'Around town'], ['other', 'All other']]);
+  const FEED_CAT = [[/customer-support/, 'support'], [/sales-and-marketing/, 'sales'], [/management-and-finance/, 'mgmt'], [/design/, 'design'], [/programming|devops/, 'tech']];
+  function jobVia(f) {
+    const p = JOB_FEEDS.find(x => x[1] === f.url);
+    if (p) return p[0].split(/ · |: /)[0];
+    return isNewsSearch(f) ? 'News search' : f.title;
+  }
+  // One ad from a feed item: title, company, place, a line about it, and its section
+  function adOf(it) {
+    const f = feedById(it.feed_id) || {};
+    let title = (it.title || '').trim(), company = '', loc = '';
+    const sum = (it.summary || '').replace(/\s+/g, ' ').trim();
+    let m;
+    if (isNewsSearch(f)) { title = headline(it); company = outletOf(it); }
+    else if (/hnrss\.org/.test(f.url) || / \| .+ \| /.test(title)) {
+      const parts = (/ \| /.test(title) ? title : sum.slice(0, 300)).split(/\s+\|\s+/).map(x => x.trim()).filter(Boolean);
+      company = parts[0] || '';
+      title = parts.find((p, i) => i > 0 && CATS.some(c => c[2].test(p))) || parts[1] || title;
+      loc = parts.find(p => /remote|on-?site|hybrid|,\s*[A-Z]{2}\b|\b(NYC|SF|London|Berlin)\b/i.test(p) && p !== title) || '';
+    } else if ((m = /^([^:]{2,60}):\s+(.+)$/.exec(title))) { company = m[1]; title = m[2]; }
+    else if ((m = /^(.+?)\s+at\s+([^,]{2,60})$/.exec(title))) { title = m[1]; company = m[2]; }
+    if (!loc) {
+      const hay = `${it.title} ${sum}`;
+      loc = (m = /\b([A-Z][a-zA-Z .'-]{2,24},\s*(?:[A-Z]{2}|[A-Z][a-z]+))\b/.exec(hay)) ? m[1]
+        : /\bhybrid\b/i.test(hay) ? 'Hybrid'
+        : /weworkremotely|remotive|remoteok/.test(f.url || '') || /\bremote\b/i.test(hay) ? 'Remote' : '';
+    }
+    title = title.replace(/\s*\((remote|hybrid)\)\s*$/i, '');
+    let blurb = sum.replace(title, '').replace(company, '').replace(/^[\s|:·,-]+/, '');
+    if (blurb.length > 160) blurb = blurb.slice(0, 157).replace(/\s+\S*$/, '') + '…';
+    const fc = FEED_CAT.find(([re]) => re.test(f.url || ''));
+    const cat = isNewsSearch(f) ? 'local' : fc ? fc[1] : (CATS.find(c => c[2].test(title)) || CATS.find(c => c[2].test(`${title} ${sum.slice(0, 200)}`)) || ['other'])[0];
+    return { id: it.id, title: title || 'Untitled listing', company, loc, blurb, cat, date: it.date, link: it.link, via: jobVia(f), feedId: f.id };
+  }
+  const circled = () => S.prefs.circled || {};
+  const jobHidden = () => new Set(S.prefs.jobHidden || []);
+  function jobAds() {
+    const hid = jobHidden(), seen = new Set(), out = [];
+    for (const it of S.items) {
+      if (!isJobItem(it)) continue;
+      const a = adOf(it);
+      if (a.company && hid.has(a.company.toLowerCase())) continue;
+      const k = (a.title + '|' + a.company).toLowerCase(); // the same job from two feeds, once
+      if (seen.has(k)) continue; seen.add(k); out.push(a);
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date));
+  }
+  const nearPlace = () => (S.prefs.jobPlace || '').split(',')[0].trim().toLowerCase();
+  const newJobs = () => { const t = Number(store.get('jobsSeen')) || 0; return S.items.filter(i => isJobItem(i) && Date.parse(i.date) > t).length; };
+  const RING = (anim) => `<svg class="ring${anim ? ' draw' : ''}" viewBox="0 0 200 100" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M40 8C100 0 186 4 196 42C202 82 132 98 72 95C22 92 0 72 4 46C8 20 44 6 104 4" fill="none" stroke="var(--pen)" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+  function adHtml(a) {
+    const c = circled()[a.id];
+    return `<article class="ad${c ? ' circled' : ''}">${c ? RING(J.anim === a.id) : ''}
+      <h4><button class="ad-t" data-job="open" data-id="${esc(a.id)}">${esc(a.title)}</button></h4>
+      ${a.company || a.loc ? `<p class="co">${esc(a.company)}${a.company && a.loc ? ' · ' : ''}<span class="loc">${esc(a.loc)}</span></p>` : ''}
+      ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
+      <p class="meta">${esc(ago(a.date))} ago · via ${esc(a.via)}
+        ${a.company ? `<button class="ad-x" data-job="hide" data-company="${esc(a.company)}" title="Hide ads from ${esc(a.company)}" aria-label="Hide ads from ${esc(a.company)}">⊘</button>` : ''}
+        <button class="circ" data-job="circle" data-id="${esc(a.id)}" aria-pressed="${!!c}">${c ? '✓ Circled' : '◯ Circle'}</button></p></article>`;
+  }
+  function jobsSub() {
+    const c = circled(), due = Object.values(c).filter(x => x.s === 'applied' && x.applied && Date.now() - Date.parse(x.applied) > 7 * DAY).length;
+    const n = jobAds().length;
+    return `${n} ${n === 1 ? 'opening' : 'openings'} from ${S.feeds.filter(isJobFeed).length} job feeds${due ? ` · ${due} follow-up${due === 1 ? '' : 's'} due` : ''}`;
+  }
+  function jobsHtml() {
+    const feeds = S.feeds.filter(isJobFeed);
+    if (!feeds.length) return `<div class="mast"><h2>Help Wanted</h2><p>${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))} · Classifieds</p></div>
+      <div class="empty"><strong>The classifieds, from job feeds</strong><span>Turn on a few job boards that still publish feeds. Their ads stay here, apart from your reading. Circle the ones you like to keep track of them.</span>
+      <div class="row" style="justify-content:center;gap:8px"><button class="btn primary" data-job="starter">Start with three job boards</button><button class="btn" data-job="manage">Choose job feeds</button></div></div>`;
+    const ads = jobAds(), c = circled();
+    const head = `<div class="mast"><h2>Help Wanted</h2><p>${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))} · Classifieds</p></div>`;
+    const n = Object.keys(c).filter(k => c[k].s !== 'no').length;
+    const present = new Set(ads.map(a => a.cat));
+    const chip = (k, label) => `<button data-job="filter" data-f="${k}" aria-pressed="${J.filter === k}">${esc(label)}</button>`;
+    const filters = `<div class="hw-filters">${chip('all', 'All')}${chip('remote', 'Remote')}${S.prefs.jobPlace ? chip('near', 'Near ' + S.prefs.jobPlace.split(',')[0]) : ''}<span class="sep"></span>
+      ${[...CATS.map(x => x[0]), 'local', 'other'].filter(k => present.has(k)).map(k => chip(k, CAT_NAME[k])).join('')}
+      <button class="circled-btn" data-job="filter" data-f="circled" aria-pressed="${J.filter === 'circled'}">◯ Circled${n ? ` (${n})` : ''}</button></div>`;
+    if (J.filter === 'circled') return head + filters + boardHtml();
+    const near = nearPlace();
+    const shown = ads.filter(a => J.filter === 'all' ? true : J.filter === 'remote' ? /remote/i.test(a.loc) : J.filter === 'near' ? (near && `${a.loc} ${a.blurb} ${a.title}`.toLowerCase().includes(near)) || a.cat === 'local' : a.cat === J.filter);
+    if (!shown.length) return head + filters + `<div class="empty"><strong>No ads here right now</strong><span>${ads.length ? 'Try another section, or check back after the next refresh.' : S.refreshing ? 'Checking your job feeds now.' : 'Press Refresh to pull the latest listings.'}</span></div>`;
+    const order = [...CATS.map(x => x[0]), 'local', 'other'];
+    const groups = order.map(k => [k, shown.filter(a => a.cat === k).slice(0, 40)]).filter(([, l]) => l.length);
+    return head + filters + `<div class="classifieds">${groups.map(([k, l]) => `<section class="cat"><h3>${esc(CAT_NAME[k].toUpperCase())}</h3>${l.map(adHtml).join('')}</section>`).join('')}</div>
+      <p class="hw-foot">Listings come from the job feeds you turn on (<button class="b-link" data-job="manage">Manage job feeds</button>). Ads open on the original site. Always check a job on the company’s own site before applying, and never pay to apply.</p>`;
+  }
+  // ---- Circled: your clippings, moved along as things happen
+  const LANES = [['circled', 'Circled', 'Interested'], ['applied', 'Applied', 'Waiting to hear'], ['heard', 'Heard back', 'Interviews and calls'], ['offer', 'Offer', 'Decisions']];
+  const fmtDay = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  function clipHtml(id, c) {
+    const a = c.ad, live = S.items.some(i => i.id === id), days = c.applied ? Math.floor((Date.now() - Date.parse(c.applied)) / DAY) : 0;
+    const flag = !live ? 'Listing is gone from the feed. You still have the clipping.' : c.s === 'applied' && days >= 7 ? `It’s been ${days} days. Follow up?` : '';
+    const foot = c.s === 'circled' ? `Circled ${fmtDay(c.at)} · via ${esc(a.via)}` : c.s === 'applied' ? `Applied ${fmtDay(c.applied)} · ${days === 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago'}`
+      : c.s === 'heard' ? `Applied ${fmtDay(c.applied)} · heard back ${fmtDay(c.heard)}` : c.s === 'offer' ? `Offer ${fmtDay(c.offer)}` : `Closed ${fmtDay(c.closed)}`;
+    const btn = (s, label, cls = '') => `<button class="btn sm ${cls}" data-job="status" data-id="${esc(id)}" data-s="${s}">${label}</button>`;
+    const acts = c.s === 'circled' ? `<button class="btn primary sm" data-job="apply" data-id="${esc(id)}">Apply on their site</button>${btn('applied', 'I applied')}<button class="btn sm ghost" data-job="circle" data-id="${esc(id)}">Erase</button>`
+      : c.s === 'applied' ? btn('heard', 'Heard back') + btn('no', 'Not this time', 'ghost')
+      : c.s === 'heard' ? btn('offer', 'Offer') + btn('no', 'Not this time', 'ghost')
+      : c.s === 'offer' ? btn('no', 'Archive', 'ghost') : btn('circled', 'Bring back', 'ghost');
+    return `<article class="clip">${RING(false).replace('class="ring"', 'class="mini-ring"')}
+      <h4><button class="ad-t" data-job="apply" data-id="${esc(id)}">${esc(a.title)}</button></h4>
+      ${a.company || a.loc ? `<p class="co">${esc(a.company)}${a.company && a.loc ? ' · ' : ''}<span class="loc">${esc(a.loc)}</span></p>` : ''}
+      ${a.blurb ? `<p class="ln">${esc(a.blurb)}</p>` : ''}
+      ${c.note ? `<p class="ln note">“${esc(c.note)}”</p>` : ''}
+      ${flag ? `<p class="flag">${esc(flag)}</p>` : ''}
+      <p class="foot">${foot} · <button class="b-link" data-job="note" data-id="${esc(id)}">${c.note ? 'Edit note' : 'Add a note'}</button></p>
+      <div class="acts">${acts}</div></article>`;
+  }
+  function boardHtml() {
+    const c = circled(), ids = Object.keys(c).sort((x, y) => (c[y].at || '').localeCompare(c[x].at || ''));
+    if (!ids.length) return `<div class="empty"><strong>Nothing circled yet</strong><span>Press ◯ Circle on any ad. It’s clipped and kept here, even after the listing disappears, so you can track it from applying to an offer.</span></div>`;
+    const closed = ids.filter(id => c[id].s === 'no');
+    return `<div class="board">${LANES.map(([s, name, sub]) => { const l = ids.filter(id => c[id].s === s); return `<section class="lane"><header><h3>${name}</h3><span>${l.length}</span></header><p class="lane-s">${sub}</p>${l.map(id => clipHtml(id, c[id])).join('') || '<p class="empty-lane">Nothing here yet.</p>'}</section>`; }).join('')}</div>
+      ${closed.length ? `<details class="archive"><summary>Not this time (${closed.length}) · your record of everywhere you’ve applied</summary><div class="board">${closed.map(id => clipHtml(id, c[id])).join('')}</div></details>` : ''}`;
+  }
+  function saveCircled(next) { S.prefs.circled = next; savePrefs(); renderList(); renderRail(); }
+  function jobAction(b) {
+    const k = b.dataset.job, id = b.dataset.id, c = { ...circled() };
+    if (k === 'filter') { J.filter = b.dataset.f; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'manage') return openJobFeeds();
+    if (k === 'starter') return addJobFeeds(JOB_STARTERS, b);
+    if (k === 'open') { const it = item(id); if (it) openReader(id); return; }
+    if (k === 'apply') { const a = c[id]?.ad || (item(id) && adOf(item(id))); if (a?.link) openWeb(a.link); return; }
+    if (k === 'hide') {
+      S.prefs.jobHidden = [...jobHidden(), b.dataset.company.toLowerCase()];
+      savePrefs(); renderList(); status(`Ads from ${b.dataset.company} are hidden. Undo in Manage job feeds.`); return;
+    }
+    if (k === 'circle') {
+      if (c[id]) { delete c[id]; J.anim = null; }
+      else { const it = item(id); if (!it) return; c[id] = { s: 'circled', at: new Date().toISOString(), ad: adOf(it) }; J.anim = id; }
+      saveCircled(c); setTimeout(() => { J.anim = null; }, 900); return;
+    }
+    if (k === 'status') {
+      const s = b.dataset.s, now = new Date().toISOString(), cur = { ...c[id], s };
+      if (s === 'applied' && !cur.applied) cur.applied = now;
+      if (s === 'heard') cur.heard = now;
+      if (s === 'offer') cur.offer = now;
+      if (s === 'no') cur.closed = now;
+      c[id] = cur; saveCircled(c);
+      if (s === 'applied') status('Good luck. It’s in Applied; the app will nudge you if a week goes by.');
+      return;
+    }
+    if (k === 'note') {
+      const el = sheet('jobNote', `<h2>A note about this job</h2><p>${esc(c[id].ad.title)}${c[id].ad.company ? ' · ' + esc(c[id].ad.company) : ''}</p>
+        <textarea id="jobNoteText" rows="4" placeholder="Who you talked to, when the interview is, what to ask…">${esc(c[id].note || '')}</textarea>
+        <div class="row sheet-foot"><button class="btn" type="button" id="jnCancel">Cancel</button><button class="btn primary" type="button" id="jnSave">Save note</button></div>`, 'Note');
+      $('jobNoteText').focus();
+      $('jnCancel').onclick = () => { el.hidden = true; };
+      $('jnSave').onclick = () => { el.hidden = true; c[id] = { ...c[id], note: $('jobNoteText').value.trim() }; saveCircled(c); };
+    }
+  }
+  async function addJobFeeds(urls, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    const jobs = { ...(S.prefs.jobs || {}) }; let added = 0, last = '';
+    for (const u of urls) {
+      try { const r = await invoke('add_feed', { url: u, title: JOB_FEEDS.find(x => x[1] === u)?.[0] || null, folderId: null }); jobs[u] = 1; jobs['id:' + r.id] = 1; added++; }
+      catch (e) { last = msg(e); }
+    }
+    S.prefs.jobs = jobs; await savePrefs(); await load();
+    // The feed's address can change when it's found; mark the saved address too
+    for (const f of S.feeds) if (jobs['id:' + f.id] && !jobs[f.url]) jobs[f.url] = 1;
+    S.prefs.jobs = jobs; savePrefs();
+    status(added ? `Added ${added} job ${added === 1 ? 'feed' : 'feeds'}. New ads arrive with the next refresh.` : last, !added);
+    if (added) refresh();
+    if ($('jobFeeds') && !$('jobFeeds').hidden) openJobFeeds();
+    renderList(); renderRail();
+  }
+  function openJobFeeds() {
+    const on = u => S.feeds.find(f => f.url === u || f.url === u.replace('remoteok.com', 'remoteok.io'));
+    const mine = S.feeds.filter(f => isJobFeed(f) && !JOB_FEEDS.some(x => x[1] === f.url));
+    const hid = [...jobHidden()];
+    const el = sheet('jobFeeds', `<h2>Job feeds</h2>
+      <p>Job boards that still publish feeds. Indeed and LinkedIn don’t, so local jobs come from news searches for your area.</p>
+      <div class="jf-list">${JOB_FEEDS.map(([name, u, about]) => { const f = on(u); return `<div class="jf"><div><b>${esc(name)}</b>${about ? `<span>${esc(about)}</span>` : ''}</div>
+        ${f ? `<button class="btn sm" data-jf="remove" data-id="${f.id}">Turn off</button>` : `<button class="btn sm primary" data-jf="add" data-url="${esc(u)}">Turn on</button>`}</div>`; }).join('')}
+      ${mine.map(f => `<div class="jf"><div><b>${esc(f.title)}</b><span>${isNewsSearch(f) ? 'News search' : esc(f.url)}</span></div><button class="btn sm" data-jf="remove" data-id="${f.id}">Turn off</button></div>`).join('')}</div>
+      <h3 class="jf-h">Jobs near you</h3>
+      <p>Type your town and the app follows local hiring news for it, under “Around town.”</p>
+      <form class="acct-form" id="jobPlaceForm"><input id="jobPlace" placeholder="Fort Mill, SC" value="${esc(S.prefs.jobPlace || '')}"><button class="btn primary" type="submit">Save</button></form>
+      ${hid.length ? `<h3 class="jf-h">Hidden companies</h3><div class="t-recent">${hid.map(h => `<button class="chip" data-jf="unhide" data-c="${esc(h)}">${esc(h)} ×</button>`).join('')}</div>` : ''}
+      <div class="row sheet-foot"><button class="btn primary" type="button" id="jfDone">Done</button></div>`, 'Job feeds');
+    el.onclick = async e => {
+      if (e.target.id === 'jfDone') { el.hidden = true; return; }
+      const b = e.target.closest('[data-jf]'); if (!b) return;
+      if (b.dataset.jf === 'add') return addJobFeeds([b.dataset.url], b);
+      if (b.dataset.jf === 'unhide') { S.prefs.jobHidden = [...jobHidden()].filter(x => x !== b.dataset.c); savePrefs(); openJobFeeds(); renderList(); return; }
+      if (b.dataset.jf === 'remove') {
+        b.disabled = true;
+        try { await invoke('remove_feed', { id: Number(b.dataset.id) }); await load(); } catch (err) { status(msg(err), true); }
+        openJobFeeds(); renderList(); renderRail();
+      }
+    };
+    $('jobPlaceForm').onsubmit = async e => {
+      e.preventDefault();
+      const place = $('jobPlace').value.trim(); if (!place) return;
+      S.prefs.jobPlace = place; savePrefs();
+      await addJobFeeds([`hiring "${place.split(',')[0]}"`]);
+      J.filter = 'near';
+    };
+  }
+
   // ---- Search a topic: personal sites first (Marginalia, a search engine for the independent web), then the news.
   const recentSearches = () => { try { return JSON.parse(store.get('topicSearches') || '[]'); } catch { return []; } };
   async function topicSearch(q) {
@@ -2196,6 +2437,8 @@
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
+    const jz = e.target.closest('[data-job]');
+    if (jz) { jobAction(jz); return; }
     const tz = e.target.closest('[data-topic]');
     if (tz) { topicAction(tz); return; }
     const dz = e.target.closest('[data-disc]');
