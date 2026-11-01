@@ -14,6 +14,7 @@ pub const DEFAULT_FEEDS: &[(&str, &str)] = &[
     ("Chris Coyier", "https://chriscoyier.net/feed/"),
     ("Jim Nielsen", "https://blog.jim-nielsen.com/feed.xml"),
     ("DavidDaniels.com", "https://daviddaniels.com/feed/"),
+    ("New York Post", "https://nypost.com/feed/"),
 ];
 
 #[derive(Serialize, Clone, Debug)]
