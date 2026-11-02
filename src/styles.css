@@ -1087,3 +1087,13 @@ html.ios .r-close { display: none !important; }
 .bk-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .bk-done { font-family: var(--font-read); font-style: italic; color: var(--muted); }
 @media (max-width: 760px) { .cover { width: 92px; } .book { padding: 12px; gap: 14px; } .bk-text { font-size: 18px; } .bk-nav .btn { max-width: 46%; } }
+.bk-acts { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.book-body .bk-acts .btn { margin-top: 0; }
+.btn.ghost-x { background: none; border-color: transparent; color: var(--muted); }
+.add-book { margin: 26px 0 8px; padding: 16px 18px; border: 1px dashed var(--line); border-radius: 14px; max-width: 760px; }
+.add-book label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 10px; line-height: 1.45; }
+.add-book label b { color: var(--ink); margin-right: 6px; }
+.add-book label a { color: var(--accent); }
+.add-book .row { display: flex; gap: 8px; }
+.add-book input { flex: 1; min-width: 0; font-size: 15px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.add-book .fol-err { margin: 8px 0 0; }

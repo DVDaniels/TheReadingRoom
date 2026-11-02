@@ -320,7 +320,7 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'jobs' ? jobsSub()
-      : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${BOOKS.length} free classics`)
+      : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} free classics`)
       : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
@@ -1038,8 +1038,31 @@
     { slug: 'jane-austen/pride-and-prejudice', title: 'Pride and Prejudice', author: 'Jane Austen', why: 'The sharpest, funniest love story in English, and still the one to beat.' },
     { slug: 'arthur-conan-doyle/the-adventures-of-sherlock-holmes', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', why: 'Twelve short mysteries. Each one is perfect for an evening.' },
   ];
-  const B = { open: null, chapters: null, ch: 0, loading: false, err: '', toc: false };
-  const bookOf = slug => BOOKS.find(b => b.slug === slug);
+  const B = { open: null, chapters: null, ch: 0, loading: false, err: '', toc: false, adding: false, addErr: '' };
+  // Your own additions: any Standard Ebooks book, by its link. Synced.
+  const allBooks = () => [...BOOKS, ...((S.prefs.myBooks || []).filter(m => !BOOKS.some(b => b.slug === m.slug)))];
+  const bookOf = slug => allBooks().find(b => b.slug === slug);
+  const titleCase = t => t.replace(/-/g, ' ').replace(/\b(a|an|and|the|of|in|on|to|for|at|by)\b/g, w => '\u0000' + w).replace(/\b\w/g, c => c.toUpperCase()).replace(/\u0000(\w)/g, '$1').replace(/^\w/, c => c.toUpperCase());
+  function slugFrom(input) {
+    const m = /standardebooks\.org\/ebooks\/([a-z0-9-]+(?:\/[a-z0-9-]+){1,3}?)(?:\/(?:text|downloads|images)\b.*)?\/?(?:[?#].*)?$/i.exec((input || '').trim());
+    return m ? m[1].toLowerCase().replace(/\/$/, '') : '';
+  }
+  async function addBook(input) {
+    const slug = slugFrom(input);
+    if (!slug) { B.addErr = 'Paste the link of a book’s page on standardebooks.org, like standardebooks.org/ebooks/mark-twain/the-adventures-of-tom-sawyer'; renderList(); return; }
+    if (bookOf(slug)) { B.addErr = 'That book is already on your shelf.'; renderList(); return; }
+    B.adding = true; B.addErr = ''; renderList();
+    try {
+      const html = await invoke('book_text', { slug });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const [authorSlug, titleSlug] = slug.split('/');
+      const title = (doc.querySelector('#titlepage h1, section[epub\\:type~="titlepage"] h1')?.textContent || '').trim() || titleCase(titleSlug);
+      const author = (doc.querySelector('#titlepage [epub\\:type~="z3998:author"], #titlepage b')?.textContent || '').trim() || titleCase(authorSlug);
+      S.prefs.myBooks = [...(S.prefs.myBooks || []), { slug, title, author, why: 'Added by you.' }];
+      savePrefs(); status(`${title} is on your shelf.`);
+    } catch (e) { B.addErr = msg(e).replace('the book', 'that book'); }
+    B.adding = false; renderList();
+  }
   const coverOf = b => `https://standardebooks.org/ebooks/${b.slug}/downloads/cover.jpg`;
   const bookPos = slug => (S.prefs.books || {})[slug] || null;
   const SKIP_PARTS = /\b(imprint|colophon|copyright-page|toc|landmarks|loi|halftitlepage)\b/;
@@ -1102,14 +1125,19 @@
   }, { passive: true });
   function shelfHtml() {
     return `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
-      <div class="shelf">${BOOKS.map(b => {
+      <div class="shelf">${allBooks().map(b => {
         const p = bookPos(b.slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
         return `<article class="book"><button class="cover" data-book="open" data-slug="${esc(b.slug)}" aria-label="Read ${esc(b.title)}">
             <img src="${esc(coverOf(b))}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
           <div class="book-body"><h3>${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
           ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-where">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
-          <button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button></div></article>`;
+          <div class="bk-acts"><button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button>
+          ${BOOKS.some(x => x.slug === b.slug) ? '' : `<button class="btn ghost-x" data-book="remove" data-slug="${esc(b.slug)}" title="Take it off your shelf">Remove</button>`}</div></div></article>`;
       }).join('')}</div>
+      <form class="add-book" id="addBookForm"><label for="addBook"><b>Add a book</b> Find one at <a href="https://standardebooks.org/ebooks">standardebooks.org</a>, copy the link of its page, and paste it here.</label>
+        <div class="row"><input id="addBook" placeholder="standardebooks.org/ebooks/mark-twain/the-adventures-of-tom-sawyer" autocomplete="off" autocapitalize="off" spellcheck="false"${B.adding ? ' disabled' : ''}>
+        <button class="btn primary" type="submit"${B.adding ? ' disabled' : ''}>${B.adding ? 'Adding…' : 'Add to shelf'}</button></div>
+        ${B.addErr ? `<p class="fol-err">${esc(B.addErr)}</p>` : ''}</form>
       <p class="hw-foot">More free books: <a href="https://standardebooks.org/ebooks">Standard Ebooks</a> and <a href="https://www.gutenberg.org/">Project Gutenberg</a>. Standard Ebooks’ editions are dedicated to the public domain (CC0). Outside the US, check your country’s copyright rules.</p>`;
   }
   function bookHtml() {
@@ -1131,6 +1159,12 @@
     if (k === 'open') return openBook(b.dataset.slug);
     if (k === 'shelf') { B.open = null; renderHead(); renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'toc') { B.toc = !B.toc; renderList(); return; }
+    if (k === 'remove') {
+      const slug = b.dataset.slug, t = bookOf(slug)?.title || 'The book';
+      S.prefs.myBooks = (S.prefs.myBooks || []).filter(m => m.slug !== slug);
+      const books = { ...(S.prefs.books || {}) }; delete books[slug]; S.prefs.books = books;
+      savePrefs(); renderList(); status(`${t} is off your shelf.`); return;
+    }
     if (k === 'ch') return goChapter(Number(b.dataset.i));
   }
   // Footnote links inside a book jump to the chapter that holds the note
@@ -2704,6 +2738,7 @@
   $('newFolderBtn').onclick = () => $('folderForm').hidden ? openNewFolder() : ($('folderForm').hidden = true);
   $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
   document.addEventListener('submit', e => {
+    if (e.target.id === 'addBookForm') { e.preventDefault(); addBook($('addBook').value); return; }
     if (e.target.id !== 'topicForm') return;
     e.preventDefault(); topicSearch($('topicQ').value);
   });
