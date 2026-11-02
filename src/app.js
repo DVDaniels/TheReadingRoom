@@ -1254,13 +1254,15 @@
   const deviceId = (() => { let d = store.get('deviceId'); if (!d) { d = Math.random().toString(36).slice(2, 10); store.set('deviceId', d); } return d; })();
   const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const goalCfg = () => ({ mins: 15, books: 12, booksOnly: false, ...(S.prefs.goal || {}) });
+  // Off until you set one: nothing is counted or shown before that
+  const goalOn = () => !!S.prefs.goal && S.prefs.goal.on !== false;
   const dayMins = key => Object.values((S.prefs.readLog || {})[key] || {}).reduce((a, b) => a + b, 0) / 60;
   let unsaved = 0, lastActive = 0, celebrated = store.get('goalDone') || '';
   const READ_IDLE = 120 * 1000;
   const markActive = () => { lastActive = Date.now(); };
   ['scroll', 'wheel', 'keydown', 'pointerdown', 'touchstart'].forEach(t => document.addEventListener(t, markActive, { capture: true, passive: true }));
   function readingNow() {
-    if (document.hidden || Date.now() - lastActive > READ_IDLE) return false;
+    if (!goalOn() || document.hidden || Date.now() - lastActive > READ_IDLE) return false;
     if (S.view === 'books' && B.open && B.chapters && !B.loading) return 'book';
     if (!goalCfg().booksOnly && S.readerId && !$('reader').hidden) return 'article';
     return false;
@@ -1303,8 +1305,8 @@
     if ((S.prefs.finished || {})[slug]) return;
     S.prefs.finished = { ...(S.prefs.finished || {}), [slug]: new Date().toISOString() };
     savePrefs();
-    const n = finishedThisYear(), g = goalCfg().books;
-    status(`Finished ${bookOf(slug)?.title || 'the book'}. That’s ${n} ${n === 1 ? 'book' : 'books'} this year${g ? ` of your ${g}` : ''}.`);
+    const n = finishedThisYear(), g = goalOn() ? goalCfg().books : 0;
+    status(`Finished ${bookOf(slug)?.title || 'the book'}.${goalOn() ? ` That’s ${n} ${n === 1 ? 'book' : 'books'} this year${g ? ` of your ${g}` : ''}.` : ''}`);
   }
   const ring = (frac, size = 76, sw = 7) => {
     const r = size / 2 - sw / 2 - 1, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
@@ -1315,6 +1317,8 @@
   // While a book is open: a hairline along the top that fills toward today's goal, and a tiny count
   function paintBookGoal() {
     const fill = $('bkGoalFill'), t = $('bkGoalT'); if (!fill) return;
+    fill.parentNode.hidden = !goalOn(); if (t) t.hidden = !goalOn();
+    if (!goalOn()) return;
     const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, hit = today >= g.mins;
     fill.style.width = `${Math.min(100, (today / g.mins) * 100).toFixed(1)}%`;
     fill.parentNode.classList.toggle('done', hit);
@@ -1322,13 +1326,14 @@
   }
   function paintGoalChip() {
     const el = $('goalChip'); if (!el) return;
-    if (!Object.keys(S.prefs.readLog || {}).length && !S.prefs.goal) { el.hidden = true; return; }
+    if (!goalOn()) { el.hidden = true; return; }
     const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, s = streak(), hit = today >= g.mins;
     el.hidden = false;
     el.title = hit ? `Today’s reading goal is done: ${Math.floor(today)} minutes` : `Reading goal: ${Math.floor(today)} of ${g.mins} minutes today`;
     el.innerHTML = `${ring(today / g.mins, 16, 3)}<span>${hit ? 'Goal done' : `${Math.floor(today)} of ${g.mins} min`}</span>${s ? `<span class="gc-streak">· ${s}-day streak</span>` : ''}`;
   }
   function goalHtml() {
+    if (!goalOn()) return `<section class="goal goal-off"><div class="g-text"><h3>Set a reading goal</h3><p>Choose minutes a day and books a year, and keep a streak going. Only real reading counts, and nothing is tracked until you turn it on.</p></div><button class="btn" data-goal="edit">Set a goal</button></section>`;
     const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, s = streak(), done = finishedThisYear();
     const mins = Math.floor(today), hit = today >= g.mins;
     // The week: a dot per day, filled when the goal was met
@@ -1349,11 +1354,12 @@
       <label class="g-field">Minutes a day <input id="gMins" type="number" min="1" max="600" value="${g.mins}"></label>
       <label class="g-field">Books this year <input id="gBooks" type="number" min="0" max="365" value="${g.books}"></label>
       <label class="g-check"><input id="gBooksOnly" type="checkbox"${g.booksOnly ? ' checked' : ''}> Count books only, not stories</label>
-      <div class="row sheet-foot"><button class="btn" type="button" id="gCancel">Cancel</button><button class="btn primary" type="button" id="gSave">Save</button></div>`, 'Reading goal');
+      <div class="row sheet-foot">${goalOn() ? '<button class="btn ghost-x" type="button" id="gOff" style="margin-right:auto">Turn off</button>' : ''}<button class="btn" type="button" id="gCancel">Cancel</button><button class="btn primary" type="button" id="gSave">${goalOn() ? 'Save' : 'Start'}</button></div>`, 'Reading goal');
     $('gCancel').onclick = () => { el.hidden = true; };
+    if ($('gOff')) $('gOff').onclick = () => { S.prefs.goal = { ...goalCfg(), on: false }; savePrefs(); el.hidden = true; renderList(); renderHead(); status('Reading goal turned off. Nothing is counted until you turn it on again.'); };
     $('gSave').onclick = () => {
       const mins = Math.max(1, Math.min(600, Number($('gMins').value) || 15)), books = Math.max(0, Math.min(365, Number($('gBooks').value) || 0));
-      S.prefs.goal = { mins, books, booksOnly: $('gBooksOnly').checked }; savePrefs(); el.hidden = true; renderList();
+      S.prefs.goal = { mins, books, booksOnly: $('gBooksOnly').checked, on: true }; savePrefs(); el.hidden = true; renderList(); renderHead();
     };
   }
 
