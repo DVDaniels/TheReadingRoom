@@ -584,9 +584,6 @@
     if (isHome()) {
       const hlWeek = S.highlights.filter(h => h.created_at && Date.now() - new Date(h.created_at).getTime() < 7 * DAY).length;
       if (hlWeek) statsHtml = `<p class="b-stats"><button class="b-link" data-view="annotated">${hlWeek} ${hlWeek === 1 ? 'passage' : 'passages'}</button> highlighted this week.</p>`;
-      // Your reading goal, once you've started one
-      const g = goalCfg(), today = Math.floor(dayMins(dayKey())), st = streak();
-      if (Object.keys(S.prefs.readLog || {}).length) statsHtml += `<p class="b-stats"><button class="b-link" data-view="books">Reading goal</button>: ${today >= g.mins ? `done for today (${today} min)` : `${today} of ${g.mins} minutes today`}${st ? ` · ${st}-day streak` : ''}.</p>`;
     }
     const peopleHtml = peopleShown.length ? `<div class="b-people"><h3 class="b-sub">From people you read</h3><div class="b-pgrid">${peopleShown.map(i => {
         const f = feedById(i.feed_id);
