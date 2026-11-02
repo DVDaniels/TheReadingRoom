@@ -15,6 +15,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map() };
   const ICONS = {
+    books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg>',
     jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/></svg>',
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -90,13 +91,13 @@
     if (view === 'saved') return i.saved;
     if (view === 'recent') return !!i.read_at;
     if (view === 'annotated') return S.highlights.some(h => h.item_id === i.id);
-    if (view === 'discover' || view === 'guide' || view === 'talk') return false;
+    if (view === 'discover' || view === 'guide' || view === 'talk' || view === 'books') return false;
     if (view === 'people') return isPerson(i.feed_id);
     const folder = folderOf(view);
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -265,6 +266,7 @@
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
       navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
+      navButton('books', 'Books', '', { icon: ICONS.books }) +
       '<hr class="nav-gap">' +
       navButton('jobs', 'Help Wanted', newJobs() || '', { icon: ICONS.jobs });
 
@@ -287,7 +289,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations', jobs: 'Help Wanted' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -299,7 +301,8 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk'].includes(S.view) || (S.view === 'jobs' && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || (S.view === 'jobs' && !S.readerId));
+    document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
   }
   function renderHead() {
@@ -317,10 +320,11 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'jobs' ? jobsSub()
+      : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${BOOKS.length} free classics`)
       : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = ['discover', 'guide', 'talk'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
@@ -364,6 +368,8 @@
       bar.hidden = false;
       bar.innerHTML = `<button class="btn primary" data-talk="newpost">New post</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'shared'}" id="talkRefresh">Check again</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'books') {
+      bar.hidden = true;
     } else if (S.view === 'jobs') {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" data-job="manage">Manage job feeds</button>`;
@@ -599,6 +605,7 @@
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
+    if (S.view === 'books') { $('list').innerHTML = booksHtml(); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
@@ -648,6 +655,7 @@
   // A picture that fails to load turns into that tile.
   document.addEventListener('error', e => {
     const img = e.target;
+    if (img.tagName === 'IMG' && img.closest?.('.cover')) { img.remove(); return; }
     if (img.tagName === 'IMG' && img.closest?.('.newpost, .pav')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph' })); return; }
     if (img.tagName === 'IMG' && img.closest?.('.tcols') && img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
@@ -685,7 +693,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render(); welcome();
     } catch (e) { status(msg(e), true); }
@@ -728,6 +736,7 @@
     if (S.view === 'today') welcome();
     if (S.view === 'talk') loadTalk();
     if (typeof S.view === 'number' && anySocial()) loadReaders();
+    if (S.view === 'books') B.open = null;
     if (S.view === 'jobs') { store.set('jobsSeen', String(Date.now())); setTimeout(renderRail, 50); upgradeLocalSearch(); }
   }
 
@@ -1020,6 +1029,121 @@
       </div>
     </div>`;
   }
+  // ------------------------------------------------------------ Books: free classics from Standard Ebooks
+  // Public domain in the US, carefully produced, and free. Each downloads once, then reads offline.
+  const BOOKS = [
+    { slug: 'marcus-aurelius/meditations/george-long', title: 'Meditations', author: 'Marcus Aurelius', why: 'A Roman emperor’s private notes to himself on living well. Read a page a day.' },
+    { slug: 'henry-david-thoreau/walden', title: 'Walden', author: 'Henry David Thoreau', why: 'Two years in a cabin by a pond, and what a simpler life taught him.' },
+    { slug: 'benjamin-franklin/the-autobiography-of-benjamin-franklin', title: 'The Autobiography of Benjamin Franklin', author: 'Benjamin Franklin', why: 'A printer’s apprentice becomes a founder, with his famous plan of thirteen virtues.' },
+    { slug: 'jane-austen/pride-and-prejudice', title: 'Pride and Prejudice', author: 'Jane Austen', why: 'The sharpest, funniest love story in English, and still the one to beat.' },
+    { slug: 'arthur-conan-doyle/the-adventures-of-sherlock-holmes', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', why: 'Twelve short mysteries. Each one is perfect for an evening.' },
+  ];
+  const B = { open: null, chapters: null, ch: 0, loading: false, err: '', toc: false };
+  const bookOf = slug => BOOKS.find(b => b.slug === slug);
+  const coverOf = b => `https://standardebooks.org/ebooks/${b.slug}/downloads/cover.jpg`;
+  const bookPos = slug => (S.prefs.books || {})[slug] || null;
+  const SKIP_PARTS = /\b(imprint|colophon|copyright-page|toc|landmarks|loi|halftitlepage)\b/;
+  // The one-page book → chapters: each top-level section of the body, its first heading as its name
+  function parseBook(html, slug) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script, style, link, iframe, object, embed, form').forEach(n => n.remove());
+    doc.querySelectorAll('*').forEach(n => { for (const a of [...n.attributes]) if (/^on/i.test(a.name)) n.removeAttribute(a.name); });
+    const base = `https://standardebooks.org/ebooks/${slug}/text/`;
+    doc.querySelectorAll('img[src]').forEach(i => { try { i.src = new URL(i.getAttribute('src'), base).href; } catch {} });
+    const body = doc.querySelector('main') || doc.body;
+    let parts = [...body.children].filter(n => /^(SECTION|ARTICLE)$/.test(n.tagName));
+    if (parts.length === 1 && parts[0].querySelectorAll(':scope > section, :scope > article').length > 1) parts = [...parts[0].querySelectorAll(':scope > section, :scope > article')];
+    const out = [];
+    for (const p of parts) {
+      const type = (p.getAttribute('epub:type') || p.getAttribute('data-epub-type') || '') + ' ' + (p.id || '');
+      if (SKIP_PARTS.test(type)) continue;
+      const h = p.querySelector('h1, h2, h3, h4, hgroup');
+      let name = h ? h.textContent.replace(/\s+/g, ' ').trim() : '';
+      if (/titlepage/.test(type)) name = 'Title page';
+      if (/uncopyright/.test(type)) name = 'About this edition';
+      if (!name) name = (p.id || 'Part').replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase());
+      out.push({ id: p.id, name: name.length > 70 ? name.slice(0, 67) + '…' : name, html: p.innerHTML });
+    }
+    return out;
+  }
+  async function openBook(slug, ch) {
+    const b = bookOf(slug); if (!b) return;
+    B.open = slug; B.chapters = null; B.loading = true; B.err = ''; B.toc = false;
+    renderHead(); renderList(); $('main').scrollTo({ top: 0 });
+    try {
+      const html = await invoke('book_text', { slug });
+      B.chapters = parseBook(html, slug);
+      const pos = bookPos(slug);
+      B.ch = Math.min(ch ?? (pos ? pos.ch : Math.max(0, B.chapters.findIndex(c => c.name !== 'Title page'))), B.chapters.length - 1);
+    } catch (e) { B.err = msg(e); }
+    B.loading = false;
+    if (B.open !== slug) return;
+    renderHead(); renderList();
+    restoreBookScroll();
+  }
+  function restoreBookScroll() {
+    const saved = Number(store.get(`bookScroll:${B.open}:${B.ch}`)) || 0;
+    requestAnimationFrame(() => { const m = $('main'); m.scrollTo({ top: saved ? saved * (m.scrollHeight - m.clientHeight) : 0 }); });
+  }
+  function goChapter(i) {
+    if (!B.chapters) return;
+    B.ch = Math.max(0, Math.min(B.chapters.length - 1, i)); B.toc = false;
+    const books = { ...(S.prefs.books || {}) };
+    books[B.open] = { ch: B.ch, of: B.chapters.length, at: new Date().toISOString() };
+    S.prefs.books = books; savePrefs();
+    renderList(); store.set(`bookScroll:${B.open}:${B.ch}`, '0'); $('main').scrollTo({ top: 0 });
+  }
+  // Where you are in a chapter, remembered on this device as you scroll
+  let bookScrollT = 0;
+  $('main').addEventListener('scroll', () => {
+    if (S.view !== 'books' || !B.chapters) return;
+    clearTimeout(bookScrollT);
+    bookScrollT = setTimeout(() => { const m = $('main'), max = m.scrollHeight - m.clientHeight; if (max > 0) store.set(`bookScroll:${B.open}:${B.ch}`, String((m.scrollTop / max).toFixed(4))); }, 300);
+  }, { passive: true });
+  function shelfHtml() {
+    return `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
+      <div class="shelf">${BOOKS.map(b => {
+        const p = bookPos(b.slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
+        return `<article class="book"><button class="cover" data-book="open" data-slug="${esc(b.slug)}" aria-label="Read ${esc(b.title)}">
+            <img src="${esc(coverOf(b))}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
+          <div class="book-body"><h3>${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
+          ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-where">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
+          <button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button></div></article>`;
+      }).join('')}</div>
+      <p class="hw-foot">More free books: <a href="https://standardebooks.org/ebooks">Standard Ebooks</a> and <a href="https://www.gutenberg.org/">Project Gutenberg</a>. Standard Ebooks’ editions are dedicated to the public domain (CC0). Outside the US, check your country’s copyright rules.</p>`;
+  }
+  function bookHtml() {
+    const b = bookOf(B.open);
+    const top = `<div class="bk-bar"><button class="btn" data-book="shelf">← Books</button><div class="bk-name"><b>${esc(b.title)}</b><span>${esc(b.author)}</span></div>
+      ${B.chapters ? `<button class="btn" data-book="toc" aria-expanded="${B.toc}">Contents</button>` : ''}</div>`;
+    if (B.loading) return top + `<div class="empty"><strong>Opening ${esc(b.title)}…</strong><span>Downloading the book once. After this it opens without a connection.</span></div>`;
+    if (B.err) return top + `<div class="empty"><strong>Couldn’t open the book</strong><span>${esc(B.err)}</span><button class="btn primary" data-book="open" data-slug="${esc(b.slug)}">Try again</button></div>`;
+    const c = B.chapters[B.ch];
+    const toc = B.toc ? `<nav class="bk-toc">${B.chapters.map((x, i) => `<button data-book="ch" data-i="${i}" aria-current="${i === B.ch}">${esc(x.name)}</button>`).join('')}</nav>` : '';
+    const nav = `<div class="bk-nav">${B.ch > 0 ? `<button class="btn" data-book="ch" data-i="${B.ch - 1}">← ${esc(B.chapters[B.ch - 1].name)}</button>` : '<span></span>'}
+      <span class="bk-count">${B.ch + 1} of ${B.chapters.length}</span>
+      ${B.ch < B.chapters.length - 1 ? `<button class="btn primary" data-book="ch" data-i="${B.ch + 1}">${esc(B.chapters[B.ch + 1].name)} →</button>` : '<span class="bk-done">The end.</span>'}</div>`;
+    return top + toc + `<article class="prose bk-text">${c.html}</article>` + nav;
+  }
+  function booksHtml() { return B.open ? bookHtml() : shelfHtml(); }
+  function bookAction(b) {
+    const k = b.dataset.book;
+    if (k === 'open') return openBook(b.dataset.slug);
+    if (k === 'shelf') { B.open = null; renderHead(); renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'toc') { B.toc = !B.toc; renderList(); return; }
+    if (k === 'ch') return goChapter(Number(b.dataset.i));
+  }
+  // Footnote links inside a book jump to the chapter that holds the note
+  function bookLink(a) {
+    const href = a.getAttribute('href') || '';
+    const m = /#(.+)$/.exec(href); if (!m || !B.chapters) return false;
+    const id = m[1], i = B.chapters.findIndex(c => c.id === id || c.html.includes(`id="${id}"`));
+    if (i < 0) return false;
+    if (i !== B.ch) goChapter(i);
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'center' }), 60);
+    return true;
+  }
+
   // ------------------------------------------------------------ Help Wanted: job feeds as newspaper classifieds
   // Job feeds live apart from your reading (never in Today, People or All). Circle an ad to clip it and track it.
   const JOB_FEEDS = [
@@ -2462,9 +2586,9 @@
   // ------------------------------------------------------------ clicks
   document.addEventListener('click', e => {
     if (e.target.closest('.reader, .pop, .menu')) return; // the reader handles its own clicks
-    // Every web link opens inside the app, in its web window.
+    // Every web link opens inside the app, in its web window (a book's own footnotes stay in the book).
     const a = e.target.closest('a[href]');
-    if (a) { e.preventDefault(); openWeb(a.href); return; }
+    if (a) { e.preventDefault(); if (S.view === 'books' && a.closest('.bk-text') && bookLink(a)) return; openWeb(a.href); return; }
 
     const chev = e.target.closest('[data-chev]');
     if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
@@ -2476,6 +2600,8 @@
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
+    const bz = e.target.closest('[data-book]');
+    if (bz) { bookAction(bz); return; }
     const jz = e.target.closest('[data-job]');
     if (jz) { jobAction(jz); return; }
     const tz = e.target.closest('[data-topic]');

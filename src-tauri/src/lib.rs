@@ -956,6 +956,27 @@ fn discover_get(state: State<'_, Shared>) -> serde_json::Value {
     serde_json::json!({ "report": discover_cached(&conn), "running": state.discovering.load(Ordering::SeqCst) })
 }
 
+/// A free classic from Standard Ebooks, as one page. Kept after the first download, so it opens offline.
+#[tauri::command]
+async fn book_text(state: State<'_, Shared>, slug: String) -> Result<String, String> {
+    if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '/') || slug.contains("..") {
+        return Err("That book can’t be found.".into());
+    }
+    let key = format!("book:{slug}");
+    if let Ok(Some(html)) = db::get_meta(&state.db.lock().unwrap(), &key) {
+        if html.len() > 1000 { return Ok(html); }
+    }
+    let url = format!("https://standardebooks.org/ebooks/{slug}/text/single-page");
+    let (body, _, _) = feeds::get(&state.client, &url).await
+        .map_err(|_| "Couldn’t download the book. Check your connection and try again.".to_string())?;
+    let html = String::from_utf8_lossy(&body).to_string();
+    if !html.contains("<section") && !html.contains("<article") {
+        return Err("The book didn’t download in full. Try again.".into());
+    }
+    let _ = db::set_meta(&state.db.lock().unwrap(), &key, &html);
+    Ok(html)
+}
+
 /// The featured pictures of a few web pages (search results), looked up side by side.
 #[tauri::command]
 async fn page_images(state: State<'_, Shared>, urls: Vec<String>) -> Result<Vec<(String, String)>, String> {
@@ -1308,6 +1329,7 @@ pub fn run() {
             social::social_shared,
             social::social_blog_mentions,
             topic_search,
+            book_text,
             page_images,
             social::site_accounts,
             social::social_lookup,
