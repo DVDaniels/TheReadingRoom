@@ -1125,3 +1125,4 @@ html.ios .r-close { display: none !important; }
   .bk-stage .bk-bar .bk-name { visibility: hidden; }
   .bk-tools .btn:not(.bk-a) { padding: 7px 10px; }
 }
+.bk-clip { flex: none; overflow: hidden; position: relative; }

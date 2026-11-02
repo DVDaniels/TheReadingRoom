@@ -1123,6 +1123,8 @@
     const g = bookGeom(); if (!g) return;
     const { H, colW, pageW, pg, spread } = g;
     Object.assign(pg.style, { height: H + 'px', width: pageW + 'px', columnWidth: colW + 'px', columnGap: BOOK_GAP + 'px', fontSize: bookSize() + 'px', transition: 'none' });
+    // Only the page (or the two-page spread) shows; the pages before and after stay out of sight
+    Object.assign($('bkClip').style, { width: pageW + 'px', height: H + 'px' });
     pg.classList.toggle('spread', spread);
     const step = pageW + BOOK_GAP;
     B.pages = Math.max(1, Math.ceil((pg.scrollWidth + BOOK_GAP - 4) / step));
@@ -1206,7 +1208,7 @@
     if (B.loading) inner = `<div class="empty"><strong>Opening ${esc(b.title)}…</strong><span>Downloading the book once. After this it opens without a connection.</span></div>`;
     else if (B.err) inner = `<div class="empty"><strong>Couldn’t open the book</strong><span>${esc(B.err)}</span><button class="btn primary" data-book="open" data-slug="${esc(b.slug)}">Try again</button></div>`;
     else inner = `${B.toc ? `<nav class="bk-toc">${B.chapters.map((x, i) => `<button data-book="ch" data-i="${i}" aria-current="${i === B.ch}">${esc(x.name)}</button>`).join('')}</nav>` : ''}
-      <div class="bk-vp" id="bkVp"><div class="bk-text bk-pages" id="bkPages">${B.chapters[B.ch].html}</div></div>
+      <div class="bk-vp" id="bkVp"><div class="bk-clip" id="bkClip"><div class="bk-text bk-pages" id="bkPages">${B.chapters[B.ch].html}</div></div></div>
       <div class="bk-foot"><button class="btn" id="bkPrev" data-book="flip" data-d="-1">← Previous</button><div class="bk-where" id="bkWhere"></div><button class="btn primary" id="bkNext" data-book="flip" data-d="1">Next →</button></div>`;
     return `<div class="bk-stage" id="bkStage">${bar}${inner}</div>`;
   }
