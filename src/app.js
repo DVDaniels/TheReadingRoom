@@ -310,6 +310,7 @@
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
+    if (S.view === 'today') paintGoalChip();
     const a = S.lastRefresh ? ago(S.lastRefresh) : '';
     const when = S.refreshing ? 'Checking feeds…' : S.lastRefresh ? (a === 'now' ? 'Checked just now' : `Checked ${a} ago`) : 'Not checked yet';
     const lead = S.view === 'saved' ? `${S.items.filter(i => i.saved).length} saved`
@@ -503,13 +504,13 @@
       return `<div class="brief-off"><button class="linkish" id="briefShow" type="button">Show today’s briefing</button></div>`;
     }
     const seenStory = new Set();
-    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i)).filter(i => {
+    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i) && !isJobItem(i)).filter(i => {
       const k = storyKey(i);
       if (k.length < 16) return true;
       if (seenStory.has(k)) return false;
       seenStory.add(k); return true;
     });
-    const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i)).length : 0;
+    const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i) && !isJobItem(i)).length : 0;
     // People first: unread posts from people you read in the last few days, one per person (not your own site)
     const mine = myFeed();
     const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && isPerson(i.feed_id) && i.feed_id !== mine?.id && Date.now() - Date.parse(i.date) < 4 * DAY)
@@ -1295,6 +1296,7 @@
       document.body.classList.add('goal-hit'); setTimeout(() => document.body.classList.remove('goal-hit'), 2600);
     }
     if (unsaved >= 60) saveReading();
+    if (S.view === 'today') paintGoalChip();
     if (S.view === 'books' && !B.open) renderList();
   }, 5000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveReading(); });
@@ -1306,11 +1308,20 @@
     const n = finishedThisYear(), g = goalCfg().books;
     status(`Finished ${bookOf(slug)?.title || 'the book'}. That’s ${n} ${n === 1 ? 'book' : 'books'} this year${g ? ` of your ${g}` : ''}.`);
   }
-  const ring = (frac, size = 76) => {
-    const r = size / 2 - 6, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
-    return `<svg class="g-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="7"/>
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
+  const ring = (frac, size = 76, sw = 7) => {
+    const r = size / 2 - sw / 2 - 1, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+    return `<svg class="g-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${sw}"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
   };
+  // On Today, under the clock: a small ring with today's minutes and the streak. Opens Books.
+  function paintGoalChip() {
+    const el = $('goalChip'); if (!el) return;
+    if (!Object.keys(S.prefs.readLog || {}).length && !S.prefs.goal) { el.hidden = true; return; }
+    const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, s = streak(), hit = today >= g.mins;
+    el.hidden = false;
+    el.title = hit ? `Today’s reading goal is done: ${Math.floor(today)} minutes` : `Reading goal: ${Math.floor(today)} of ${g.mins} minutes today`;
+    el.innerHTML = `${ring(today / g.mins, 16, 3)}<span>${hit ? 'Goal done' : `${Math.floor(today)} of ${g.mins} min`}</span>${s ? `<span class="gc-streak">· ${s}-day streak</span>` : ''}`;
+  }
   function goalHtml() {
     const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, s = streak(), done = finishedThisYear();
     const mins = Math.floor(today), hit = today >= g.mins;
