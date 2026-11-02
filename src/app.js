@@ -605,7 +605,7 @@
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
-    if (S.view === 'books') { $('list').innerHTML = booksHtml(); return; }
+    if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
@@ -1101,27 +1101,84 @@
     } catch (e) { B.err = msg(e); }
     B.loading = false;
     if (B.open !== slug) return;
+    B.page = 0; B.want = Number(store.get(`bookPage:${slug}:${B.ch}`)) || 0;
     renderHead(); renderList();
-    restoreBookScroll();
   }
-  function restoreBookScroll() {
-    const saved = Number(store.get(`bookScroll:${B.open}:${B.ch}`)) || 0;
-    requestAnimationFrame(() => { const m = $('main'); m.scrollTo({ top: saved ? saved * (m.scrollHeight - m.clientHeight) : 0 }); });
+  // ---- Pages: the chapter is set in columns exactly one screen tall, and you flip from one to the next.
+  // Wide windows show two pages side by side, like an open book.
+  const BOOK_GAP = 64;
+  const bookSize = () => Number(store.get('bookSize')) || (isPhone() ? 18 : 20);
+  function bookGeom() {
+    const st = $('bkStage'); if (!st) return null;
+    const r = $('main').getBoundingClientRect();
+    Object.assign(st.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    const vp = $('bkVp'), pg = $('bkPages'); if (!vp || !pg) return null;
+    const cs = getComputedStyle(vp), W = vp.clientWidth, H = vp.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6;
+    const spread = W >= 1000;
+    const colW = spread ? Math.min(560, (W - BOOK_GAP) / 2) : Math.min(W, 680);
+    const pageW = spread ? colW * 2 + BOOK_GAP : colW;
+    return { W, H, colW, pageW, pg, vp, spread };
   }
-  function goChapter(i) {
+  function layoutBook() {
+    const g = bookGeom(); if (!g) return;
+    const { H, colW, pageW, pg, spread } = g;
+    Object.assign(pg.style, { height: H + 'px', width: pageW + 'px', columnWidth: colW + 'px', columnGap: BOOK_GAP + 'px', fontSize: bookSize() + 'px', transition: 'none' });
+    pg.classList.toggle('spread', spread);
+    const step = pageW + BOOK_GAP;
+    B.pages = Math.max(1, Math.ceil((pg.scrollWidth + BOOK_GAP - 4) / step));
+    if (B.want != null) { B.page = B.want === 'last' ? B.pages - 1 : Math.round(B.want * (B.pages - 1)); B.want = null; }
+    B.page = Math.max(0, Math.min(B.pages - 1, B.page || 0));
+    pg.style.transform = `translateX(${-B.page * step}px)`;
+    requestAnimationFrame(() => { pg.style.transition = ''; });
+    paintBookFoot();
+  }
+  function paintBookFoot() {
+    const c = B.chapters[B.ch];
+    if ($('bkWhere')) $('bkWhere').innerHTML = `<b>${esc(c.name)}</b><span>Page ${B.page + 1} of ${B.pages}${B.chapters.length > 1 ? ` · part ${B.ch + 1} of ${B.chapters.length}` : ''}</span>`;
+    if ($('bkPrev')) $('bkPrev').disabled = B.page === 0 && B.ch === 0;
+    if ($('bkNext')) { const end = B.page >= B.pages - 1 && B.ch >= B.chapters.length - 1; $('bkNext').disabled = end; $('bkNext').textContent = end ? 'The end' : B.page >= B.pages - 1 ? 'Next chapter →' : 'Next →'; }
+    const frac = B.pages > 1 ? B.page / (B.pages - 1) : 0;
+    store.set(`bookPage:${B.open}:${B.ch}`, frac.toFixed(4));
+  }
+  function flip(d) {
+    if (!B.chapters || B.loading) return;
+    const g = bookGeom(); if (!g) return;
+    if (d > 0 && B.page < B.pages - 1) B.page++;
+    else if (d < 0 && B.page > 0) B.page--;
+    else if (d > 0 && B.ch < B.chapters.length - 1) return goChapter(B.ch + 1, 0);
+    else if (d < 0 && B.ch > 0) return goChapter(B.ch - 1, 'last');
+    else return;
+    g.pg.style.transform = `translateX(${-B.page * (g.pageW + BOOK_GAP)}px)`;
+    paintBookFoot();
+  }
+  function goChapter(i, at) {
     if (!B.chapters) return;
     B.ch = Math.max(0, Math.min(B.chapters.length - 1, i)); B.toc = false;
+    B.page = 0; B.want = at === 'last' ? 'last' : at === undefined ? (Number(store.get(`bookPage:${B.open}:${B.ch}`)) || 0) : at;
     const books = { ...(S.prefs.books || {}) };
     books[B.open] = { ch: B.ch, of: B.chapters.length, at: new Date().toISOString() };
     S.prefs.books = books; savePrefs();
-    renderList(); store.set(`bookScroll:${B.open}:${B.ch}`, '0'); $('main').scrollTo({ top: 0 });
+    renderList();
   }
-  // Where you are in a chapter, remembered on this device as you scroll
-  let bookScrollT = 0;
-  $('main').addEventListener('scroll', () => {
-    if (S.view !== 'books' || !B.chapters) return;
-    clearTimeout(bookScrollT);
-    bookScrollT = setTimeout(() => { const m = $('main'), max = m.scrollHeight - m.clientHeight; if (max > 0) store.set(`bookScroll:${B.open}:${B.ch}`, String((m.scrollTop / max).toFixed(4))); }, 300);
+  function bookFont(d) {
+    const size = Math.max(14, Math.min(32, bookSize() + d));
+    store.set('bookSize', String(size));
+    B.want = B.pages > 1 ? B.page / (B.pages - 1) : 0; // stay at the same place in the chapter
+    layoutBook();
+  }
+  window.addEventListener('resize', () => { if (S.view === 'books' && B.open && B.chapters) { B.want = B.pages > 1 ? B.page / (B.pages - 1) : 0; layoutBook(); } });
+  document.addEventListener('keydown', e => {
+    if (S.view !== 'books' || !B.open || !B.chapters || e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey) return;
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); e.stopPropagation(); flip(e.shiftKey && e.key === ' ' ? -1 : 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); flip(-1); }
+    else if (e.key === 'Escape') { e.stopPropagation(); B.open = null; renderHead(); renderList(); }
+  }, true);
+  // Tap the right or left edge of the page, or swipe, to turn it
+  let touchX = null;
+  document.addEventListener('touchstart', e => { if (e.target.closest('#bkVp')) touchX = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (touchX == null) return; const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+    if (Math.abs(dx) > 45) flip(dx < 0 ? 1 : -1);
   }, { passive: true });
   function shelfHtml() {
     return `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
@@ -1142,16 +1199,16 @@
   }
   function bookHtml() {
     const b = bookOf(B.open);
-    const top = `<div class="bk-bar"><button class="btn" data-book="shelf">← Books</button><div class="bk-name"><b>${esc(b.title)}</b><span>${esc(b.author)}</span></div>
-      ${B.chapters ? `<button class="btn" data-book="toc" aria-expanded="${B.toc}">Contents</button>` : ''}</div>`;
-    if (B.loading) return top + `<div class="empty"><strong>Opening ${esc(b.title)}…</strong><span>Downloading the book once. After this it opens without a connection.</span></div>`;
-    if (B.err) return top + `<div class="empty"><strong>Couldn’t open the book</strong><span>${esc(B.err)}</span><button class="btn primary" data-book="open" data-slug="${esc(b.slug)}">Try again</button></div>`;
-    const c = B.chapters[B.ch];
-    const toc = B.toc ? `<nav class="bk-toc">${B.chapters.map((x, i) => `<button data-book="ch" data-i="${i}" aria-current="${i === B.ch}">${esc(x.name)}</button>`).join('')}</nav>` : '';
-    const nav = `<div class="bk-nav">${B.ch > 0 ? `<button class="btn" data-book="ch" data-i="${B.ch - 1}">← ${esc(B.chapters[B.ch - 1].name)}</button>` : '<span></span>'}
-      <span class="bk-count">${B.ch + 1} of ${B.chapters.length}</span>
-      ${B.ch < B.chapters.length - 1 ? `<button class="btn primary" data-book="ch" data-i="${B.ch + 1}">${esc(B.chapters[B.ch + 1].name)} →</button>` : '<span class="bk-done">The end.</span>'}</div>`;
-    return top + toc + `<article class="prose bk-text">${c.html}</article>` + nav;
+    const bar = `<div class="bk-bar"><button class="btn" data-book="shelf">← Books</button><div class="bk-name"><b>${esc(b.title)}</b><span>${esc(b.author)}</span></div>
+      <div class="bk-tools">${B.chapters ? `<button class="btn bk-a" data-book="font" data-d="-2" title="Smaller text" aria-label="Smaller text">A<small>−</small></button><button class="btn bk-a big" data-book="font" data-d="2" title="Larger text" aria-label="Larger text">A<small>+</small></button>
+        <button class="btn" data-book="toc" aria-expanded="${B.toc}">Contents</button>` : ''}</div></div>`;
+    let inner;
+    if (B.loading) inner = `<div class="empty"><strong>Opening ${esc(b.title)}…</strong><span>Downloading the book once. After this it opens without a connection.</span></div>`;
+    else if (B.err) inner = `<div class="empty"><strong>Couldn’t open the book</strong><span>${esc(B.err)}</span><button class="btn primary" data-book="open" data-slug="${esc(b.slug)}">Try again</button></div>`;
+    else inner = `${B.toc ? `<nav class="bk-toc">${B.chapters.map((x, i) => `<button data-book="ch" data-i="${i}" aria-current="${i === B.ch}">${esc(x.name)}</button>`).join('')}</nav>` : ''}
+      <div class="bk-vp" id="bkVp"><div class="bk-text bk-pages" id="bkPages">${B.chapters[B.ch].html}</div></div>
+      <div class="bk-foot"><button class="btn" id="bkPrev" data-book="flip" data-d="-1">← Previous</button><div class="bk-where" id="bkWhere"></div><button class="btn primary" id="bkNext" data-book="flip" data-d="1">Next →</button></div>`;
+    return `<div class="bk-stage" id="bkStage">${bar}${inner}</div>`;
   }
   function booksHtml() { return B.open ? bookHtml() : shelfHtml(); }
   function bookAction(b) {
@@ -1165,7 +1222,9 @@
       const books = { ...(S.prefs.books || {}) }; delete books[slug]; S.prefs.books = books;
       savePrefs(); renderList(); status(`${t} is off your shelf.`); return;
     }
-    if (k === 'ch') return goChapter(Number(b.dataset.i));
+    if (k === 'ch') return goChapter(Number(b.dataset.i), 0);
+    if (k === 'flip') return flip(Number(b.dataset.d));
+    if (k === 'font') return bookFont(Number(b.dataset.d));
   }
   // Footnote links inside a book jump to the chapter that holds the note
   function bookLink(a) {
@@ -1173,8 +1232,13 @@
     const m = /#(.+)$/.exec(href); if (!m || !B.chapters) return false;
     const id = m[1], i = B.chapters.findIndex(c => c.id === id || c.html.includes(`id="${id}"`));
     if (i < 0) return false;
-    if (i !== B.ch) goChapter(i);
-    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'center' }), 60);
+    const toNote = () => {
+      const g = bookGeom(), el = document.getElementById(id); if (!g || !el) return;
+      const x = el.getBoundingClientRect().left - g.pg.getBoundingClientRect().left;
+      B.page = Math.max(0, Math.min(B.pages - 1, Math.floor(x / (g.pageW + BOOK_GAP))));
+      g.pg.style.transform = `translateX(${-B.page * (g.pageW + BOOK_GAP)}px)`; paintBookFoot();
+    };
+    if (i !== B.ch) { goChapter(i, 0); setTimeout(toNote, 80); } else toNote();
     return true;
   }
 
@@ -2636,6 +2700,11 @@
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
     const bz = e.target.closest('[data-book]');
     if (bz) { bookAction(bz); return; }
+    const vp = e.target.closest('#bkVp');
+    if (vp && !e.target.closest('a') && window.getSelection()?.isCollapsed) {
+      const r = vp.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+      if (x > .72) { flip(1); return; } if (x < .28) { flip(-1); return; }
+    }
     const jz = e.target.closest('[data-job]');
     if (jz) { jobAction(jz); return; }
     const tz = e.target.closest('[data-topic]');

@@ -1097,3 +1097,31 @@ html.ios .r-close { display: none !important; }
 .add-book .row { display: flex; gap: 8px; }
 .add-book input { flex: 1; min-width: 0; font-size: 15px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 .add-book .fol-err { margin: 8px 0 0; }
+/* A book, a page at a time: the stage covers the reading area; pages are columns one screen tall */
+.bk-stage { position: fixed; z-index: 20; display: flex; flex-direction: column; background: var(--bg); padding: env(safe-area-inset-top, 0) clamp(16px, 4vw, 56px) env(safe-area-inset-bottom, 0); box-sizing: border-box; }
+.bk-stage .bk-bar { position: static; flex: none; margin: 0; padding: 12px 0; }
+.bk-tools { display: flex; gap: 6px; align-items: center; }
+.bk-a { font-family: var(--font-read); font-weight: 600; min-width: 40px; padding-left: 10px; padding-right: 10px; }
+.bk-a.big { font-size: 18px; }
+.bk-a small { font-size: 11px; margin-left: 1px; }
+.bk-stage .bk-toc { position: absolute; z-index: 2; right: clamp(16px, 4vw, 56px); top: 60px; width: min(420px, 90%); max-height: 70%; box-shadow: 0 18px 40px -18px rgba(0,0,0,.45); }
+.bk-vp { flex: 1; min-height: 0; overflow: hidden; position: relative; display: flex; justify-content: center; align-items: flex-start; padding: 22px 0 6px; cursor: default; }
+.bk-pages { flex: none; column-fill: auto; overflow: visible; max-width: none; margin: 0; transition: transform .28s ease; will-change: transform; line-height: 1.6; }
+.bk-pages.spread { column-rule: 1px solid var(--line); }
+.bk-pages > *:first-child { margin-top: 0; }
+.bk-pages h2, .bk-pages h3, .bk-pages hgroup { break-after: avoid; }
+.bk-pages img { max-height: 60vh; break-inside: avoid; }
+.bk-pages p { orphans: 2; widows: 2; }
+.bk-stage .bk-text { font-size: inherit; }
+.bk-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 16px; border-top: 1px solid var(--line); }
+.bk-foot .btn { min-width: 120px; }
+.bk-foot .btn:disabled { opacity: .45; }
+.bk-where { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+.bk-where b { font-family: var(--font-read); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-where span { font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) {
+  .bk-stage { padding-left: 18px; padding-right: 18px; }
+  .bk-foot .btn { min-width: 0; padding: 8px 12px; }
+  .bk-stage .bk-bar .bk-name { visibility: hidden; }
+  .bk-tools .btn:not(.bk-a) { padding: 7px 10px; }
+}
