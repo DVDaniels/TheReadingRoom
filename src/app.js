@@ -1186,15 +1186,35 @@
     if (touchX == null) return; const dx = e.changedTouches[0].clientX - touchX; touchX = null;
     if (Math.abs(dx) > 45) flip(dx < 0 ? 1 : -1);
   }, { passive: true });
+  // The book you're reading now: the one you chose, or else the one you opened last (and haven't finished)
+  function currentBook() {
+    const pick = S.prefs.reading && bookOf(S.prefs.reading) ? S.prefs.reading : null;
+    if (pick) return pick;
+    const opened = Object.entries(S.prefs.books || {}).filter(([slug]) => bookOf(slug) && !(S.prefs.finished || {})[slug]).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
+    return opened.length ? opened[0][0] : null;
+  }
+  function currentHtml(slug) {
+    const b = bookOf(slug), p = bookPos(slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
+    const when = p?.at ? (() => { const d = Math.floor((Date.now() - Date.parse(p.at)) / DAY); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; })() : '';
+    return `<section class="now-reading">
+      <button class="cover big" data-book="open" data-slug="${esc(slug)}" aria-label="Continue ${esc(b.title)}"><img src="${esc(coverOf(b))}" alt="" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
+      <div class="nr-body"><p class="nr-k">Currently reading</p><h2>${esc(b.title)}</h2><p class="by">${esc(b.author)}</p>
+        <p class="why">${esc(b.why)}</p>
+        ${p ? `<div class="bk-prog nr-prog"><span style="width:${pct}%"></span></div><p class="bk-pos">Part ${p.ch + 1} of ${p.of} · ${pct}%${when ? ` · last read ${when}` : ''}</p>` : '<p class="bk-pos">Not started yet</p>'}
+        <div class="bk-acts"><button class="btn primary" data-book="open" data-slug="${esc(slug)}">${p ? 'Continue reading' : 'Start reading'}</button>
+          ${p ? `<button class="btn" data-book="toc-open" data-slug="${esc(slug)}">Contents</button>` : ''}</div></div></section>`;
+  }
   function shelfHtml() {
-    return goalHtml() + `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
-      <div class="shelf">${allBooks().map(b => {
+    const cur = currentBook();
+    return goalHtml() + (cur ? currentHtml(cur) : '') + `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
+      ${cur ? '<h2 class="sec-h shelf-h">Your shelf</h2>' : ''}<div class="shelf">${allBooks().filter(b => b.slug !== cur).map(b => {
         const p = bookPos(b.slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
         return `<article class="book"><button class="cover" data-book="open" data-slug="${esc(b.slug)}" aria-label="Read ${esc(b.title)}">
             <img src="${esc(coverOf(b))}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
           <div class="book-body"><h3>${(S.prefs.finished || {})[b.slug] ? '<span class="bk-fin" title="Finished">✓</span> ' : ''}${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
-          ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-where">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
+          ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-pos">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
           <div class="bk-acts"><button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button>
+          ${cur ? `<button class="btn ghost-x" data-book="current" data-slug="${esc(b.slug)}" title="Show this one at the top as the book you're reading">Read this now</button>` : ''}
           ${BOOKS.some(x => x.slug === b.slug) ? '' : `<button class="btn ghost-x" data-book="remove" data-slug="${esc(b.slug)}" title="Take it off your shelf">Remove</button>`}</div></div></article>`;
       }).join('')}</div>
       <form class="add-book" id="addBookForm"><label for="addBook"><b>Add a book</b> Find one at <a href="https://standardebooks.org/ebooks">standardebooks.org</a>, copy the link of its page, and paste it here.</label>
@@ -1222,6 +1242,8 @@
     if (k === 'open') return openBook(b.dataset.slug);
     if (k === 'shelf') { B.open = null; renderHead(); renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'toc') { B.toc = !B.toc; renderList(); return; }
+    if (k === 'current') { S.prefs.reading = b.dataset.slug; savePrefs(); renderList(); $('main').scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (k === 'toc-open') { openBook(b.dataset.slug).then(() => { B.toc = true; renderList(); }); return; }
     if (k === 'remove') {
       const slug = b.dataset.slug, t = bookOf(slug)?.title || 'The book';
       S.prefs.myBooks = (S.prefs.myBooks || []).filter(m => m.slug !== slug);
