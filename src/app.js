@@ -1133,7 +1133,7 @@
     B.page = Math.max(0, Math.min(B.pages - 1, B.page || 0));
     pg.style.transform = `translateX(${-B.page * step}px)`;
     requestAnimationFrame(() => { pg.style.transition = ''; });
-    paintBookFoot();
+    paintBookFoot(); paintBookGoal();
   }
   function paintBookFoot() {
     const c = B.chapters[B.ch];
@@ -1206,8 +1206,8 @@
   function bookHtml() {
     const b = bookOf(B.open);
     const bar = `<div class="bk-bar"><button class="btn" data-book="shelf">← Books</button><div class="bk-name"><b>${esc(b.title)}</b><span>${esc(b.author)}</span></div>
-      <div class="bk-tools">${B.chapters ? `<button class="btn bk-a" data-book="font" data-d="-2" title="Smaller text" aria-label="Smaller text">A<small>−</small></button><button class="btn bk-a big" data-book="font" data-d="2" title="Larger text" aria-label="Larger text">A<small>+</small></button>
-        <button class="btn" data-book="toc" aria-expanded="${B.toc}">Contents</button>` : ''}</div></div>`;
+      <div class="bk-tools">${B.chapters ? `<span class="bk-goal-t" id="bkGoalT" title="Today’s reading goal"></span><button class="btn bk-a" data-book="font" data-d="-2" title="Smaller text" aria-label="Smaller text">A<small>−</small></button><button class="btn bk-a big" data-book="font" data-d="2" title="Larger text" aria-label="Larger text">A<small>+</small></button>
+        <button class="btn" data-book="toc" aria-expanded="${B.toc}">Contents</button>` : ''}</div><div class="bk-goal" aria-hidden="true"><span id="bkGoalFill"></span></div></div>`;
     let inner;
     if (B.loading) inner = `<div class="empty"><strong>Opening ${esc(b.title)}…</strong><span>Downloading the book once. After this it opens without a connection.</span></div>`;
     else if (B.err) inner = `<div class="empty"><strong>Couldn’t open the book</strong><span>${esc(B.err)}</span><button class="btn primary" data-book="open" data-slug="${esc(b.slug)}">Try again</button></div>`;
@@ -1294,6 +1294,7 @@
     }
     if (unsaved >= 60) saveReading();
     if (S.view === 'today') paintGoalChip();
+    if (S.view === 'books' && B.open) paintBookGoal();
     if (S.view === 'books' && !B.open) renderList();
   }, 5000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveReading(); });
@@ -1311,6 +1312,14 @@
       <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
   };
   // On Today, under the clock: a small ring with today's minutes and the streak. Opens Books.
+  // While a book is open: a hairline along the top that fills toward today's goal, and a tiny count
+  function paintBookGoal() {
+    const fill = $('bkGoalFill'), t = $('bkGoalT'); if (!fill) return;
+    const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, hit = today >= g.mins;
+    fill.style.width = `${Math.min(100, (today / g.mins) * 100).toFixed(1)}%`;
+    fill.parentNode.classList.toggle('done', hit);
+    if (t) t.textContent = hit ? '✓ Goal done' : `${Math.floor(today)} of ${g.mins} min`;
+  }
   function paintGoalChip() {
     const el = $('goalChip'); if (!el) return;
     if (!Object.keys(S.prefs.readLog || {}).length && !S.prefs.goal) { el.hidden = true; return; }

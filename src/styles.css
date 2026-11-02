@@ -1158,3 +1158,10 @@ body.goal-hit .g-ring { animation: g-pop .6s ease 2; }
 .goal-chip .g-ring { flex: none; }
 .goal-chip .gc-streak { color: var(--accent); }
 @media (min-width: 1700px) { .goal-chip { font-size: 14px; } }
+/* Today's goal while reading a book: a hairline under the toolbar, and a tiny count */
+.bk-stage .bk-bar { position: relative; }
+.bk-goal { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: transparent; overflow: hidden; }
+.bk-goal span { display: block; height: 100%; width: 0; background: var(--accent); opacity: .75; transition: width 1.2s ease; border-radius: 0 2px 2px 0; }
+.bk-goal.done span { opacity: .45; }
+.bk-goal-t { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; white-space: nowrap; }
+@media (max-width: 760px) { .bk-goal-t { display: none; } }
