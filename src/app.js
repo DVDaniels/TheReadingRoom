@@ -1198,7 +1198,7 @@
     const when = p?.at ? (() => { const d = Math.floor((Date.now() - Date.parse(p.at)) / DAY); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; })() : '';
     return `<section class="now-reading">
       <button class="cover big" data-book="open" data-slug="${esc(slug)}" aria-label="Continue ${esc(b.title)}"><img src="${esc(coverOf(b))}" alt="" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
-      <div class="nr-body"><p class="nr-k">Currently reading</p><h2>${esc(b.title)}</h2><p class="by">${esc(b.author)}</p>
+      <div class="nr-body"><p class="nr-k">Currently reading <button class="nr-change" data-book="choose" aria-haspopup="menu">Change</button></p><h2>${esc(b.title)}</h2><p class="by">${esc(b.author)}</p>
         <p class="why">${esc(b.why)}</p>
         ${p ? `<div class="bk-prog nr-prog"><span style="width:${pct}%"></span></div><p class="bk-pos">Part ${p.ch + 1} of ${p.of} · ${pct}%${when ? ` · last read ${when}` : ''}</p>` : '<p class="bk-pos">Not started yet</p>'}
         <div class="bk-acts"><button class="btn primary" data-book="open" data-slug="${esc(slug)}">${p ? 'Continue reading' : 'Start reading'}</button>
@@ -1214,7 +1214,7 @@
           <div class="book-body"><h3>${(S.prefs.finished || {})[b.slug] ? '<span class="bk-fin" title="Finished">✓</span> ' : ''}${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
           ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-pos">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
           <div class="bk-acts"><button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button>
-          ${cur ? `<button class="btn ghost-x" data-book="current" data-slug="${esc(b.slug)}" title="Show this one at the top as the book you're reading">Read this now</button>` : ''}
+          ${cur ? `<button class="btn ghost-x" data-book="current" data-slug="${esc(b.slug)}" title="Show this book at the top of your shelf">Set as currently reading</button>` : ''}
           ${BOOKS.some(x => x.slug === b.slug) ? '' : `<button class="btn ghost-x" data-book="remove" data-slug="${esc(b.slug)}" title="Take it off your shelf">Remove</button>`}</div></div></article>`;
       }).join('')}</div>
       <form class="add-book" id="addBookForm"><label for="addBook"><b>Add a book</b> Find one at <a href="https://standardebooks.org/ebooks">standardebooks.org</a>, copy the link of its page, and paste it here.</label>
@@ -1242,6 +1242,13 @@
     if (k === 'open') return openBook(b.dataset.slug);
     if (k === 'shelf') { B.open = null; renderHead(); renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'toc') { B.toc = !B.toc; renderList(); return; }
+    if (k === 'choose') {
+      const menu = $('replyMenu'), cur = currentBook();
+      menu.innerHTML = `<p class="menu-head">Currently reading</p>${allBooks().map(x => `<button type="button" data-pick="${esc(x.slug)}"${x.slug === cur ? ' aria-current="true"' : ''}>${x.slug === cur ? '✓ ' : ''}${esc(x.title)}${(S.prefs.finished || {})[x.slug] ? ' (finished)' : ''}</button>`).join('')}`;
+      placeMenu(menu, b);
+      menu.onclick = e => { const p = e.target.closest('[data-pick]'); if (!p) return; menu.hidden = true; menu.onclick = null; S.prefs.reading = p.dataset.pick; savePrefs(); renderList(); };
+      return;
+    }
     if (k === 'current') { S.prefs.reading = b.dataset.slug; savePrefs(); renderList(); $('main').scrollTo({ top: 0, behavior: 'smooth' }); return; }
     if (k === 'toc-open') { openBook(b.dataset.slug).then(() => { B.toc = true; renderList(); }); return; }
     if (k === 'remove') {
@@ -1326,6 +1333,7 @@
   function markFinished(slug) {
     if ((S.prefs.finished || {})[slug]) return;
     S.prefs.finished = { ...(S.prefs.finished || {}), [slug]: new Date().toISOString() };
+    if (S.prefs.reading === slug) delete S.prefs.reading;
     savePrefs();
     const n = finishedThisYear(), g = goalOn() ? goalCfg().books : 0;
     status(`Finished ${bookOf(slug)?.title || 'the book'}.${goalOn() ? ` That’s ${n} ${n === 1 ? 'book' : 'books'} this year${g ? ` of your ${g}` : ''}.` : ''}`);
