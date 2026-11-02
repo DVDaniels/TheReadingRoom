@@ -583,6 +583,9 @@
     if (isHome()) {
       const hlWeek = S.highlights.filter(h => h.created_at && Date.now() - new Date(h.created_at).getTime() < 7 * DAY).length;
       if (hlWeek) statsHtml = `<p class="b-stats"><button class="b-link" data-view="annotated">${hlWeek} ${hlWeek === 1 ? 'passage' : 'passages'}</button> highlighted this week.</p>`;
+      // Your reading goal, once you've started one
+      const g = goalCfg(), today = Math.floor(dayMins(dayKey())), st = streak();
+      if (Object.keys(S.prefs.readLog || {}).length) statsHtml += `<p class="b-stats"><button class="b-link" data-view="books">Reading goal</button>: ${today >= g.mins ? `done for today (${today} min)` : `${today} of ${g.mins} minutes today`}${st ? ` · ${st}-day streak` : ''}.</p>`;
     }
     const peopleHtml = peopleShown.length ? `<div class="b-people"><h3 class="b-sub">From people you read</h3><div class="b-pgrid">${peopleShown.map(i => {
         const f = feedById(i.feed_id);
@@ -1141,6 +1144,9 @@
     if ($('bkNext')) { const end = B.page >= B.pages - 1 && B.ch >= B.chapters.length - 1; $('bkNext').disabled = end; $('bkNext').textContent = end ? 'The end' : B.page >= B.pages - 1 ? 'Next chapter →' : 'Next →'; }
     const frac = B.pages > 1 ? B.page / (B.pages - 1) : 0;
     store.set(`bookPage:${B.open}:${B.ch}`, frac.toFixed(4));
+    // The last page of the last real chapter (before the endnotes and the note about this edition) finishes the book
+    const lastReal = B.chapters.reduce((k, c, i) => /endnotes|about this edition|colophon/i.test(c.name) ? k : i, 0);
+    if (B.ch >= lastReal && B.page >= B.pages - 1 && B.ch > 0) markFinished(B.open);
   }
   function flip(d) {
     if (!B.chapters || B.loading) return;
@@ -1183,12 +1189,12 @@
     if (Math.abs(dx) > 45) flip(dx < 0 ? 1 : -1);
   }, { passive: true });
   function shelfHtml() {
-    return `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
+    return goalHtml() + `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
       <div class="shelf">${allBooks().map(b => {
         const p = bookPos(b.slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
         return `<article class="book"><button class="cover" data-book="open" data-slug="${esc(b.slug)}" aria-label="Read ${esc(b.title)}">
             <img src="${esc(coverOf(b))}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="cv-fallback"><b>${esc(b.title)}</b><i>${esc(b.author)}</i></span></button>
-          <div class="book-body"><h3>${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
+          <div class="book-body"><h3>${(S.prefs.finished || {})[b.slug] ? '<span class="bk-fin" title="Finished">✓</span> ' : ''}${esc(b.title)}</h3><p class="by">${esc(b.author)}</p><p class="why">${esc(b.why)}</p>
           ${p ? `<div class="bk-prog"><span style="width:${pct}%"></span></div><p class="bk-where">Part ${p.ch + 1} of ${p.of} · ${pct}%</p>` : ''}
           <div class="bk-acts"><button class="btn ${p ? '' : 'primary'}" data-book="open" data-slug="${esc(b.slug)}">${p ? 'Continue reading' : 'Read'}</button>
           ${BOOKS.some(x => x.slug === b.slug) ? '' : `<button class="btn ghost-x" data-book="remove" data-slug="${esc(b.slug)}" title="Take it off your shelf">Remove</button>`}</div></div></article>`;
@@ -1242,6 +1248,96 @@
     };
     if (i !== B.ch) { goChapter(i, 0); setTimeout(toNote, 80); } else toNote();
     return true;
+  }
+
+  // ------------------------------------------------------------ Reading goal: minutes a day, a streak, books a year
+  // Only real reading counts: a story or a book open, with a scroll, a page turn or a key in the last two minutes.
+  // Each device keeps its own minutes per day in the synced prefs, so a day's reading on Mac and iPhone adds up.
+  const deviceId = (() => { let d = store.get('deviceId'); if (!d) { d = Math.random().toString(36).slice(2, 10); store.set('deviceId', d); } return d; })();
+  const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const goalCfg = () => ({ mins: 15, books: 12, booksOnly: false, ...(S.prefs.goal || {}) });
+  const dayMins = key => Object.values((S.prefs.readLog || {})[key] || {}).reduce((a, b) => a + b, 0) / 60;
+  let unsaved = 0, lastActive = 0, celebrated = store.get('goalDone') || '';
+  const READ_IDLE = 120 * 1000;
+  const markActive = () => { lastActive = Date.now(); };
+  ['scroll', 'wheel', 'keydown', 'pointerdown', 'touchstart'].forEach(t => document.addEventListener(t, markActive, { capture: true, passive: true }));
+  function readingNow() {
+    if (document.hidden || Date.now() - lastActive > READ_IDLE) return false;
+    if (S.view === 'books' && B.open && B.chapters && !B.loading) return 'book';
+    if (!goalCfg().booksOnly && S.readerId && !$('reader').hidden) return 'article';
+    return false;
+  }
+  function streak() {
+    const goal = goalCfg().mins; let n = 0; const d = new Date();
+    if (dayMins(dayKey(d)) < goal) d.setDate(d.getDate() - 1); // today still counts toward the streak until midnight
+    while (dayMins(dayKey(d)) >= goal) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  }
+  const finishedThisYear = () => Object.values(S.prefs.finished || {}).filter(at => (at || '').startsWith(String(new Date().getFullYear()))).length;
+  function saveReading() {
+    if (!unsaved) return;
+    const key = dayKey(), log = { ...(S.prefs.readLog || {}) };
+    log[key] = { ...(log[key] || {}), [deviceId]: Math.round(((log[key] || {})[deviceId] || 0) + unsaved) };
+    unsaved = 0;
+    // Keep about a year and a half of days
+    const keys = Object.keys(log).sort(); while (keys.length > 550) delete log[keys.shift()];
+    S.prefs.readLog = log; savePrefs();
+  }
+  setInterval(() => {
+    if (!readingNow()) return;
+    unsaved += 5;
+    const today = dayKey(), goal = goalCfg().mins;
+    const before = dayMins(today) + (unsaved - 5) / 60, after = dayMins(today) + unsaved / 60;
+    if (before < goal && after >= goal && celebrated !== today) {
+      celebrated = today; store.set('goalDone', today); saveReading();
+      const s = streak();
+      status(`You hit today’s reading goal: ${goal} minutes.${s > 1 ? ` That’s a ${s}-day streak.` : ' Come back tomorrow to start a streak.'}`);
+      document.body.classList.add('goal-hit'); setTimeout(() => document.body.classList.remove('goal-hit'), 2600);
+    }
+    if (unsaved >= 60) saveReading();
+    if (S.view === 'books' && !B.open) renderList();
+  }, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveReading(); });
+  window.addEventListener('pagehide', saveReading);
+  function markFinished(slug) {
+    if ((S.prefs.finished || {})[slug]) return;
+    S.prefs.finished = { ...(S.prefs.finished || {}), [slug]: new Date().toISOString() };
+    savePrefs();
+    const n = finishedThisYear(), g = goalCfg().books;
+    status(`Finished ${bookOf(slug)?.title || 'the book'}. That’s ${n} ${n === 1 ? 'book' : 'books'} this year${g ? ` of your ${g}` : ''}.`);
+  }
+  const ring = (frac, size = 76) => {
+    const r = size / 2 - 6, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+    return `<svg class="g-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="7"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
+  };
+  function goalHtml() {
+    const g = goalCfg(), today = dayMins(dayKey()) + unsaved / 60, s = streak(), done = finishedThisYear();
+    const mins = Math.floor(today), hit = today >= g.mins;
+    // The week: a dot per day, filled when the goal was met
+    const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); const m = dayMins(dayKey(d)) + (i === 6 ? unsaved / 60 : 0);
+      return `<span class="g-day${m >= g.mins ? ' on' : m > 0 ? ' some' : ''}" title="${d.toLocaleDateString('en-US', { weekday: 'long' })}: ${Math.floor(m)} min">${d.toLocaleDateString('en-US', { weekday: 'narrow' })}</span>`; }).join('');
+    return `<section class="goal" aria-label="Reading goal">
+      <div class="g-today">${ring(today / g.mins)}<div class="g-num"><b>${mins}</b><span>of ${g.mins} min</span></div></div>
+      <div class="g-text"><h3>${hit ? 'Today’s goal: done' : 'Reading goal'}</h3>
+        <p>${hit ? `${mins} minutes today.` : `${Math.max(1, Math.ceil(g.mins - today))} more ${Math.ceil(g.mins - today) === 1 ? 'minute' : 'minutes'} to reach today’s goal.`} ${s ? `<b class="g-streak">${s}-day streak</b>` : ''}</p>
+        <div class="g-week">${week}</div>
+        <p class="g-small">${g.booksOnly ? 'Counting time in books.' : 'Counting time in books and stories.'} Books this year: <b>${done}${g.books ? ` of ${g.books}` : ''}</b></p></div>
+      <button class="btn" data-goal="edit">Change goal</button></section>`;
+  }
+  function editGoal() {
+    const g = goalCfg();
+    const el = sheet('goalPanel', `<h2>Reading goal</h2>
+      <p>Only real reading counts: time with a book or a story open while you’re turning pages or scrolling.</p>
+      <label class="g-field">Minutes a day <input id="gMins" type="number" min="1" max="600" value="${g.mins}"></label>
+      <label class="g-field">Books this year <input id="gBooks" type="number" min="0" max="365" value="${g.books}"></label>
+      <label class="g-check"><input id="gBooksOnly" type="checkbox"${g.booksOnly ? ' checked' : ''}> Count books only, not stories</label>
+      <div class="row sheet-foot"><button class="btn" type="button" id="gCancel">Cancel</button><button class="btn primary" type="button" id="gSave">Save</button></div>`, 'Reading goal');
+    $('gCancel').onclick = () => { el.hidden = true; };
+    $('gSave').onclick = () => {
+      const mins = Math.max(1, Math.min(600, Number($('gMins').value) || 15)), books = Math.max(0, Math.min(365, Number($('gBooks').value) || 0));
+      S.prefs.goal = { mins, books, booksOnly: $('gBooksOnly').checked }; savePrefs(); el.hidden = true; renderList();
+    };
   }
 
   // ------------------------------------------------------------ Help Wanted: job feeds as newspaper classifieds
@@ -2700,6 +2796,7 @@
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
+    if (e.target.closest('[data-goal]')) { editGoal(); return; }
     const bz = e.target.closest('[data-book]');
     if (bz) { bookAction(bz); return; }
     const vp = e.target.closest('#bkVp');

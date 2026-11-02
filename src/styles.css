@@ -1126,3 +1126,29 @@ html.ios .r-close { display: none !important; }
   .bk-tools .btn:not(.bk-a) { padding: 7px 10px; }
 }
 .bk-clip { flex: none; overflow: hidden; position: relative; }
+/* Reading goal */
+.goal { display: flex; align-items: center; gap: 20px; padding: 16px 20px; margin: 4px 0 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.g-today { position: relative; flex: none; width: 76px; height: 76px; }
+.g-ring circle:last-child { transition: stroke-dasharray .6s ease; }
+.g-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.g-num b { font-family: var(--font-read); font-size: 24px; }
+.g-num span { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.g-text { flex: 1; min-width: 0; }
+.g-text h3 { margin: 0; font-family: var(--font-read); font-size: 19px; }
+.g-text p { margin: 3px 0 0; font-size: 14px; color: var(--muted); }
+.g-streak { color: var(--accent); margin-left: 6px; }
+.g-small { font-size: 12.5px !important; }
+.g-small b { color: var(--ink); }
+.g-week { display: flex; gap: 6px; margin-top: 8px; }
+.g-day { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; color: var(--muted); border: 1.5px solid var(--line); }
+.g-day.some { border-color: var(--accent); color: var(--accent); }
+.g-day.on { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.g-day:last-child { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.goal .btn { flex: none; }
+.g-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; font-size: 15px; }
+.g-field input { width: 90px; font-size: 16px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: right; }
+.g-check { display: flex; align-items: center; gap: 8px; font-size: 14.5px; margin: 14px 0 6px; }
+.bk-fin { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--surface); font-size: 12px; vertical-align: 3px; }
+body.goal-hit .g-ring { animation: g-pop .6s ease 2; }
+@keyframes g-pop { 50% { transform: scale(1.12); } }
+@media (max-width: 760px) { .goal { flex-wrap: wrap; gap: 14px; padding: 14px; } .goal .btn { width: 100%; } }
