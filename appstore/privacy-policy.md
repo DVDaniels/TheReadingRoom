@@ -1,6 +1,6 @@
 # The Reading Room — Privacy Policy
 
-*Last updated: October 31, 2026*
+*Last updated: November 3, 2026*
 
 The Reading Room is a feed reader for Mac, iPhone and iPad made by David Daniels. This policy explains what the app does with information. The short version: the app does not collect, sell or share any personal information. Everything you put in it stays on your devices, and in your own iCloud Drive if you turn on sync.
 
@@ -25,7 +25,7 @@ Sync is off until you turn it on. When you do, you choose a folder in your own i
 To do its job, the app connects directly to:
 
 - **the websites you follow**, to download their feeds, the articles you open, and their pictures
-- **Google News**, only if you follow a search phrase (for example, typing "Walgreens" instead of a web address), to fetch the results for that phrase
+- **Google News**, only if you follow a search phrase (for example, typing "birdwatching" instead of a web address), to fetch the results for that phrase
 - **pages you choose to open** in the app's web window
 - **the websites of blogs you might like**, when you use Discover: the app reads the public blogroll pages and feeds of the sites you follow, and the feeds of the blogs they recommend
 - **Open-Meteo** (open-meteo.com), only if you add the weather to Today: the town you type, and then its map coordinates, are sent to get the forecast. Your exact location is never used
@@ -50,6 +50,10 @@ Listen reads articles aloud using your device's own built-in voices. The text st
 ## Analytics, advertising and tracking
 
 The app has no analytics, no advertising, no tracking, and no third-party software that collects data.
+
+## Beta versions on TestFlight
+
+This applies only if you try a beta version through TestFlight, Apple's service for testing apps. TestFlight automatically collects crash logs and usage information and shares them with David Daniels as the developer, including install and session counts, crash logs, and your device's model, identifier, software version and language. If you joined through a public link, your name and email address are not shared. Anything you send as beta feedback, such as comments and screenshots, is shared too, along with technical details about your device. This information is used only to find and fix problems in the app. [Apple's TestFlight & Privacy page](https://www.apple.com/legal/privacy/data/en/test-flight/) explains what Apple collects and keeps.
 
 ## Children
 
