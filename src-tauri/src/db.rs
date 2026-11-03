@@ -409,6 +409,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
     rows.collect()
 }
 
+#[allow(dead_code)]
 pub fn unread_count(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM items WHERE read=0", [], |r| r.get(0))
 }

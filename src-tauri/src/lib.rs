@@ -173,17 +173,19 @@ async fn find_images(app: AppHandle) {
     st.finding_images.store(false, Ordering::SeqCst);
 }
 
-/// Unread count on the Dock icon (Mac only; on iPhone it would need notification permission).
-#[cfg(mobile)]
+/// The Dock icon's number is set by the page, which counts exactly what Today shows (the last day's unread
+/// stories, without muted words, job ads or copies folded into their originals). Nothing to do here.
 fn update_badge(_app: &AppHandle) {}
 
-#[cfg(desktop)]
-fn update_badge(app: &AppHandle) {
-    let st: Shared = app.state::<Shared>().inner().clone();
-    let n = st.db.lock().ok().and_then(|c| db::unread_count(&c).ok()).unwrap_or(0);
+/// Unread count on the Dock icon (Mac only; on iPhone it would need notification permission).
+#[tauri::command]
+fn set_badge(app: AppHandle, n: i64) {
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(if n > 0 { Some(n) } else { None });
     }
+    #[cfg(mobile)]
+    let _ = (app, n);
 }
 
 // ------------------------------------------------------------------ commands
@@ -1343,6 +1345,7 @@ pub fn run() {
             social::social_shared,
             social::social_blog_mentions,
             topic_search,
+            set_badge,
             book_text,
             audiobook,
             page_images,

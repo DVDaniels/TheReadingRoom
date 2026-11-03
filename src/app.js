@@ -254,7 +254,11 @@
   }
   const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
 
+  let lastBadge = -1;
   function renderRail() {
+    // The Dock icon shows the same number as Today
+    const todayN = unreadIn('today');
+    if (todayN !== lastBadge) { lastBadge = todayN; invoke('set_badge', { n: todayN }).catch(() => {}); }
     // Read · Find and talk · Your library
     $('views').innerHTML =
       navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
