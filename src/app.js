@@ -1857,8 +1857,10 @@
 
   // ---- Search a topic: personal sites first (Marginalia, a search engine for the independent web), then the news.
   const recentSearches = () => { try { return JSON.parse(store.get('topicSearches') || '[]'); } catch { return []; } };
+  // Back to Discover as it was: no search, no results
+  function clearTopic() { D.q = ''; D.res = null; D.searching = false; renderList(); setTimeout(() => $('topicQ')?.focus(), 0); }
   async function topicSearch(q) {
-    q = (q || '').trim(); if (q.length < 2) return;
+    q = (q || '').trim(); if (!q) return clearTopic(); if (q.length < 2) return;
     D.q = q; D.searching = true; D.res = null; renderList();
     store.set('topicSearches', JSON.stringify([q, ...recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8)));
     try { D.res = await invoke('topic_search', { query: q }); } catch (e) { D.res = { query: q, news: [], web: [], news_error: msg(e), web_error: '' }; }
@@ -1873,7 +1875,8 @@
   const followsHost = h => S.feeds.some(f => [hostOfU(f.site), hostOfU(f.url)].some(x => x && bareHost(x) === bareHost(h)));
   function searchHtml() {
     const recent = recentSearches();
-    let out = `<form class="t-search" id="topicForm" role="search"><input id="topicQ" type="search" placeholder="Search a topic, like slow travel or home espresso" value="${esc(D.q)}" autocomplete="off" aria-label="Search a topic">
+    let out = `<form class="t-search" id="topicForm" role="search"><span class="t-field"><input id="topicQ" type="search" placeholder="Search a topic, like slow travel or home espresso" value="${esc(D.q)}" autocomplete="off" aria-label="Search a topic">
+      ${D.q || D.res ? '<button class="t-clear" type="button" data-topic="reset" title="Clear the search" aria-label="Clear the search">×</button>' : ''}</span>
       <button class="btn primary" type="submit"${D.searching ? ' disabled' : ''}>${D.searching ? 'Searching…' : 'Search'}</button></form>`;
     if (recent.length && !D.res && !D.searching) out += `<div class="t-recent">${recent.map(r => `<button class="chip" data-topic="again" data-q="${esc(r)}">${esc(r)}</button>`).join('')}<button class="linkish" data-topic="clear">Clear</button></div>`;
     if (D.searching) return out + `<p class="note">Looking for personal sites and news about “${esc(D.q)}”…</p>`;
@@ -1911,6 +1914,7 @@
     const k = b.dataset.topic;
     if (k === 'again') return topicSearch(b.dataset.q);
     if (k === 'clear') { store.set('topicSearches', '[]'); renderList(); return; }
+    if (k === 'reset') return clearTopic();
     const site = b.dataset.site || '';
     b.disabled = true; b.textContent = 'Adding…';
     try {
@@ -3197,6 +3201,8 @@
   function openNewFolder() { $('folderForm').hidden = false; $('folderName').value = ''; $('folderName').focus(); }
   $('newFolderBtn').onclick = () => $('folderForm').hidden ? openNewFolder() : ($('folderForm').hidden = true);
   $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'topicQ' && (D.q || D.res)) { e.preventDefault(); e.stopPropagation(); clearTopic(); } }, true);
+  document.addEventListener('input', e => { if (e.target.id === 'topicQ' && !e.target.value && (D.q || D.res)) clearTopic(); });
   document.addEventListener('submit', e => {
     if (e.target.id === 'addBookForm') { e.preventDefault(); addBook($('addBook').value); return; }
     if (e.target.id === 'addAbForm') { e.preventDefault(); addAudiobook($('addAb').value); return; }

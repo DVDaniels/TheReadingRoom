@@ -1241,3 +1241,8 @@ body.ab-on .bk-stage { padding-bottom: 86px; }
   .now-reading.listen .chapters { width: calc(100% + 110px); margin-left: -110px; max-height: 280px; }
 }
 .ra-q { display: block; margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--accent-soft); font-family: var(--font-read); color: var(--ink); white-space: pre-line; }
+.t-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.t-field input { width: 100%; padding-right: 40px; }
+.t-field input::-webkit-search-cancel-button { display: none; }
+.t-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--line); color: var(--ink); font-size: 17px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.t-clear:hover { background: var(--accent-soft); color: var(--accent); }
