@@ -1,6 +1,7 @@
 //! The Reading Room — app wiring: window, menus, background refresh and the commands the page calls.
 
 mod article;
+mod audiobooks;
 mod bookmark;
 mod db;
 mod discover;
@@ -956,6 +957,19 @@ fn discover_get(state: State<'_, Shared>) -> serde_json::Value {
     serde_json::json!({ "report": discover_cached(&conn), "running": state.discovering.load(Ordering::SeqCst) })
 }
 
+/// A free audiobook from LibriVox: its chapters, reader and cover. Kept after the first look.
+#[tauri::command]
+async fn audiobook(state: State<'_, Shared>, input: String) -> Result<audiobooks::Audiobook, String> {
+    if let Some(id) = audiobooks::id_from(&input) {
+        if let Ok(Some(j)) = db::get_meta(&state.db.lock().unwrap(), &format!("ab:{id}")) {
+            if let Ok(b) = serde_json::from_str::<audiobooks::Audiobook>(&j) { return Ok(b); }
+        }
+    }
+    let b = audiobooks::find(&state.client, &input).await?;
+    if let Ok(j) = serde_json::to_string(&b) { let _ = db::set_meta(&state.db.lock().unwrap(), &format!("ab:{}", b.id), &j); }
+    Ok(b)
+}
+
 /// A free classic from Standard Ebooks, as one page. Kept after the first download, so it opens offline.
 #[tauri::command]
 async fn book_text(state: State<'_, Shared>, slug: String) -> Result<String, String> {
@@ -1330,6 +1344,7 @@ pub fn run() {
             social::social_blog_mentions,
             topic_search,
             book_text,
+            audiobook,
             page_images,
             social::site_accounts,
             social::social_lookup,

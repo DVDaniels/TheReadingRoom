@@ -321,7 +321,7 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'jobs' ? jobsSub()
-      : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} free classics`)
+      : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
       : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
@@ -1039,7 +1039,7 @@
     { slug: 'jane-austen/pride-and-prejudice', title: 'Pride and Prejudice', author: 'Jane Austen', why: 'The sharpest, funniest love story in English, and still the one to beat.' },
     { slug: 'arthur-conan-doyle/the-adventures-of-sherlock-holmes', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', why: 'Twelve short mysteries. Each one is perfect for an evening.' },
   ];
-  const B = { open: null, chapters: null, ch: 0, loading: false, err: '', toc: false, adding: false, addErr: '' };
+  const B = { open: null, chapters: null, ch: 0, loading: false, err: '', toc: false, adding: false, addErr: '', mode: store.get('booksMode') || 'read' };
   // Your own additions: any Standard Ebooks book, by its link. Synced.
   const allBooks = () => [...BOOKS, ...((S.prefs.myBooks || []).filter(m => !BOOKS.some(b => b.slug === m.slug)))];
   const bookOf = slug => allBooks().find(b => b.slug === slug);
@@ -1205,8 +1205,10 @@
           ${p ? `<button class="btn" data-book="toc-open" data-slug="${esc(slug)}">Contents</button>` : ''}</div></div></section>`;
   }
   function shelfHtml() {
+    const sw = `<div class="seg2" role="tablist"><button data-book="mode" data-m="read" aria-pressed="${B.mode !== 'listen'}">Read</button><button data-book="mode" data-m="listen" aria-pressed="${B.mode === 'listen'}">Listen</button></div>`;
+    if (B.mode === 'listen') return goalHtml() + sw + listenHtml();
     const cur = currentBook();
-    return goalHtml() + (cur ? currentHtml(cur) : '') + `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
+    return goalHtml() + sw + (cur ? currentHtml(cur) : '') + `<div class="shelf-intro"><p>Free classics, beautifully produced by <a href="https://standardebooks.org/">Standard Ebooks</a> and free of copyright in the US. Each one downloads the first time you open it and then reads without a connection. The app remembers your place.</p></div>
       ${cur ? '<h2 class="sec-h shelf-h">Your shelf</h2>' : ''}<div class="shelf">${allBooks().filter(b => b.slug !== cur).map(b => {
         const p = bookPos(b.slug), pct = p && p.of ? Math.round(100 * (p.ch + 1) / p.of) : 0;
         return `<article class="book"><button class="cover" data-book="open" data-slug="${esc(b.slug)}" aria-label="Read ${esc(b.title)}">
@@ -1242,6 +1244,7 @@
     if (k === 'open') return openBook(b.dataset.slug);
     if (k === 'shelf') { B.open = null; renderHead(); renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'toc') { B.toc = !B.toc; renderList(); return; }
+    if (k === 'mode') { B.mode = b.dataset.m; store.set('booksMode', B.mode); renderHead(); renderList(); return; }
     if (k === 'choose') {
       const menu = $('replyMenu'), cur = currentBook();
       menu.innerHTML = `<p class="menu-head">Currently reading</p>${allBooks().map(x => `<button type="button" data-pick="${esc(x.slug)}"${x.slug === cur ? ' aria-current="true"' : ''}>${x.slug === cur ? '✓ ' : ''}${esc(x.title)}${(S.prefs.finished || {})[x.slug] ? ' (finished)' : ''}</button>`).join('')}`;
@@ -1291,7 +1294,9 @@
   const markActive = () => { lastActive = Date.now(); };
   ['scroll', 'wheel', 'keydown', 'pointerdown', 'touchstart'].forEach(t => document.addEventListener(t, markActive, { capture: true, passive: true }));
   function readingNow() {
-    if (!goalOn() || document.hidden || Date.now() - lastActive > READ_IDLE) return false;
+    if (!goalOn()) return false;
+    if (AB.id && !abAudio.paused && goalCfg().listen !== false) return 'listen';
+    if (document.hidden || Date.now() - lastActive > READ_IDLE) return false;
     if (S.view === 'books' && B.open && B.chapters && !B.loading) return 'book';
     if (!goalCfg().booksOnly && S.readerId && !$('reader').hidden) return 'article';
     return false;
@@ -1374,7 +1379,7 @@
       <div class="g-text"><h3>${hit ? 'Today’s goal: done' : 'Reading goal'}</h3>
         <p>${hit ? `${mins} minutes today.` : `${Math.max(1, Math.ceil(g.mins - today))} more ${Math.ceil(g.mins - today) === 1 ? 'minute' : 'minutes'} to reach today’s goal.`} ${s ? `<b class="g-streak">${s}-day streak</b>` : ''}</p>
         <div class="g-week">${week}</div>
-        <p class="g-small">${g.booksOnly ? 'Counting time in books.' : 'Counting time in books and stories.'} Books this year: <b>${done}${g.books ? ` of ${g.books}` : ''}</b></p></div>
+        <p class="g-small">${g.booksOnly ? 'Counting time in books' : 'Counting time in books and stories'}${g.listen !== false ? ' and listening.' : '.'} Books this year: <b>${done}${g.books ? ` of ${g.books}` : ''}</b></p></div>
       <button class="btn" data-goal="edit">Change goal</button></section>`;
   }
   function editGoal() {
@@ -1384,13 +1389,209 @@
       <label class="g-field">Minutes a day <input id="gMins" type="number" min="1" max="600" value="${g.mins}"></label>
       <label class="g-field">Books this year <input id="gBooks" type="number" min="0" max="365" value="${g.books}"></label>
       <label class="g-check"><input id="gBooksOnly" type="checkbox"${g.booksOnly ? ' checked' : ''}> Count books only, not stories</label>
+      <label class="g-check"><input id="gListen" type="checkbox"${g.listen !== false ? ' checked' : ''}> Count listening to audiobooks</label>
       <div class="row sheet-foot">${goalOn() ? '<button class="btn ghost-x" type="button" id="gOff" style="margin-right:auto">Turn off</button>' : ''}<button class="btn" type="button" id="gCancel">Cancel</button><button class="btn primary" type="button" id="gSave">${goalOn() ? 'Save' : 'Start'}</button></div>`, 'Reading goal');
     $('gCancel').onclick = () => { el.hidden = true; };
     if ($('gOff')) $('gOff').onclick = () => { S.prefs.goal = { ...goalCfg(), on: false }; savePrefs(); el.hidden = true; renderList(); renderHead(); status('Reading goal turned off. Nothing is counted until you turn it on again.'); };
     $('gSave').onclick = () => {
       const mins = Math.max(1, Math.min(600, Number($('gMins').value) || 15)), books = Math.max(0, Math.min(365, Number($('gBooks').value) || 0));
-      S.prefs.goal = { mins, books, booksOnly: $('gBooksOnly').checked, on: true }; savePrefs(); el.hidden = true; renderList(); renderHead();
+      S.prefs.goal = { mins, books, booksOnly: $('gBooksOnly').checked, listen: $('gListen').checked, on: true }; savePrefs(); el.hidden = true; renderList(); renderHead();
     };
+  }
+
+  // ------------------------------------------------------------ Audiobooks: free LibriVox recordings, read by volunteers
+  const AUDIOBOOKS = [
+    { id: '549', title: 'Walden', author: 'Henry David Thoreau', why: 'Two years in a cabin by a pond, read aloud.' },
+    { id: '1095', title: 'Meditations', author: 'Marcus Aurelius', why: 'A Roman emperor’s notes to himself, in short sections.' },
+    { id: '1143', title: 'The Autobiography of Benjamin Franklin', author: 'Benjamin Franklin', why: 'A founder’s own story, plain spoken.' },
+    { id: '253', title: 'Pride and Prejudice', author: 'Jane Austen', why: 'The great love story, chapter by chapter.' },
+    { id: '314', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', why: 'Twelve mysteries, each about an hour.' },
+  ];
+  const ABK = new Map(); // id → the book's details from LibriVox (chapters, reader, cover)
+  const abFetching = new Set();
+  const allAudio = () => [...AUDIOBOOKS, ...((S.prefs.myAudio || []).filter(m => !AUDIOBOOKS.some(b => b.id === m.id)))];
+  const abOf = id => allAudio().find(b => b.id === id);
+  const abPos = id => (S.prefs.audio || {})[id] || null;
+  const abDone = id => !!(S.prefs.finished || {})['ab:' + id];
+  const fmtT = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+  const fmtDur = s => { const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m} min`; };
+  async function abInfo(id) {
+    if (ABK.has(id)) return ABK.get(id);
+    if (abFetching.has(id)) return null;
+    abFetching.add(id);
+    try { const b = await invoke('audiobook', { input: id }); ABK.set(id, b); return b; }
+    catch (e) { ABK.set(id, { error: msg(e) }); return null; }
+    finally { abFetching.delete(id); if (S.view === 'books' && B.mode === 'listen' && !B.open) renderList(); }
+  }
+  // Where you are: chapter and seconds into it; how far through the whole book
+  function abProgress(id) {
+    const b = ABK.get(id), p = abPos(id);
+    if (!b?.chapters || !p) return { frac: 0, done: 0 };
+    const before = b.chapters.slice(0, p.ch).reduce((a, c) => a + c.secs, 0);
+    const total = b.secs || b.chapters.reduce((a, c) => a + c.secs, 0) || 1;
+    return { frac: Math.min(1, (before + (p.t || 0)) / total), done: before + (p.t || 0), total };
+  }
+  // ---- The player: one audio element for audiobooks, a bar at the bottom while one is loaded
+  const AB = { id: null, ch: 0 };
+  const abAudio = Object.assign(document.createElement('audio'), { preload: 'metadata', id: 'abAudio' });
+  document.body.appendChild(abAudio);
+  const abBar = document.createElement('div'); abBar.className = 'abp'; abBar.id = 'abBar'; abBar.hidden = true; abBar.setAttribute('role', 'region'); abBar.setAttribute('aria-label', 'Audiobook player');
+  document.body.appendChild(abBar);
+  const abPlaying = () => !!AB.id && !abAudio.paused && !abAudio.ended;
+  const AB_RATES = [1, 1.25, 1.5, 1.75, 2, 0.75];
+  const abRate = () => Number(store.get('abRate')) || 1;
+  function saveAbPos(force) {
+    if (!AB.id) return;
+    const t = Math.floor(abAudio.currentTime || 0), prev = abPos(AB.id);
+    if (!force && prev && prev.ch === AB.ch && Math.abs((prev.t || 0) - t) < 15) return;
+    S.prefs.audio = { ...(S.prefs.audio || {}), [AB.id]: { ch: AB.ch, t, at: new Date().toISOString() } };
+    savePrefs();
+  }
+  async function abPlay(id, ch, t) {
+    const b = ABK.get(id) || await abInfo(id);
+    if (!b?.chapters) { status(ABK.get(id)?.error || 'Couldn’t load that audiobook. Try again.', true); return; }
+    const p = abPos(id);
+    if (ch == null) { ch = p && !abDone(id) ? p.ch : 0; t = p && !abDone(id) ? p.t : 0; }
+    if (AB.id && AB.id !== id) saveAbPos(true);
+    AB.id = id; AB.ch = Math.max(0, Math.min(b.chapters.length - 1, ch));
+    const c = b.chapters[AB.ch];
+    if (abAudio.dataset.src !== c.url) { abAudio.src = c.url; abAudio.dataset.src = c.url; }
+    abAudio.playbackRate = abRate();
+    const start = () => { if (t) try { abAudio.currentTime = t; } catch {} abAudio.playbackRate = abRate(); abAudio.play().catch(e => status('Couldn’t play: ' + (e.message || 'the recording didn’t load'), true)); };
+    if (abAudio.readyState >= 1) start(); else abAudio.addEventListener('loadedmetadata', start, { once: true });
+    if (abDone(id) && AB.ch === 0) { const f = { ...(S.prefs.finished || {}) }; delete f['ab:' + id]; S.prefs.finished = f; } // listening again
+    S.prefs.listening = S.prefs.listening || id;
+    saveAbPos(true);
+    if ('mediaSession' in navigator) {
+      const art = b.cover ? [{ src: b.cover, sizes: '512x512', type: 'image/jpeg' }] : [];
+      navigator.mediaSession.metadata = new MediaMetadata({ title: c.title || b.title, artist: b.author, album: b.title, artwork: art });
+    }
+    paintAbBar(); if (S.view === 'books' && B.mode === 'listen' && !B.open) renderList();
+  }
+  function abToggle() { if (!AB.id) return; abAudio.paused ? abAudio.play().catch(() => {}) : abAudio.pause(); }
+  function abSkip(d) { if (!AB.id) return; abAudio.currentTime = Math.max(0, Math.min((abAudio.duration || 1e9) - 1, abAudio.currentTime + d)); paintAbBar(); }
+  function abNextRate() { const r = AB_RATES[(AB_RATES.indexOf(abRate()) + 1) % AB_RATES.length]; store.set('abRate', String(r)); abAudio.playbackRate = r; paintAbBar(); paintAbNow(); }
+  function abStop() { saveAbPos(true); abAudio.pause(); AB.id = null; abBar.hidden = true; document.body.classList.remove('ab-on'); if (S.view === 'books') renderList(); }
+  if ('mediaSession' in navigator) {
+    const h = { play: () => abAudio.play(), pause: () => abAudio.pause(), seekbackward: () => abSkip(-15), seekforward: () => abSkip(30),
+      previoustrack: () => AB.id && abPlay(AB.id, AB.ch - 1, 0), nexttrack: () => AB.id && abPlay(AB.id, AB.ch + 1, 0) };
+    for (const [k, f] of Object.entries(h)) try { navigator.mediaSession.setActionHandler(k, f); } catch {}
+  }
+  abAudio.addEventListener('timeupdate', () => { saveAbPos(); paintAbBar(true); paintAbNow(); });
+  abAudio.addEventListener('play', () => { markActive(); paintAbBar(); paintAbNow(); });
+  abAudio.addEventListener('pause', () => { saveAbPos(true); paintAbBar(); paintAbNow(); });
+  abAudio.addEventListener('ended', () => {
+    const b = ABK.get(AB.id); if (!b) return;
+    if (AB.ch < b.chapters.length - 1) { abPlay(AB.id, AB.ch + 1, 0); return; }
+    const id = AB.id;
+    S.prefs.finished = { ...(S.prefs.finished || {}), ['ab:' + id]: new Date().toISOString() };
+    if (S.prefs.listening === id) delete S.prefs.listening;
+    S.prefs.audio = { ...(S.prefs.audio || {}), [id]: { ch: b.chapters.length - 1, t: 0, at: new Date().toISOString() } };
+    savePrefs(); const n = finishedThisYear();
+    status(`Finished listening to ${b.title}.${goalOn() ? ` That’s ${n} ${n === 1 ? 'book' : 'books'} this year.` : ''}`);
+    abStop();
+  });
+  const PLAY_I = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>', PAUSE_I = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+  function paintAbBar(timeOnly) {
+    if (!AB.id) { abBar.hidden = true; return; }
+    const b = ABK.get(AB.id), c = b?.chapters?.[AB.ch]; if (!c) return;
+    const dur = abAudio.duration || c.secs || 0, now = abAudio.currentTime || 0;
+    if (timeOnly && $('abT')) { $('abT').textContent = `${fmtT(now)} of ${fmtT(dur)}`; $('abFill').style.width = `${dur ? (100 * now / dur).toFixed(2) : 0}%`; return; }
+    abBar.hidden = false; document.body.classList.add('ab-on');
+    abBar.innerHTML = `<div class="abp-track"><span id="abFill" style="width:${dur ? (100 * now / dur).toFixed(2) : 0}%"></span></div>
+      <div class="abp-row">${b.cover ? `<img class="abp-cv" src="${esc(b.cover)}" alt="" referrerpolicy="no-referrer">` : '<span class="abp-cv"></span>'}
+        <button class="abp-t" data-ab="show"><b>${esc(b.title)} · ${esc(c.title || 'Part ' + (AB.ch + 1))}</b><span id="abT">${fmtT(now)} of ${fmtT(dur)}</span></button>
+        <button class="abp-b" data-ab="back" title="Back 15 seconds" aria-label="Back 15 seconds">↺ 15</button>
+        <button class="abp-play" data-ab="toggle" aria-label="${abAudio.paused ? 'Play' : 'Pause'}">${abAudio.paused ? PLAY_I : PAUSE_I}</button>
+        <button class="abp-b" data-ab="fwd" title="Ahead 30 seconds" aria-label="Ahead 30 seconds">30 ↻</button>
+        <button class="abp-rate" data-ab="rate" title="Speed">${abRate()}×</button>
+        <button class="abp-x" data-ab="stop" title="Close the player" aria-label="Close the player">×</button></div>`;
+  }
+  // Live numbers on the Currently listening card while it plays
+  function paintAbNow() {
+    const el = $('nlPos'); if (!el || el.dataset.id !== AB.id) return;
+    const b = ABK.get(AB.id), c = b?.chapters?.[AB.ch]; if (!c) return;
+    const now = abAudio.currentTime || 0, dur = abAudio.duration || c.secs;
+    const before = b.chapters.slice(0, AB.ch).reduce((a, x) => a + x.secs, 0), total = b.secs || 1;
+    el.textContent = `Chapter ${AB.ch + 1} of ${b.chapters.length} · ${fmtT(dur - now)} left in this chapter · ${fmtDur(Math.max(0, total - before - now))} left in the book`;
+    if ($('nlFill')) $('nlFill').style.width = `${(100 * (before + now) / total).toFixed(1)}%`;
+    if ($('nlPlay')) $('nlPlay').innerHTML = abPlaying() ? PAUSE_I : PLAY_I;
+    if ($('nlRate')) $('nlRate').textContent = abRate() + '×';
+  }
+  // ---- The Listen side of Books
+  function currentListen() {
+    if (S.prefs.listening && abOf(S.prefs.listening)) return S.prefs.listening;
+    const opened = Object.entries(S.prefs.audio || {}).filter(([id]) => abOf(id) && !abDone(id)).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
+    return opened.length ? opened[0][0] : null;
+  }
+  function abCover(id, big) {
+    const s = abOf(id), b = ABK.get(id), hue = hueFor(s.title);
+    return `<button class="cover${big ? ' big' : ''}" data-ab="play" data-id="${esc(id)}" aria-label="Listen to ${esc(s.title)}">${b?.cover ? `<img src="${esc(b.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}
+      <span class="cv-fallback" style="background:linear-gradient(160deg,hsl(${hue} 40% 34%),hsl(${(hue + 40) % 360} 40% 22%))"><b>${esc(s.title)}</b><i>${esc(s.author)}</i></span><span class="cv-ear" aria-hidden="true">🎧</span></button>`;
+  }
+  function nowListeningHtml(id) {
+    const s = abOf(id), b = ABK.get(id), p = abPos(id), pr = abProgress(id), mine = AB.id === id;
+    if (!b?.chapters) abInfo(id);
+    const ch = mine ? AB.ch : p ? p.ch : 0;
+    const chapters = b?.chapters ? `<ol class="chapters">${b.chapters.map((c, i) => `<li><button class="ch${i < ch ? ' done' : ''}${i === ch ? ' now' : ''}" data-ab="ch" data-id="${esc(id)}" data-i="${i}"><span class="ch-n">${i < ch ? '✓' : i === ch ? '▶' : i + 1}</span><span class="ch-t">${esc(c.title || 'Part ' + (i + 1))}</span><span class="ch-d">${fmtT(c.secs)}</span></button></li>`).join('')}</ol>` : `<p class="bk-pos">${esc(b?.error || 'Getting the chapters from LibriVox…')}</p>`;
+    const pos = b?.chapters ? (p ? `Chapter ${ch + 1} of ${b.chapters.length} · ${fmtDur(Math.max(0, (b.secs || 0) - pr.done))} left in the book` : `${b.chapters.length} chapters · ${fmtDur(b.secs)}`) : '';
+    return `<section class="now-reading listen">${abCover(id, true)}
+      <div class="nr-body"><p class="nr-k">Currently listening <button class="nr-change" data-ab="choose" aria-haspopup="menu">Change</button></p><h2>${esc(s.title)}</h2>
+        <p class="by">${esc(s.author)}${b?.reader ? ` · read by ${esc(b.reader)}` : ''}</p>
+        ${b?.chapters ? `<div class="bk-prog nr-prog"><span id="nlFill" style="width:${(100 * pr.frac).toFixed(1)}%"></span></div><p class="bk-pos" id="nlPos" data-id="${esc(id)}">${pos}</p>` : ''}
+        <div class="nr-play"><button class="skip" data-ab="back" ${mine ? '' : 'disabled'}>↺ 15</button>
+          <button class="bigplay" id="nlPlay" data-ab="${mine ? 'toggle' : 'play'}" data-id="${esc(id)}" aria-label="Play">${mine && abPlaying() ? PAUSE_I : PLAY_I}</button>
+          <button class="skip" data-ab="fwd" ${mine ? '' : 'disabled'}>30 ↻</button><button class="speed" id="nlRate" data-ab="rate">${abRate()}×</button>
+          ${goalOn() && goalCfg().listen !== false ? '<span class="goal-chip-lite">Counts toward your reading goal</span>' : ''}</div>
+        ${chapters}</div></section>`;
+  }
+  function listenHtml() {
+    const cur = currentListen(), list = allAudio();
+    list.forEach(b => { if (!ABK.has(b.id)) abInfo(b.id); });
+    const card = s => {
+      const b = ABK.get(s.id), p = abPos(s.id), done = abDone(s.id), pr = abProgress(s.id);
+      const info = done ? 'Finished' : p && b?.chapters ? `Chapter ${p.ch + 1} of ${b.chapters.length} · ${Math.round(100 * pr.frac)}%` : b?.secs ? `Not started · ${fmtDur(b.secs)}` : b?.error ? 'Couldn’t load' : '';
+      return `<article class="book">${abCover(s.id)}<div class="book-body"><h3>${done ? '<span class="bk-fin" title="Finished">✓</span> ' : ''}${esc(s.title)}</h3><p class="by">${esc(s.author)}</p>
+        ${b?.reader ? `<p class="by reader">Read by ${esc(b.reader)}</p>` : `<p class="why">${esc(s.why || '')}</p>`}
+        ${p && !done ? `<div class="bk-prog"><span style="width:${Math.max(3, Math.round(100 * pr.frac))}%"></span></div>` : ''}<p class="bk-pos">${info}</p>
+        <div class="bk-acts"><button class="btn ${p ? '' : 'primary'}" data-ab="play" data-id="${esc(s.id)}">${done ? 'Listen again' : p ? '▶ Resume' : '▶ Listen'}</button>
+          ${cur ? `<button class="btn ghost-x" data-ab="current" data-id="${esc(s.id)}">Set as currently listening</button>` : ''}
+          ${AUDIOBOOKS.some(x => x.id === s.id) ? '' : `<button class="btn ghost-x" data-ab="remove" data-id="${esc(s.id)}">Remove</button>`}</div></div></article>`;
+    };
+    return (cur ? nowListeningHtml(cur) : '') + `${cur ? '<h2 class="sec-h shelf-h">Your audiobooks</h2>' : ''}<div class="shelf">${list.filter(s => s.id !== cur).map(card).join('')}</div>
+      <form class="add-book" id="addAbForm"><label for="addAb"><b>Add an audiobook</b> Find one at <a href="https://librivox.org/">librivox.org</a>, copy the link of its page, and paste it here.</label>
+        <div class="row"><input id="addAb" placeholder="librivox.org/walden-by-henry-david-thoreau/" autocomplete="off" autocapitalize="off" spellcheck="false"${B.abAdding ? ' disabled' : ''}>
+        <button class="btn primary" type="submit"${B.abAdding ? ' disabled' : ''}>${B.abAdding ? 'Adding…' : 'Add to shelf'}</button></div>${B.abErr ? `<p class="fol-err">${esc(B.abErr)}</p>` : ''}</form>
+      <p class="hw-foot">Free audiobooks from <a href="https://librivox.org/">LibriVox</a>, read by volunteers around the world and in the public domain in the US. Playing needs a connection; the app remembers where you stopped.</p>`;
+  }
+  async function addAudiobook(input) {
+    B.abAdding = true; B.abErr = ''; renderList();
+    try {
+      const b = await invoke('audiobook', { input });
+      ABK.set(b.id, b);
+      if (abOf(b.id)) B.abErr = 'That audiobook is already on your shelf.';
+      else { S.prefs.myAudio = [...(S.prefs.myAudio || []), { id: b.id, title: b.title, author: b.author }]; savePrefs(); status(`${b.title} is on your shelf.`); }
+    } catch (e) { B.abErr = msg(e); }
+    B.abAdding = false; renderList();
+  }
+  function abAction(b) {
+    const k = b.dataset.ab, id = b.dataset.id;
+    if (k === 'play') return abPlay(id);
+    if (k === 'toggle') return abToggle();
+    if (k === 'back') return abSkip(-15);
+    if (k === 'fwd') return abSkip(30);
+    if (k === 'rate') return abNextRate();
+    if (k === 'stop') return abStop();
+    if (k === 'ch') return abPlay(id, Number(b.dataset.i), 0);
+    if (k === 'show') { closeReader(true); B.mode = 'listen'; store.set('booksMode', 'listen'); B.open = null; selectView('books'); return; }
+    if (k === 'current') { S.prefs.listening = id; savePrefs(); renderList(); $('main').scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (k === 'remove') { S.prefs.myAudio = (S.prefs.myAudio || []).filter(m => m.id !== id); const a = { ...(S.prefs.audio || {}) }; delete a[id]; S.prefs.audio = a; if (AB.id === id) abStop(); savePrefs(); renderList(); return; }
+    if (k === 'choose') {
+      const menu = $('replyMenu'), cur = currentListen();
+      menu.innerHTML = `<p class="menu-head">Currently listening</p>${allAudio().map(x => `<button type="button" data-pick="${esc(x.id)}">${x.id === cur ? '✓ ' : ''}${esc(x.title)}${abDone(x.id) ? ' (finished)' : ''}</button>`).join('')}`;
+      placeMenu(menu, b);
+      menu.onclick = e => { const p = e.target.closest('[data-pick]'); if (!p) return; menu.hidden = true; menu.onclick = null; S.prefs.listening = p.dataset.pick; savePrefs(); renderList(); };
+    }
   }
 
   // ------------------------------------------------------------ Help Wanted: job feeds as newspaper classifieds
@@ -2850,6 +3051,8 @@
     if (e.target.id === 'guideMutes') { openMutes(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
     if (e.target.closest('[data-goal]')) { editGoal(); return; }
+    const az = e.target.closest('[data-ab]');
+    if (az) { abAction(az); return; }
     const bz = e.target.closest('[data-book]');
     if (bz) { bookAction(bz); return; }
     const vp = e.target.closest('#bkVp');
@@ -2960,6 +3163,7 @@
   $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
   document.addEventListener('submit', e => {
     if (e.target.id === 'addBookForm') { e.preventDefault(); addBook($('addBook').value); return; }
+    if (e.target.id === 'addAbForm') { e.preventDefault(); addAudiobook($('addAb').value); return; }
     if (e.target.id !== 'topicForm') return;
     e.preventDefault(); topicSearch($('topicQ').value);
   });

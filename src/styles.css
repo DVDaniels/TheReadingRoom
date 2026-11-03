@@ -1195,3 +1195,48 @@ body.goal-hit .g-ring { animation: g-pop .6s ease 2; }
 }
 .nr-change { margin-left: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: none; color: var(--accent); border-radius: 999px; padding: 1px 9px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; cursor: pointer; vertical-align: 1px; }
 .nr-change:hover { background: var(--accent-soft); }
+
+/* ---------------------------------------------------------------- Books: Read | Listen, and audiobooks */
+.seg2 { display: inline-flex; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; padding: 3px; margin: 0 0 18px; background: var(--surface); }
+.seg2 button { border: 0; background: none; padding: 7px 20px; border-radius: 999px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.seg2 button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 600; }
+.cv-ear { position: absolute; z-index: 2; right: 6px; bottom: 5px; font-size: 13px; opacity: .85; }
+.cover .cv-fallback { flex-direction: column; }
+.by.reader { font-style: italic; margin: 0; }
+.nr-play { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.bigplay { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 8px 20px -10px var(--accent); }
+.bigplay svg { width: 24px; height: 24px; }
+.skip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.skip:disabled { opacity: .4; cursor: default; }
+.speed { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 5px 9px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.goal-chip-lite { font-size: 12px; color: var(--muted); }
+.chapters { list-style: none; margin: 16px 0 0; padding: 0; max-width: 560px; max-height: 340px; overflow-y: auto; border-top: 1px solid var(--line); }
+.ch { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.ch:hover { background: var(--accent-soft); }
+.ch-n { width: 24px; text-align: center; color: var(--muted); font-size: 12px; flex: none; }
+.ch.done .ch-n { color: var(--accent); } .ch.done .ch-t { color: var(--muted); }
+.ch.now { font-weight: 600; } .ch.now .ch-n { color: var(--accent); }
+.ch-t { flex: 1; min-width: 0; } .ch-d { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+/* The audiobook player bar */
+.abp { position: fixed; z-index: 44; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); width: min(720px, calc(100vw - 24px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 14px 40px rgba(10, 20, 30, .25); overflow: hidden; }
+body:has(#player:not([hidden])) .abp { bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); }
+.abp-track { height: 3px; background: var(--line); } .abp-track span { display: block; height: 100%; background: var(--accent); transition: width .5s linear; }
+.abp-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 10px; }
+.abp-cv { width: 36px; height: 48px; flex: none; border-radius: 3px; object-fit: cover; background: linear-gradient(160deg, hsl(172 40% 32%), hsl(210 40% 24%)); }
+.abp-t { all: unset; cursor: pointer; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.abp-t b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abp-t span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.abp-b { border: 0; background: none; color: var(--ink); font-size: 13px; padding: 6px; cursor: pointer; white-space: nowrap; }
+.abp-play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.abp-play svg { width: 18px; height: 18px; }
+.abp-rate { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 4px 7px; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.abp-x { border: 0; background: none; color: var(--muted); font-size: 20px; padding: 2px 6px; cursor: pointer; }
+body.ab-on main, body.ab-on #listView, body.ab-on #reader { padding-bottom: 110px; }
+body.ab-on .bk-stage { padding-bottom: 86px; }
+@media (max-width: 760px) {
+  .abp-b, .abp-rate { display: none; }
+  .now-reading.listen { flex-wrap: wrap; }
+  .now-reading.listen .nr-body { flex-basis: calc(100% - 110px); }
+  .now-reading.listen .chapters { width: calc(100% + 110px); margin-left: -110px; max-height: 280px; }
+}
