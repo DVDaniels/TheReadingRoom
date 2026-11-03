@@ -1347,6 +1347,7 @@ pub fn run() {
             audiobook,
             page_images,
             social::site_accounts,
+            social::social_resolve,
             social::social_lookup,
             social::social_following_blogs,
             discover_get,

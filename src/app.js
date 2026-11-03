@@ -2545,7 +2545,13 @@
       rows.push(`<button type="button" role="menuitem" data-reply="${esc(`mailto:${o.email.address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)}">${ICON_MAIL}<span>Reply by email<small>${esc(o.email.address)}</small></span></button>`);
     }
     if (o.comments) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.comments)}">${ICON_TALK}<span>Leave a comment<small>on the post</small></span></button>`);
-    for (const l of o.social || []) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(l.url)}">${ICON_AT}<span>${l.post ? `Reply on ${esc(l.label)}` : `Write to them on ${esc(l.label)}`}<small>${esc(l.post ? 'opens the post' : l.url.replace(/^https?:\/\//, ''))}</small></span></button>`);
+    // With that network connected, Write back answers from your own account in the app (no website sign-in)
+    for (const l of o.social || []) {
+      const net = (l.label || '').toLowerCase(), mine = SOC.accounts[net];
+      if (mine && l.post) rows.push(`<button type="button" role="menuitem" data-reply-app="${esc(l.url)}">${ICON_AT}<span>Reply on ${esc(l.label)}<small>from ${esc(mine.handle)}</small></span></button>`);
+      else if (mine) rows.push(`<button type="button" role="menuitem" data-mention-app="${esc(net + '|' + l.url)}">${ICON_AT}<span>Write to them on ${esc(l.label)}<small>share this story from ${esc(mine.handle)}, mentioning them</small></span></button>`);
+      else rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(l.url)}">${ICON_AT}<span>${l.post ? `Reply on ${esc(l.label)}` : `Write to them on ${esc(l.label)}`}<small>${esc(l.post ? 'opens the post' : l.url.replace(/^https?:\/\//, ''))}</small></span></button>`);
+    }
     if (o.contact) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.contact)}">${ICON_HOME}<span>Contact page<small>${esc(who)}</small></span></button>`);
     const mine = myFeed();
     const wm = o.webmention ? `<p class="menu-note">This site accepts Webmentions: link to the post from ${mine ? esc(mine.title) : 'your own blog'} and your reply shows up there too.</p>` : '';
@@ -2557,13 +2563,43 @@
     return `<p class="menu-head">Write back to ${esc(who)}</p>${rows.join('')}${wm}`;
   }
   $('replyMenu').addEventListener('click', async e => {
-    const b = e.target.closest('[data-reply], [data-reply-web]'); if (!b) return;
+    const b = e.target.closest('[data-reply], [data-reply-web], [data-reply-app], [data-mention-app]'); if (!b) return;
     $('replyMenu').hidden = true;
+    if (b.dataset.replyApp) return replyFromApp(b.dataset.replyApp);
+    if (b.dataset.mentionApp) {
+      const [net, url] = b.dataset.mentionApp.split('|'), it = item(S.readerId);
+      let at = '';
+      try { const u = new URL(url); at = net === 'bluesky' ? '@' + (u.pathname.split('/profile/')[1] || '').split('/')[0] : '@' + u.pathname.replace(/^\/@/, '').split('/')[0] + '@' + u.hostname; } catch {}
+      openCompose(it, net);
+      if (at && $('cText')) { $('cText').value = at + ' '; $('cText').dispatchEvent(new Event('input')); $('cText').focus(); }
+      return;
+    }
     try {
       if (b.dataset.reply) await invoke('open_external', { url: b.dataset.reply });
       else openWeb(b.dataset.replyWeb);
     } catch (err) { status(msg(err), true); }
   });
+
+  // Answer a Mastodon or Bluesky post from your own account, right here
+  async function replyFromApp(url) {
+    const el = sheet('replyApp', `<h2>Reply</h2><p class="note" id="raNote">Finding the post…</p>
+      <textarea id="raText" rows="5" placeholder="Write your reply" disabled></textarea>
+      <div class="row sheet-foot"><button class="btn" type="button" id="raCancel">Cancel</button><button class="btn primary" type="button" id="raSend" disabled>Reply</button></div>`, 'Reply');
+    $('raCancel').onclick = () => { el.hidden = true; };
+    let r;
+    try { r = await invoke('social_resolve', { url }); }
+    catch (e) { $('raNote').textContent = msg(e); return; }
+    $('raNote').innerHTML = `Replying to <b>${esc(r.name)}</b> ${esc(r.handle)} on ${NET[r.network]}${r.text ? `<span class="ra-q">${esc(r.text.length > 240 ? r.text.slice(0, 240) + '…' : r.text)}</span>` : ''}`;
+    const t = $('raText'); t.disabled = false; t.value = r.network === 'mastodon' ? r.handle + ' ' : ''; t.focus();
+    $('raSend').disabled = false;
+    $('raSend').onclick = async () => {
+      $('raSend').disabled = true; $('raSend').textContent = 'Replying…';
+      try {
+        await invoke('social_reply', { network: r.network, text: t.value, parentId: r.id, parentCid: r.cid, rootId: r.root_id, rootCid: r.root_cid });
+        el.hidden = true; status(`Replied on ${NET[r.network]}. Answers will show in Conversations.`);
+      } catch (e) { $('raSend').disabled = false; $('raSend').textContent = 'Reply'; status(msg(e), true); }
+    };
+  }
 
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };

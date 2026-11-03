@@ -732,6 +732,42 @@ pub async fn social_reply(network: String, text: String, parent_id: String, pare
     }
 }
 
+#[derive(Serialize, Debug, Default)]
+pub struct Resolved {
+    network: String,
+    id: String,
+    cid: String,
+    root_id: String,
+    root_cid: String,
+    handle: String,
+    name: String,
+    text: String,
+}
+
+/// A post on the web (bsky.app/profile/x/post/y, or a Mastodon post anywhere) as a post your connected account
+/// can reply to, so Write back answers it from the app instead of a website you'd have to sign in to.
+#[tauri::command]
+pub async fn social_resolve(url: String) -> Result<Resolved, String> {
+    static BSKY: OnceLock<regex::Regex> = OnceLock::new();
+    if let Some(c) = BSKY.get_or_init(|| regex::Regex::new(r"bsky\.app/profile/([^/]+)/post/([A-Za-z0-9]+)").unwrap()).captures(&url) {
+        if secret_get("bluesky").is_none() { return Err("Connect Bluesky to reply from the app.".into()); }
+        let (who, rkey) = (c[1].to_string(), c[2].to_string());
+        let did = if who.starts_with("did:") { who } else { bsky_resolve(&who).await?.0 };
+        let uri = format!("at://{did}/app.bsky.feed.post/{rkey}");
+        let v = bsky(true, "app.bsky.feed.getPosts", &[("uris", uri.clone())], None).await?;
+        let p = v["posts"].as_array().and_then(|a| a.first()).cloned().ok_or("That Bluesky post couldn't be found.")?;
+        let root = &p["record"]["reply"]["root"];
+        let a = bsky_person(&p["author"]);
+        return Ok(Resolved { network: "bluesky".into(), id: st(&p, "uri"), cid: st(&p, "cid"), root_id: st(root, "uri"), root_cid: st(root, "cid"),
+            handle: a.handle, name: a.name, text: st(&p, "record.text") });
+    }
+    if masto_saved().is_err() { return Err("Connect Mastodon to reply from the app.".into()); }
+    let v = masto(reqwest::Method::GET, "/api/v2/search", &[("q", url.clone()), ("type", "statuses".into()), ("resolve", "true".into()), ("limit", "1".into())], None).await?;
+    let p = v["statuses"].as_array().and_then(|a| a.first()).cloned().ok_or("That post couldn't be found from your Mastodon server.")?;
+    let a = masto_person(&p["account"]);
+    Ok(Resolved { network: "mastodon".into(), id: st(&p, "id"), handle: a.handle, name: a.name, text: html_text(&st(&p, "content")), ..Default::default() })
+}
+
 /// Mute or block someone, or report a post, with the network's own tools.
 #[tauri::command]
 pub async fn social_moderate(network: String, action: String, person: String, post_id: String, post_cid: String, reason: String) -> Result<(), String> {
