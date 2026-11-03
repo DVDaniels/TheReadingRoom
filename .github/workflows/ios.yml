@@ -106,7 +106,15 @@ jobs:
       - name: Upload to App Store Connect
         if: ${{ inputs.upload }}
         run: |
-          if ! xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER" > "$RUNNER_TEMP/up.log" 2>&1; then
+          ok=""
+          for try in 1 2 3; do
+            xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER" > "$RUNNER_TEMP/up.log" 2>&1 || true
+            if grep -qiE "UPLOAD SUCCEEDED|No errors uploading" "$RUNNER_TEMP/up.log"; then ok=1; break; fi
+            grep -qiE "already been uploaded|bundle version must be higher|DUPLICATE" "$RUNNER_TEMP/up.log" && break
+            echo "::warning title=Upload try $try::$(tr '\n' ' ' < "$RUNNER_TEMP/up.log" | cut -c1-800)"
+            sleep 60
+          done
+          if [ -z "$ok" ]; then
             echo "::error title=Upload::$(tr '\n' ' ' < "$RUNNER_TEMP/up.log" | cut -c1-3000)"
             exit 1
           fi
