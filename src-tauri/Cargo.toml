@@ -45,7 +45,3 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
-
-# The data protection keychain: sign-ins stay with the app across updates, with no Keychain prompts
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-security-framework = { version = "3", features = ["OSX_10_15"] }

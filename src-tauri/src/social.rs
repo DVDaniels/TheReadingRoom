@@ -27,62 +27,18 @@ fn client() -> &'static reqwest::Client {
 
 // ------------------------------------------------------------------ the Keychain
 
-// Sign-ins live in the app's own data protection keychain, which keeps them through app updates (on the Mac,
-// the older login keychain could stop recognizing the app after an update and the sign-in looked lost).
-// Builds that can't use it (unsigned development builds) fall back to the login keychain; anything found
-// there is moved over the first time it's read.
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-mod protected {
-    use security_framework::passwords::{delete_generic_password_options, generic_password, set_generic_password_options};
-    use security_framework::passwords_options::PasswordOptions;
-    fn opts(service: &str, key: &str) -> PasswordOptions {
-        let mut o = PasswordOptions::new_generic_password(service, key);
-        o.use_protected_keychain();
-        o
-    }
-    pub fn get(service: &str, key: &str) -> Option<String> {
-        generic_password(opts(service, key)).ok().and_then(|b| String::from_utf8(b).ok())
-    }
-    pub fn set(service: &str, key: &str, v: &str) -> bool {
-        let _ = delete_generic_password_options(opts(service, key));
-        set_generic_password_options(v.as_bytes(), opts(service, key)).is_ok()
-    }
-    pub fn delete(service: &str, key: &str) {
-        let _ = delete_generic_password_options(opts(service, key));
-    }
-}
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-mod protected {
-    pub fn get(_: &str, _: &str) -> Option<String> { None }
-    pub fn set(_: &str, _: &str, _: &str) -> bool { false }
-    pub fn delete(_: &str, _: &str) {}
-}
-
 fn secret_get(key: &str) -> Option<Value> {
-    if let Some(v) = protected::get(SERVICE, key).and_then(|s| serde_json::from_str(&s).ok()) {
-        return Some(v);
-    }
-    // Saved by an earlier build in the login keychain: move it over
     let e = keyring::Entry::new(SERVICE, key).ok()?;
-    let raw = e.get_password().ok()?;
-    let v: Value = serde_json::from_str(&raw).ok()?;
-    if protected::set(SERVICE, key, &raw) {
-        let _ = e.delete_credential();
-    }
-    Some(v)
+    serde_json::from_str(&e.get_password().ok()?).ok()
 }
 
 fn secret_set(key: &str, v: &Value) -> Result<(), String> {
-    if protected::set(SERVICE, key, &v.to_string()) {
-        return Ok(());
-    }
     keyring::Entry::new(SERVICE, key)
         .and_then(|e| e.set_password(&v.to_string()))
         .map_err(|e| format!("Couldn't save the sign-in to the Keychain ({e})."))
 }
 
 fn secret_delete(key: &str) {
-    protected::delete(SERVICE, key);
     if let Ok(e) = keyring::Entry::new(SERVICE, key) {
         let _ = e.delete_credential();
     }
