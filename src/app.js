@@ -7,7 +7,7 @@
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
-  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
+  const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
@@ -2311,11 +2311,66 @@
     }).join('');
     return out;
   }
+  // ---- Replies, grouped into whole conversations: everything from the post that started it down through every
+  // reply, yours too, so you can follow and answer the back-and-forth here.
+  const convRoot = n => n.network === 'bluesky' ? (n.root_id || n.id) : (SOC.rootOf.get(n.id) || n.id);
+  const convKey = n => n.network + ':' + convRoot(n);
+  function replyGroups() {
+    const groups = new Map();
+    for (const n of SOC.conv?.replies || []) {
+      const k = convKey(n);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(n);
+    }
+    return [...groups.entries()];
+  }
+  async function loadWhole(n) {
+    const k = convKey(n);
+    if (SOC.whole.has(k)) return;
+    SOC.whole.set(k, 'loading');
+    try {
+      const all = await invoke('social_whole', { network: n.network, id: n.id, root: n.network === 'bluesky' ? n.root_id || '' : '' });
+      const top = all[0]?.id || convRoot(n);
+      for (const x of all) SOC.rootOf.set(x.id, top);
+      SOC.rootOf.set(n.id, top);
+      SOC.whole.set(n.network + ':' + top, all);
+      if (k !== n.network + ':' + top) SOC.whole.delete(k);
+    } catch (e) { SOC.whole.set(k, { err: msg(e) }); }
+    // don't redraw under a reply you're typing; it shows on the next redraw
+    if (S.view === 'talk' && SOC.tab === 'replies' && !document.querySelector('.n-form')) renderList();
+  }
+  let wholeBusy = false;
+  async function loadWholes() {
+    if (wholeBusy) return; wholeBusy = true;
+    try {
+      // the newest conversations load by themselves, a few at a time; older ones when you ask
+      const want = replyGroups().slice(0, 10).map(([k, ns]) => ns[0]).filter(n => !SOC.whole.has(convKey(n)));
+      for (let i = 0; i < want.length; i += 3) await Promise.all(want.slice(i, i + 3).map(loadWhole));
+    } finally { wholeBusy = false; }
+  }
+  function wholeHtml(k, notes, whole) {
+    const seen = socialSeen(), notified = new Set(notes.map(n => n.id));
+    const root = whole[0], rootId = root.root_id || root.id, rootCid = root.root_cid || root.cid;
+    const one = (n, i) => `<div class="${notified.has(n.id) && Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n, { reply: i > 0, rootId, rootCid })}</div>`;
+    let body;
+    if (whole.length > 9 && !SOC.wideOpen.has(k)) {
+      const hidden = whole.length - 1 - 6;
+      body = one(whole[0], 0) + `<button class="linkish t-earlier" data-talk="wide" data-k="${esc(k)}">Show ${hidden} earlier ${hidden === 1 ? 'reply' : 'replies'}</button>` + whole.slice(-6).map((n, i) => one(n, i + 1)).join('');
+    } else body = whole.map(one).join('');
+    return `<div class="t-conv" data-conv="${esc(k)}"><div class="t-conv-h">${ICON_NET[root.network]} Conversation · ${whole.length} ${whole.length === 1 ? 'post' : 'posts'}</div>${body}</div>`;
+  }
   function repliesHtml() {
     const c = SOC.conv; if (!c) return '<p class="note">Checking Mastodon and Bluesky…</p>';
-    const seen = socialSeen();
-    return (SOC.err || []).map(e => `<div class="banner err">${esc(e)}</div>`).join('') + (c.replies.length
-      ? `<div class="t-replies">${c.replies.slice(0, 40).map(n => `<div class="${Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n)}</div>`).join('')}</div>`
+    const seen = socialSeen(), groups = replyGroups();
+    if (groups.some(([k, ns]) => !SOC.whole.has(convKey(ns[0]))) ) setTimeout(loadWholes, 0);
+    return (SOC.err || []).map(e => `<div class="banner err">${esc(e)}</div>`).join('') + (groups.length
+      ? `<div class="t-replies">${groups.slice(0, 30).map(([k, ns]) => {
+          const w = SOC.whole.get(k);
+          if (Array.isArray(w) && w.length) return `<div>${wholeHtml(k, ns, w)}</div>`;
+          const foot = w === 'loading' ? '<p class="note t-convnote">Loading the whole conversation…</p>'
+            : `<button class="linkish t-convnote" data-talk="whole" data-net="${ns[0].network}" data-id="${esc(ns[0].id)}">${w?.err ? 'Couldn’t load the conversation. Try again' : 'Show the whole conversation'}</button>`;
+          return `<div>${ns.map(n => `<div class="${Date.parse(n.created_at) > seen ? 't-new' : ''}">${noteHtml(n)}</div>`).join('')}${foot}</div>`;
+        }).join('')}</div>`
       : '<p class="note">No replies or mentions yet. When someone answers you, it shows up here.</p>');
   }
   function postsHtml() {
@@ -2424,6 +2479,8 @@
       try {
         await invoke('social_reply', { network: net, text: ta.value, parentId: b.dataset.id, parentCid: b.dataset.cid || '', rootId: b.dataset.root || '', rootCid: b.dataset.rootcid || '' });
         status('Reply sent.'); box.innerHTML = '';
+        const conv = b.closest('[data-conv]')?.dataset.conv;
+        if (conv) { const n = SOC.whole.get(conv)?.[0]; SOC.whole.delete(conv); if (n) { await loadWhole(n); } }
         const root = b.dataset.root || b.dataset.id; if (SOC.open.has(root)) { SOC.threads.delete(root); SOC.open.delete(root); toggleThread(net, root); }
       } catch (err) { status(msg(err), true); btn.disabled = false; btn.textContent = `Reply on ${NET[net]}`; }
     };
@@ -2478,10 +2535,12 @@
   }
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
-    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; loadTalk(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.whole.clear(); loadTalk(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
+    if (k === 'whole') { const n = (SOC.conv?.replies || []).find(x => x.id === b.dataset.id); if (n) { SOC.whole.delete(convKey(n)); loadWhole(n); renderList(); } }
+    if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
     if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
     if (k === 'reply') replyBox(b);
     if (k === 'cancel') b.closest('.n-box').innerHTML = '';

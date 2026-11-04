@@ -1337,6 +1337,7 @@ pub fn run() {
             social::social_post,
             social::social_conversations,
             social::social_thread,
+            social::social_whole,
             social::social_reply,
             social::social_moderate,
             social::social_profiles,

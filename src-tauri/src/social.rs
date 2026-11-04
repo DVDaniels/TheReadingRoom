@@ -741,6 +741,49 @@ pub async fn social_thread(network: String, id: String) -> Result<Vec<Note>, Str
     }
 }
 
+/// The whole conversation a post belongs to, from the post that started it down through every reply,
+/// yours included, in conversation order. The first note is the one that started it (depth 0).
+#[tauri::command]
+pub async fn social_whole(network: String, id: String, root: String) -> Result<Vec<Note>, String> {
+    if network == "bluesky" {
+        let top = if root.is_empty() { id.clone() } else { root };
+        let t = bsky(true, "app.bsky.feed.getPostThread", &[("uri", top), ("depth", "40".into()), ("parentHeight", "0".into())], None).await?;
+        let first = &t["thread"]["post"];
+        if first.is_null() {
+            return Err("Bluesky couldn't find that conversation. It may have been deleted.".into());
+        }
+        let (root_id, root_cid) = (st(first, "uri"), st(first, "cid"));
+        let mut head = bsky_note(first, "post");
+        head.root_id = root_id.clone();
+        head.root_cid = root_cid.clone();
+        let mut out = vec![head];
+        fn walk(node: &Value, depth: usize, root: (&str, &str), out: &mut Vec<Note>) {
+            let mut kids: Vec<&Value> = node["replies"].as_array().map(|a| a.iter().filter(|r| r.get("post").is_some()).collect()).unwrap_or_default();
+            kids.sort_by_key(|r| st(&r["post"], "record.createdAt"));
+            for r in kids {
+                let mut n = bsky_note(&r["post"], "reply");
+                n.depth = depth;
+                n.root_id = root.0.into();
+                n.root_cid = root.1.into();
+                out.push(n);
+                walk(r, depth + 1, root, out);
+            }
+        }
+        walk(&t["thread"], 1, (&root_id, &root_cid), &mut out);
+        Ok(out)
+    } else {
+        // find where it started, then everything under that
+        let ctx = masto(reqwest::Method::GET, &format!("/api/v1/statuses/{id}/context"), &[], None).await?;
+        let top_id = ctx["ancestors"].as_array().and_then(|a| a.first()).map(|s| st(s, "id")).unwrap_or_else(|| id.clone());
+        let first = masto(reqwest::Method::GET, &format!("/api/v1/statuses/{top_id}"), &[], None).await?;
+        let all_ctx = if top_id == id { ctx } else { masto(reqwest::Method::GET, &format!("/api/v1/statuses/{top_id}/context"), &[], None).await? };
+        let all: Vec<Note> = all_ctx["descendants"].as_array().map(|a| a.iter().map(|s| masto_note(s, "reply")).collect()).unwrap_or_default();
+        let mut out = vec![masto_note(&first, "post")];
+        out.extend(order_thread(&top_id, all));
+        Ok(out)
+    }
+}
+
 /// Put replies under their parents, depth first.
 pub fn order_thread(root: &str, all: Vec<Note>) -> Vec<Note> {
     fn add(parent: &str, depth: usize, all: &[Note], out: &mut Vec<Note>) {
