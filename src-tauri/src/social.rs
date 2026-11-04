@@ -1,7 +1,8 @@
 //! Talking with people on Mastodon and Bluesky, from the reader.
 //!
 //! - Connect your own account: Bluesky with an App Password, Mastodon by approving the app on your server.
-//!   What it takes to sign in is kept in the Keychain on this device, never in the app's files or the sync folder.
+//!   What it takes to sign in is kept in the Keychain, never in the app's files or the sync folder. On Apple devices it
+//!   goes in iCloud Keychain too, so connecting on one Mac, iPhone or iPad connects all of them.
 //! - Post a story with your note, as a link card.
 //! - Conversations: your recent link posts and the replies to them, replies and mentions, and replying back.
 //! - Mute, block and report, through each network's own tools.
@@ -27,21 +28,120 @@ fn client() -> &'static reqwest::Client {
 
 // ------------------------------------------------------------------ the Keychain
 
-fn secret_get(key: &str) -> Option<Value> {
-    let e = keyring::Entry::new(SERVICE, key).ok()?;
-    serde_json::from_str(&e.get_password().ok()?).ok()
+// Two copies of each sign-in:
+// - this device's own Keychain (the keyring crate), as it has always been: the fallback
+// - iCloud Keychain (synchronizable, data-protection keychain), so your other Apple devices get it
+// Once a sign-in has been moved to iCloud Keychain, a "moved" mark is left on this device. From then on
+// iCloud Keychain decides: if it no longer has the sign-in (you disconnected on another device), this
+// device signs out too, rather than copying its old one back. If iCloud Keychain can't be read at all,
+// the device's own copy is used, so nothing ever signs you out by surprise.
+
+fn local_get(key: &str) -> Option<String> {
+    keyring::Entry::new(SERVICE, key).ok()?.get_password().ok()
 }
 
-fn secret_set(key: &str, v: &Value) -> Result<(), String> {
+fn local_set(key: &str, v: &str) -> Result<(), String> {
     keyring::Entry::new(SERVICE, key)
-        .and_then(|e| e.set_password(&v.to_string()))
-        .map_err(|e| format!("Couldn't save the sign-in to the Keychain ({e})."))
+        .and_then(|e| e.set_password(v))
+        .map_err(|e| e.to_string())
 }
 
-fn secret_delete(key: &str) {
+fn local_delete(key: &str) {
     if let Ok(e) = keyring::Entry::new(SERVICE, key) {
         let _ = e.delete_credential();
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod icloud {
+    use security_framework::passwords::{delete_generic_password_options, generic_password, set_generic_password_options, PasswordOptions};
+
+    const NOT_FOUND: i32 = -25300; // errSecItemNotFound
+
+    fn opts(key: &str) -> PasswordOptions {
+        let mut o = PasswordOptions::new_generic_password(super::SERVICE, key);
+        o.set_access_synchronized(Some(true));
+        o.use_protected_keychain();
+        o
+    }
+
+    /// Ok(Some) found, Ok(None) definitely not there, Err couldn't ask.
+    pub fn get(key: &str) -> Result<Option<String>, ()> {
+        match generic_password(opts(key)) {
+            Ok(b) => Ok(String::from_utf8(b).ok()),
+            Err(e) if e.code() == NOT_FOUND => Ok(None),
+            Err(_) => Err(()),
+        }
+    }
+
+    pub fn set(key: &str, v: &str) -> bool {
+        set_generic_password_options(v.as_bytes(), opts(key)).is_ok()
+    }
+
+    pub fn delete(key: &str) {
+        let _ = delete_generic_password_options(opts(key));
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+mod icloud {
+    pub fn get(_: &str) -> Result<Option<String>, ()> { Err(()) }
+    pub fn set(_: &str, _: &str) -> bool { false }
+    pub fn delete(_: &str) {}
+}
+
+fn moved_mark(key: &str) -> String {
+    format!("{key}.icloud")
+}
+
+fn secret_raw(key: &str) -> Option<String> {
+    let local = local_get(key);
+    match icloud::get(key) {
+        Ok(Some(v)) => {
+            // keep this device's copy matching, so the fallback is never stale
+            if local.as_deref() != Some(v.as_str()) {
+                let _ = local_set(key, &v);
+            }
+            let _ = local_set(&moved_mark(key), "1");
+            Some(v)
+        }
+        Ok(None) => {
+            if local_get(&moved_mark(key)).is_some() {
+                // it was in iCloud Keychain and has been removed there: disconnected on another device
+                local_delete(key);
+                local_delete(&moved_mark(key));
+                None
+            } else {
+                // signed in before syncing existed: move it up, once
+                let v = local?;
+                if icloud::set(key, &v) && matches!(icloud::get(key), Ok(Some(ref back)) if *back == v) {
+                    let _ = local_set(&moved_mark(key), "1");
+                }
+                Some(v)
+            }
+        }
+        Err(()) => local,
+    }
+}
+
+fn secret_get(key: &str) -> Option<Value> {
+    serde_json::from_str(&secret_raw(key)?).ok()
+}
+
+fn secret_set(key: &str, v: &Value) -> Result<(), String> {
+    let s = v.to_string();
+    let here = local_set(key, &s);
+    if icloud::set(key, &s) {
+        let _ = local_set(&moved_mark(key), "1");
+        return Ok(());
+    }
+    here.map_err(|e| format!("Couldn't save the sign-in to the Keychain ({e})."))
+}
+
+fn secret_delete(key: &str) {
+    icloud::delete(key);
+    local_delete(key);
+    local_delete(&moved_mark(key));
 }
 
 // ------------------------------------------------------------------ small helpers
