@@ -265,7 +265,7 @@
       navButton('people', 'People', unreadIn('people'), { icon: ICONS.people }) +
       '<hr class="nav-gap">' +
       navButton('discover', 'Discover', newSuggestions() || '', { icon: ICONS.discover }) +
-      (anySocial() ? navButton('talk', 'Conversations', newReplies() || '', { icon: ICONS.talk }) : '') +
+      navButton('talk', 'Conversations', anySocial() ? newReplies() || '' : '', { icon: ICONS.talk }) +
       '<hr class="nav-gap">' +
       navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
       navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
@@ -326,7 +326,7 @@
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
-      : S.view === 'talk' ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}`
+      : S.view === 'talk' ? (anySocial() ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'Connect Mastodon or Bluesky on this device to see what people share and answer replies')
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     $('viewSub').textContent = ['discover', 'guide', 'talk', 'books'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
