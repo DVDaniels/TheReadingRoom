@@ -1251,3 +1251,33 @@ body.ab-on .bk-stage { padding-bottom: 86px; }
 .t-field input::-webkit-search-cancel-button { display: none; }
 .t-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--line); color: var(--ink); font-size: 17px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
 .t-clear:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------------------------------------------------------------- The slim sidebar: icons only (⌃⌘S) */
+.brand { position: relative; }
+.rail-toggle { margin-left: auto; margin-top: -2px; flex: none; }
+html.ios .rail-toggle { display: none; }
+@media (min-width: 821px) {
+  .app { transition: grid-template-columns .18s ease; }
+  body.rail-slim .app { grid-template-columns: 68px minmax(0, 1fr); }
+  body.rail-slim .rail { padding: var(--top) 10px 16px; gap: 14px; overflow-x: hidden; }
+  body.rail-slim .brand { flex-direction: column; align-items: center; gap: 12px; }
+  body.rail-slim .brand-text, body.rail-slim .rail-head, body.rail-slim #folderForm, body.rail-slim .addfeed,
+  body.rail-slim #showAdd, body.rail-slim .rail-foot, body.rail-slim .infolder, body.rail-slim .folder .chev,
+  body.rail-slim #feeds > hr, body.rail-slim #feeds > button:not([data-view="all"]), body.rail-slim #feeds > .note { display: none !important; }
+  body.rail-slim .rail-toggle { margin: 0; }
+  body.rail-slim .nav button { position: relative; justify-content: center; padding: 9px 0; gap: 0; }
+  body.rail-slim .nav .name { display: none; }
+  body.rail-slim .nav hr, body.rail-slim .nav hr.nav-gap { margin: 6px 8px; }
+  body.rail-slim .navicon { width: 22px; height: 22px; }
+  body.rail-slim .navicon svg { width: 20px; height: 20px; }
+  body.rail-slim .nav .count:empty { display: none; }
+  body.rail-slim .nav .count { position: absolute; top: 1px; right: 0; min-width: 16px; padding: 0 4px; border-radius: 999px; font-size: 9.5px; line-height: 15px;
+    text-align: center; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+  body.rail-slim .nav button[aria-current="true"] .count { border-color: var(--accent); }
+  body.rail-slim .folder { justify-content: center; }
+  body.rail-slim .folder > button[data-view] { padding: 6px 0 !important; }
+  body.rail-slim #feeds { border-top: 1px solid var(--line); padding-top: 12px; }
+}
+.slim-ini { display: none; }
+body.rail-slim .slim-ini { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: #fff; font-size: 12.5px; font-weight: 600; }
+body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid var(--accent); outline-offset: 2px; }

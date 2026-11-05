@@ -246,11 +246,12 @@
   const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view) && !(mutesApply(view) && isMuted(i)) && !isFolded(i, view)).length;
 
   // ------------------------------------------------------------ render: sidebar
-  function navButton(view, label, count, { icon = '', fav = null, err = '', title = '' } = {}) {
-    const lead = icon ? `<span class="navicon">${icon}</span>`
+  function navButton(view, label, count, { icon = '', fav = null, err = '', title = '', ini = '' } = {}) {
+    const lead = ini ? `<span class="slim-ini" style="background:hsl(${hueFor(ini)} 35% 40%)">${esc((ini.trim()[0] || '?').toUpperCase())}</span>`
+      : icon ? `<span class="navicon">${icon}</span>`
       : fav ? `<span class="fav" style="background:hsl(${hueFor(fav.url)} 45% 42%)">${esc((fav.title || '?').trim()[0] || '?')}</span>` : '';
     const tail = err ? '<span class="err" aria-label="Problem with this feed"></span>' : `<span class="count">${fmtCount(count)}</span>`;
-    return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${tail}</button>`;
+    return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title || label)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${tail}</button>`;
   }
   const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
 
@@ -280,7 +281,7 @@
       const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f));
       html += `<div class="folder" data-folder="${folder.id}">
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
-          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id))}
+          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name })}
         </div>`;
       if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
     }
@@ -3356,6 +3357,20 @@
     saveMutes(S.mutes.filter((_, i) => i !== Number(b.dataset.unmute)));
   });
 
+  // ---- The sidebar can fold down to its icons, for smaller screens. Kept per device: the MacBook can stay slim
+  // while the iMac shows everything.
+  function setSlim(on) {
+    document.body.classList.toggle('rail-slim', on);
+    $('railToggle').setAttribute('aria-pressed', String(on));
+    $('railToggle').title = on ? 'Show the full sidebar (⌃⌘S)' : 'Show only icons (⌃⌘S)';
+    $('railToggle').setAttribute('aria-label', on ? 'Show the full sidebar' : 'Show only icons in the sidebar');
+    try { localStorage.setItem('railSlim', on ? '1' : ''); } catch {}
+    if (typeof layoutBook === 'function' && S.view === 'books' && B.open) setTimeout(layoutBook, 220);
+  }
+  try { if (localStorage.getItem('railSlim') && !document.documentElement.classList.contains('ios')) setSlim(true); } catch {}
+  $('railToggle').onclick = () => setSlim(!document.body.classList.contains('rail-slim'));
+  // folders show as lettered tiles; the feeds inside them come back with the full sidebar
+
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { if (!$('wxPanel').hidden) { $('wxPanel').hidden = true; return; } if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
@@ -3561,6 +3576,7 @@
   // View › Bigger / Smaller / Actual Size text (⌘+ ⌘− ⌘0)
   const UI_STEPS = [0.92, 1, 1.1, 1.2, 1.3];
   const uiStep = d => { const i = UI_STEPS.indexOf(typePrefs.ui); typePrefs.ui = d === 0 ? 1 : UI_STEPS[Math.max(0, Math.min(UI_STEPS.length - 1, (i < 0 ? 1 : i) + d))]; applyType(); };
+  listen('menu-slim', () => setSlim(!document.body.classList.contains('rail-slim')));
   listen('menu-text-bigger', () => uiStep(1));
   listen('menu-text-smaller', () => uiStep(-1));
   listen('menu-text-reset', () => uiStep(0));

@@ -1209,6 +1209,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &MenuItem::with_id(app, "text-bigger", "Bigger Text", true, Some("CmdOrCtrl+="))?,
             &MenuItem::with_id(app, "text-smaller", "Smaller Text", true, Some("CmdOrCtrl+-"))?,
             &MenuItem::with_id(app, "text-reset", "Actual Size Text", true, Some("CmdOrCtrl+0"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "slim", "Sidebar: Icons Only / Full", true, Some("Ctrl+Cmd+S"))?,
         ],
     )?;
     menu.append(&go)?;
@@ -1286,6 +1288,7 @@ pub fn run() {
                     "text-bigger" => "menu-text-bigger",
                     "text-smaller" => "menu-text-smaller",
                     "text-reset" => "menu-text-reset",
+                    "slim" => "menu-slim",
                     _ => return,
                 };
                 let _ = app.emit(name, ());
