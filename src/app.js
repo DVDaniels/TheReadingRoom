@@ -3063,6 +3063,7 @@
     document.querySelectorAll('#widthSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.width === typePrefs.width)));
     document.querySelectorAll('#themeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === typePrefs.theme)));
     try { localStorage.setItem('readerPrefs', JSON.stringify(typePrefs)); } catch {}
+    window.__TAURI__.event.emit?.('app-theme', typePrefs.theme).catch?.(() => {}); // the web window's toolbar follows
   }
   applyType();
   $('rType').onclick = e => {

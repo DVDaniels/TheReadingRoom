@@ -1,6 +1,9 @@
 // The web window's toolbar. It sits above the page in its own view and drives it through the app.
 (() => {
   const T = window.__TAURI__, invoke = T.core.invoke, $ = id => document.getElementById(id);
+  // the same theme as the app: it saves the choice where this toolbar can read it, and says when it changes
+  const theme = () => { try { const t = JSON.parse(localStorage.getItem('readerPrefs') || '{}').theme; if (t && t !== 'auto') document.documentElement.dataset.theme = t; else document.documentElement.removeAttribute('data-theme'); } catch {} };
+  theme(); window.addEventListener('storage', e => { if (e.key === 'readerPrefs') theme(); });
   const addr = $('addr'), lock = document.querySelector('.lock');
   let url = '', editing = false;
   const nav = (action, extra = {}) => invoke('web_nav', { action, ...extra }).catch(() => {});
@@ -32,5 +35,6 @@
     if (e.key === ']') { e.preventDefault(); nav('forward'); }
   });
   T.event.listen('web-state', e => show(e.payload));
+  T.event.listen('app-theme', e => { const t = e.payload; if (t && t !== 'auto') document.documentElement.dataset.theme = t; else document.documentElement.removeAttribute('data-theme'); });
   invoke('web_state').then(show).catch(() => {});
 })();
