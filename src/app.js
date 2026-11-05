@@ -2296,13 +2296,21 @@
   // ---- Conversations: your shared stories and the replies to them
   const fmtWhen = d => { const a = ago(d); return a === 'now' ? 'just now' : `${a} ago`; };
   const isMe = a => [SOC.accounts.bluesky?.handle, SOC.accounts.mastodon?.handle].some(h => h && (h === a.handle || h.startsWith(a.handle + '@')));
+  // Web addresses in a post become links that open in the web window
+  function linkText(t) {
+    return esc(t || '').replace(/https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]]/g, u => {
+      const raw = u.replace(/&amp;/g, '&');
+      const shown = raw.replace(/^https?:\/\/(www\.)?/, '');
+      return `<button class="linkish n-url" data-talk="open" data-url="${esc(raw)}">${esc(shown.length > 42 ? shown.slice(0, 40) + '…' : shown)}</button>`;
+    });
+  }
   function noteHtml(n, opts = {}) {
     const a = n.author; opts.mine = opts.mine || isMe(a);
     return `<div class="n-note${opts.reply ? ' n-reply' : ''}" style="--d:${Math.min(n.depth || 0, 6)}">
       ${isWeb(a.avatar) ? `<img class="n-av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="n-av fav" style="background:hsl(${hueFor(a.handle)} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
       <div class="n-main">
         <div class="n-who"><b>${esc(a.name)}</b> <span>${esc(a.handle)}</span> <span class="n-net">${ICON_NET[n.network]}</span> <time>${esc(fmtWhen(n.created_at))}</time></div>
-        <div class="n-text">${esc(n.text)}</div>
+        <div class="n-text">${linkText(n.text)}</div>
         ${opts.actions === false ? '' : `<div class="n-acts">
           <button class="linkish" data-talk="reply" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" data-root="${esc(n.root_id || opts.rootId || '')}" data-rootcid="${esc(n.root_cid || opts.rootCid || '')}" data-handle="${esc(a.handle)}">Reply</button>
           <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button>

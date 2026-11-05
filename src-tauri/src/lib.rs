@@ -449,7 +449,21 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let s = w.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(w.scale_factor().unwrap_or(1.0));
     let bar = tauri::webview::WebviewBuilder::new("webbar", WebviewUrl::App("webbar.html".into()));
+    let opener = app.clone();
     let page = tauri::webview::WebviewBuilder::new("webpage", WebviewUrl::External(u))
+        // Links that ask for a new tab (Bluesky, Mastodon and many sites open outside links that way) open right here;
+        // Back returns to where you were.
+        .on_new_window(move |url, _features| {
+            if url.scheme() == "http" || url.scheme() == "https" {
+                let app = opener.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(p) = app.get_webview("webpage") {
+                        let _ = p.navigate(url);
+                    }
+                });
+            }
+            tauri::webview::NewWindowResponse::Deny
+        })
         .on_page_load(|wv, p| {
             let app = wv.app_handle().clone();
             web_tell(&app, matches!(p.event(), tauri::webview::PageLoadEvent::Started));

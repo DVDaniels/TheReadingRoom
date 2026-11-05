@@ -1302,3 +1302,5 @@ body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid v
 
 .n-title { margin-top: 14px; font-size: 16px; font-weight: 600; }
 .n-title + #nText { margin-top: 8px; }
+
+.n-url { font: inherit; padding: 0; word-break: break-all; text-align: left; }
