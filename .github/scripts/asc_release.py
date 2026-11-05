@@ -157,6 +157,17 @@ def submit(platform, version_string):
     if not v:
         print(f"::error title=Submit::No {LABEL[platform]} version {version_string}. Run prepare first.")
         sys.exit(1)
+    note(f"{LABEL[platform]} {version_string}", f"state {state(v)}")
+    b = call("GET", f"/appStoreVersions/{v['id']}/build").get("data")
+    if not b:
+        print(f"::error title=Build::No build attached to {LABEL[platform]} {version_string}. Run prepare first.")
+        sys.exit(1)
+    ba = b["attributes"]
+    note("Build", f"{ba.get('version')} {ba.get('processingState')} encryption answered: {ba.get('usesNonExemptEncryption')}")
+    # The export-compliance question: the app only uses standard HTTPS (exempt). An unanswered build can't be reviewed.
+    if ba.get("usesNonExemptEncryption") is None:
+        call("PATCH", f"/builds/{b['id']}", json={"data": {"type": "builds", "id": b["id"], "attributes": {"usesNonExemptEncryption": False}}})
+        note("Export compliance", "Answered: uses only standard (exempt) encryption")
     subs = call("GET", "/reviewSubmissions", params={"filter[app]": AID, "filter[platform]": platform, "limit": 20})["data"]
     sub = next((s for s in subs if s["attributes"].get("state") in ("READY_FOR_REVIEW", "UNRESOLVED_ISSUES")), None)
     if not sub:
