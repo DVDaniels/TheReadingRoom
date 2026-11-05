@@ -2139,22 +2139,31 @@
   // ---- Notes: short posts that go to your own site first, then copies to Bluesky and Mastodon that link home.
   // A photo is shrunk here (Bluesky takes pictures under 1 MB), goes in the note and becomes its featured image.
   async function shrinkPhoto(file) {
-    const src = URL.createObjectURL(file);
-    try {
-      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = src; });
-      let scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-      for (let tries = 0; tries < 6; tries++) {
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        for (const q of [0.86, 0.76, 0.66]) {
-          const url = c.toDataURL('image/jpeg', q);
-          if (url.length * 0.75 < 940_000) return url;
-        }
-        scale *= 0.8;
+    // Decode without a blob: address (the app's content rules don't allow those for images):
+    // createImageBitmap where it works, otherwise a data: address, which is allowed.
+    let img, w, h;
+    try { img = await createImageBitmap(file); w = img.width; h = img.height; }
+    catch {
+      const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
+      img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = data; });
+      w = img.naturalWidth; h = img.naturalHeight;
+    }
+    if (!w || !h) throw new Error('unreadable');
+    let scale = Math.min(1, 2000 / Math.max(w, h));
+    for (let tries = 0; tries < 6; tries++) {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); // see-through PNGs get a white background, not black
+      g.drawImage(img, 0, 0, c.width, c.height);
+      for (const q of [0.86, 0.76, 0.66]) {
+        const url = c.toDataURL('image/jpeg', q);
+        if (url.length * 0.75 < 940_000) { img.close?.(); return url; }
       }
-      throw new Error('too big');
-    } finally { URL.revokeObjectURL(src); }
+      scale *= 0.8;
+    }
+    img.close?.();
+    throw new Error('too big');
   }
   function openNote(it) {
     const wp = SOC.accounts.wordpress; if (!wp) { openAccounts(); return; }
@@ -2200,7 +2209,7 @@
       const file = $('nPhoto').files[0]; if (!file) return;
       $('nNote').textContent = 'Getting the photo ready…'; $('nNote').classList.remove('err');
       try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; $('nNote').textContent = ''; $('nAlt').focus(); }
-      catch { photo = ''; $('nNote').textContent = 'Couldn’t use that picture. Try a JPEG or PNG.'; $('nNote').classList.add('err'); }
+      catch { photo = ''; $('nNote').textContent = 'Couldn’t open that picture. Try another one, or save it as a JPEG first.'; $('nNote').classList.add('err'); }
       $('nPhoto').value = ''; count();
     };
     $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; $('nAlt').value = ''; count(); };
