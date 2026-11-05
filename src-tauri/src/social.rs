@@ -1325,6 +1325,7 @@ fn wp_fail(e: Fail) -> String {
     let v: Value = serde_json::from_str(&e.1).unwrap_or(Value::Null);
     let code = st(&v, "code");
     match (e.0, code.as_str()) {
+        (_, "rest_not_logged_in") => "Your site didn't receive the sign-in. Some web hosts block it; your site needs the small “The Reading Room sign-in header” snippet.".into(),
         (401, _) | (403, "rest_cannot_create") | (_, "incorrect_password") | (_, "invalid_username") =>
             "Your site didn't accept that username and Application Password. Check both, or make a new Application Password.".into(),
         (404, "rest_no_route") | (404, "") => "Couldn't find WordPress's API at that address. Check the site address.".into(),
@@ -1332,8 +1333,16 @@ fn wp_fail(e: Fail) -> String {
     }
 }
 
+/// The sign-in, also sent as X-Reading-Room-Auth: some hosts (IONOS among them) drop the Authorization header
+/// before WordPress sees it. A small snippet on the site hands this one to WordPress instead.
+fn wp_auth(req: reqwest::RequestBuilder, user: &str, pass: &str) -> reqwest::RequestBuilder {
+    use base64::Engine;
+    let token = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
+    req.basic_auth(user, Some(pass)).header("X-Reading-Room-Auth", format!("Basic {token}"))
+}
+
 async fn wp_call(base: &str, user: &str, pass: &str, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
-    let mut req = client().request(method, format!("{base}/wp-json{path}")).basic_auth(user, Some(pass));
+    let mut req = wp_auth(client().request(method, format!("{base}/wp-json{path}")), user, pass);
     if let Some(b) = &body {
         req = with_json(req, b);
     }
@@ -1429,9 +1438,7 @@ pub async fn site_note(text: String, link: String, link_title: String, photo: St
     if !photo.is_empty() {
         let bytes = photo_bytes(&photo)?;
         let name = format!("note-{}.jpg", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
-        let up = client()
-            .post(format!("{}/wp-json/wp/v2/media", st(&s, "site")))
-            .basic_auth(st(&s, "user"), Some(st(&s, "password")))
+        let up = wp_auth(client().post(format!("{}/wp-json/wp/v2/media", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"))
             .header("Content-Type", "image/jpeg")
             .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
             .body(bytes)
