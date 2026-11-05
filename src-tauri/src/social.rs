@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 
 const SERVICE: &str = "com.daviddaniels.readingroom";
 const OOB: &str = "urn:ietf:wg:oauth:2.0:oob";
-const MASTO_SCOPES: &str = "read write:statuses write:follows write:mutes write:blocks write:reports";
+const MASTO_SCOPES: &str = "read write:statuses write:media write:follows write:mutes write:blocks write:reports";
 /// Bluesky's own moderation service, which receives reports
 const BSKY_MODERATION: &str = "did:plc:ar7c4by46qjdydhdevvrndac#atproto_labeler";
 
@@ -600,6 +600,8 @@ pub struct Posted {
     network: String,
     url: String,
     error: String,
+    /// posted, but not quite as asked (a photo the server wouldn't take)
+    warning: String,
 }
 
 /// Post a story with your note to the networks you chose.
@@ -618,8 +620,8 @@ pub async fn social_post(networks: Vec<String>, text: String, link: String, titl
             _ => Err("Unknown network.".into()),
         };
         out.push(match r {
-            Ok(url) => Posted { network: n, url, error: String::new() },
-            Err(error) => Posted { network: n, url: String::new(), error },
+            Ok(url) => Posted { network: n, url, error: String::new(), warning: String::new() },
+            Err(error) => Posted { network: n, url: String::new(), error, warning: String::new() },
         });
     }
     out
@@ -1522,6 +1524,7 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
     let bytes = if photo.is_empty() { None } else { photo_bytes(&photo).ok() };
     let mut out = Vec::new();
     for n in networks {
+        let mut warn = String::new();
         let r: Result<String, String> = match n.as_str() {
             "bluesky" => async {
                 let s = bsky_session(false).await?;
@@ -1558,7 +1561,17 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                 let status = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
                 let mut body = json!({ "status": status, "visibility": "public" });
                 if let Some(b) = &bytes {
-                    body["media_ids"] = json!([masto_media(b, &alt).await?]);
+                    // if the server won't take the photo, post the words and link anyway, and say why
+                    match masto_media(b, &alt).await {
+                        Ok(id) => body["media_ids"] = json!([id]),
+                        Err(e) => {
+                            warn = if e.contains("scope") {
+                                "Posted without the photo: your Mastodon connection doesn't allow pictures yet. Disconnect Mastodon and connect it again to allow them.".into()
+                            } else {
+                                format!("Posted without the photo: {e}")
+                            };
+                        }
+                    }
                 }
                 masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(body)).await.map(|v| st(&v, "url"))
             }
@@ -1566,8 +1579,8 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
             _ => Err("Unknown network.".into()),
         };
         out.push(match r {
-            Ok(url) => Posted { network: n, url, error: String::new() },
-            Err(error) => Posted { network: n, url: String::new(), error },
+            Ok(url) => Posted { network: n, url, error: String::new(), warning: warn },
+            Err(error) => Posted { network: n, url: String::new(), error, warning: String::new() },
         });
     }
     out

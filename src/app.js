@@ -2228,19 +2228,21 @@
           if (draft) { el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
           home = r.url;
         }
-        let shared = [], bad = [];
+        let shared = [], bad = [], warned = [];
         if (picks.length) {
           say(home ? 'Posted on your site. Sharing the copies…' : 'Posting…');
           const t = $('nTitle').value.trim();
           const res = await invoke('social_share_note', { networks: picks, text: words, link: home || link(), title: home ? (t || `A note on ${wp.name || 'my site'}`) : (it ? headline(it) : ''), photo, alt });
           shared = res.filter(r => !r.error).map(r => NET[r.network]); bad = res.filter(r => r.error);
+          warned = res.filter(r => !r.error && r.warning).map(r => `${NET[r.network]}: ${r.warning}`);
         }
         if (it) store.set('shared:' + it.id, '1');
         const where = [home ? wp.site.replace(/^https?:\/\//, '') : '', ...shared].filter(Boolean);
         if (bad.length) {
-          say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}`, true);
+          say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}${warned.length ? ' ' + warned.join(' ') : ''}`, true);
           $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return;
         }
+        if (warned.length) { say(`Posted to ${where.join(', ')}. ${warned.join(' ')}`, true); $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return; }
         el.hidden = true;
         const hostName = wp.site.replace(/^https?:\/\//, '');
         status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}` : `Posted to ${shared.join(' and ')}. Replies will show in Conversations.`);
