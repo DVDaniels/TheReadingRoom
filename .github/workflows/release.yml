@@ -8,7 +8,7 @@ on:
     inputs:
       action:
         type: choice
-        options: [prepare, submit]
+        options: [prepare, submit, withdraw]
         default: prepare
       platform:
         type: choice
@@ -16,7 +16,7 @@ on:
         default: both
       version:
         description: "Version number shown on the App Store"
-        default: "1.1.0"
+        default: "1.2.0"
       build:
         description: "Build number (leave empty for the newest ready build)"
         default: ""

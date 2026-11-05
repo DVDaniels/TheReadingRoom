@@ -1,7 +1,12 @@
 """Get an update ready in App Store Connect and send it to App Review, for the Mac, iPhone/iPad, or both.
 
-usage: asc_release.py prepare <MAC_OS|IOS|both> <version> [build]
-       asc_release.py submit  <MAC_OS|IOS|both> <version>
+usage: asc_release.py prepare  <MAC_OS|IOS|both> <version> [build]
+       asc_release.py submit   <MAC_OS|IOS|both> <version>
+       asc_release.py withdraw <MAC_OS|IOS|both> <version>
+
+withdraw: takes a version that's waiting for or in App Review back out (so a newer build can go instead).
+A version that was never released (rejected, withdrawn, or still being prepared) is renamed to <version>
+rather than a second one being made, since Apple allows one version in progress at a time.
 
 prepare: makes the new version (once the one before it is approved), fills in What's New, the description,
 promotional text, keywords and App Review notes from appstore/<version>/, and picks the build (the newest
@@ -62,6 +67,14 @@ def find_or_make(platform, version_string):
     for v in vs:
         if v["attributes"]["versionString"] == version_string:
             return v
+    # A version that never went out (rejected or withdrawn) takes the new number instead
+    for v in vs:
+        if state(v) in EDITABLE:
+            old = v["attributes"]["versionString"]
+            v = call("PATCH", f"/appStoreVersions/{v['id']}", json={"data": {"type": "appStoreVersions", "id": v["id"],
+                     "attributes": {"versionString": version_string}}})["data"]
+            note(f"{LABEL[platform]} {version_string}", f"Renamed version {old} to {version_string}")
+            return v
     # An earlier version still in review or being prepared blocks a new one
     open_ = [v for v in vs if state(v) not in DONE]
     if open_:
@@ -85,8 +98,10 @@ def prepare(platform, version_string, build_no):
          "attributes": {"copyright": f"© {time.strftime('%Y')} David Daniels", "releaseType": "AFTER_APPROVAL"}}})
 
     kind = "mac" if platform == "MAC_OS" else "ios"
+    # What's New is only allowed once an earlier version has been on the App Store
+    released = any(state(x) in DONE for x in versions(platform) if x["id"] != v["id"])
     attrs = {
-        "whatsNew": text(version_string, "whats-new.txt"),
+        "whatsNew": text(version_string, "whats-new.txt") if released else None,
         "description": text(version_string, f"description-{kind}.txt"),
         "promotionalText": text(version_string, "promo.txt"),
         "keywords": text(version_string, "keywords.txt"),
@@ -157,11 +172,25 @@ def submit(platform, version_string):
     note(f"Submitted {LABEL[platform]} {version_string}", out["data"]["attributes"].get("state"))
 
 
+def withdraw(platform, version_string):
+    subs = call("GET", "/reviewSubmissions", params={"filter[app]": AID, "filter[platform]": platform, "limit": 20})["data"]
+    live = [s for s in subs if s["attributes"].get("state") in ("WAITING_FOR_REVIEW", "IN_REVIEW", "UNRESOLVED_ISSUES")]
+    if not live:
+        note(f"{LABEL[platform]}", "Nothing waiting for or in review")
+        return
+    for sub in live:
+        out = call("PATCH", f"/reviewSubmissions/{sub['id']}", json={"data": {"type": "reviewSubmissions", "id": sub["id"],
+                   "attributes": {"canceled": True}}})
+        note(f"Withdrew {LABEL[platform]}", f"{sub['attributes'].get('state')} → {out['data']['attributes'].get('state')}")
+
+
 if __name__ == "__main__":
     action, which, version_string = sys.argv[1], sys.argv[2], sys.argv[3]
     build_no = sys.argv[4] if len(sys.argv) > 4 else ""
     for platform in (["MAC_OS", "IOS"] if which == "both" else [which]):
         if action == "prepare":
             prepare(platform, version_string, build_no)
+        elif action == "withdraw":
+            withdraw(platform, version_string)
         else:
             submit(platform, version_string)
