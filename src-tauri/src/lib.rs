@@ -1348,6 +1348,21 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
     menu.append(&go)?;
+    // The Window menu lists the main window, so it can always be brought back after it's closed (Apple guideline 4)
+    let main_item = MenuItem::with_id(app, "show-main", "The Reading Room", true, Some("CmdOrCtrl+1"))?;
+    let mut in_window = false;
+    for it in menu.items()? {
+        if let Some(sm) = it.as_submenu() {
+            if sm.text().unwrap_or_default() == "Window" {
+                sm.prepend(&PredefinedMenuItem::separator(app)?)?;
+                sm.prepend(&main_item)?;
+                in_window = true;
+            }
+        }
+    }
+    if !in_window {
+        menu.append(&Submenu::with_items(app, "Window", true, &[&main_item, &PredefinedMenuItem::separator(app)?, &PredefinedMenuItem::minimize(app, None)?])?)?;
+    }
     // The guide goes in the standard Help menu
     let guide = MenuItem::with_id(app, "help", "The Reading Room Guide", true, None::<&str>)?;
     let mut placed = false;
@@ -1363,6 +1378,16 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         menu.append(&Submenu::with_items(app, "Help", true, &[&guide])?)?;
     }
     Ok(menu)
+}
+
+/// Bring the main window back: after it was closed (it's only hidden), or minimized to the Dock.
+#[cfg(desktop)]
+fn show_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1389,6 +1414,10 @@ pub fn run() {
             app.set_menu(build_menu(&handle)?)?;
             #[cfg(desktop)]
             app.on_menu_event(|app, event| {
+                if event.id().as_ref() == "show-main" {
+                    show_main(app);
+                    return;
+                }
                 // Back / Forward / Open in Browser act on the web window when it's in front.
                 let focused = app.get_window("web").is_some_and(|w| w.is_focused().unwrap_or(false));
                 let web = app.get_webview("webpage").filter(|_| focused);
@@ -1544,10 +1573,7 @@ pub fn run() {
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_main(app);
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
