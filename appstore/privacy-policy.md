@@ -1,6 +1,6 @@
 # The Reading Room — Privacy Policy
 
-*Last updated: October 31, 2026*
+*Last updated: November 4, 2026*
 
 The Reading Room is a feed reader for Mac, iPhone and iPad made by David Daniels. This policy explains what the app does with information. The short version: the app does not collect, sell or share any personal information. Everything you put in it stays on your devices, and in your own iCloud Drive if you turn on sync.
 
@@ -37,7 +37,7 @@ Like any web browser, these connections reveal your device's IP address and basi
 
 ## Mastodon and Bluesky
 
-Connecting a Mastodon or Bluesky account is optional. If you do, you sign in to your own server: on Bluesky with an App Password you create (never your main password), on Mastodon by approving the app on your server's own page. What it takes to stay signed in is kept in your device's Keychain, not in the app's files or your sync folder, and it is sent only to your own Bluesky or Mastodon server. The app then posts only what you write and choose to post, and shows your posts, the replies to them and your mentions. Mute, block and report use those networks' own tools, and reports go to their moderators. Disconnect at any time to remove the sign-in from the device; you can also revoke the app from your Bluesky or Mastodon settings.
+Connecting a Mastodon or Bluesky account is optional. If you do, you sign in to your own server: on Bluesky with an App Password you create (never your main password), on Mastodon by approving the app on your server's own page. What it takes to stay signed in is kept in Apple's Keychain, never in the app's files or your sync folder. If you use iCloud Keychain, it syncs end to end encrypted to your other Apple devices, so connecting on one connects them all. It is sent only to your own Bluesky or Mastodon server. The app then posts only what you write and choose to post, and shows your posts, the replies to them, your mentions and the conversations they belong to. Mute, block and report use those networks' own tools, and reports go to their moderators. Disconnect at any time to remove the sign-in from all your devices; you can also revoke the app from your Bluesky or Mastodon settings.
 
 ## Sharing
 
