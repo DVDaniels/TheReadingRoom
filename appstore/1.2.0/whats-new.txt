@@ -1,0 +1,11 @@
+The biggest update yet.
+
+• Conversations: connect Mastodon or Bluesky to see what the people you follow share, read whole reply threads and answer from the app. Hide, block or report spam accounts.
+• Notes: post a quick thought with a photo to your own WordPress site, then share copies to Mastodon and Bluesky that link home.
+• Books: free classics from Standard Ebooks, a page at a time, with text size.
+• Audiobooks: free LibriVox recordings with chapters and speed control.
+• Reading goal: an optional daily goal and streak.
+• Help Wanted: job listings laid out like the classifieds, with a local search and a board to track what you've applied to.
+• Discover search: find news and small personal sites on any topic, with pictures.
+• Your sign-ins now sync between devices through iCloud Keychain.
+• A tidier sidebar and many fixes.

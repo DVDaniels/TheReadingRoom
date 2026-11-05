@@ -1,0 +1,17 @@
+The Reading Room is an RSS, Atom and JSON Feed reader. It needs no account: open it and it starts with sample feeds that refresh automatically. Click a story to read it; select text to highlight it.
+
+Mac: Window > The Reading Room (Cmd-1) brings the main window back after it has been closed or minimized, and clicking the Dock icon does the same. (This addresses the earlier Guideline 4 issue.)
+
+Optional features and what they contact (nothing goes to the developer):
+- Conversations (sidebar): only after the user connects their own Mastodon account (OAuth on their own server) or Bluesky account (an app password). Shows posts and replies from people they follow and lets them reply. Moderation: each account can be hidden, blocked, or reported as spam (reports go to Bluesky or the user's Mastodon server). Sign-ins are kept in the Keychain and sync through iCloud Keychain.
+- Notes: only if the user connects their own WordPress site with an Application Password. Posts go to that site, then optional copies to Mastodon/Bluesky.
+- Books: public-domain texts from standardebooks.org. Audiobooks: public-domain recordings from the LibriVox API (librivox.org), audio from archive.org.
+- Help Wanted: public RSS feeds of job boards (We Work Remotely, Remotive, Remote OK, Authentic Jobs, Hacker News) and an optional local search through Google News RSS.
+- Discover search: Google News RSS and the Marginalia Search API for small personal sites.
+- Weather on Today: only if the user types a town; sent to Open-Meteo.
+- Write back: opens the writer's own reply links (email, comments, Mastodon or Bluesky).
+- Listen: the system's own speech voices, on the device.
+
+Sync between devices is optional and uses a folder in the user's own iCloud Drive.
+
+No login is needed to review the app. To see Conversations without connecting an account, the sidebar item explains what it does and offers to connect one.
