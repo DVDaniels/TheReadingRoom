@@ -24,6 +24,7 @@ def note(title, msg):
 
 app = get("/apps", **{"filter[bundleId]": BUNDLE})["data"][0]
 aid = app["id"]
+note("App Store link", f"https://apps.apple.com/us/app/id{aid}  ({app['attributes'].get('name')})")
 for v in get(f"/apps/{aid}/appStoreVersions", limit=10)["data"]:
     a = v["attributes"]
     note(f"Version {a['platform']} {a['versionString']}", f"{a.get('appVersionState') or a.get('appStoreState')} (created {a.get('createdDate','')[:16]})")
