@@ -1427,7 +1427,7 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
 /// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
 #[tauri::command]
-pub async fn site_note(text: String, link: String, link_title: String, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
     if text.trim().is_empty() && photo.is_empty() {
         return Err("Write something first.".into());
     }
@@ -1461,7 +1461,9 @@ pub async fn site_note(text: String, link: String, link_title: String, photo: St
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
         html.push_str(&format!("\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
     }
-    let mut post = json!({ "title": "", "content": html, "status": if draft { "draft" } else { "publish" }, "categories": [cat] });
+    // a title is optional: without one, the site shows the note's first words
+    let title = title.unwrap_or_default().trim().to_string();
+    let mut post = json!({ "title": title, "content": html, "status": if draft { "draft" } else { "publish" }, "categories": [cat] });
     if media_id > 0 {
         post["featured_media"] = json!(media_id);
     }

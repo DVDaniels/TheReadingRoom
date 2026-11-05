@@ -1299,3 +1299,6 @@ body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid v
 .n-home b { display: block; font-size: 14px; }
 .n-home small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.4; }
 .n-also { margin: 14px 0 0 !important; font-size: 12.5px !important; }
+
+.n-title { margin-top: 14px; font-size: 16px; font-weight: 600; }
+.n-title + #nText { margin-top: 8px; }

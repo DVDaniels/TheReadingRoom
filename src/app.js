@@ -2173,6 +2173,7 @@
     let photo = '';
     const el = sheet('notePanel', `<h2>${it ? 'Note about this' : 'New note'}</h2>
       ${it ? `<div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>` : ''}
+      <input class="n-field n-title" id="nTitle" type="text" placeholder="Title (optional)" maxlength="200" autocomplete="off">
       <textarea id="nText" rows="5" placeholder="${it ? 'What did you think? Mention the writer to let them know.' : 'What’s on your mind?'}"></textarea>
       <div class="n-tools">${quote ? '<button class="b-link" id="nQuote" type="button">Add your highlight as a quote</button>' : ''}
         <button class="b-link" id="nPhotoBtn" type="button">+ Add a photo</button>${it ? '' : '<button class="b-link" id="nLinkBtn" type="button">+ Add a link</button>'}
@@ -2180,7 +2181,7 @@
       <input class="n-field" id="nLink" type="url" placeholder="https:// a link to add" hidden autocapitalize="off" spellcheck="false">
       <div class="n-photo" id="nPhotoBox" hidden><img id="nPrev" alt=""><div><input class="n-field" id="nAlt" placeholder="Describe the photo for people who can’t see it" maxlength="1000"><button class="b-link" id="nPhotoX" type="button">Remove photo</button></div></div>
       <label class="n-home"><input type="checkbox" id="nSite" checked><span class="slim-ini n-ini" style="background:hsl(${hueFor(wp.site)} 45% 42%)">${esc((wp.name || '?').trim()[0].toUpperCase())}</span>
-        <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: no title needed. It goes on your Notes page and in its feed.</small></span></label>
+        <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: without a title, its first words are used. It goes on your Notes page and in its feed.</small></span></label>
       ${nets.length ? `<p class="n-also" id="nAlso">Also share a copy that links back to it</p>
       <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}" checked>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
       <p class="acct-note" id="nNote" aria-live="polite"></p>
@@ -2223,14 +2224,15 @@
       try {
         if (toSite()) {
           say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
-          const r = await invoke('site_note', { text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft });
+          const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft });
           if (draft) { el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
           home = r.url;
         }
         let shared = [], bad = [];
         if (picks.length) {
           say(home ? 'Posted on your site. Sharing the copies…' : 'Posting…');
-          const res = await invoke('social_share_note', { networks: picks, text: words, link: home || link(), title: home ? `A note on ${wp.name || 'my site'}` : (it ? headline(it) : ''), photo, alt });
+          const t = $('nTitle').value.trim();
+          const res = await invoke('social_share_note', { networks: picks, text: words, link: home || link(), title: home ? (t || `A note on ${wp.name || 'my site'}`) : (it ? headline(it) : ''), photo, alt });
           shared = res.filter(r => !r.error).map(r => NET[r.network]); bad = res.filter(r => r.error);
         }
         if (it) store.set('shared:' + it.id, '1');
