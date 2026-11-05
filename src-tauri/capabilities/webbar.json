@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "webbar",
+  "description": "The web window's toolbar: back, forward, reload, the address. The page below it gets nothing.",
+  "webviews": ["webbar"],
+  "platforms": ["macOS", "windows", "linux"],
+  "permissions": ["core:event:default"]
+}

@@ -388,25 +388,145 @@ fn web_url(url: &str) -> Result<url::Url, String> {
     }
 }
 
-/// Show a web page in the app's own browsing window (one window, reused).
+/// Show a web page in the app's own browsing window (one window, reused). The window holds two views: a
+/// toolbar of the app's own (back, forward, reload, the address, open in your browser, follow the site) and
+/// the page itself below it. The page never gets to talk to the app; only the toolbar does.
+#[cfg(desktop)]
+const WEB_BAR: f64 = 48.0;
+
+#[cfg(desktop)]
+#[derive(Clone, Serialize)]
+struct WebState {
+    url: String,
+    title: String,
+    loading: bool,
+}
+
+#[cfg(desktop)]
+fn web_page(app: &AppHandle) -> Option<tauri::Webview> {
+    app.get_webview("webpage")
+}
+
+#[cfg(desktop)]
+fn web_tell(app: &AppHandle, loading: bool) {
+    if let Some(p) = web_page(app) {
+        let url = p.url().map(|u| u.to_string()).unwrap_or_default();
+        let title = app.get_window("web").and_then(|w| w.title().ok()).unwrap_or_default();
+        let _ = app.emit_to("webbar", "web-state", WebState { url, title, loading });
+    }
+}
+
+#[cfg(desktop)]
+fn web_layout(w: &tauri::Window) {
+    let app = w.app_handle();
+    let (Ok(size), Ok(scale)) = (w.inner_size(), w.scale_factor()) else { return };
+    let s = size.to_logical::<f64>(scale);
+    if let Some(bar) = app.get_webview("webbar") {
+        let _ = bar.set_position(tauri::LogicalPosition::new(0.0, 0.0));
+        let _ = bar.set_size(tauri::LogicalSize::new(s.width, WEB_BAR));
+    }
+    if let Some(page) = app.get_webview("webpage") {
+        let _ = page.set_position(tauri::LogicalPosition::new(0.0, WEB_BAR));
+        let _ = page.set_size(tauri::LogicalSize::new(s.width, (s.height - WEB_BAR).max(0.0)));
+    }
+}
+
 #[cfg(desktop)]
 #[tauri::command]
 async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
     let u = web_url(&url)?;
-    if let Some(w) = app.get_webview_window("web") {
-        w.navigate(u).map_err(|e| e.to_string())?;
+    if let (Some(w), Some(p)) = (app.get_window("web"), web_page(&app)) {
+        p.navigate(u).map_err(|e| e.to_string())?;
         let _ = w.show();
         let _ = w.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "web", WebviewUrl::External(u))
+    let w = tauri::window::WindowBuilder::new(&app, "web")
         .title("The Reading Room — Web")
         .inner_size(1120.0, 860.0)
         .min_inner_size(420.0, 400.0)
         .build()
         .map_err(|e| e.to_string())?;
+    let s = w.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(w.scale_factor().unwrap_or(1.0));
+    let bar = tauri::webview::WebviewBuilder::new("webbar", WebviewUrl::App("webbar.html".into()));
+    let page = tauri::webview::WebviewBuilder::new("webpage", WebviewUrl::External(u))
+        .on_page_load(|wv, p| {
+            let app = wv.app_handle().clone();
+            web_tell(&app, matches!(p.event(), tauri::webview::PageLoadEvent::Started));
+        })
+        .on_document_title_changed(|wv, title| {
+            let app = wv.app_handle().clone();
+            if let Some(w) = app.get_window("web") {
+                let _ = w.set_title(if title.trim().is_empty() { "The Reading Room — Web" } else { title.trim() });
+            }
+            web_tell(&app, false);
+        });
+    w.add_child(bar, tauri::LogicalPosition::new(0.0, 0.0), tauri::LogicalSize::new(s.width, WEB_BAR))
+        .map_err(|e| e.to_string())?;
+    w.add_child(page, tauri::LogicalPosition::new(0.0, WEB_BAR), tauri::LogicalSize::new(s.width, (s.height - WEB_BAR).max(0.0)))
+        .map_err(|e| e.to_string())?;
+    let w2 = w.clone();
+    w.on_window_event(move |e| {
+        if matches!(e, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }) {
+            web_layout(&w2);
+        }
+    });
     Ok(())
 }
+
+/// The toolbar's buttons: back, forward, reload, stop, go to an address, open in your browser.
+#[cfg(desktop)]
+#[tauri::command]
+fn web_nav(app: AppHandle, action: String, url: Option<String>) -> Result<(), String> {
+    let p = web_page(&app).ok_or("The web window is closed.")?;
+    match action.as_str() {
+        "back" => p.eval("history.back()").map_err(|e| e.to_string())?,
+        "forward" => p.eval("history.forward()").map_err(|e| e.to_string())?,
+        "reload" => p.reload().map_err(|e| e.to_string())?,
+        "stop" => p.eval("window.stop()").map_err(|e| e.to_string())?,
+        "go" => {
+            let raw = url.unwrap_or_default();
+            let raw = raw.trim();
+            let full = if raw.contains("://") { raw.to_string() } else if raw.contains('.') && !raw.contains(' ') { format!("https://{raw}") } else {
+                format!("https://duckduckgo.com/?q={}", url::form_urlencoded::byte_serialize(raw.as_bytes()).collect::<String>())
+            };
+            p.navigate(web_url(&full)?).map_err(|e| e.to_string())?;
+        }
+        "browser" => {
+            let u = p.url().map_err(|e| e.to_string())?;
+            app.opener().open_url(u.as_str(), None::<&str>).map_err(|_| "Couldn't open your browser.".to_string())?;
+        }
+        "follow" => {
+            let u = p.url().map_err(|e| e.to_string())?;
+            let _ = app.emit_to("main", "web-follow", u.to_string());
+            if let Some(m) = app.get_webview_window("main") {
+                let _ = m.show();
+                let _ = m.set_focus();
+            }
+        }
+        _ => return Err("Unknown action.".into()),
+    }
+    Ok(())
+}
+
+/// Where the page is now, for the toolbar when it first loads.
+#[cfg(desktop)]
+#[tauri::command]
+fn web_state(app: AppHandle) -> WebState {
+    let url = web_page(&app).and_then(|p| p.url().ok()).map(|u| u.to_string()).unwrap_or_default();
+    let title = app.get_window("web").and_then(|w| w.title().ok()).unwrap_or_default();
+    WebState { url, title, loading: false }
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn web_nav(_action: String, _url: Option<String>) -> Result<(), String> {
+    Err("Not on this device.".into())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn web_state() -> () {}
 
 /// iPhone and iPad have one window per app, so web pages open in Safari.
 #[cfg(mobile)]
@@ -1256,8 +1376,13 @@ pub fn run() {
             #[cfg(desktop)]
             app.on_menu_event(|app, event| {
                 // Back / Forward / Open in Browser act on the web window when it's in front.
-                let web = app.get_webview_window("web").filter(|w| w.is_focused().unwrap_or(false));
+                let focused = app.get_window("web").is_some_and(|w| w.is_focused().unwrap_or(false));
+                let web = app.get_webview("webpage").filter(|_| focused);
                 match (event.id().as_ref(), &web) {
+                    ("refresh", Some(w)) => {
+                        let _ = w.reload();
+                        return;
+                    }
                     ("back", Some(w)) => {
                         let _ = w.eval("history.back()");
                         return;
@@ -1380,6 +1505,8 @@ pub fn run() {
             set_feed_folder,
             get_article,
             open_web,
+            web_nav,
+            web_state,
             open_share,
             open_external,
             add_highlight,

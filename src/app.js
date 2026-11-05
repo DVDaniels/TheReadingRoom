@@ -3568,6 +3568,8 @@
   listen('state-changed', load);
   listen('menu-refresh', refresh);
   listen('menu-add-feed', openAdd);
+  // "Follow site" in the web window: open Add a feed with that page's address, ready to go
+  listen('web-follow', e => { const u = String(e.payload || ''); if (!isWeb(u)) return; openAdd(); $('feedUrl').value = u; $('addForm').requestSubmit(); });
   listen('menu-new-folder', openNewFolder);
   listen('menu-import', importOpml);
   listen('menu-export', exportOpml);
