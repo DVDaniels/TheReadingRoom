@@ -33,7 +33,12 @@ def token():
 def call(method, path, **kw):
     r = requests.request(method, API + path, headers={"Authorization": f"Bearer {token()}"}, timeout=120, **kw)
     if r.status_code >= 400:
-        detail = "; ".join(e.get("detail") or e.get("title", "") for e in r.json().get("errors", [])) if r.content else ""
+        errs = r.json().get("errors", []) if r.content else []
+        detail = "; ".join(e.get("detail") or e.get("title", "") for e in errs)
+        for e in errs:  # Apple puts the real reasons in meta.associatedErrors
+            for where, lst in ((e.get("meta") or {}).get("associatedErrors") or {}).items():
+                for x in lst:
+                    detail += f" | {where}: {x.get('code', '')} {x.get('detail') or x.get('title', '')}"
         print(f"::error title={method} {path[:70]}::{r.status_code} {detail[:1500]}")
         sys.exit(1)
     return r.json() if r.content else {}
