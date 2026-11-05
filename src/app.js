@@ -15,6 +15,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map() };
   const ICONS = {
+    site: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="18" height="18"><path d="M4 11l8-6.5 8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
     books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg>',
     jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/></svg>',
     save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
@@ -372,7 +373,7 @@
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'talk' && anySocial()) {
       bar.hidden = false;
-      bar.innerHTML = `<button class="btn primary" data-talk="newpost">New post</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'shared'}" id="talkRefresh">Check again</button>`;
+      bar.innerHTML = `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'shared'}" id="talkRefresh">Check again</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'books') {
       bar.hidden = true;
@@ -2058,8 +2059,15 @@
     const row = (net, a, body) => `<section class="acct"><h3>${ICON_NET[net]}${NET[net]}</h3>${a
       ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
       : body}</section>`;
-    return `<h2 id="socialTitle">Mastodon &amp; Bluesky</h2>
-      <p>Connect your own accounts to post stories with your thoughts, and to see and answer the replies in Conversations. You sign in to your own server; the app keeps the sign-in in this device’s Keychain and sends it nowhere else. Connect on each of your devices.</p>
+    const wp = SOC.accounts.wordpress;
+    return `<h2 id="socialTitle">Your site, Mastodon &amp; Bluesky</h2>
+      <p>Connect your own site and accounts to post notes and stories with your thoughts, and to see and answer the replies in Conversations. Sign-ins are kept in Apple’s Keychain and sync to your other Apple devices through iCloud Keychain; they’re sent only to your own site and servers.</p>
+      <section class="acct"><h3>${ICONS.site}Your site <small class="acct-sub">WordPress</small></h3>${wp
+        ? `<p>Connected to <b>${esc(wp.name)}</b> (${esc(wp.site.replace(/^https?:\/\//, ''))}) as ${esc(wp.user)}. Notes go in a Notes category there.</p><div class="row"><button class="btn" data-disconnect="wordpress">Disconnect</button></div>`
+        : `<p>Post short notes to your own site first, then share copies that link back to it. Use an <b>Application Password</b>, not your real password: in WordPress open <button class="b-link" id="wpAppPw" type="button">Users › Profile › Application Passwords</button>, type “The Reading Room” and press Add. You can revoke it anytime.</p>
+        <form class="acct-form" id="wpForm"><input id="wpSite" placeholder="yoursite.com" autocapitalize="off" spellcheck="false" autocomplete="url">
+        <input id="wpUser" placeholder="WordPress username" autocapitalize="off" spellcheck="false" autocomplete="username">
+        <input id="wpPass" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`}</section>
       ${row('bluesky', SOC.accounts.bluesky, `<p>Use an <b>App Password</b>, not your real password. Make one in Bluesky under Settings › Privacy and security › <button class="b-link" data-open-url="https://bsky.app/settings/app-passwords">App passwords</button>. You can revoke it anytime.</p>
         <form class="acct-form" id="bskyForm"><input id="bskyHandle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="off" spellcheck="false">
         <input id="bskyPass" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`)}
@@ -2085,7 +2093,7 @@
   }
   async function openAccounts() {
     await loadAccounts();
-    const el = sheet('socialPanel', accountsHtml(), 'Mastodon and Bluesky');
+    const el = sheet('socialPanel', accountsHtml(), 'Your site, Mastodon and Bluesky');
     const note = (t, err) => { $('acctNote').textContent = t; $('acctNote').classList.toggle('err', !!err); };
     el.onclick = async e => {
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
@@ -2093,6 +2101,16 @@
       const d = e.target.closest('[data-disconnect]');
       if (d) { SOC.accounts = await invoke('social_disconnect', { network: d.dataset.disconnect }); SOC.conv = null; openAccounts(); renderRail(); }
     };
+    $('wpAppPw')?.addEventListener('click', () => {
+      const raw = ($('wpSite')?.value || '').trim().replace(/\/+$/, '');
+      if (!raw) { note('Type your site’s address first, then press the link again.', true); $('wpSite').focus(); return; }
+      invoke('open_external', { url: `${raw.includes('://') ? raw : 'https://' + raw}/wp-admin/profile.php#application-passwords-section` }).catch(() => {});
+    });
+    $('wpForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Checking your site…');
+      try { SOC.accounts = await invoke('site_connect', { site: $('wpSite').value, user: $('wpUser').value, password: $('wpPass').value }); openAccounts(); renderRail(); }
+      catch (err) { note(msg(err), true); }
+    });
     $('bskyForm')?.addEventListener('submit', async e => {
       e.preventDefault(); note('Connecting to Bluesky…');
       try { SOC.accounts = await invoke('bsky_connect', { handle: $('bskyHandle').value, password: $('bskyPass').value }); openAccounts(); renderRail(); loadConversations(true); }
@@ -2117,6 +2135,111 @@
 
   // ---- posting a story with your note
   const LIMIT = { bluesky: 300, mastodon: 500 };
+
+  // ---- Notes: short posts that go to your own site first, then copies to Bluesky and Mastodon that link home.
+  // A photo is shrunk here (Bluesky takes pictures under 1 MB), goes in the note and becomes its featured image.
+  async function shrinkPhoto(file) {
+    const src = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = src; });
+      let scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      for (let tries = 0; tries < 6; tries++) {
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        for (const q of [0.86, 0.76, 0.66]) {
+          const url = c.toDataURL('image/jpeg', q);
+          if (url.length * 0.75 < 940_000) return url;
+        }
+        scale *= 0.8;
+      }
+      throw new Error('too big');
+    } finally { URL.revokeObjectURL(src); }
+  }
+  function openNote(it) {
+    const wp = SOC.accounts.wordpress; if (!wp) { openAccounts(); return; }
+    const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
+    const f = it && feedById(it.feed_id);
+    let photo = '';
+    const el = sheet('notePanel', `<h2>${it ? 'Note about this' : 'New note'}</h2>
+      ${it ? `<div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>` : ''}
+      <textarea id="nText" rows="5" placeholder="${it ? 'What did you think? Mention the writer to let them know.' : 'What’s on your mind?'}"></textarea>
+      <div class="n-tools">${quote ? '<button class="b-link" id="nQuote" type="button">Add your highlight as a quote</button>' : ''}
+        <button class="b-link" id="nPhotoBtn" type="button">+ Add a photo</button>${it ? '' : '<button class="b-link" id="nLinkBtn" type="button">+ Add a link</button>'}
+        <span class="n-room" id="nRoom"></span><input id="nPhoto" type="file" accept="image/*" hidden></div>
+      <input class="n-field" id="nLink" type="url" placeholder="https:// a link to add" hidden autocapitalize="off" spellcheck="false">
+      <div class="n-photo" id="nPhotoBox" hidden><img id="nPrev" alt=""><div><input class="n-field" id="nAlt" placeholder="Describe the photo for people who can’t see it" maxlength="1000"><button class="b-link" id="nPhotoX" type="button">Remove photo</button></div></div>
+      <label class="n-home"><input type="checkbox" id="nSite" checked><span class="slim-ini n-ini" style="background:hsl(${hueFor(wp.site)} 45% 42%)">${esc((wp.name || '?').trim()[0].toUpperCase())}</span>
+        <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: no title needed. It goes on your Notes page and in its feed.</small></span></label>
+      ${nets.length ? `<p class="n-also" id="nAlso">Also share a copy that links back to it</p>
+      <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}" checked>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
+      <p class="acct-note" id="nNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Cancel</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
+    const text = $('nText'), boxes = () => [...el.querySelectorAll('.c-net input:checked')].map(x => x.value);
+    const toSite = () => $('nSite').checked;
+    const link = () => it ? it.link : ($('nLink').hidden ? '' : $('nLink').value.trim());
+    const count = () => {
+      const n = [...text.value].length, picks = boxes();
+      const room = Math.min(...picks.map(p => LIMIT[p] - (toSite() || link() ? (p === 'mastodon' ? 25 : 40) : 0)), 99999);
+      const over = picks.length && n > room;
+      $('nRoom').textContent = !picks.length ? '' : toSite() ? (over ? 'Copies will be shortened, with the link to the full note' : `${room - n}`) : `${room - n}`;
+      $('nRoom').classList.toggle('over', !toSite() && over);
+      $('nAlso').textContent = toSite() ? 'Also share a copy that links back to it' : 'Post only to';
+      $('nDraft').hidden = !toSite();
+      $('nPost').disabled = (!toSite() && !picks.length) || (!toSite() && over) || (!text.value.trim() && !photo);
+    };
+    if (!nets.length) $('nAlso')?.remove();
+    const also = $('nAlso'); if (!also) { const p = document.createElement('p'); p.id = 'nAlso'; p.hidden = true; el.querySelector('.n-home').after(p); }
+    text.addEventListener('input', count); el.querySelectorAll('.c-net input, #nSite').forEach(x => x.addEventListener('change', count));
+    $('nLink').addEventListener('input', count);
+    $('nQuote')?.addEventListener('click', () => { text.value = `“${quote}”\n\n${text.value}`.trim() + (text.value ? '' : '\n\n'); text.focus(); count(); });
+    $('nLinkBtn')?.addEventListener('click', () => { $('nLink').hidden = false; $('nLinkBtn').hidden = true; $('nLink').focus(); });
+    $('nPhotoBtn').onclick = () => $('nPhoto').click();
+    $('nPhoto').onchange = async () => {
+      const file = $('nPhoto').files[0]; if (!file) return;
+      $('nNote').textContent = 'Getting the photo ready…'; $('nNote').classList.remove('err');
+      try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; $('nNote').textContent = ''; $('nAlt').focus(); }
+      catch { photo = ''; $('nNote').textContent = 'Couldn’t use that picture. Try a JPEG or PNG.'; $('nNote').classList.add('err'); }
+      $('nPhoto').value = ''; count();
+    };
+    $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; $('nAlt').value = ''; count(); };
+    $('nCancel').onclick = () => { el.hidden = true; };
+    const say = (t, err) => { $('nNote').textContent = t; $('nNote').classList.toggle('err', !!err); };
+    const go = async draft => {
+      const words = text.value.trim(), alt = $('nAlt').value.trim(), picks = boxes();
+      if (photo && !alt && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('nAlt').focus(); return; }
+      $('nPost').disabled = $('nDraft').disabled = true;
+      let home = '';
+      try {
+        if (toSite()) {
+          say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
+          const r = await invoke('site_note', { text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft });
+          if (draft) { el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
+          home = r.url;
+        }
+        let shared = [], bad = [];
+        if (picks.length) {
+          say(home ? 'Posted on your site. Sharing the copies…' : 'Posting…');
+          const res = await invoke('social_share_note', { networks: picks, text: words, link: home || link(), title: home ? `A note on ${wp.name || 'my site'}` : (it ? headline(it) : ''), photo, alt });
+          shared = res.filter(r => !r.error).map(r => NET[r.network]); bad = res.filter(r => r.error);
+        }
+        if (it) store.set('shared:' + it.id, '1');
+        const where = [home ? wp.site.replace(/^https?:\/\//, '') : '', ...shared].filter(Boolean);
+        if (bad.length) {
+          say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}`, true);
+          $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return;
+        }
+        el.hidden = true;
+        const hostName = wp.site.replace(/^https?:\/\//, '');
+        status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}` : `Posted to ${shared.join(' and ')}. Replies will show in Conversations.`);
+        if (shared.length) setTimeout(() => { loadConversations(true); if (S.view === 'talk') renderList(); }, 4000);
+      } catch (err) { say(msg(err), true); $('nPost').disabled = $('nDraft').disabled = false; }
+    };
+    $('nPost').onclick = () => go(false);
+    $('nDraft').onclick = () => go(true);
+    text.focus(); count();
+  }
   function openCompose(it, prefer, all) {
     if (!anySocial()) { openAccounts(); return; }
     const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
@@ -2547,7 +2670,7 @@
     if (k === 'cancel') b.closest('.n-box').innerHTML = '';
     if (k === 'more') moreMenu(b);
     if (k === 'tab') { SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
-    if (k === 'newpost') openCompose(null);
+    if (k === 'newpost') { if (SOC.accounts.wordpress) openNote(null); else openCompose(null); }
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
     if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }
     if (k === 'unhide') setHidden(b.dataset.k, b.dataset.key, false);
@@ -3100,6 +3223,7 @@
   }
   async function share(kind) {
     const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
+    if (kind === 'note') { if (SOC.accounts.wordpress) openNote(it); else { openAccounts().then(() => $('wpSite')?.focus()); status('Connect your site first, then write your note.'); } return; }
     if (kind === 'bluesky' || kind === 'mastodon') { openCompose(it, kind); return; }
     if (kind === 'sheet') { navigator.share?.({ title: it.title, url: it.link }).catch(() => {}); return; }
     const u = encodeURIComponent(it.link), t = encodeURIComponent(it.title);

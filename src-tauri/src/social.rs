@@ -508,6 +508,8 @@ pub fn masto_host(input: &str) -> String {
 pub struct Accounts {
     bluesky: Option<Value>,
     mastodon: Option<Value>,
+    /// your own WordPress site, for notes
+    wordpress: Option<Value>,
 }
 
 #[tauri::command]
@@ -515,6 +517,7 @@ pub fn social_accounts() -> Accounts {
     Accounts {
         bluesky: secret_get("bluesky").map(|v| json!({ "handle": format!("@{}", st(&v, "handle")) })),
         mastodon: secret_get("mastodon").map(|v| json!({ "handle": format!("@{}@{}", st(&v, "acct"), st(&v, "instance")) })),
+        wordpress: secret_get("wordpress").map(|v| json!({ "site": st(&v, "site"), "name": st(&v, "name"), "user": st(&v, "user") })),
     }
 }
 
@@ -1298,5 +1301,282 @@ mod more_tests {
         assert_eq!(own_site("bsky.app/profile/x · linktr.ee/x"), "");
         assert_eq!(own_site("writing at samokafor.net"), "https://samokafor.net/");
         assert_eq!(own_site("Born in St.Louis, now in Mr.Smith's town"), "");
+    }
+}
+
+
+// ------------------------------------------------------------------ your own site: notes, posted home first
+
+/// The site's address, cleaned up: https:// and no trailing slash.
+fn site_base(raw: &str) -> Result<String, String> {
+    let raw = raw.trim().trim_end_matches('/');
+    if raw.is_empty() {
+        return Err("Type your site's address.".into());
+    }
+    let full = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
+    let u = url::Url::parse(&full).map_err(|_| "That doesn't look like a web address.".to_string())?;
+    if u.scheme() != "https" && u.scheme() != "http" {
+        return Err("That doesn't look like a web address.".into());
+    }
+    Ok(full.trim_end_matches('/').to_string())
+}
+
+fn wp_fail(e: Fail) -> String {
+    let v: Value = serde_json::from_str(&e.1).unwrap_or(Value::Null);
+    let code = st(&v, "code");
+    match (e.0, code.as_str()) {
+        (401, _) | (403, "rest_cannot_create") | (_, "incorrect_password") | (_, "invalid_username") =>
+            "Your site didn't accept that username and Application Password. Check both, or make a new Application Password.".into(),
+        (404, "rest_no_route") | (404, "") => "Couldn't find WordPress's API at that address. Check the site address.".into(),
+        _ => explain(e),
+    }
+}
+
+async fn wp_call(base: &str, user: &str, pass: &str, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
+    let mut req = client().request(method, format!("{base}/wp-json{path}")).basic_auth(user, Some(pass));
+    if let Some(b) = &body {
+        req = with_json(req, b);
+    }
+    call(req).await.map_err(wp_fail)
+}
+
+async fn wp(method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    wp_call(&st(&s, "site"), &st(&s, "user"), &st(&s, "password"), method, path, body).await
+}
+
+/// Connect your WordPress site with an Application Password (made in your WordPress profile).
+#[tauri::command]
+pub async fn site_connect(site: String, user: String, password: String) -> Result<Accounts, String> {
+    let base = site_base(&site)?;
+    let user = user.trim().to_string();
+    let password = password.trim().to_string();
+    if user.is_empty() || password.is_empty() {
+        return Err("Type your WordPress username and the Application Password.".into());
+    }
+    let me = wp_call(&base, &user, &password, reqwest::Method::GET, "/wp/v2/users/me?context=edit", None).await?;
+    let caps = &me["capabilities"];
+    if !(caps["publish_posts"].as_bool().unwrap_or(false) || caps["administrator"].as_bool().unwrap_or(false)) {
+        return Err("That WordPress user can't publish posts.".into());
+    }
+    let info = call(client().get(format!("{base}/wp-json/"))).await.unwrap_or(Value::Null);
+    let name = Some(st(&info, "name")).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| url::Url::parse(&base).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_default());
+    secret_set("wordpress", &json!({ "site": base, "user": user, "password": password, "name": name }))?;
+    Ok(social_accounts())
+}
+
+#[derive(Serialize)]
+pub struct SiteNote {
+    pub url: String,
+    pub id: i64,
+    pub image: String,
+}
+
+fn esc_html(s: &str) -> String {
+    html_escape::encode_text(s).to_string()
+}
+
+/// A note's words as HTML paragraphs, with web addresses made into links.
+fn note_html(text: &str) -> String {
+    static URL: OnceLock<regex::Regex> = OnceLock::new();
+    let re = URL.get_or_init(|| regex::Regex::new(r#"https?://[^\s<>"]+[^\s<>".,;:!?)\]]"#).unwrap());
+    text.trim()
+        .split("\n\n")
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| {
+            let mut out = String::new();
+            let mut last = 0;
+            for m in re.find_iter(p) {
+                out.push_str(&esc_html(&p[last..m.start()]));
+                let u = html_escape::encode_double_quoted_attribute(m.as_str());
+                out.push_str(&format!("<a href=\"{u}\">{}</a>", esc_html(m.as_str())));
+                last = m.end();
+            }
+            out.push_str(&esc_html(&p[last..]));
+            format!("<p>{}</p>", out.trim().replace('\n', "<br>\n"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The Notes category's id, made the first time.
+async fn notes_category() -> Result<i64, String> {
+    let found = wp(reqwest::Method::GET, "/wp/v2/categories?slug=notes", None).await?;
+    if let Some(id) = found.as_array().and_then(|a| a.first()).and_then(|c| c["id"].as_i64()) {
+        return Ok(id);
+    }
+    let made = wp(reqwest::Method::POST, "/wp/v2/categories", Some(json!({ "name": "Notes", "slug": "notes", "description": "Short notes, posted from The Reading Room." }))).await?;
+    made["id"].as_i64().ok_or_else(|| "Couldn't make the Notes category on your site.".to_string())
+}
+
+fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    let b64 = photo.split_once(',').map(|(_, b)| b).unwrap_or(photo);
+    base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| "Couldn't read that photo.".to_string())
+}
+
+/// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
+/// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
+#[tauri::command]
+pub async fn site_note(text: String, link: String, link_title: String, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
+    if text.trim().is_empty() && photo.is_empty() {
+        return Err("Write something first.".into());
+    }
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let cat = notes_category().await?;
+    let mut html = note_html(&text);
+    let (mut media_id, mut image) = (0i64, String::new());
+    if !photo.is_empty() {
+        let bytes = photo_bytes(&photo)?;
+        let name = format!("note-{}.jpg", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+        let up = client()
+            .post(format!("{}/wp-json/wp/v2/media", st(&s, "site")))
+            .basic_auth(st(&s, "user"), Some(st(&s, "password")))
+            .header("Content-Type", "image/jpeg")
+            .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
+            .body(bytes)
+            .timeout(Duration::from_secs(90));
+        let m = call(up).await.map_err(wp_fail)?;
+        media_id = m["id"].as_i64().unwrap_or(0);
+        image = st(&m, "source_url");
+        if media_id > 0 && !alt.trim().is_empty() {
+            let _ = wp(reqwest::Method::POST, &format!("/wp/v2/media/{media_id}"), Some(json!({ "alt_text": alt.trim() }))).await;
+        }
+        if !image.is_empty() {
+            html.push_str(&format!(
+                "\n<figure class=\"wp-block-image size-large note-photo\"><img src=\"{}\" alt=\"{}\" class=\"wp-image-{media_id}\"/></figure>",
+                html_escape::encode_double_quoted_attribute(&image),
+                html_escape::encode_double_quoted_attribute(alt.trim())
+            ));
+        }
+    }
+    if link.starts_with("http") {
+        let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
+        html.push_str(&format!("\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
+    }
+    let mut post = json!({ "title": "", "content": html, "status": if draft { "draft" } else { "publish" }, "categories": [cat] });
+    if media_id > 0 {
+        post["featured_media"] = json!(media_id);
+    }
+    let p = wp(reqwest::Method::POST, "/wp/v2/posts", Some(post)).await?;
+    Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+}
+
+/// Shorten words to fit a network's limit with room for the link home, ending on a word.
+fn fit(text: &str, room: usize) -> String {
+    let t = text.trim();
+    if t.chars().count() <= room {
+        return t.to_string();
+    }
+    let cut: String = t.chars().take(room.saturating_sub(1)).collect();
+    let cut = match cut.rfind(char::is_whitespace) {
+        Some(i) if i > room / 2 => cut[..i].to_string(),
+        _ => cut,
+    };
+    format!("{}…", cut.trim_end())
+}
+
+async fn masto_media(bytes: &[u8], alt: &str) -> Result<String, String> {
+    let m = masto_saved()?;
+    let boundary = format!("rr{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"description\"\r\n\r\n{}\r\n", alt.trim()).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").as_bytes());
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let req = client()
+        .post(format!("https://{}/api/v2/media", st(&m, "instance")))
+        .bearer_auth(st(&m, "token"))
+        .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+        .body(body)
+        .timeout(Duration::from_secs(90));
+    let v = call(req).await.map_err(explain)?;
+    let id = st(&v, "id");
+    // big pictures are processed after the upload; wait for them before posting
+    if v["url"].is_null() {
+        for _ in 0..15 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if let Ok(x) = masto(reqwest::Method::GET, &format!("/api/v1/media/{id}"), &[], None).await {
+                if !x["url"].is_null() {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(id)
+}
+
+/// Share copies of a note you posted on your site: the words (shortened if needed), the photo attached
+/// with its description, and the link home.
+#[tauri::command]
+pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String) -> Vec<Posted> {
+    let bytes = if photo.is_empty() { None } else { photo_bytes(&photo).ok() };
+    let mut out = Vec::new();
+    for n in networks {
+        let r: Result<String, String> = match n.as_str() {
+            "bluesky" => async {
+                let s = bsky_session(false).await?;
+                if let Some(b) = &bytes {
+                    let words = fit(&text, if link.is_empty() { 300 } else { 300 - link.chars().count() - 2 });
+                    let full = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
+                    let up = client()
+                        .post(format!("{}/xrpc/com.atproto.repo.uploadBlob", s.pds))
+                        .bearer_auth(&s.jwt)
+                        .header("Content-Type", "image/jpeg")
+                        .body(b.clone())
+                        .timeout(Duration::from_secs(60));
+                    let blob = call(up).await.map_err(explain)?;
+                    let mut record = json!({
+                        "$type": "app.bsky.feed.post", "text": full, "langs": ["en"],
+                        "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                        "embed": { "$type": "app.bsky.embed.images", "images": [{ "alt": alt.trim(), "image": blob["blob"] }] },
+                    });
+                    let facets = link_facets(&full);
+                    if !facets.is_empty() {
+                        record["facets"] = Value::Array(facets);
+                    }
+                    let v = bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.feed.post", "record": record }))).await?;
+                    Ok(bsky_web_url(&st(&v, "uri"), &s.handle))
+                } else {
+                    // no photo: the words, and a card for the note on your site
+                    let words = fit(&text, 300);
+                    bsky_post(&words, &link, &title, &fit(&text, 200), "").await
+                }
+            }
+            .await,
+            "mastodon" => async {
+                let words = fit(&text, if link.is_empty() { 500 } else { 500 - 23 - 2 }); // Mastodon counts every link as 23
+                let status = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
+                let mut body = json!({ "status": status, "visibility": "public" });
+                if let Some(b) = &bytes {
+                    body["media_ids"] = json!([masto_media(b, &alt).await?]);
+                }
+                masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(body)).await.map(|v| st(&v, "url"))
+            }
+            .await,
+            _ => Err("Unknown network.".into()),
+        };
+        out.push(match r {
+            Ok(url) => Posted { network: n, url, error: String::new() },
+            Err(error) => Posted { network: n, url: String::new(), error },
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod note_tests {
+    use super::*;
+    #[test]
+    fn notes_become_paragraphs_with_links() {
+        let h = note_html("Hello <you> & me\nsecond line\n\nSee https://example.com/a?b=1&c=2.");
+        assert_eq!(h, "<p>Hello &lt;you&gt; &amp; me<br>\nsecond line</p>\n<p>See <a href=\"https://example.com/a?b=1&amp;c=2\">https://example.com/a?b=1&amp;c=2</a>.</p>");
+    }
+    #[test]
+    fn long_notes_are_shortened_on_a_word() {
+        assert_eq!(fit("short", 10), "short");
+        let f = fit("one two three four five six", 15);
+        assert!(f.chars().count() <= 15 && f.ends_with('…'), "{f}");
+        assert_eq!(f, "one two three…");
     }
 }
