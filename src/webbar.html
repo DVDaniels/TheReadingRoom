@@ -16,37 +16,43 @@
   html[data-theme="dark"] { --bg: #11151B; --surface: #181D25; --ink: #E5E9EF; --muted: #A6B1C0; --line: #29313C; --accent: #3CC39E; --accent-soft: #17302A; color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--surface); color: var(--ink); font: 13px/1 "Geist", -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
-  body { display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid var(--line); }
-  button { border: 0; background: none; color: var(--ink); height: 30px; min-width: 30px; padding: 0 8px; border-radius: 7px; display: inline-grid; place-items: center; font: inherit; cursor: default; }
+  body { display: flex; align-items: center; gap: 6px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .nav { display: flex; gap: 2px; }
+  button { border: 0; background: none; color: var(--ink); height: 34px; min-width: 34px; padding: 0 8px; border-radius: 9px; display: inline-grid; place-items: center; font: inherit; cursor: default; }
   button:hover { background: var(--accent-soft); color: var(--accent); }
   button:disabled { opacity: .35; background: none; }
-  button svg { width: 17px; height: 17px; }
-  form { flex: 1; min-width: 0; margin: 0 6px; position: relative; }
-  input { width: 100%; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 12.5px/1 "Geist Mono", ui-monospace, monospace; padding: 0 10px 0 28px; outline: none; -webkit-user-select: text; user-select: text; text-overflow: ellipsis; }
+  button svg { width: 18px; height: 18px; }
+  form { flex: 1; min-width: 0; max-width: 760px; margin: 0 auto; position: relative; }
+  input { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: 14px/1 "Geist", -apple-system, sans-serif; padding: 0 14px 0 34px; text-align: left; outline: none; -webkit-user-select: text; user-select: text; text-overflow: ellipsis; }
   input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-  .lock { position: absolute; left: 9px; top: 8px; width: 13px; height: 13px; color: var(--muted); pointer-events: none; }
-  .bar { position: absolute; left: 6px; right: 6px; bottom: 1px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: left; transform: scaleX(0); opacity: 0; }
+  .lock { position: absolute; left: 13px; top: 11px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
+  .bar { position: absolute; left: 10px; right: 10px; bottom: 1px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: left; transform: scaleX(0); opacity: 0; }
   body.loading .bar { opacity: 1; animation: load 2.4s ease-out forwards; }
   @keyframes load { from { transform: scaleX(.05); } to { transform: scaleX(.85); } }
   .txt { font-weight: 500; padding: 0 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
   .txt svg { width: 15px; height: 15px; }
-  .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+  .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+  .end { display: flex; align-items: center; gap: 4px; }
   @media (max-width: 640px) { .txt span { display: none; } }
 </style>
 </head>
 <body>
+  <div class="nav">
   <button id="back" title="Back (⌘[)" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
   <button id="fwd" title="Forward (⌘])" aria-label="Forward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
   <button id="reload" title="Reload (⌘R)" aria-label="Reload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+  </div>
   <form id="go">
     <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
     <input id="addr" type="text" spellcheck="false" autocomplete="off" aria-label="Web address" placeholder="Type an address or search">
     <span class="bar"></span>
   </form>
+  <div class="end">
   <button id="copy" title="Copy the link" aria-label="Copy the link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
   <button id="follow" class="txt" title="Find this site's feed and add it" aria-label="Follow site"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 11a8 8 0 0 1 8 8M5 5a14 14 0 0 1 14 14"/><circle cx="6" cy="18" r="1.4" fill="currentColor"/></svg><span>Follow site</span></button>
   <span class="sep"></span>
   <button id="browser" class="txt" title="Open in your browser (⇧⌘O)" aria-label="Open in browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg><span>Open in browser</span></button>
+  </div>
   <script src="webbar.js"></script>
 </body>
 </html>

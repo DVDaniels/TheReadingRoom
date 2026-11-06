@@ -392,7 +392,7 @@ fn web_url(url: &str) -> Result<url::Url, String> {
 /// toolbar of the app's own (back, forward, reload, the address, open in your browser, follow the site) and
 /// the page itself below it. The page never gets to talk to the app; only the toolbar does.
 #[cfg(desktop)]
-const WEB_BAR: f64 = 48.0;
+const WEB_BAR: f64 = 56.0;
 
 #[cfg(desktop)]
 #[derive(Clone, Serialize)]
