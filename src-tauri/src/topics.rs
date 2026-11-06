@@ -1,5 +1,6 @@
-//! Search a topic from Discover: current coverage from Google News, and personal sites from Marginalia,
-//! a search engine for the small, independent web. Nothing is saved until you follow something.
+//! Search a topic from Discover: current coverage from Google News, personal sites from Marginalia (a search
+//! engine for the small, independent web), and fresh posts from Kagi Small Web (an open list of personal
+//! sites, with a free feed of their newest posts). Nothing is saved until you follow something.
 
 use regex::Regex;
 use serde::Serialize;
@@ -31,6 +32,64 @@ pub struct Results {
     pub news_error: String,
     pub web: Vec<WebHit>,
     pub web_error: String,
+    /// recent posts from Kagi Small Web that mention the words
+    pub small: Vec<SmallPost>,
+}
+
+/// A recent post from a personal site, from Kagi Small Web's feed.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct SmallPost {
+    pub title: String,
+    pub link: String,
+    pub site: String,
+    pub summary: String,
+    pub image: String,
+    pub date: String,
+}
+
+const SMALLWEB_FEED: &str = "https://kagi.com/api/v1/smallweb/feed/";
+
+/// Kagi refreshes its feed every few hours; keep a copy for an hour so Discover doesn't ask every time.
+pub async fn smallweb(client: &reqwest::Client) -> Result<Vec<SmallPost>, String> {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<SmallPost>)>> = std::sync::Mutex::new(None);
+    if let Some((at, posts)) = CACHE.lock().unwrap().as_ref() {
+        if at.elapsed() < Duration::from_secs(3600) && !posts.is_empty() {
+            return Ok(posts.clone());
+        }
+    }
+    let (body, _, _) = crate::feeds::get(client, SMALLWEB_FEED).await.map_err(|_| "Couldn’t reach Kagi Small Web.".to_string())?;
+    let parsed = crate::feeds::parse(&body, SMALLWEB_FEED).map_err(|_| "Kagi Small Web sent something unexpected.".to_string())?;
+    let mut seen = std::collections::HashSet::new();
+    let posts: Vec<SmallPost> = parsed.items.into_iter().filter_map(|i| {
+        let site = url::Url::parse(&i.link).ok()?.host_str()?.trim_start_matches("www.").to_string();
+        if i.title.trim().is_empty() || !seen.insert(i.link.clone()) { return None; }
+        let summary: String = html_escape::decode_html_entities(&strip_tags(&i.summary)).split_whitespace().collect::<Vec<_>>().join(" ");
+        let summary = if summary.chars().count() > 240 { format!("{}…", summary.chars().take(237).collect::<String>().trim_end()) } else { summary };
+        Some(SmallPost { title: text(&i.title), link: i.link, site, summary, image: i.image, date: i.date })
+    }).collect();
+    if !posts.is_empty() {
+        *CACHE.lock().unwrap() = Some((std::time::Instant::now(), posts.clone()));
+    }
+    Ok(posts)
+}
+
+fn strip_tags(s: &str) -> String {
+    static TAGS: OnceLock<Regex> = OnceLock::new();
+    re(&TAGS, r"(?s)<[^>]*>").replace_all(s, " ").into_owned()
+}
+
+/// Posts that mention the words: every word in the title counts most, then the summary and the site's name.
+pub fn smallweb_matches(posts: &[SmallPost], query: &str) -> Vec<SmallPost> {
+    let words: Vec<String> = query.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 2).map(String::from).collect();
+    if words.is_empty() { return vec![]; }
+    let mut scored: Vec<(usize, &SmallPost)> = posts.iter().filter_map(|p| {
+        let (t, rest) = (p.title.to_lowercase(), format!("{} {}", p.summary, p.site).to_lowercase());
+        let hits = words.iter().filter(|w| t.contains(w.as_str()) || rest.contains(w.as_str())).count();
+        if hits == 0 || (words.len() > 1 && hits * 2 < words.len()) { return None; }
+        Some((hits * 2 + words.iter().filter(|w| t.contains(w.as_str())).count() * 3, p))
+    }).collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.date.cmp(&a.1.date)));
+    scored.into_iter().take(12).map(|(_, p)| p.clone()).collect()
 }
 
 fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
@@ -95,8 +154,9 @@ async fn small_web(client: &reqwest::Client, query: &str) -> Result<Vec<WebHit>,
 pub async fn search(client: &reqwest::Client, query: &str) -> Results {
     let q = query.trim();
     let feed = crate::feeds::google_news_url(q);
-    let (n, w) = tokio::join!(news(client, &feed), small_web(client, q));
+    let (n, w, sw) = tokio::join!(news(client, &feed), small_web(client, q), smallweb(client));
     let mut out = Results { query: q.to_string(), feed, ..Default::default() };
+    if let Ok(posts) = sw { out.small = smallweb_matches(&posts, q); }
     match n { Ok(v) => out.news = v, Err(e) => out.news_error = e }
     match w { Ok(v) => out.web = v, Err(e) => out.web_error = e }
     out
@@ -105,6 +165,15 @@ pub async fn search(client: &reqwest::Client, query: &str) -> Results {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn small_web_matches_the_words() {
+        let p = |t: &str, s: &str| SmallPost { title: t.into(), summary: s.into(), site: "x.com".into(), ..Default::default() };
+        let posts = vec![p("Notes on home espresso", ""), p("Gardening", "my espresso machine broke"), p("Cats", "nothing here")];
+        let m = smallweb_matches(&posts, "home espresso");
+        assert_eq!(m.iter().map(|x| x.title.as_str()).collect::<Vec<_>>(), vec!["Notes on home espresso", "Gardening"]);
+        assert!(smallweb_matches(&posts, "a").is_empty());
+    }
 
     #[test]
     fn reads_google_news_items_with_their_outlet() {

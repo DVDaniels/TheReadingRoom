@@ -1146,6 +1146,12 @@ async fn topic_search(state: State<'_, Shared>, query: String) -> Result<topics:
     Ok(topics::search(&state.client, &query).await)
 }
 
+/// The newest posts from personal sites, from Kagi Small Web, for Discover.
+#[tauri::command]
+async fn smallweb_feed(state: State<'_, Shared>) -> Result<Vec<topics::SmallPost>, String> {
+    topics::smallweb(&state.client).await.map(|p| p.into_iter().take(30).collect())
+}
+
 #[tauri::command]
 async fn discover_scan(app: AppHandle, state: State<'_, Shared>) -> Result<Option<discover::Report>, String> {
     if state.discovering.swap(true, Ordering::SeqCst) {
@@ -1520,6 +1526,7 @@ pub fn run() {
             social::social_shared,
             social::social_blog_mentions,
             topic_search,
+            smallweb_feed,
             set_badge,
             book_text,
             audiobook,

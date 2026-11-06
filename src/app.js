@@ -13,7 +13,7 @@
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
   // Discover's results (see the Discover section)
-  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map() };
+  const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map(), small: null, smallErr: '', smallMore: false };
   const ICONS = {
     site: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="18" height="18"><path d="M4 11l8-6.5 8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
     books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg>',
@@ -1872,7 +1872,7 @@
     try { D.res = await invoke('topic_search', { query: q }); } catch (e) { D.res = { query: q, news: [], web: [], news_error: msg(e), web_error: '' }; }
     D.searching = false; if (S.view === 'discover') renderList();
     // Featured pictures fill in as they arrive
-    const want = (D.res.web || []).map(w => w.url).filter(u => !D.imgs.has(u));
+    const want = [...(D.res.web || []).map(w => w.url), ...(D.res.small || []).map(p => p.link)].filter(u => !D.imgs.has(u));
     if (want.length) invoke('page_images', { urls: want }).then(list => {
       for (const [u, img] of list) D.imgs.set(u, img || '');
       if (S.view === 'discover' && D.res?.query === q) renderList();
@@ -1908,6 +1908,8 @@
     }).join('')}</div>`;
     else out += `<p class="note">${esc(r.news_error || 'No news stories came up.')}</p>`;
     if (!r.web.length) out += webPart;
+    if (r.small?.length) out += `<div class="t-head"><h2 class="sec-h">Fresh from personal sites</h2></div><p class="sec-p">Recent posts about “${esc(r.query)}” from the small web.</p><div class="t-results">${r.small.map(smallHit).join('')}</div>
+      <p class="disc-foot">From <a href="https://kagi.com/smallweb">Kagi Small Web</a>, an open list of personal sites and their newest posts.</p>`;
     return out + `<hr class="t-rule">`;
   }
   // A result's picture: the page's featured image, a soft placeholder while it loads, or a tile with the site's initial
@@ -1932,7 +1934,40 @@
   }
 
   function discoverHtml() {
-    return searchHtml() + blogrollHtml();
+    return searchHtml() + (D.res || D.searching ? '' : smallWebHtml()) + blogrollHtml();
+  }
+  // ---- Kagi Small Web: the newest posts from an open list of personal sites, with a Follow button for each site
+  function smallHit(p) {
+    const on = followsHost(p.site) || D.added.has(p.site);
+    return `<article class="t-hit">${tThumb(D.imgs.get(p.link), p.site, p.link, !D.imgs.has(p.link))}<div class="t-body"><a class="t-title" href="${esc(p.link)}">${esc(p.title)}</a>
+      <span class="t-site">${esc(p.site)}${p.date ? ` · ${esc(agoWords(p.date))}` : ''}</span>${p.summary ? `<p>${esc(p.summary)}</p>` : ''}
+      <div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="btn" data-topic="site" data-url="${esc('https://' + p.site + '/')}" data-site="${esc(p.site)}">Follow ${esc(p.site)}</button>`}
+        ${D.err?.[p.site] ? `<span class="fol-err">${esc(D.err[p.site])}</span>` : ''}</div></div></article>`;
+  }
+  let smallLoading = false;
+  async function loadSmallWeb() {
+    if (smallLoading || D.small) return; smallLoading = true;
+    try { D.small = await invoke('smallweb_feed'); D.smallErr = ''; } catch (e) { D.smallErr = msg(e); }
+    smallLoading = false;
+    if (S.view === 'discover') renderList();
+    const want = (D.small || []).slice(0, 24).map(p => p.link).filter(u => !D.imgs.has(u));
+    if (want.length) invoke('page_images', { urls: want }).then(list => {
+      for (const [u, img] of list) D.imgs.set(u, img || '');
+      if (S.view === 'discover') renderList();
+    }).catch(() => {});
+  }
+  function smallWebHtml() {
+    const head = `<h2 class="sec-h">Fresh from the small web</h2><p class="disc-intro">The newest posts from personal sites, people writing on their own corner of the web. Follow the ones you like.</p>`;
+    if (!D.small) {
+      if (D.smallErr) return head + `<p class="note">${esc(D.smallErr)} <button class="linkish" data-small="retry">Try again</button></p><hr class="t-rule">`;
+      setTimeout(loadSmallWeb, 0);
+      return head + `<p class="note">Loading the newest posts…</p><hr class="t-rule">`;
+    }
+    const fresh = D.small.filter(p => !followsHost(p.site) || D.added.has(p.site));
+    const show = fresh.slice(0, D.smallMore ? 24 : 6);
+    return head + `<div class="t-results">${show.map(smallHit).join('')}</div>
+      ${!D.smallMore && fresh.length > 6 ? '<button class="btn" data-small="more">Show more</button>' : ''}
+      <p class="disc-foot">From <a href="https://kagi.com/smallweb">Kagi Small Web</a>, an open list of personal sites. Anyone can suggest a site, including yours.</p><hr class="t-rule">`;
   }
   function blogrollHtml() {
     const intro = `<h2 class="sec-h">Recommended by the writers you read</h2><p class="disc-intro">The writers you read recommend these blogs, in their blogrolls or by linking to them often. The more of your sites that point to one, the higher it appears.</p>`;
@@ -3312,6 +3347,8 @@
     }
     const jz = e.target.closest('[data-job]');
     if (jz) { jobAction(jz); return; }
+    const sm = e.target.closest('[data-small]');
+    if (sm) { if (sm.dataset.small === 'more') D.smallMore = true; if (sm.dataset.small === 'retry') { D.smallErr = ''; D.small = null; } renderList(); return; }
     const tz = e.target.closest('[data-topic]');
     if (tz) { topicAction(tz); return; }
     const dz = e.target.closest('[data-disc]');
