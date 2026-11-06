@@ -1,0 +1,53 @@
+The Reading Room is a calm, private place to read the web, written by people.
+
+Follow the blogs, writers and news you choose. There's no algorithm deciding what you see and nothing pushed in because it gets clicks: every post from the sites you follow, newest first, in a clean reader made for reading.
+
+PEOPLE FIRST
+• Today: a morning briefing with the time, the weather and what's new, with people's posts up front
+• People: just the individuals writing on their own sites, separate from the big publications
+• Discover: blogs recommended by the writers you already read, plus a search that finds news and small personal sites on any topic
+
+CONVERSATIONS
+• Connect your Mastodon or Bluesky account to see what the people you follow are sharing and read whole reply threads
+• Answer right from the app, follow the people you read, and find the blogs of the people you follow
+• Hide, block or report spam accounts
+
+NOTES ON YOUR OWN SITE
+• Post a quick thought, with a photo and a link, to your own WordPress site first, then share copies to Mastodon and Bluesky that link back home
+
+BOOKS AND AUDIOBOOKS
+• Free classics from Standard Ebooks, read a page at a time with your choice of text size
+• Free audiobooks from LibriVox, with chapters and speed control
+• A daily reading goal and streak, if you'd like one
+
+HELP WANTED
+• Job listings from well-known boards, laid out like the classifieds, with your own local search
+• Circle the ones you like and track them from circled to applied to offer
+
+READ YOUR WAY
+• A clean reader that shows just the article, with its pictures, side by side with your list on a big screen
+• Listen to any story read aloud, with your choice of voice
+• Text size, line width, and light, sepia or dark
+• Keyboard shortcuts: j and k to move, o to open the original, s to save
+• A sidebar that folds down to icons, and a built-in browser with its own toolbar
+
+KEEP WHAT MATTERS
+• Read later for stories you want to come back to
+• Highlight passages and add notes; Annotated collects them all, ready to export
+• Recently read, so nothing gets lost
+
+FOLLOW ANYTHING
+• Paste a website and The Reading Room finds its RSS, Atom or JSON feed
+• Type a few words to follow that topic as a news search
+• Follow people on Mastodon and Bluesky, YouTube channels and podcasts, too
+• Bring your subscriptions from another reader with OPML, folders included
+• Mute words you're tired of and hide websites from your news searches
+
+ON ALL YOUR DEVICES
+• The Reading Room is on iPhone and iPad too. Turn on sync and your feeds, folders, Read later, highlights, books and notes stay the same everywhere, through a folder in your own iCloud Drive. Your sign-ins follow through iCloud Keychain.
+
+NEW TO RSS?
+A short guide inside the app explains how feeds work, how to start your own site, and suggests a few good people to follow.
+
+PRIVATE BY DESIGN
+No account, no tracking, no ads. Everything stays on your devices, and in your own iCloud Drive if you turn on sync. The app talks directly to the sites and services you choose.
