@@ -547,7 +547,7 @@ pub async fn masto_begin(server: String) -> Result<String, String> {
     }
     let app = call(with_json(
         client().post(format!("https://{host}/api/v1/apps")),
-        &json!({ "client_name": "The Reading Room", "redirect_uris": OOB, "scopes": MASTO_SCOPES, "website": "https://daviddaniels.com/reading-room/" }),
+        &json!({ "client_name": "The Reading Room", "redirect_uris": OOB, "scopes": MASTO_SCOPES, "website": "https://readingroomapp.com/" }),
     ))
     .await
     .map_err(|e| if e.0 == 0 { format!("Couldn't reach {host}. Check the server name.") } else { explain(e) })?;

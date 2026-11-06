@@ -110,6 +110,9 @@ def prepare(platform, version_string, build_no):
         "description": text(version_string, f"description-{kind}.txt"),
         "promotionalText": text(version_string, "promo.txt"),
         "keywords": text(version_string, "keywords.txt"),
+        # the app's own website
+        "supportUrl": "https://readingroomapp.com/support/",
+        "marketingUrl": "https://readingroomapp.com/",
     }
     attrs = {k: v_ for k, v_ in attrs.items() if v_}
     locs = call("GET", f"/appStoreVersions/{v['id']}/appStoreVersionLocalizations")["data"]
@@ -120,6 +123,20 @@ def prepare(platform, version_string, build_no):
         call("PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {"type": "appStoreVersionLocalizations",
              "id": loc["id"], "attributes": attrs}})
         note("Listing", f"{loc['attributes'].get('locale')}: " + ", ".join(sorted(attrs)))
+
+    # The privacy policy link lives on the app's info, which can only change while a version is being prepared
+    PRIVACY = "https://readingroomapp.com/privacy/"
+    for info in call("GET", f"/apps/{AID}/appInfos")["data"]:
+        if info["attributes"].get("appStoreState") in ("READY_FOR_DISTRIBUTION", "READY_FOR_SALE", "REPLACED_WITH_NEW_INFO"):
+            continue
+        for il in call("GET", f"/appInfos/{info['id']}/appInfoLocalizations")["data"]:
+            if il["attributes"].get("privacyPolicyUrl") != PRIVACY:
+                try:
+                    call("PATCH", f"/appInfoLocalizations/{il['id']}", json={"data": {"type": "appInfoLocalizations", "id": il["id"],
+                         "attributes": {"privacyPolicyUrl": PRIVACY}}})
+                    note("Privacy policy", f"{il['attributes'].get('locale')}: {PRIVACY}")
+                except SystemExit:
+                    note("Privacy policy", "Couldn't change it on this version; it stays as it was")
 
     notes = text(version_string, "review-notes.txt")
     if notes:

@@ -16,9 +16,9 @@ Character limits are Apple's.
 | Price | Free |
 | Seller / developer | David Daniels (comes from an Individual developer account) |
 | Copyright | © 2026 David Daniels |
-| Support URL | https://daviddaniels.com/reading-room/ |
-| Marketing URL | https://daviddaniels.com/reading-room/ |
-| Privacy Policy URL | https://daviddaniels.com/reading-room/privacy/ |
+| Support URL | https://readingroomapp.com/support/ |
+| Marketing URL | https://readingroomapp.com/ |
+| Privacy Policy URL | https://readingroomapp.com/privacy/ |
 
 ## Promotional text (170)
 
