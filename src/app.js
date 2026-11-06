@@ -3751,6 +3751,13 @@
   listen('state-changed', load);
   listen('menu-refresh', refresh);
   listen('menu-add-feed', openAdd);
+  // The app closed unexpectedly last time: say so, with the details to send along
+  listen('last-crash', e => {
+    const t = String(e.payload || '');
+    showBanner(`<span>The Reading Room closed unexpectedly last time. If you send the details to the developer, it helps fix it.</span><button class="btn" id="crashCopy">Copy details</button><button class="btn" id="crashOk">OK</button>`, false, 'confirm');
+    $('crashCopy').onclick = async () => { try { await navigator.clipboard.writeText(t); status('Details copied.'); } catch { status(t); } hideBanner(); };
+    $('crashOk').onclick = hideBanner;
+  });
   // "Follow site" in the web window: open Add a feed with that page's address, ready to go
   listen('web-follow', e => { const u = String(e.payload || ''); if (!isWeb(u)) return; openAdd(); $('feedUrl').value = u; $('addForm').requestSubmit(); });
   listen('menu-new-folder', openNewFolder);

@@ -407,13 +407,35 @@ fn web_page(app: &AppHandle) -> Option<tauri::Webview> {
     app.get_webview("webpage")
 }
 
+/// Where the web window's page is, as the page itself reported it. The page is never asked while it's loading:
+/// asking from inside WebKit's own callbacks could trip Rust up, and there it can't recover (the app would quit).
 #[cfg(desktop)]
-fn web_tell(app: &AppHandle, loading: bool) {
-    if let Some(p) = web_page(app) {
-        let url = p.url().map(|u| u.to_string()).unwrap_or_default();
-        let title = app.get_window("web").and_then(|w| w.title().ok()).unwrap_or_default();
-        let _ = app.emit_to("webbar", "web-state", WebState { url, title, loading });
-    }
+static WEB_NOW: std::sync::Mutex<Option<WebState>> = std::sync::Mutex::new(None);
+
+#[cfg(desktop)]
+fn web_now() -> WebState {
+    WEB_NOW.lock().map(|g| g.clone()).ok().flatten().unwrap_or(WebState { url: String::new(), title: String::new(), loading: false })
+}
+
+/// Note what changed and tell the toolbar, off WebKit's callback.
+#[cfg(desktop)]
+fn web_tell(app: &AppHandle, url: Option<String>, title: Option<String>, loading: Option<bool>) {
+    let now = {
+        let Ok(mut g) = WEB_NOW.lock() else { return };
+        let cur = g.get_or_insert(WebState { url: String::new(), title: String::new(), loading: false });
+        if let Some(u) = url { cur.url = u; }
+        if let Some(t) = title { cur.title = t; }
+        if let Some(l) = loading { cur.loading = l; }
+        cur.clone()
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(w) = app.get_window("web") {
+            let t = now.title.trim();
+            let _ = w.set_title(if t.is_empty() { "The Reading Room — Web" } else { t });
+        }
+        let _ = app.emit_to("webbar", "web-state", now);
+    });
 }
 
 #[cfg(desktop)]
@@ -465,15 +487,11 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
             tauri::webview::NewWindowResponse::Deny
         })
         .on_page_load(|wv, p| {
-            let app = wv.app_handle().clone();
-            web_tell(&app, matches!(p.event(), tauri::webview::PageLoadEvent::Started));
+            let started = matches!(p.event(), tauri::webview::PageLoadEvent::Started);
+            web_tell(wv.app_handle(), Some(p.url().to_string()), started.then(String::new), Some(started));
         })
         .on_document_title_changed(|wv, title| {
-            let app = wv.app_handle().clone();
-            if let Some(w) = app.get_window("web") {
-                let _ = w.set_title(if title.trim().is_empty() { "The Reading Room — Web" } else { title.trim() });
-            }
-            web_tell(&app, false);
+            web_tell(wv.app_handle(), None, Some(title), None);
         });
     w.add_child(bar, tauri::LogicalPosition::new(0.0, 0.0), tauri::LogicalSize::new(s.width, WEB_BAR))
         .map_err(|e| e.to_string())?;
@@ -491,7 +509,7 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
 /// The toolbar's buttons: back, forward, reload, stop, go to an address, open in your browser.
 #[cfg(desktop)]
 #[tauri::command]
-fn web_nav(app: AppHandle, action: String, url: Option<String>) -> Result<(), String> {
+async fn web_nav(app: AppHandle, action: String, url: Option<String>) -> Result<(), String> {
     let p = web_page(&app).ok_or("The web window is closed.")?;
     match action.as_str() {
         "back" => p.eval("history.back()").map_err(|e| e.to_string())?,
@@ -507,12 +525,14 @@ fn web_nav(app: AppHandle, action: String, url: Option<String>) -> Result<(), St
             p.navigate(web_url(&full)?).map_err(|e| e.to_string())?;
         }
         "browser" => {
-            let u = p.url().map_err(|e| e.to_string())?;
+            let u = web_now().url;
+            if u.is_empty() { return Err("The page hasn't loaded yet.".into()); }
             app.opener().open_url(u.as_str(), None::<&str>).map_err(|_| "Couldn't open your browser.".to_string())?;
         }
         "follow" => {
-            let u = p.url().map_err(|e| e.to_string())?;
-            let _ = app.emit_to("main", "web-follow", u.to_string());
+            let u = web_now().url;
+            if u.is_empty() { return Err("The page hasn't loaded yet.".into()); }
+            let _ = app.emit_to("main", "web-follow", u);
             if let Some(m) = app.get_webview_window("main") {
                 let _ = m.show();
                 let _ = m.set_focus();
@@ -526,10 +546,8 @@ fn web_nav(app: AppHandle, action: String, url: Option<String>) -> Result<(), St
 /// Where the page is now, for the toolbar when it first loads.
 #[cfg(desktop)]
 #[tauri::command]
-fn web_state(app: AppHandle) -> WebState {
-    let url = web_page(&app).and_then(|p| p.url().ok()).map(|u| u.to_string()).unwrap_or_default();
-    let title = app.get_window("web").and_then(|w| w.title().ok()).unwrap_or_default();
-    WebState { url, title, loading: false }
+async fn web_state() -> WebState {
+    web_now()
 }
 
 #[cfg(mobile)]
@@ -1396,13 +1414,37 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+fn now_iso_utc() -> String {
+    chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // If something goes wrong in a way Rust can't recover from, write down what and where before the app closes,
+    // so the next launch can show it (crash reports from the App Store builds have no names in them).
+    std::panic::set_hook(Box::new(|info| {
+        let place = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let what = info.payload().downcast_ref::<&str>().map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned()).unwrap_or_else(|| "unknown".into());
+        let _ = std::fs::write(std::env::temp_dir().join("reading-room-last-crash.txt"),
+            format!("{} {} at {} (version {})", now_iso_utc(), what, place, env!("CARGO_PKG_VERSION")));
+        eprintln!("panic: {what} at {place}");
+    }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_icloud_folder::init())
         .setup(|app| {
+            // tell the window about a crash last time, once
+            let crash = std::env::temp_dir().join("reading-room-last-crash.txt");
+            if let Ok(t) = std::fs::read_to_string(&crash) {
+                let _ = std::fs::remove_file(&crash);
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                    let _ = h.emit_to("main", "last-crash", t);
+                });
+            }
             let handle = app.handle().clone();
             let conn = open_database(&handle)?;
             reopen_sync_folder(&conn);
