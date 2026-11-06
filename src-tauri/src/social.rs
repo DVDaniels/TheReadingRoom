@@ -1404,7 +1404,7 @@ fn note_html(text: &str) -> String {
                 last = m.end();
             }
             out.push_str(&esc_html(&p[last..]));
-            format!("<p>{}</p>", out.trim().replace('\n', "<br>\n"))
+            format!("<!-- wp:paragraph -->\n<p>{}</p>\n<!-- /wp:paragraph -->", out.trim().replace('\n', "<br>\n"))
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -1452,8 +1452,9 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
             let _ = wp(reqwest::Method::POST, &format!("/wp/v2/media/{media_id}"), Some(json!({ "alt_text": alt.trim() }))).await;
         }
         if !image.is_empty() {
+            // an image block with "click to enlarge" on, so readers can see the photo full size
             html.push_str(&format!(
-                "\n<figure class=\"wp-block-image size-large note-photo\"><img src=\"{}\" alt=\"{}\" class=\"wp-image-{media_id}\"/></figure>",
+                "\n<!-- wp:image {{\"id\":{media_id},\"sizeSlug\":\"large\",\"linkDestination\":\"none\",\"lightbox\":{{\"enabled\":true}},\"className\":\"note-photo\"}} -->\n<figure class=\"wp-block-image size-large note-photo\"><img src=\"{}\" alt=\"{}\" class=\"wp-image-{media_id}\"/></figure>\n<!-- /wp:image -->",
                 html_escape::encode_double_quoted_attribute(&image),
                 html_escape::encode_double_quoted_attribute(alt.trim())
             ));
@@ -1461,7 +1462,7 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
     }
     if link.starts_with("http") {
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
-        html.push_str(&format!("\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
+        html.push_str(&format!("\n<!-- wp:paragraph {{\"className\":\"note-link\"}} -->\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>\n<!-- /wp:paragraph -->", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
     }
     // a title is optional: without one, the site shows the note's first words
     let title = title.unwrap_or_default().trim().to_string();
@@ -1592,7 +1593,7 @@ mod note_tests {
     #[test]
     fn notes_become_paragraphs_with_links() {
         let h = note_html("Hello <you> & me\nsecond line\n\nSee https://example.com/a?b=1&c=2.");
-        assert_eq!(h, "<p>Hello &lt;you&gt; &amp; me<br>\nsecond line</p>\n<p>See <a href=\"https://example.com/a?b=1&amp;c=2\">https://example.com/a?b=1&amp;c=2</a>.</p>");
+        assert_eq!(h, "<!-- wp:paragraph -->\n<p>Hello &lt;you&gt; &amp; me<br>\nsecond line</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>See <a href=\"https://example.com/a?b=1&amp;c=2\">https://example.com/a?b=1&amp;c=2</a>.</p>\n<!-- /wp:paragraph -->");
     }
     #[test]
     fn long_notes_are_shortened_on_a_word() {
