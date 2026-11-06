@@ -3542,15 +3542,23 @@
 
   // ---- The sidebar can fold down to its icons, for smaller screens. Kept per device: the MacBook can stay slim
   // while the iMac shows everything.
-  function setSlim(on) {
+  function setSlim(on, chosen = true) {
     document.body.classList.toggle('rail-slim', on);
     $('railToggle').setAttribute('aria-pressed', String(on));
     $('railToggle').title = on ? 'Show the full sidebar (⌃⌘S)' : 'Show only icons (⌃⌘S)';
     $('railToggle').setAttribute('aria-label', on ? 'Show the full sidebar' : 'Show only icons in the sidebar');
-    try { localStorage.setItem('railSlim', on ? '1' : ''); } catch {}
+    if (chosen) try { localStorage.setItem('railSlim', on ? '1' : ''); } catch {}
     if (typeof layoutBook === 'function' && S.view === 'books' && B.open) setTimeout(layoutBook, 220);
   }
-  try { if (localStorage.getItem('railSlim') && !document.documentElement.classList.contains('ios')) setSlim(true); } catch {}
+  // On an iPad the sidebar folds to icons in portrait and opens out in landscape, until you choose with the button
+  const ipadPortrait = window.matchMedia('(min-width: 761px) and (max-width: 1100px) and (orientation: portrait)');
+  let slimSaved = null; try { slimSaved = localStorage.getItem('railSlim'); } catch {}
+  if (slimSaved !== null) { if (slimSaved && !isPhone()) setSlim(true, false); }
+  else if (IOS && !isPhone()) setSlim(ipadPortrait.matches, false);
+  ipadPortrait.addEventListener('change', () => {
+    let saved = null; try { saved = localStorage.getItem('railSlim'); } catch {}
+    if (IOS && saved === null && !isPhone()) setSlim(ipadPortrait.matches, false);
+  });
   $('railToggle').onclick = () => setSlim(!document.body.classList.contains('rail-slim'));
   // folders show as lettered tiles; the feeds inside them come back with the full sidebar
 
