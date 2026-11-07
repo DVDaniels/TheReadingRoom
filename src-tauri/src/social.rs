@@ -1387,14 +1387,77 @@ fn esc_html(s: &str) -> String {
     html_escape::encode_text(s).to_string()
 }
 
+/// Services WordPress turns into a player by itself: (provider slug, embed type), if the address is one.
+fn embeddable(url: &str) -> Option<(&'static str, &'static str)> {
+    let u = url::Url::parse(url.trim()).ok()?;
+    let host = u.host_str()?.trim_start_matches("www.").trim_start_matches("m.").to_ascii_lowercase();
+    let path = u.path();
+    match host.as_str() {
+        "youtube.com" | "music.youtube.com" if path == "/watch" || path.starts_with("/shorts/") || path.starts_with("/live/") || path == "/playlist" => Some(("youtube", "video")),
+        "youtu.be" if path.len() > 1 => Some(("youtube", "video")),
+        "vimeo.com" if path.len() > 1 => Some(("vimeo", "video")),
+        "open.spotify.com" if path.len() > 1 => Some(("spotify", "rich")),
+        "soundcloud.com" if path.len() > 1 => Some(("soundcloud", "rich")),
+        "tiktok.com" if path.contains("/video/") => Some(("tiktok", "video")),
+        _ => None,
+    }
+}
+
+/// An embed block: WordPress shows the video or player itself, not a link.
+fn embed_block(url: &str) -> Option<String> {
+    let (slug, kind) = embeddable(url)?;
+    let url = url.trim();
+    let aspect = if kind == "video" { " wp-embed-aspect-16-9 wp-has-aspect-ratio" } else { "" };
+    let attrs = json!({
+        "url": url, "type": kind, "providerNameSlug": slug, "responsive": true,
+        "className": aspect.trim(),
+    });
+    let mut attrs = attrs;
+    if aspect.is_empty() {
+        attrs.as_object_mut().unwrap().remove("className");
+    }
+    Some(format!(
+        "<!-- wp:embed {attrs} -->\n<figure class=\"wp-block-embed is-type-{kind} is-provider-{slug} wp-block-embed-{slug}{aspect}\"><div class=\"wp-block-embed__wrapper\">\n{}\n</div></figure>\n<!-- /wp:embed -->",
+        esc_html(url)
+    ))
+}
+
 /// A note's words as HTML paragraphs, with web addresses made into links.
+/// A YouTube (or Vimeo, Spotify…) address on a line of its own becomes the player.
 fn note_html(text: &str) -> String {
     static URL: OnceLock<regex::Regex> = OnceLock::new();
     let re = URL.get_or_init(|| regex::Regex::new(r#"https?://[^\s<>"]+[^\s<>".,;:!?)\]]"#).unwrap());
     text.trim()
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
-        .map(|p| {
+        .flat_map(|p| {
+            // a line that's only a playable address becomes a player; the lines around it stay words
+            let mut parts: Vec<String> = Vec::new();
+            let mut words: Vec<&str> = Vec::new();
+            for line in p.lines() {
+                match embed_block(line).filter(|_| !line.trim().contains(' ')) {
+                    Some(block) => {
+                        if !words.is_empty() {
+                            parts.push(para(&words.join("\n"), re));
+                            words.clear();
+                        }
+                        parts.push(block);
+                    }
+                    None => words.push(line),
+                }
+            }
+            if !words.is_empty() && !words.join("").trim().is_empty() {
+                parts.push(para(&words.join("\n"), re));
+            }
+            parts
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn para(p: &str, re: &regex::Regex) -> String {
+    {
+        {
             let mut out = String::new();
             let mut last = 0;
             for m in re.find_iter(p) {
@@ -1405,9 +1468,8 @@ fn note_html(text: &str) -> String {
             }
             out.push_str(&esc_html(&p[last..]));
             format!("<!-- wp:paragraph -->\n<p>{}</p>\n<!-- /wp:paragraph -->", out.trim().replace('\n', "<br>\n"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        }
+    }
 }
 
 /// The Notes category's id, made the first time.
@@ -1460,7 +1522,11 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
             ));
         }
     }
-    if link.starts_with("http") {
+    // a video you're writing about plays right in the post (unless the note already shows it)
+    if let Some(block) = embed_block(&link).filter(|_| !html.contains(&format!("\"url\":\"{}\"", link.trim()))) {
+        html.push('\n');
+        html.push_str(&block);
+    } else if link.starts_with("http") && embeddable(&link).is_none() {
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
         html.push_str(&format!("\n<!-- wp:paragraph {{\"className\":\"note-link\"}} -->\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>\n<!-- /wp:paragraph -->", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
     }
@@ -1603,3 +1669,23 @@ mod note_tests {
         assert_eq!(f, "one two three…");
     }
 }
+
+#[cfg(test)]
+mod embed_tests {
+    use super::*;
+
+    #[test]
+    fn video_addresses_become_players() {
+        let h = note_html("Worth a watch.\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ\n\nMore at https://youtu.be/abc in a sentence.");
+        assert!(h.contains("<!-- wp:embed {"));
+        assert!(h.contains("\"providerNameSlug\":\"youtube\""));
+        assert!(h.contains("<p>Worth a watch.</p>"));
+        // inside a sentence it stays a link
+        assert!(h.contains("<a href=\"https://youtu.be/abc\">"));
+        assert_eq!(h.matches("wp:embed {").count(), 1);
+        assert!(embed_block("https://open.spotify.com/episode/x").unwrap().contains("is-type-rich"));
+        assert!(embeddable("https://www.youtube.com/@someone").is_none());
+        assert!(embeddable("https://daverupert.com/2026/post/").is_none());
+    }
+}
+
