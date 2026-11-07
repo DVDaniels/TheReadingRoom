@@ -2903,6 +2903,8 @@
     S.readerId = null; articleFor = null; hidePops();
     // A video stops when you leave it; a podcast that's playing keeps going until the next story
     const au = $('rAudio'); if (!au || au.paused) { $('rMedia').innerHTML = ''; $('rMedia').hidden = true; }
+    // videos inside the story stop too (a hidden player keeps playing otherwise)
+    $('rBody').querySelectorAll('.r-video').forEach(v => v.remove());
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide();
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
