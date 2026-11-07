@@ -5,7 +5,7 @@
 
   const $ = id => document.getElementById(id);
   // view: 'today' | 'all' | 'saved' | 'annotated' | 'recent' | 'folder:<id>' | <feed id number>
-  const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
+  const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], lists: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
   const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'shared', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
@@ -45,6 +45,9 @@
   const msg = e => (typeof e === 'string' ? e : e?.message) || 'Something went wrong. Try again.';
   const fmtCount = n => n > 999 ? '1K+' : (n || '');
   const folderOf = v => typeof v === 'string' && v.startsWith('folder:') ? folderById(v.slice(7)) : null;
+  // Followed lists (dynamic OPML): each keeps its feeds in a folder of its own.
+  const listOfFolder = id => S.lists.find(l => l.folder_id === id) || null;
+  const LIST_MARK = '<span class="listmark" title="A followed list: feeds that join it are added for you" aria-label="Followed list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h7"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span>';
   const DAY = 864e5;
 
   // ------------------------------------------------------------ iPhone and iPad
@@ -247,12 +250,12 @@
   const unreadIn = view => S.items.filter(i => !i.read && inScope(i, view) && !(mutesApply(view) && isMuted(i)) && !isFolded(i, view)).length;
 
   // ------------------------------------------------------------ render: sidebar
-  function navButton(view, label, count, { icon = '', fav = null, err = '', title = '', ini = '' } = {}) {
+  function navButton(view, label, count, { icon = '', fav = null, err = '', title = '', ini = '', mark = '' } = {}) {
     const lead = ini ? `<span class="slim-ini" style="background:hsl(${hueFor(ini)} 35% 40%)">${esc((ini.trim()[0] || '?').toUpperCase())}</span>`
       : icon ? `<span class="navicon">${icon}</span>`
       : fav ? `<span class="fav" style="background:hsl(${hueFor(fav.url)} 45% 42%)">${esc((fav.title || '?').trim()[0] || '?')}</span>` : '';
     const tail = err ? '<span class="err" aria-label="Problem with this feed"></span>' : `<span class="count">${fmtCount(count)}</span>`;
-    return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title || label)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${tail}</button>`;
+    return `<button data-view="${esc(String(view))}" aria-current="${String(S.view) === String(view)}" title="${esc(title || label)}"${fav ? ` draggable="true" data-feed="${fav.id}"` : ''}>${lead}<span class="name">${esc(label)}</span>${mark}${tail}</button>`;
   }
   const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
 
@@ -280,9 +283,10 @@
     for (const folder of S.folders) {
       const open = !collapsed.has(folder.id);
       const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f));
-      html += `<div class="folder" data-folder="${folder.id}">
+      const fl = listOfFolder(folder.id);
+      html += `<div class="folder${fl ? ' is-list' : ''}" data-folder="${folder.id}">
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
-          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name })}
+          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name, mark: fl ? LIST_MARK : '', title: fl ? `${folder.name}: a followed list` : '' })}
         </div>`;
       if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
     }
@@ -360,7 +364,9 @@
         savePrefs(); render();
         status(kindOf(f) === 'person' ? `${f.title} counts as a person: it shows in People and leads Today.` : `${f.title} counts as a publication.`);
       };
+      const leftList = S.lists.find(l => l.gone.includes(f.url));
       if (f.status === 'error') showBanner(`This feed couldn't be read last time: ${esc(f.error)}`, true);
+      else if (leftList) showBanner(`<span>${esc(f.title)} is no longer in the ${esc(leftList.title)} list. Keep following it?</span><button class="btn primary" id="listKeep" data-list="${esc(leftList.url)}" data-feedurl="${esc(f.url)}">Keep following</button><button class="btn danger" id="removeFeed">Unfollow</button>`, false, 'feed-error');
       else if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'annotated' && S.highlights.length) {
       bar.hidden = false;
@@ -385,6 +391,20 @@
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" data-disc="scan"${D.running ? ' disabled' : ''}>${D.running ? 'Looking…' : 'Look again'}</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (folder && listOfFolder(folder.id)) {
+      const l = listOfFolder(folder.id);
+      bar.hidden = false;
+      const when = l.checked ? agoWords(l.checked) : 'not yet';
+      bar.innerHTML = `<span class="note listinfo">${LIST_MARK}Followed list · ${l.count} ${l.count === 1 ? 'feed' : 'feeds'} · checked ${esc(when)}</span>
+        <button class="btn" id="listCheck" data-list="${esc(l.url)}">Check list now</button>
+        <label class="kindpick"><input type="checkbox" id="listAuto" data-list="${esc(l.url)}"${l.auto_add ? ' checked' : ''}> Add new feeds automatically</label>
+        <button class="btn" id="listCopy" data-list="${esc(l.url)}">Copy list address</button>
+        <button class="btn" id="renameFolder">Rename</button><button class="btn danger" id="listUnfollow" data-list="${esc(l.url)}">Unfollow list</button>`;
+      if (l.error) showBanner(`<span>The list couldn’t be checked last time: ${esc(l.error)} Your feeds from it are unchanged.</span>`, true, 'feed-error');
+      else if (l.pending.length) {
+        const names = l.pending.slice(0, 3).map(p => p.title).join(', ') + (l.pending.length > 3 ? ` and ${l.pending.length - 3} more` : '');
+        showBanner(`<span>${l.pending.length} new ${l.pending.length === 1 ? 'feed' : 'feeds'} joined ${esc(l.title)}: ${esc(names)}.</span><button class="btn primary" id="listTake" data-list="${esc(l.url)}">Follow ${l.pending.length === 1 ? 'it' : 'them'}</button><button class="btn" id="listSkip" data-list="${esc(l.url)}">Not now</button>`, false, 'feed-error');
+      } else if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (folder) {
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" id="renameFolder">Rename folder</button><button class="btn danger" id="deleteFolder">Delete folder</button>`;
@@ -695,7 +715,7 @@
     try {
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
-      S.mutes = s.mutes || []; S.prefs = s.prefs && typeof s.prefs === 'object' ? s.prefs : {};
+      S.mutes = s.mutes || []; S.lists = s.lists || []; S.prefs = s.prefs && typeof s.prefs === 'object' ? s.prefs : {};
       buildKinds(); buildPersons(); buildMutes(); renderMutes();
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
@@ -852,7 +872,7 @@
           <li><b>YouTube:</b> paste a channel’s address. New videos play right in the app.</li>
           <li><b>Podcasts:</b> paste a show’s Apple Podcasts link or its feed. Episodes play in the app and remember where you stopped.</li>
         </ul>
-        <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across.</p></section>
+        <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
 
       <section class="g-sec"><h2>Finding more good writers</h2>
         <p>The best way to find people is through people. Many writers keep a <b>blogroll</b>, a list of other blogs they read. <button class="b-link" data-view="discover">Discover</button> reads the blogrolls of everyone you follow and suggests who they recommend.</p>
@@ -940,7 +960,7 @@
         <dl class="g-defs">
           <dt>Feed</dt><dd>A site’s list of new posts. Also called an RSS feed, Atom feed or JSON feed. This app reads them all.</dd>
           <dt>Follow, subscribe</dt><dd>The same thing: adding a feed to your reader.</dd>
-          <dt>OPML</dt><dd>A file with a list of feeds, for moving between readers or sharing your list.</dd>
+          <dt>OPML</dt><dd>A file with a list of feeds, for moving between readers or sharing your list. Follow one by its link and the app keeps up as the list changes.</dd>
           <dt>Blogroll</dt><dd>A list of blogs a writer recommends.</dd>
           <dt>POSSE</dt><dd>Publish on your Own Site, Syndicate Elsewhere: post on your own site first, then share copies that link back to it.</dd>
           <dt>Weeknote</dt><dd>A short weekly post about what happened that week.</dd>
@@ -3370,6 +3390,8 @@
     }
     if (e.target.id === 'renameFolder') return startRenameFolder();
     if (e.target.id === 'deleteFolder') return confirmDeleteFolder();
+    const lb = e.target.closest('#listCheck, #listUnfollow, #listKeep, #listTake, #listSkip, #listCopy');
+    if (lb) return listAction(lb.id, lb.dataset.list, lb);
 
     const act = e.target.closest('[data-act]'); if (!act) return;
     const id = act.closest('.story, .h-card, .p-card').dataset.id, it = item(id); S.selId = id;
@@ -3434,6 +3456,7 @@
   }
   function confirmDeleteFolder() {
     const f = folderOf(S.view); if (!f) return;
+    if (listOfFolder(f.id)) return listAction('listUnfollow', listOfFolder(f.id).url);
     const n = S.feeds.filter(x => x.folder_id === f.id).length;
     showBanner(`<span>Delete the ${esc(f.name)} folder? ${n ? `Its ${n} ${n === 1 ? 'feed stays' : 'feeds stay'} in your reader, just outside any folder.` : 'It has no feeds in it.'}</span><button class="btn danger" id="yesDel">Delete folder</button><button class="btn" id="noDel">Cancel</button>`, false, 'confirm');
     $('noDel').onclick = hideBanner;
@@ -3443,6 +3466,59 @@
       catch (e) { status(msg(e), true); }
     };
   }
+
+  // followed lists
+  async function listAction(what, url, btn) {
+    const l = S.lists.find(x => x.url === url); if (!l) return;
+    try {
+      if (what === 'listCheck') {
+        btn.disabled = true; btn.textContent = 'Checking…';
+        const r = await invoke('list_check', { url });
+        const bits = [];
+        if (r.added) bits.push(`followed ${r.added} new ${r.added === 1 ? 'feed' : 'feeds'}`);
+        if (r.pending) bits.push(`${r.pending} new ${r.pending === 1 ? 'feed is' : 'feeds are'} waiting for you`);
+        if (r.left) bits.push(`${r.left} ${r.left === 1 ? 'feed' : 'feeds'} left the list`);
+        status(bits.length ? `${l.title}: ${bits.join(', ')}.` : `${l.title} hasn’t changed.`);
+      } else if (what === 'listKeep') {
+        await invoke('list_keep', { url, feedUrl: btn.dataset.feedurl }); hideBanner(); status('Still following it.');
+      } else if (what === 'listTake' || what === 'listSkip') {
+        hideBanner();
+        const n = await invoke('list_pending', { url, follow: what === 'listTake' });
+        status(what === 'listTake' ? `Now following ${n} more from ${l.title}. Pulling their stories now.` : 'Okay. Those won’t be suggested again.');
+      } else if (what === 'listCopy') {
+        await navigator.clipboard.writeText(url); status('Copied the list’s address. Share it so others can follow the same list.');
+      } else if (what === 'listUnfollow') {
+        showBanner(`<span>Stop following the ${esc(l.title)} list? You can keep the feeds you got from it, or unfollow them too.</span><button class="btn" id="listStopKeep">Keep the feeds</button><button class="btn danger" id="listStopAll">Unfollow them too</button><button class="btn" id="listStopNo">Cancel</button>`, false, 'confirm');
+        $('listStopNo').onclick = hideBanner;
+        const stop = async all => {
+          hideBanner();
+          try {
+            const n = await invoke('list_unfollow', { url, removeFeeds: all });
+            status(all ? `Stopped following ${l.title} and unfollowed ${n} ${n === 1 ? 'feed' : 'feeds'}.` : `Stopped following ${l.title}. Its feeds stay in the ${l.title} folder.`);
+            if (all && !S.feeds.some(f => f.folder_id === l.folder_id && !l.gone.includes(f.url))) S.view = 'all';
+            load();
+          } catch (e) { status(msg(e), true); }
+        };
+        $('listStopKeep').onclick = () => stop(false);
+        $('listStopAll').onclick = () => stop(true);
+        return;
+      }
+      load();
+    } catch (e) { status(msg(e), true); load(); }
+  }
+  document.addEventListener('change', async e => {
+    if (e.target.id !== 'listAuto') return;
+    const on = e.target.checked, l = S.lists.find(x => x.url === e.target.dataset.list); if (!l) return;
+    try { await invoke('list_set_auto', { url: l.url, on }); l.auto_add = on; status(on ? `Feeds that join ${l.title} will be followed for you.` : `New feeds in ${l.title} will wait for your OK.`); }
+    catch (err) { e.target.checked = !on; status(msg(err), true); }
+  });
+  listen('list-news', e => {
+    const p = e.payload || {}, bits = [];
+    if (p.added) bits.push(`${p.added} new ${p.added === 1 ? 'feed' : 'feeds'} added`);
+    if (p.pending) bits.push(`${p.pending} new ${p.pending === 1 ? 'feed is' : 'feeds are'} waiting for you`);
+    if (p.left) bits.push(`${p.left} ${p.left === 1 ? 'feed' : 'feeds'} left the list`);
+    if (bits.length) status(`${p.title}: ${bits.join(', ')}.`);
+  });
 
   // new folder
   function openNewFolder() { $('folderForm').hidden = false; $('folderName').value = ''; $('folderName').focus(); }
@@ -3472,11 +3548,39 @@
     const current = folderOf(S.view)?.id ?? feedById(S.view)?.folder_id ?? null;
     sel.innerHTML = folderOptions(current); sel.hidden = !S.folders.length;
   }
-  function openAdd() { renderAddFolders(); $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
+  const FEED_NOTE = $('addNote').textContent;
+  let addingList = false;
+  function setListMode(on) {
+    addingList = on;
+    $('feedUrlLabel').textContent = on ? 'Address of the list (an OPML file)' : 'Feed or website address';
+    $('feedUrl').placeholder = on ? 'example.com/blogroll.opml' : 'A site, @someone@mastodon.social, a YouTube or podcast link';
+    $('feedName').hidden = on; $('feedFolder').hidden = on || !S.folders.length;
+    $('addBtn').textContent = on ? 'Follow list' : 'Add feed';
+    $('listMode').textContent = on ? 'Add a single feed instead' : 'Follow a list of feeds (OPML) instead';
+    $('addNote').className = 'note';
+    $('addNote').textContent = on ? 'Someone shares a list of feeds, like a blogroll or a club. Follow it once and you get every feed in it, in a folder of their own. When the list adds a feed later, it’s added for you.' : FEED_NOTE;
+  }
+  const looksLikeList = u => /\.opml(?:[?#]|$)/i.test(u.trim()) || /[?&/](?:format=)?opml\b/i.test(u.trim());
+  $('listMode').onclick = () => { setListMode(!addingList); $('feedUrl').focus(); };
+  function openAdd() { setListMode(false); renderAddFolders(); $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
   $('showAdd').onclick = openAdd;
-  $('cancelAdd').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; };
+  $('cancelAdd').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; setListMode(false); };
+  async function followList(url) {
+    const note = $('addNote'), btn = $('addBtn');
+    btn.disabled = true; btn.textContent = 'Reading the list…'; note.className = 'note'; note.textContent = 'Checking that list…';
+    try {
+      const r = await invoke('follow_list', { url });
+      $('feedUrl').value = '';
+      setListMode(false);
+      note.textContent = `Now following ${r.title}: ${r.added === r.total ? `all ${r.total}` : `${r.added} new of ${r.total}`} ${r.total === 1 ? 'feed' : 'feeds'}.`;
+      status(`Following the ${r.title} list. Pulling its stories now; new members will be added as they join.`);
+      await load(); if (r.folderId) { collapsed.delete(r.folderId); selectView('folder:' + r.folderId); }
+    } catch (err) { note.className = 'note err'; note.textContent = msg(err); }
+    finally { btn.disabled = false; btn.textContent = addingList ? 'Follow list' : 'Add feed'; }
+  }
   $('addForm').addEventListener('submit', async e => {
     e.preventDefault();
+    if (addingList || looksLikeList($('feedUrl').value)) { if (!addingList) setListMode(true); return followList($('feedUrl').value.trim()); }
     const note = $('addNote'), btn = $('addBtn');
     btn.disabled = true; btn.textContent = 'Finding feed…'; note.className = 'note'; note.textContent = 'Checking that address…';
     try {

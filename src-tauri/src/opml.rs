@@ -95,6 +95,41 @@ pub fn parse(text: &str) -> Result<Vec<Outline>, String> {
     Ok(out)
 }
 
+/// The list's own name, from `<head><title>`, if it has one.
+pub fn title(text: &str) -> Option<String> {
+    let mut reader = Reader::from_str(text);
+    reader.config_mut().trim_text(true);
+    let (mut in_head, mut in_title) = (false, false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let n = String::from_utf8_lossy(e.local_name().as_ref()).to_ascii_lowercase();
+                if n == "head" {
+                    in_head = true;
+                } else if n == "title" && in_head {
+                    in_title = true;
+                } else if n == "body" {
+                    return None;
+                }
+            }
+            Ok(Event::Text(t)) if in_title => {
+                let s = t.unescape().map(|s| s.trim().to_string()).unwrap_or_default();
+                return Some(s).filter(|s| !s.is_empty());
+            }
+            Ok(Event::End(e)) => {
+                let n = String::from_utf8_lossy(e.local_name().as_ref()).to_ascii_lowercase();
+                if n == "title" {
+                    in_title = false;
+                } else if n == "head" {
+                    return None;
+                }
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
 fn esc(s: &str) -> String {
     html_escape::encode_double_quoted_attribute(s).to_string()
 }
@@ -141,6 +176,13 @@ mod tests {
         assert_eq!((o[0].title.as_str(), o[0].folder.as_deref()), ("Smashing", Some("Web Design")));
         assert_eq!((o[1].title.as_str(), o[1].folder.as_deref()), ("A & B", Some("Tech & News")));
         assert_eq!(o[2].folder, None);
+    }
+
+    #[test]
+    fn reads_the_list_title() {
+        let t = r#"<?xml version="1.0"?><opml version="2.0"><head><title>RSS Club &amp; friends</title></head><body><outline text="A" xmlUrl="https://a.com/feed"/></body></opml>"#;
+        assert_eq!(super::title(t).as_deref(), Some("RSS Club & friends"));
+        assert_eq!(super::title(r#"<opml><head></head><body/></opml>"#), None);
     }
 
     #[test]

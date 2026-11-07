@@ -25,12 +25,13 @@
       <nav class="nav" id="feeds" aria-label="Feeds"></nav>
     </div>
     <form class="addfeed" id="addForm" hidden>
-      <label for="feedUrl">Feed or website address</label>
+      <label for="feedUrl" id="feedUrlLabel">Feed or website address</label>
       <input id="feedUrl" type="text" placeholder="A site, @someone@mastodon.social, a YouTube or podcast link" autocomplete="off" spellcheck="false" required>
       <input id="feedName" type="text" placeholder="Name (optional)" autocomplete="off">
       <select id="feedFolder" aria-label="Folder"></select>
       <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
       <span class="note" id="addNote">Paste a site, a Mastodon or Bluesky handle, a YouTube channel or an Apple Podcasts link and it finds the feed. Or type words to follow them on Google News.</span>
+      <button class="linkish" type="button" id="listMode">Follow a list of feeds (OPML) instead</button>
     </form>
     <button class="btn" id="showAdd" type="button">+ Add a feed</button>
     <div class="rail-foot">

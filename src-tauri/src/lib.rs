@@ -6,6 +6,7 @@ mod bookmark;
 mod db;
 mod discover;
 mod feeds;
+mod lists;
 mod opml;
 mod reply;
 mod social;
@@ -64,6 +65,7 @@ struct Snapshot {
     highlights: Vec<db::Highlight>,
     mutes: Vec<String>,
     prefs: serde_json::Value,
+    lists: Vec<lists::ListView>,
     refreshing: bool,
     last_refresh: Option<String>,
 }
@@ -92,6 +94,18 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
         return; // already running
     }
     let _ = app.emit("state-changed", ());
+
+    // Followed lists first, so feeds that just joined one are fetched in this same round.
+    if only.is_none() {
+        let due = lists::due(&st.db.lock().unwrap()).unwrap_or_default();
+        for (title, r) in check_lists(&st, due).await {
+            if let Ok(a) = r {
+                if !a.new_ids.is_empty() || a.pending > 0 || a.left > 0 {
+                    let _ = app.emit("list-news", serde_json::json!({ "title": title, "added": a.new_ids.len(), "pending": a.pending, "left": a.left }));
+                }
+            }
+        }
+    }
 
     let list = {
         let conn = st.db.lock().unwrap();
@@ -137,6 +151,151 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
     update_badge(&app);
     let _ = app.emit("state-changed", ());
     tauri::async_runtime::spawn(find_images(app.clone()));
+}
+
+// ------------------------------------------------------------------ followed lists (dynamic OPML)
+
+/// Download a list of feeds: its name (if it gives one) and the feeds in it.
+async fn fetch_list(client: &reqwest::Client, url: &str) -> Result<(Option<String>, Vec<opml::Outline>), String> {
+    let (body, _, _) = feeds::get(client, url).await?;
+    let text = String::from_utf8_lossy(&body).to_string();
+    let outlines = opml::parse(&text).map_err(|_| "That address isn't a list of feeds (an OPML file). Check the link with whoever shares the list.".to_string())?;
+    if outlines.is_empty() {
+        return Err("That list doesn't have any feeds in it yet.".into());
+    }
+    Ok((opml::title(&text), outlines))
+}
+
+/// Check some followed lists and bring this device up to date with each.
+async fn check_lists(st: &Shared, urls: Vec<String>) -> Vec<(String, Result<lists::Applied, String>)> {
+    if urls.is_empty() {
+        return vec![];
+    }
+    let fetched: Vec<_> = stream::iter(urls)
+        .map(|u| {
+            let client = st.client.clone();
+            async move {
+                let r = fetch_list(&client, &u).await;
+                (u, r)
+            }
+        })
+        .buffer_unordered(3)
+        .collect()
+        .await;
+    let now = feeds::now_iso();
+    let mut out = Vec::new();
+    let mut touched = false;
+    {
+        let conn = st.db.lock().unwrap();
+        let subs = lists::subs(&conn).unwrap_or_default();
+        for (u, r) in fetched {
+            let title = subs.iter().find(|s| s.url == u).map(|s| s.title.clone()).unwrap_or_else(|| u.clone());
+            let r = match r {
+                Ok((_, outlines)) => lists::apply(&conn, &u, &outlines, false, &now).map_err(err),
+                Err(m) => {
+                    let _ = lists::failed(&conn, &u, &m, &now);
+                    Err(m)
+                }
+            };
+            if let Ok(a) = &r {
+                touched |= !a.new_ids.is_empty();
+            }
+            out.push((title, r));
+        }
+    }
+    if touched {
+        changed(st);
+    }
+    out
+}
+
+fn list_url(url: &str) -> Result<String, String> {
+    let mut u = url.trim().to_string();
+    if u.is_empty() {
+        return Err("Paste the address of the list first.".into());
+    }
+    if !u.contains("://") {
+        u = format!("https://{u}");
+    }
+    match url::Url::parse(&u) {
+        Ok(p) if (p.scheme() == "https" || p.scheme() == "http") && p.host_str().is_some() => Ok(u),
+        _ => Err("That doesn't look like a web address.".into()),
+    }
+}
+
+/// Follow a list of feeds by its address. Everything in it is followed now; feeds that join later follow on their own.
+#[tauri::command]
+async fn follow_list(app: AppHandle, state: State<'_, Shared>, url: String) -> Result<serde_json::Value, String> {
+    let url = list_url(&url)?;
+    if lists::subs(&state.db.lock().unwrap()).map_err(err)?.iter().any(|s| s.url == url) {
+        return Err("You already follow this list.".into());
+    }
+    let (title, outlines) = fetch_list(&state.client, &url).await?;
+    let title = title.unwrap_or_else(|| url::Url::parse(&url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_else(|| "Followed list".into()));
+    let now = feeds::now_iso();
+    let (applied, name, folder_id) = {
+        let conn = state.db.lock().unwrap();
+        if !lists::subscribe(&conn, &url, &title).map_err(err)? {
+            return Err("You already follow this list.".into());
+        }
+        let a = lists::apply(&conn, &url, &outlines, true, &now).map_err(err)?;
+        let v = lists::views(&conn).map_err(err)?.into_iter().find(|v| v.url == url);
+        (a, v.as_ref().map(|v| v.title.clone()).unwrap_or(title), v.and_then(|v| v.folder_id))
+    };
+    changed(state.inner());
+    if !applied.new_ids.is_empty() {
+        tauri::async_runtime::spawn(refresh_feeds(app, Some(applied.new_ids.clone())));
+    }
+    Ok(serde_json::json!({
+        "title": name,
+        "folderId": folder_id,
+        "added": applied.new_ids.len(),
+        "total": outlines.len().min(lists::MAX_FEEDS),
+    }))
+}
+
+/// Check one list right away.
+#[tauri::command]
+async fn list_check(app: AppHandle, state: State<'_, Shared>, url: String) -> Result<serde_json::Value, String> {
+    let (_, r) = check_lists(state.inner(), vec![url]).await.pop().ok_or("You don't follow that list any more.")?;
+    let a = r?;
+    if !a.new_ids.is_empty() {
+        tauri::async_runtime::spawn(refresh_feeds(app, Some(a.new_ids.clone())));
+    }
+    Ok(serde_json::json!({ "added": a.new_ids.len(), "pending": a.pending, "left": a.left }))
+}
+
+#[tauri::command]
+fn list_set_auto(state: State<'_, Shared>, url: String, on: bool) -> Result<(), String> {
+    lists::set_auto(&state.db.lock().unwrap(), &url, on).map_err(err)?;
+    changed(state.inner());
+    Ok(())
+}
+
+/// Keep following a feed that left a list.
+#[tauri::command]
+fn list_keep(state: State<'_, Shared>, url: String, feed_url: String) -> Result<(), String> {
+    lists::keep(&state.db.lock().unwrap(), &url, &feed_url).map_err(err)
+}
+
+/// Follow (or let go of) the new feeds waiting in a list.
+#[tauri::command]
+fn list_pending(app: AppHandle, state: State<'_, Shared>, url: String, follow: bool) -> Result<usize, String> {
+    let ids = lists::take_pending(&state.db.lock().unwrap(), &url, follow).map_err(err)?;
+    if !ids.is_empty() {
+        changed(state.inner());
+        tauri::async_runtime::spawn(refresh_feeds(app, Some(ids.clone())));
+    }
+    Ok(ids.len())
+}
+
+/// Stop following a list, keeping its feeds or unfollowing them too.
+#[tauri::command]
+fn list_unfollow(app: AppHandle, state: State<'_, Shared>, url: String, remove_feeds: bool) -> Result<usize, String> {
+    let n = lists::unsubscribe(&state.db.lock().unwrap(), &url, remove_feeds).map_err(err)?;
+    changed(state.inner());
+    update_badge(&app);
+    Ok(n)
 }
 
 /// Stories that came without a picture: look for the one their web page offers for sharing.
@@ -200,6 +359,7 @@ fn get_state(state: State<'_, Shared>) -> Result<Snapshot, String> {
         highlights: db::highlights(&conn).map_err(err)?,
         mutes: db::get_meta(&conn, "mutes").map_err(err)?.and_then(|m| serde_json::from_str(&m).ok()).unwrap_or_default(),
         prefs: db::get_meta(&conn, "prefs").map_err(err)?.and_then(|m| serde_json::from_str(&m).ok()).unwrap_or_else(|| serde_json::json!({})),
+        lists: lists::views(&conn).map_err(err)?,
         refreshing: state.refreshing.load(Ordering::SeqCst),
         last_refresh: db::get_meta(&conn, "last_refresh").map_err(err)?,
     })
@@ -1615,6 +1775,12 @@ pub fn run() {
             refresh,
             import_opml,
             export_opml,
+            follow_list,
+            list_check,
+            list_set_auto,
+            list_keep,
+            list_pending,
+            list_unfollow,
             save_text
         ])
         .build(tauri::generate_context!())

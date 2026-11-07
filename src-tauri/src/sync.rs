@@ -34,6 +34,9 @@ pub struct SyncFile {
     /// Reading preferences: which feeds are people, hidden news sources, your own site
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prefs: Option<PrefsRec>,
+    /// Followed lists (dynamic OPML, version 1.2.1 and later); the whole set travels together, newest wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lists: Option<PrefsRec>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -229,6 +232,10 @@ pub fn export(conn: &Connection, device_id: &str, device_name: &str) -> rusqlite
         _ => None,
     };
     f.prefs = match (db::get_meta(conn, "prefs")?, db::get_meta(conn, "prefs_at")?) {
+        (Some(p), Some(at)) => serde_json::from_str(&p).ok().map(|data| PrefsRec { data, at }),
+        _ => None,
+    };
+    f.lists = match (db::get_meta(conn, "lists")?, db::get_meta(conn, "lists_at")?) {
         (Some(p), Some(at)) => serde_json::from_str(&p).ok().map(|data| PrefsRec { data, at }),
         _ => None,
     };
@@ -435,6 +442,16 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
         }
     }
 
+    // Followed lists: the newest set wins. Each device checks the lists itself.
+    if let Some(p) = &remote.lists {
+        let local_at = db::get_meta(&tx, "lists_at")?;
+        if newer(&Some(p.at.clone()), &local_at) && p.data.is_array() {
+            db::set_meta(&tx, "lists", &p.data.to_string())?;
+            db::set_meta(&tx, "lists_at", &p.at)?;
+            out.changes += 1;
+        }
+    }
+
     db::set_applying(&tx, false)?;
     tx.commit()?;
     Ok(out)
@@ -536,6 +553,22 @@ mod tests {
         let fb = export(&b, "b", "B").unwrap();
         merge(&mut a, &fb).unwrap();
         assert!(db::get_meta(&a, "mutes").unwrap().unwrap().contains("football"));
+    }
+
+    #[test]
+    fn followed_lists_travel() {
+        let (mut a, _da) = fresh("lists-a");
+        let (mut b, _db) = fresh("lists-b");
+        crate::lists::subscribe(&a, "https://club.example/list.opml", "RSS Club").unwrap();
+        let fa = export(&a, "a", "A").unwrap();
+        assert!(fa.lists.is_some());
+        merge(&mut b, &fa).unwrap();
+        assert_eq!(crate::lists::subs(&b).unwrap()[0].title, "RSS Club");
+        crate::lists::unsubscribe(&b, "https://club.example/list.opml", false).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let fb = export(&b, "b", "B").unwrap();
+        merge(&mut a, &fb).unwrap();
+        assert!(crate::lists::subs(&a).unwrap().is_empty());
     }
 
     #[test]

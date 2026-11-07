@@ -1304,3 +1304,10 @@ body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid v
 .n-title + #nText { margin-top: 8px; }
 
 .n-url { font: inherit; padding: 0; word-break: break-all; text-align: left; }
+
+/* Followed lists (dynamic OPML) */
+.listmark { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 4px; color: var(--muted); flex: none; }
+.listmark svg { width: 13px; height: 13px; }
+.listinfo { display: inline-flex; align-items: center; gap: 4px; }
+.listinfo .listmark { margin-left: 0; }
+#listMode { align-self: flex-start; font-size: 12px; }
