@@ -336,15 +336,59 @@ async fn find_images(app: AppHandle) {
 /// stories, without muted words, job ads or copies folded into their originals). Nothing to do here.
 fn update_badge(_app: &AppHandle) {}
 
-/// Unread count on the Dock icon (Mac only; on iPhone it would need notification permission).
+/// The Today unread count on the app icon: the Dock on a Mac, the Home Screen on iPhone and iPad.
 #[tauri::command]
 fn set_badge(app: AppHandle, n: i64) {
     #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(if n > 0 { Some(n) } else { None });
     }
-    #[cfg(mobile)]
+    #[cfg(target_os = "ios")]
+    {
+        let _ = &app;
+        ios_badge::set(n);
+    }
+    #[cfg(all(mobile, not(target_os = "ios")))]
     let _ = (app, n);
+}
+
+/// iPhone and iPad: a number on the icon needs the person's OK once (badges only: no alerts, no sounds).
+/// iOS asks only the first time; after that the answer stands (it can be changed in Settings › Notifications).
+#[cfg(target_os = "ios")]
+mod ios_badge {
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_foundation::NSError;
+    use objc2_user_notifications::{UNAuthorizationOptions, UNUserNotificationCenter};
+    use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    static ALLOWED: AtomicBool = AtomicBool::new(false);
+    static LATEST: AtomicI64 = AtomicI64::new(0);
+
+    fn apply(n: i64) {
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        center.setBadgeCount_withCompletionHandler(n.clamp(0, 99_999) as _, None);
+    }
+
+    pub fn set(n: i64) {
+        LATEST.store(n, Ordering::SeqCst);
+        if ALLOWED.load(Ordering::SeqCst) {
+            apply(n);
+            return;
+        }
+        if ASKED.swap(true, Ordering::SeqCst) {
+            return; // the question is still open (or the answer was no)
+        }
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let done = RcBlock::new(|granted: Bool, _err: *mut NSError| {
+            if granted.as_bool() {
+                ALLOWED.store(true, Ordering::SeqCst);
+                apply(LATEST.load(Ordering::SeqCst));
+            }
+        });
+        center.requestAuthorizationWithOptions_completionHandler(UNAuthorizationOptions::Badge, &done);
+    }
 }
 
 // ------------------------------------------------------------------ commands
