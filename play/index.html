@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="robots" content="noindex">
+  <title>Video: The Reading Room</title>
+  <!--
+    The Reading Room shows stories inside the app, not on a website, and YouTube
+    won't play a video unless the page around its player says which site it's on
+    (Error 153). The app loads this page, and this page loads the player, so
+    YouTube sees readingroomapp.com. Only YouTube video ids are accepted.
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+    p { color: #bbb; font: 15px/1.5 -apple-system, system-ui, sans-serif; text-align: center; margin-top: 40vh; }
+    a { color: #fff; }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var id = q.get('v') || '';
+      if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
+        document.body.innerHTML = '<p>That isn’t a YouTube video.</p>';
+        return;
+      }
+      var t = parseInt(q.get('t') || '0', 10);
+      var params = new URLSearchParams({ rel: '0', playsinline: '1' });
+      if (t > 0) params.set('start', String(t));
+      if (q.get('autoplay') === '1') params.set('autoplay', '1');
+      var f = document.createElement('iframe');
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?' + params.toString();
+      f.title = q.get('title') || 'YouTube video';
+      f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      f.allowFullscreen = true;
+      f.referrerPolicy = 'strict-origin-when-cross-origin';
+      document.body.appendChild(f);
+    })();
+  </script>
+  <noscript><p>Turn on JavaScript to play this video.</p></noscript>
+</body>
+</html>
