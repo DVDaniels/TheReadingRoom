@@ -2954,6 +2954,16 @@
   function paintArticle() {
     const body = $('rBody');
     body.innerHTML = articleHtml;
+    // YouTube players in the story come through as marked links; play them right here
+    const shown = ytId(item(S.readerId)?.link);
+    body.querySelectorAll('a[href$="#rr-video"]').forEach(a => {
+      const id = ytId(a.getAttribute('href')), spot = a.parentElement?.tagName === 'P' && a.parentElement.textContent.trim() === a.textContent.trim() ? a.parentElement : a;
+      if (!id || id === shown) { spot.remove(); return; } // the story's own video already plays above
+      const v = document.createElement('div');
+      v.className = 'r-video r-inline-video';
+      v.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+      spot.replaceWith(v);
+    });
     body.querySelectorAll('img').forEach(img => {
       img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
       // A picture that can't load leaves no empty frame behind (nor an empty figure around it).

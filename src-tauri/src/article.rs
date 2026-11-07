@@ -86,6 +86,19 @@ pub fn unlazy(html: &str) -> String {
     .into_owned()
 }
 
+/// Embedded YouTube players can't be kept as they are (no frames from other sites in the reader), so each
+/// becomes a marked link the reader turns back into a player: `https://www.youtube.com/watch?v=ID#rr-video`.
+pub fn mark_videos(html: &str) -> String {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r#"(?is)<iframe\b[^>]*?\bsrc\s*=\s*["']?(?:https?:)?//(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{11})[^>]*>.*?</iframe>"#).unwrap()
+    });
+    re.replace_all(html, |c: &regex::Captures| {
+        format!(r#"<p><a href="https://www.youtube.com/watch?v={}#rr-video">Watch the video</a></p>"#, &c[1])
+    })
+    .into_owned()
+}
+
 /// Keep ordinary article markup only: no scripts, styles, forms, embeds or event handlers.
 /// Links and pictures are made absolute so they work inside the app.
 pub fn clean(html: &str, base: &str) -> String {
@@ -103,7 +116,7 @@ pub fn clean(html: &str, base: &str) -> String {
     } else {
         b.url_relative(ammonia::UrlRelative::Deny);
     }
-    b.clean(html).to_string()
+    b.clean(&mark_videos(html)).to_string()
 }
 
 #[cfg(test)]
@@ -117,6 +130,24 @@ mod tests {
         assert!(a.html.contains("https://ex.com/pic.jpg"));
         assert!(a.html.contains("https://ex.com/next"));
         assert!(!a.html.contains("onerror") && !a.html.contains("onclick") && !a.html.contains("<script"));
+    }
+
+    #[test]
+    fn video_players_become_marked_links() {
+        let html = r#"<p>Look.</p><figure><div><iframe title="A talk" width="500" src="https://www.youtube.com/embed/WEIXCyrDIaY?feature=oembed&amp;x=1" allowfullscreen></iframe></div></figure><iframe src="https://evil.example/x"></iframe>"#;
+        let out = super::clean(html, "https://daviddaniels.com/notes/a/");
+        assert!(out.contains(r#"href="https://www.youtube.com/watch?v=WEIXCyrDIaY#rr-video""#), "{out}");
+        assert!(!out.contains("<iframe") && !out.contains("evil"), "{out}");
+    }
+
+    #[test]
+    fn videos_survive_pulling_out_the_article() {
+        let body = "<p>".to_string() + &"I am fascinated with this story about the jet that crashed last week. ".repeat(8) + "</p>";
+        let html = format!(r#"<html><head><title>Note</title></head><body><nav>menu</nav><main><article><h1>Can you fly private?</h1>{body}
+            <figure class="wp-block-embed is-type-video"><div class="wp-block-embed__wrapper"><iframe title="Talk" src="https://www.youtube.com/embed/WEIXCyrDIaY?feature=oembed" allowfullscreen></iframe></div></figure>
+            </article></main><footer>foot</footer></body></html>"#);
+        let a = super::extract(&html, "https://daviddaniels.com/notes/can-you-fly-private/").unwrap();
+        assert!(a.html.contains("watch?v=WEIXCyrDIaY#rr-video"), "{}", a.html);
     }
 
     #[test]

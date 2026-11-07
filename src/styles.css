@@ -1311,3 +1311,5 @@ body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid v
 .listinfo { display: inline-flex; align-items: center; gap: 4px; }
 .listinfo .listmark { margin-left: 0; }
 #listMode { align-self: flex-start; font-size: 12px; }
+
+.r-inline-video { margin: 1.4em 0; }
