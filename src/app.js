@@ -4350,6 +4350,50 @@
     if (b.dataset.ed === 'jobs') selectView('jobs');
   });
 
+  // ------------------------------------------------------------ Newsletters in your reader
+  // A private address from Kill the Newsletter: subscribe with it, and each issue arrives as a story.
+  function newslettersHtml(fresh) {
+    const list = S.prefs.newsletters || [];
+    const row = n => `<li class="nl-row${fresh && n.email === fresh ? ' fresh' : ''}"><span class="ck-body"><b>${esc(n.title)}</b><span class="nl-mail">${esc(n.email)}</span></span>
+      <span class="ck-acts"><button class="btn${fresh && n.email === fresh ? ' primary' : ''}" type="button" data-nl="copy" data-mail="${esc(n.email)}">Copy address</button></span></li>`;
+    return `<h2>Newsletters</h2>
+      <p>Read newsletters here instead of in your inbox. Make an address, subscribe to newsletters with it, and each issue arrives as a story in its own feed.</p>
+      ${list.length ? `<ul class="ck-list nl-list">${list.map(row).join('')}</ul>` : ''}
+      <form class="nl-new" id="nlForm"><label for="nlName">${list.length ? 'Another address' : 'Name this address'}</label>
+        <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div></form>
+      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unfollow its feed.</p>
+      <div class="row sheet-foot"><button class="btn primary" type="button" data-nl="done">Done</button></div>`;
+  }
+  function openNewsletters(fresh) {
+    const el = sheet('nlPanel', newslettersHtml(fresh), 'Newsletters');
+    const note = (t, err) => { $('nlNote').textContent = t; $('nlNote').classList.toggle('err', !!err); };
+    el.onclick = async e => {
+      const b = e.target.closest('[data-nl]'); if (!b) return;
+      if (b.dataset.nl === 'done') { el.hidden = true; return; }
+      if (b.dataset.nl === 'copy') {
+        try { await navigator.clipboard.writeText(b.dataset.mail); b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = 'Copy address'; }, 2000); }
+        catch { note(`Couldn’t copy. The address is ${b.dataset.mail}`, true); }
+      }
+    };
+    $('nlForm').onsubmit = async e => {
+      e.preventDefault();
+      const title = $('nlName').value.trim() || 'Newsletters', btn = $('nlMake');
+      btn.disabled = true; btn.textContent = 'Making…'; note('');
+      try {
+        const n = await invoke('newsletter_address', { title });
+        const r = await invoke('add_feed', { url: n.feed, title, folderId: null }).catch(() => null);
+        await load();
+        S.prefs.newsletters = [...(S.prefs.newsletters || []), { title, email: n.email, feed: n.feed, at: new Date().toISOString() }];
+        await savePrefs();
+        openNewsletters(n.email);
+        $('nlNote').textContent = r ? `Your address is ready, and its feed “${title}” is in your feeds. Copy the address and use it to sign up for newsletters. The welcome email may take a minute to show up after a refresh.` : 'Your address is ready. Its feed couldn’t be added just now; it will be added next time you open this.';
+      } catch (err) { note(msg(err), true); btn.disabled = false; btn.textContent = 'Make an address'; }
+    };
+    // a feed that didn't get added the first time
+    for (const n of S.prefs.newsletters || []) if (!S.feeds.some(f => f.url === n.feed)) invoke('add_feed', { url: n.feed, title: n.title, folderId: null }).then(load).catch(() => {});
+  }
+  $('nlMode').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; openNewsletters(); };
+
   $('rulesBtn').onclick = openRules;
   $('checkupBtn').onclick = openCheckup;
   $('yearBtn').onclick = () => openYear();

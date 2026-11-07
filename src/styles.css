@@ -1429,3 +1429,12 @@ html.ios .rail .nav button.grp { padding: 12px 10px 4px 4px; font-size: 15px; }
   body { background: #fff; }
   .edition { color: #000; max-width: none; }
 }
+
+/* ---------------------------------------------------------------- Newsletters */
+.nl-list { margin: 12px 0 4px; }
+.nl-row.fresh .ck-body b { color: var(--accent); }
+.nl-mail { font-family: var(--font-mono); font-size: 12px !important; white-space: normal !important; word-break: break-all; user-select: all; -webkit-user-select: all; }
+.nl-new { margin: 14px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.nl-new label { font-size: 13px; color: var(--muted); }
+.nl-new .row { display: flex; gap: 8px; }
+.nl-new input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }

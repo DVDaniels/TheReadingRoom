@@ -524,6 +524,37 @@ async fn watch_page(app: AppHandle, state: State<'_, Shared>, url: String, title
     Ok(Added { id, title: name })
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Newsletter {
+    email: String,
+    feed: String,
+}
+
+/// Newsletters in your reader: a private email address from Kill the Newsletter (free, open source).
+/// Newsletters sent to it arrive as stories in a feed, which joins your feeds.
+#[tauri::command]
+async fn newsletter_address(state: State<'_, Shared>, title: String) -> Result<Newsletter, String> {
+    let title: String = title.trim().chars().take(200).collect();
+    let title = if title.is_empty() { "Newsletters".to_string() } else { title };
+    let resp = state
+        .client
+        .post("https://kill-the-newsletter.com/feeds")
+        .header("Accept", "application/json")
+        .header("CSRF-Protection", "true")
+        .form(&[("title", title.as_str())])
+        .send()
+        .await
+        .map_err(|_| "Couldn't reach Kill the Newsletter. Check your connection and try again.".to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Kill the Newsletter answered with error {}. Try again in a little while.", resp.status().as_u16()));
+    }
+    let n: Newsletter = resp.json().await.map_err(|_| "Kill the Newsletter sent something unexpected. Try again in a little while.".to_string())?;
+    if !n.email.contains('@') || !n.feed.starts_with("https://") {
+        return Err("Kill the Newsletter sent something unexpected. Try again in a little while.".into());
+    }
+    Ok(n)
+}
+
 /// Search everything: the stories still in the app and the older ones it has let go.
 #[tauri::command]
 fn search_all(state: State<'_, Shared>, q: String, limit: Option<i64>) -> Result<Vec<db::Found>, String> {
@@ -1879,6 +1910,7 @@ pub fn run() {
             mark,
             add_feed,
             watch_page,
+            newsletter_address,
             search_all,
             notify,
             print_page,
