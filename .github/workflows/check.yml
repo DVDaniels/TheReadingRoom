@@ -1,0 +1,15 @@
+name: One-off feed check
+on: push
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          while read u; do
+            code=$(curl -sL -A "Mozilla/5.0 TheReadingRoom feed check" -m 25 -o f.xml -w "%{http_code}" "$u")
+            kind=$(grep -m1 -oE "<(rss|feed|rdf:RDF)" f.xml || echo none)
+            title=$(tr '\n' ' ' < f.xml | grep -oE "<title[^>]*>[^<]{1,80}" | head -1 | sed -E 's/<title[^>]*>//; s/<!\[CDATA\[//')
+            newest=$(grep -m1 -oE "<(pubDate|updated|published)>[^<]+" f.xml | sed -E 's/<[a-zA-Z]+>//')
+            echo "RESULT|$u|$code|$kind|$title|$newest"
+          done < candidates.txt
