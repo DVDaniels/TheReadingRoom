@@ -605,8 +605,17 @@ mod alerts {
 /// Print what's on screen (the Morning Edition's print button).
 #[tauri::command]
 fn print_page(app: AppHandle) -> Result<(), String> {
-    let w = app.get_webview_window("main").ok_or("The window went missing.")?;
-    w.print().map_err(|e| format!("Couldn't print ({e})."))
+    #[cfg(desktop)]
+    {
+        let w = app.get_webview_window("main").ok_or("The window went missing.")?;
+        w.print().map_err(|e| format!("Couldn't print ({e})."))
+    }
+    // iPhone and iPad: the page's own print (the app falls back to it)
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Err("Printing goes through the page on iPhone and iPad.".into())
+    }
 }
 
 #[tauri::command]
