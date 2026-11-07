@@ -8,7 +8,6 @@
     <docs>https://opml.org/spec2.opml</docs>
   </head>
   <body>
-    <outline type="rss" text="David Daniels" title="David Daniels" xmlUrl="https://daviddaniels.com/feed/" htmlUrl="https://daviddaniels.com/"/>
     <outline type="rss" text="Dave Rupert" title="Dave Rupert" xmlUrl="https://daverupert.com/atom.xml" htmlUrl="https://daverupert.com/"/>
     <outline type="rss" text="Dan Q" title="Dan Q" xmlUrl="https://danq.me/feed/" htmlUrl="https://danq.me/"/>
     <outline type="rss" text="Jeremy Keith" title="Jeremy Keith" xmlUrl="https://adactio.com/journal/rss" htmlUrl="https://adactio.com/journal/"/>
@@ -28,5 +27,6 @@
     <outline type="rss" text="Simon Willison" title="Simon Willison" xmlUrl="https://simonwillison.net/atom/everything/" htmlUrl="https://simonwillison.net/"/>
     <outline type="rss" text="Austin Kleon" title="Austin Kleon" xmlUrl="https://austinkleon.com/feed/" htmlUrl="https://austinkleon.com/"/>
     <outline type="rss" text="Seth Godin" title="Seth Godin" xmlUrl="https://seths.blog/feed/" htmlUrl="https://seths.blog/"/>
+    <outline type="rss" text="David Daniels" title="David Daniels" xmlUrl="https://daviddaniels.com/feed/" htmlUrl="https://daviddaniels.com/"/>
   </body>
 </opml>
