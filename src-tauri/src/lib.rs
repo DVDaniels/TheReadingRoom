@@ -14,6 +14,7 @@ mod sources;
 mod sync;
 mod topics;
 mod watch;
+mod share;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -553,6 +554,60 @@ async fn newsletter_address(state: State<'_, Shared>, title: String) -> Result<N
         return Err("Kill the Newsletter sent something unexpected. Try again in a little while.".into());
     }
     Ok(n)
+}
+
+/// Save a page you found elsewhere to Read later (in a feed of its own, "Saved pages").
+async fn save_page(app: &AppHandle, url: &str, title: &str) -> Result<String, String> {
+    let st: Shared = app.state::<Shared>().inner().clone();
+    let u = url::Url::parse(url.trim()).map_err(|_| "That isn't a web address.".to_string())?;
+    if !matches!(u.scheme(), "http" | "https") {
+        return Err("That isn't a web page.".into());
+    }
+    let item = share::page_item(&st.client, u.as_str(), title).await;
+    let now = feeds::now_iso();
+    let mut conn = st.db.lock().unwrap();
+    let id = match db::feeds(&conn).map_err(err)?.into_iter().find(|f| f.url == share::SAVED_FEED) {
+        Some(f) => f.id,
+        None => db::add_feed(&conn, share::SAVED_FEED, share::SAVED_TITLE, "", None).map_err(err)?,
+    };
+    let feed = db::feed(&conn, id).map_err(err)?.ok_or("The Saved pages feed went missing.")?;
+    let items = feeds::to_new_items(id, std::slice::from_ref(&item));
+    let item_id = items[0].id.clone();
+    db::store_fetch(&mut conn, &feed, share::SAVED_TITLE, "", &items, &now).map_err(err)?;
+    db::mark(&mut conn, &[item_id.clone()], None, Some(true), &now).map_err(err)?;
+    Ok(item_id)
+}
+
+/// A link to save from inside the app (or from the Share menu's inbox).
+#[tauri::command]
+async fn save_url(app: AppHandle, url: String, title: Option<String>) -> Result<String, String> {
+    let id = save_page(&app, &url, title.as_deref().unwrap_or("")).await?;
+    let st: Shared = app.state::<Shared>().inner().clone();
+    changed(&st);
+    Ok(id)
+}
+
+/// Pages saved from Safari's Share menu while the app was closed: add them to Read later.
+#[tauri::command]
+async fn share_inbox(app: AppHandle) -> Result<usize, String> {
+    let waiting = share::take_inbox();
+    let mut n = 0;
+    for s in &waiting {
+        if save_page(&app, &s.url, &s.title).await.is_ok() {
+            n += 1;
+        }
+    }
+    if n > 0 {
+        let st: Shared = app.state::<Shared>().inner().clone();
+        changed(&st);
+    }
+    Ok(n)
+}
+
+/// What the Home Screen widgets show (a small JSON summary made by the app).
+#[tauri::command]
+fn widget_data(json: String) {
+    share::put_widget(&json);
 }
 
 /// Search everything: the stories still in the app and the older ones it has let go.
@@ -1920,6 +1975,9 @@ pub fn run() {
             add_feed,
             watch_page,
             newsletter_address,
+            save_url,
+            share_inbox,
+            widget_data,
             search_all,
             notify,
             print_page,

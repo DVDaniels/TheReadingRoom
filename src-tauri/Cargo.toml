@@ -46,7 +46,7 @@ objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCen
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSError", "NSString"] }
+objc2-foundation = { version = "0.3", features = ["NSError", "NSString", "NSBundle"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSound", "UNNotificationTrigger", "block2"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]

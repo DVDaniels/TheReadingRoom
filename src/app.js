@@ -710,7 +710,7 @@
     if (all.length > list.length) out += `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>`;
     $('list').innerHTML = out + older;
   }
-  function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); }
+  function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); updateWidget(); }
 
   // Stories without a picture get a tile in their feed's colour, with its first letter (like the sidebar).
   function tileFor(f) { return f ? `${hueFor(f.url)}|${(f.title || '?').trim()[0] || '?'}` : '210|•'; }
@@ -4395,6 +4395,31 @@
     for (const n of S.prefs.newsletters || []) if (!S.feeds.some(f => f.url === n.feed)) invoke('add_feed', { url: n.feed, title: n.title, folderId: null }).then(load).catch(() => {});
   }
   $('nlMode').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; openNewsletters(); };
+
+  // ------------------------------------------------------------ Share menu and Home Screen widgets (iPhone and iPad)
+  const onIOS = () => document.documentElement.classList.contains('ios');
+  async function takeShared() {
+    if (!onIOS()) return;
+    try {
+      const n = await invoke('share_inbox');
+      if (n) { status(`Saved ${n} ${n === 1 ? 'page' : 'pages'} from the Share menu to Read later.`); load(); }
+    } catch { /* nothing waiting */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) takeShared(); });
+  setTimeout(takeShared, 1500);
+  let widgetTimer = 0, widgetLast = '';
+  function updateWidget() {
+    if (!onIOS()) return;
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(() => {
+      const fresh = S.items.filter(i => !i.read && inScope(i, 'today') && !(mutesApply('today') && isMuted(i)) && !isFolded(i, 'today'))
+        .sort((a, b) => (isPerson(b.feed_id) - isPerson(a.feed_id)) || b.date.localeCompare(a.date));
+      const data = JSON.stringify({ unread: fresh.length, stories: fresh.slice(0, 6).map(i => ({ t: headline(i), f: srcLabel(i), p: isPerson(i.feed_id) })),
+        streak: goalOn() ? streak() : null, books: finishedThisYear(), goal: goalOn() ? goalCfg().mins : null });
+      if (data === widgetLast) return;
+      widgetLast = data; invoke('widget_data', { json: data }).catch(() => {});
+    }, 1500);
+  }
 
   $('rulesBtn').onclick = openRules;
   $('checkupBtn').onclick = openCheckup;

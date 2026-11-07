@@ -2,7 +2,8 @@
 
 - Takes the "Apple Distribution" identity out of APPLE_APPSTORE_CERTS (that certificate signs iOS apps too).
 - Finds or creates an "App Store" provisioning profile for the app through the App Store Connect API.
-- Writes IOS_CERTIFICATE, IOS_CERTIFICATE_PASSWORD and IOS_MOBILE_PROVISION to $GITHUB_ENV for Tauri.
+- Does the same for the Share menu extension and the widgets, installs all three profiles and the identity
+  in a keychain of its own, and writes the profile UUIDs (RR_PROFILE_*) to $GITHUB_ENV.
 
 Messages are printed as GitHub annotations, since the job's log can't always be read.
 """
@@ -69,15 +70,78 @@ def api(method, path, **kw):
     return r.json() if r.content else {}
 
 
+def ensure_bundle(identifier, name):
+    found = api("GET", "/bundleIds", params={"filter[identifier]": identifier, "limit": 20})["data"]
+    found = [b for b in found if b["attributes"]["identifier"] == identifier]
+    if found:
+        return found[0]
+    b = api("POST", "/bundleIds", json={"data": {"type": "bundleIds", "attributes": {
+        "identifier": identifier, "name": name, "platform": "IOS"}}})["data"]
+    note("Bundle ID", f"Registered {identifier}")
+    return b
+
+
+def profile_for(bundle, cert_id, name):
+    """An active App Store profile for this bundle that includes our certificate (made if needed)."""
+    profiles = api("GET", f"/bundleIds/{bundle['id']}/profiles", params={"limit": 50})["data"]
+    usable = [p for p in profiles if p["attributes"]["profileType"] == "IOS_APP_STORE" and p["attributes"]["profileState"] == "ACTIVE"]
+    for p in usable:
+        certs = api("GET", f"/profiles/{p['id']}/certificates")["data"]
+        if any(c["id"] == cert_id for c in certs):
+            note("Profile", f"Using existing profile {p['attributes']['name']}")
+            return api("GET", f"/profiles/{p['id']}")["data"]
+    p = api("POST", "/profiles", json={"data": {
+        "type": "profiles",
+        "attributes": {"name": f"{name} {time.strftime('%Y-%m-%d %H%M')}", "profileType": "IOS_APP_STORE"},
+        "relationships": {
+            "bundleId": {"data": {"type": "bundleIds", "id": bundle["id"]}},
+            "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
+        }}})["data"]
+    note("Profile", f"Created {p['attributes']['name']}")
+    return p
+
+
+def install_profile(p):
+    """Put a profile where Xcode looks for it; returns its UUID."""
+    data = base64.b64decode(p["attributes"]["profileContent"])
+    uid = p["attributes"].get("uuid")
+    if not uid:
+        m = re.search(rb"<key>UUID</key>\s*<string>([^<]+)</string>", data)
+        uid = m.group(1).decode()
+    for d in ("~/Library/MobileDevice/Provisioning Profiles", "~/Library/Developer/Xcode/UserData/Provisioning Profiles"):
+        d = os.path.expanduser(d)
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, f"{uid}.mobileprovision"), "wb").write(data)
+    return uid
+
+
+def install_identity(key, cert):
+    """The Apple Distribution identity in a keychain of our own, kept for the whole job (archive and export)."""
+    pw = uuid.uuid4().hex
+    print(f"::add-mask::{pw}")
+    enc = (serialization.PrivateFormat.PKCS12.encryption_builder().kdf_rounds(50000)
+           .key_cert_algorithm(pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC).hmac_hash(hashes.SHA1()).build(pw.encode()))
+    p12 = pkcs12.serialize_key_and_certificates(b"Apple Distribution", key, cert, None, enc)
+    path = os.path.join(tempfile.mkdtemp(), "dist.p12")
+    open(path, "wb").write(p12)
+    kc = os.path.expanduser("~/Library/Keychains/rr-signing.keychain-db")
+    kpw = uuid.uuid4().hex
+    print(f"::add-mask::{kpw}")
+    run = lambda *a: subprocess.run(list(a), check=True, capture_output=True, text=True)
+    subprocess.run(["security", "delete-keychain", kc], capture_output=True)
+    run("security", "create-keychain", "-p", kpw, kc)
+    run("security", "set-keychain-settings", "-lut", "21600", kc)
+    run("security", "unlock-keychain", "-p", kpw, kc)
+    run("security", "import", path, "-k", kc, "-P", pw, "-T", "/usr/bin/codesign", "-T", "/usr/bin/security", "-T", "/usr/bin/productbuild")
+    run("security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s", "-k", kpw, kc)
+    existing = subprocess.run(["security", "list-keychains", "-d", "user"], capture_output=True, text=True).stdout.split()
+    run("security", "list-keychains", "-d", "user", "-s", kc, *[e.strip('"') for e in existing if "rr-signing" not in e])
+    os.remove(path)
+    note("Keychain", "Apple Distribution identity installed for signing")
+
+
 def main():
     key, cert = distribution_identity()
-
-    bundles = api("GET", "/bundleIds", params={"filter[identifier]": BUNDLE, "limit": 20})["data"]
-    bundles = [b for b in bundles if b["attributes"]["identifier"] == BUNDLE]
-    if not bundles:
-        fail("Bundle ID", f"{BUNDLE} isn't registered under Certificates, Identifiers & Profiles.")
-    bundle = bundles[0]
-    note("Bundle ID", f"{BUNDLE} ({bundle['attributes'].get('platform')})")
 
     serial = f"{cert.serial_number:X}".lstrip("0")
     dist = api("GET", "/certificates", params={"limit": 200})["data"]
@@ -86,38 +150,18 @@ def main():
         fail("Certificate", f"Apple doesn't list a certificate with serial {serial}. It may have been revoked.")
     cert_id = match[0]["id"]
 
-    name = "The Reading Room iOS App Store"
-    profiles = api("GET", f"/bundleIds/{bundle['id']}/profiles", params={"limit": 50})["data"]
-    usable = [p for p in profiles if p["attributes"]["profileType"] == "IOS_APP_STORE" and p["attributes"]["profileState"] == "ACTIVE"]
-    profile = None
-    for p in usable:  # one that includes our certificate
-        certs = api("GET", f"/profiles/{p['id']}/certificates")["data"]
-        if any(c["id"] == cert_id for c in certs):
-            profile = p
-            break
-    if profile:
-        note("Profile", f"Using existing profile {profile['attributes']['name']}")
-    else:
-        profile = api("POST", "/profiles", json={"data": {
-            "type": "profiles",
-            "attributes": {"name": f"{name} {time.strftime('%Y-%m-%d %H%M')}", "profileType": "IOS_APP_STORE"},
-            "relationships": {
-                "bundleId": {"data": {"type": "bundleIds", "id": bundle["id"]}},
-                "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
-            }}})["data"]
-        note("Profile", f"Created {profile['attributes']['name']}")
-    content = profile["attributes"].get("profileContent") or api("GET", f"/profiles/{profile['id']}")["data"]["attributes"]["profileContent"]
+    bundles = api("GET", "/bundleIds", params={"filter[identifier]": BUNDLE, "limit": 20})["data"]
+    bundles = [b for b in bundles if b["attributes"]["identifier"] == BUNDLE]
+    if not bundles:
+        fail("Bundle ID", f"{BUNDLE} isn't registered under Certificates, Identifiers & Profiles.")
+    main_uuid = install_profile(profile_for(bundles[0], cert_id, "The Reading Room iOS App Store"))
+    # the Share menu extension and the Home Screen widgets are separate bundles with profiles of their own
+    share_uuid = install_profile(profile_for(ensure_bundle(BUNDLE + ".share", "The Reading Room Share"), cert_id, "The Reading Room Share App Store"))
+    widgets_uuid = install_profile(profile_for(ensure_bundle(BUNDLE + ".widgets", "The Reading Room Widgets"), cert_id, "The Reading Room Widgets App Store"))
 
-    # A .p12 with just this identity, in the older encryption the macOS keychain imports reliably.
-    pw = uuid.uuid4().hex
-    enc = (serialization.PrivateFormat.PKCS12.encryption_builder().kdf_rounds(50000)
-           .key_cert_algorithm(pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC).hmac_hash(hashes.SHA1()).build(pw.encode()))
-    p12 = pkcs12.serialize_key_and_certificates(b"Apple Distribution", key, cert, None, enc)
-    print(f"::add-mask::{pw}")
+    install_identity(key, cert)
     with open(os.environ["GITHUB_ENV"], "a") as env:
-        env.write(f"IOS_CERTIFICATE={base64.b64encode(p12).decode()}\n")
-        env.write(f"IOS_CERTIFICATE_PASSWORD={pw}\n")
-        env.write(f"IOS_MOBILE_PROVISION={content}\n")
+        env.write(f"RR_PROFILE_MAIN={main_uuid}\nRR_PROFILE_SHARE={share_uuid}\nRR_PROFILE_WIDGETS={widgets_uuid}\n")
 
 
 if __name__ == "__main__":

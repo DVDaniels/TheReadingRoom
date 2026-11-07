@@ -46,7 +46,7 @@ jobs:
       - run: npm ci
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install pyjwt cryptography requests
+      - run: pip install pyjwt cryptography requests pyyaml
 
       - name: App Store Connect key
         run: |
@@ -54,16 +54,9 @@ jobs:
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
           # Sign by hand (Tauri's IOS_* variables): a certificate and profile from the IOS_ secrets if set,
           # otherwise the Apple Distribution certificate plus a profile fetched or made through the API.
-          if [ -z "$HAND_CERT" ]; then
-            python .github/scripts/ios_signing.py
-          else
-            {
-              echo "IOS_CERTIFICATE=$HAND_CERT"
-              echo "IOS_CERTIFICATE_PASSWORD=$HAND_CERT_PASSWORD"
-              echo "IOS_MOBILE_PROVISION=$HAND_PROFILE"
-            } >> "$GITHUB_ENV"
-            echo "::notice title=Signing::Using the certificate and profile from the IOS_ secrets."
-          fi
+          # The app, the Share menu extension and the widgets are each signed with their own profile, so signing
+          # is set up here for all three (not through Tauri's IOS_* variables, which only cover the app).
+          python .github/scripts/ios_signing.py
 
       - name: Make the Xcode project
         run: |
@@ -72,6 +65,8 @@ jobs:
             echo "::error title=ios init::$(tail -40 "$RUNNER_TEMP/init.log" | tr '\n' ' ' | cut -c1-3000)"
             exit 1
           fi
+          # The Share menu extension and the Home Screen widgets (src-tauri/ios-ext), signed by hand like the app
+          BUILD_NO="${{ github.run_number }}" python .github/scripts/ios_extensions.py
           # The new project comes with Tauri's placeholder icon: put ours in (src-tauri/icons/ios, no transparency).
           ICONSET="$(find src-tauri/gen/apple -type d -name 'AppIcon.appiconset' | head -1)"
           [ -n "$ICONSET" ] || { echo "::error::Couldn't find AppIcon.appiconset in the Xcode project."; exit 1; }
@@ -92,10 +87,20 @@ jobs:
         run: |
           BUILD_NO="${{ github.run_number }}"
           echo "::notice title=Build number::$BUILD_NO"
-          if ! npx tauri ios build --ci --export-method app-store-connect \
+          # Tauri builds and archives; the export (the .ipa) is ours, so it can name all three profiles.
+          if ! npx tauri ios build --ci --archive-only \
               --config "{\"bundle\":{\"iOS\":{\"bundleVersion\":\"$BUILD_NO\"}}}" > "$RUNNER_TEMP/build.log" 2>&1; then
             echo "::error title=Rust or Xcode errors::$(grep -E 'error(\[|:)|error: ' "$RUNNER_TEMP/build.log" | head -25 | tr '\n' ' ' | cut -c1-3500)"
             echo "::error title=End of the build log::$(tail -30 "$RUNNER_TEMP/build.log" | tr '\n' ' ' | cut -c1-3500)"
+            exit 1
+          fi
+          ARCHIVE="$(find src-tauri/gen/apple/build -name '*.xcarchive' -maxdepth 4 | head -1)"
+          [ -n "$ARCHIVE" ] || { echo "::error::The archive wasn't made."; exit 1; }
+          echo "::notice title=Archive::$ARCHIVE has $(ls "$ARCHIVE/Products/Applications/"*.app/PlugIns 2>/dev/null | tr '\n' ' ')"
+          if ! xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$RUNNER_TEMP/RRExportOptions.plist" \
+              -exportPath src-tauri/gen/apple/build/rr-export > "$RUNNER_TEMP/export.log" 2>&1; then
+            echo "::error title=Export::$(grep -iE 'error' "$RUNNER_TEMP/export.log" | head -15 | tr '\n' ' ' | cut -c1-3500)"
+            echo "::error title=End of the export log::$(tail -25 "$RUNNER_TEMP/export.log" | tr '\n' ' ' | cut -c1-3500)"
             exit 1
           fi
           IPA="$(find src-tauri/gen/apple/build -name '*.ipa' | head -1)"
