@@ -13,6 +13,7 @@ mod social;
 mod sources;
 mod sync;
 mod topics;
+mod watch;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -133,7 +134,10 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
         let mut conn = st.db.lock().unwrap();
         for (feed, r) in results {
             match r {
-                Ok(f) => {
+                Ok(mut f) => {
+                    if watch::is_watch(&feed.url) {
+                        watch::finalize(&conn, &feed.title, &mut f);
+                    }
                     let items = feeds::to_new_items(feed.id, &f.items);
                     if let Err(e) = db::store_fetch(&mut conn, &feed, &f.title, &f.site, &items, &now) {
                         let _ = db::feed_error(&conn, feed.id, &err(e), &now);
@@ -494,6 +498,84 @@ async fn add_feed(
     changed(state.inner());
     update_badge(&app);
     Ok(Added { id, title: name })
+}
+
+/// Watch a page that has no feed: it joins your feeds, and each change to it becomes a story.
+#[tauri::command]
+async fn watch_page(app: AppHandle, state: State<'_, Shared>, url: String, title: Option<String>, folder_id: Option<i64>) -> Result<Added, String> {
+    let wurl = watch::watch_url(&url)?;
+    let mut fetched = watch::fetch(&state.client, &wurl).await?;
+    let name = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).unwrap_or_else(|| fetched.title.clone());
+    let now = feeds::now_iso();
+    let id = {
+        let mut conn = state.db.lock().unwrap();
+        if db::url_exists(&conn, &wurl).map_err(err)? {
+            return Err("You're already watching this page.".into());
+        }
+        let id = db::add_feed(&conn, &wurl, &name, &fetched.site, folder_id).map_err(err)?;
+        let feed = db::feed(&conn, id).map_err(err)?.ok_or("The new page went missing. Try again.")?;
+        watch::finalize(&conn, &name, &mut fetched);
+        let items = feeds::to_new_items(id, &fetched.items);
+        db::store_fetch(&mut conn, &feed, &fetched.title, &fetched.site, &items, &now).map_err(err)?;
+        id
+    };
+    changed(state.inner());
+    update_badge(&app);
+    Ok(Added { id, title: name })
+}
+
+/// Search everything: the stories still in the app and the older ones it has let go.
+#[tauri::command]
+fn search_all(state: State<'_, Shared>, q: String, limit: Option<i64>) -> Result<Vec<db::Found>, String> {
+    let conn = state.db.lock().unwrap();
+    db::search_all(&conn, &q, limit.unwrap_or(60).clamp(1, 300)).map_err(err)
+}
+
+/// A notification on this Mac, iPhone or iPad (keyword alerts). The first one asks for permission.
+#[tauri::command]
+fn notify(title: String, body: String, id: String) {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    alerts::send(&title, &body, &id);
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    let _ = (title, body, id);
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod alerts {
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_foundation::{NSError, NSString};
+    use objc2_user_notifications::{
+        UNAuthorizationOptions, UNMutableNotificationContent, UNNotificationRequest, UNNotificationSound, UNUserNotificationCenter,
+    };
+
+    pub fn send(title: &str, body: &str, id: &str) {
+        let (t, b, i) = (title.to_string(), body.to_string(), id.to_string());
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let done = RcBlock::new(move |granted: Bool, _err: *mut NSError| {
+            if !granted.as_bool() {
+                return;
+            }
+            let content = UNMutableNotificationContent::new();
+            content.setTitle(&NSString::from_str(&t));
+            content.setBody(&NSString::from_str(&b));
+            content.setThreadIdentifier(&NSString::from_str("keyword-alerts"));
+            content.setSound(Some(&UNNotificationSound::defaultSound()));
+            let req = UNNotificationRequest::requestWithIdentifier_content_trigger(&NSString::from_str(&i), &content, None);
+            UNUserNotificationCenter::currentNotificationCenter().addNotificationRequest_withCompletionHandler(&req, None);
+        });
+        center.requestAuthorizationWithOptions_completionHandler(
+            UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound | UNAuthorizationOptions::Badge,
+            &done,
+        );
+    }
+}
+
+/// Print what's on screen (the Morning Edition's print button).
+#[tauri::command]
+fn print_page(app: AppHandle) -> Result<(), String> {
+    let w = app.get_webview_window("main").ok_or("The window went missing.")?;
+    w.print().map_err(|e| format!("Couldn't print ({e})."))
 }
 
 #[tauri::command]
@@ -1796,6 +1878,10 @@ pub fn run() {
             get_state,
             mark,
             add_feed,
+            watch_page,
+            search_all,
+            notify,
+            print_page,
             remove_feed,
             rename_feed,
             create_folder,

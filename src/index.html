@@ -32,12 +32,14 @@
       <div class="row"><button class="btn primary" type="submit" id="addBtn">Add feed</button><button class="btn" type="button" id="cancelAdd">Cancel</button></div>
       <span class="note" id="addNote">Paste a site, a Mastodon or Bluesky handle, a YouTube channel or an Apple Podcasts link and it finds the feed. Or type words to follow them on Google News.</span>
       <button class="linkish" type="button" id="listMode">Follow a list of feeds (OPML) instead</button>
+      <button class="linkish" type="button" id="watchMode">Watch a page that has no feed</button>
     </form>
     <button class="btn" id="showAdd" type="button">+ Add a feed</button>
     <div class="rail-foot">
       <span><kbd>j</kbd> <kbd>k</kbd> next / previous · <kbd>o</kbd> open</span>
       <span><kbd>s</kbd> save · <kbd>m</kbd> read / unread · <kbd>⌘R</kbd> refresh</span>
       <span class="row"><button class="linkish" id="importBtn" type="button">Import OPML</button><span class="sep">·</span><button class="linkish" id="exportBtn" type="button">Export OPML</button><span class="sep2">·</span><button class="linkish" id="muteBtn" type="button">Muted words</button></span>
+      <span class="row"><button class="linkish" id="rulesBtn" type="button">Rules &amp; alerts</button><span class="sep">·</span><button class="linkish" id="checkupBtn" type="button">Feed checkup</button><span class="sep">·</span><button class="linkish" id="yearBtn" type="button">Your year</button></span>
       <button class="linkish" id="socialBtn" type="button">Your site, Mastodon &amp; Bluesky</button>
       <button class="linkish guide-link" type="button" data-view="guide">New to RSS? How to use this app</button>
       <button class="syncbtn" id="syncBtn" type="button"><span class="dot" id="syncDot"></span><span id="syncLabel">Sync between Macs: off</span></button>

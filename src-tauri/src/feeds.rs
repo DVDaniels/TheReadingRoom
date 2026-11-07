@@ -149,6 +149,9 @@ pub fn discover(html: &str, base: &str) -> Option<String> {
 /// Like `fetch`, but patient with YouTube, whose feeds answer "not found" on and off for channels that
 /// exist (a known YouTube problem since late 2025): wait a moment and ask once more.
 pub async fn fetch_patient(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
+    if crate::watch::is_watch(url) {
+        return crate::watch::fetch(client, url).await;
+    }
     match fetch(client, url).await {
         Err(e) if url.contains("youtube.com/") && e.contains("404") => {
             tokio::time::sleep(Duration::from_millis(2500)).await;

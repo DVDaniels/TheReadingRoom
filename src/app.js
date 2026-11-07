@@ -22,6 +22,7 @@
     saved: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     read: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>',
     unread: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>',
+    edition: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2h-1M7.5 8.5h6M7.5 12h6M7.5 15.5h4"/></svg>',
     today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     later: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     recent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -104,7 +105,7 @@
     if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -283,6 +284,7 @@
     $('views').innerHTML =
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
+        { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people }]) +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
@@ -333,7 +335,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -345,7 +347,7 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || (S.view === 'jobs' && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition') && !S.readerId));
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
   }
@@ -364,12 +366,13 @@
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
+      : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
       : S.view === 'talk' ? (anySocial() ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'Connect Mastodon or Bluesky on this device to see what people share and answer replies')
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
@@ -666,14 +669,16 @@
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
+    if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
     const brief = briefHtml();
+    const older = olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
-      $('list').innerHTML = brief + `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`;
+      $('list').innerHTML = brief + (older ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older;
       return;
     }
     let out = brief, lastDay = '';
@@ -703,7 +708,7 @@
     }
     out += '</div>';
     if (all.length > list.length) out += `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>`;
-    $('list').innerHTML = out;
+    $('list').innerHTML = out + older;
   }
   function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); }
 
@@ -717,6 +722,7 @@
   document.addEventListener('error', e => {
     const img = e.target;
     if (img.tagName === 'IMG' && img.closest?.('.cover')) { img.remove(); return; }
+    if (img.tagName === 'IMG' && img.closest?.('.ed-lead')) { img.remove(); return; }
     if (img.tagName === 'IMG' && img.closest?.('.newpost, .pav')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph' })); return; }
     if (img.tagName === 'IMG' && img.closest?.('.tcols') && img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
@@ -754,9 +760,9 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'edition', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
-      render(); welcome();
+      render(); welcome(); processNew();
     } catch (e) { status(msg(e), true); }
   }
 
@@ -2926,7 +2932,7 @@
     $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true; syncWide();
     if (isPhone()) setScreen('reader');
     if (isSplit()) $('reader').scrollTo({ top: 0 }); else $('main').scrollTo({ top: 0 });
-    if (!it.read) mark(id, { read: true }); else render();
+    if (!it.read) { countOpen(it); mark(id, { read: true }); } else render();
     renderReaderChrome();
     loadArticle(it);
     if (isSplit()) document.querySelector(`.story[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -3473,7 +3479,7 @@
 
   $('fAll').onclick = () => { S.unreadOnly = false; S.shown = 60; render(); };
   $('fUnread').onclick = () => { S.unreadOnly = true; S.shown = 60; render(); };
-  let qt; $('q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.shown = 60; renderList(); }, 150); });
+  let qt; $('q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.shown = 60; searchOlder(); renderList(); }, 150); });
   $('refresh').onclick = refresh;
 
   $('markAll').onclick = () => {
@@ -3602,7 +3608,19 @@
   }
   const FEED_NOTE = $('addNote').textContent;
   let addingList = false;
+  let watching = false;
+  function setWatchMode(on) {
+    if (on) setListMode(false);
+    watching = on;
+    $('feedUrlLabel').textContent = on ? 'Address of the page to watch' : 'Feed or website address';
+    $('feedUrl').placeholder = on ? 'example.com/jobs or a page that changes now and then' : 'A site, @someone@mastodon.social, a YouTube or podcast link';
+    $('addBtn').textContent = on ? 'Watch page' : 'Add feed';
+    $('watchMode').textContent = on ? 'Add a feed instead' : 'Watch a page that has no feed';
+    $('addNote').className = 'note';
+    $('addNote').textContent = on ? 'For pages without a feed: a club’s events, a shop’s new arrivals, a job board. Each time you refresh, the page is checked, and any change arrives as a story.' : FEED_NOTE;
+  }
   function setListMode(on) {
+    if (on && watching) setWatchMode(false);
     addingList = on;
     $('feedUrlLabel').textContent = on ? 'Address of the list (an OPML file)' : 'Feed or website address';
     $('feedUrl').placeholder = on ? 'example.com/blogroll.opml' : 'A site, @someone@mastodon.social, a YouTube or podcast link';
@@ -3614,7 +3632,20 @@
   }
   const looksLikeList = u => /\.opml(?:[?#]|$)/i.test(u.trim()) || /[?&/](?:format=)?opml\b/i.test(u.trim());
   $('listMode').onclick = () => { setListMode(!addingList); $('feedUrl').focus(); };
-  function openAdd() { setListMode(false); renderAddFolders(); $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
+  $('watchMode').onclick = () => { setWatchMode(!watching); $('feedUrl').focus(); };
+  async function watchPage(url) {
+    const note = $('addNote'), btn = $('addBtn');
+    btn.disabled = true; btn.textContent = 'Reading the page…'; note.className = 'note'; note.textContent = 'Checking that page…';
+    try {
+      const folderId = $('feedFolder').value ? Number($('feedFolder').value) : null;
+      const r = await invoke('watch_page', { url, title: $('feedName').value.trim() || null, folderId });
+      $('feedUrl').value = ''; $('feedName').value = ''; setWatchMode(false);
+      note.textContent = `Watching ${r.title}. Changes arrive as stories when you refresh.`;
+      await load(); selectView(String(r.id));
+    } catch (err) { note.className = 'note err'; note.textContent = msg(err); }
+    finally { btn.disabled = false; btn.textContent = watching ? 'Watch page' : 'Add feed'; }
+  }
+  function openAdd() { setWatchMode(false); setListMode(false); renderAddFolders(); $('addForm').hidden = false; $('showAdd').hidden = true; $('feedUrl').focus(); }
   $('showAdd').onclick = openAdd;
   $('cancelAdd').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; setListMode(false); };
   async function followList(url) {
@@ -3632,6 +3663,7 @@
   }
   $('addForm').addEventListener('submit', async e => {
     e.preventDefault();
+    if (watching) return watchPage($('feedUrl').value.trim());
     if (addingList || looksLikeList($('feedUrl').value)) { if (!addingList) setListMode(true); return followList($('feedUrl').value.trim()); }
     const note = $('addNote'), btn = $('addBtn');
     btn.disabled = true; btn.textContent = 'Finding feed…'; note.className = 'note'; note.textContent = 'Checking that address…';
@@ -3641,7 +3673,15 @@
       $('feedUrl').value = ''; $('feedName').value = '';
       note.textContent = `Now following ${r.title}.`;
       await load(); selectView(r.id);
-    } catch (err) { note.className = 'note err'; note.textContent = msg(err); }
+    } catch (err) {
+      note.className = 'note err'; note.textContent = msg(err);
+      // a page with no feed: offer to watch it instead
+      if (/doesn.t list an RSS/.test(msg(err))) {
+        const w = document.createElement('button'); w.type = 'button'; w.className = 'linkish'; w.textContent = 'Watch this page for changes instead';
+        w.onclick = () => { setWatchMode(true); watchPage($('feedUrl').value.trim()); };
+        note.append(' ', w);
+      }
+    }
     finally { btn.disabled = false; btn.textContent = 'Add feed'; }
   });
 
@@ -4005,6 +4045,314 @@
   loadWeather();
   setInterval(() => loadWeather(), 10 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWeather(); });
+
+
+  // ------------------------------------------------------------ Your year in reading
+  // Counted from the day this arrived: each story you open, per device (so Mac and iPhone add up when prefs sync).
+  let statsTimer = 0;
+  function countOpen(it) {
+    const f = feedById(it.feed_id); if (!f || isJobItem(it)) return;
+    const now = new Date(), y = String(now.getFullYear());
+    const st = S.prefs.stats = { since: now.toISOString(), years: {}, ...(S.prefs.stats || {}) };
+    st.years = { ...st.years };
+    const mine = st.years[y] = { ...(st.years[y] || {}) };
+    const d = mine[deviceId] = { stories: 0, feeds: {}, months: Array(12).fill(0), days: {}, ...(mine[deviceId] || {}) };
+    d.stories++;
+    d.feeds = { ...d.feeds, [f.url]: (d.feeds[f.url] || 0) + 1 };
+    d.months = [...d.months]; d.months[now.getMonth()]++;
+    d.days = { ...d.days, [dayKey(now).slice(5)]: 1 };
+    st.last = { ...(st.last || {}), [f.url]: dayKey(now) };
+    clearTimeout(statsTimer); statsTimer = setTimeout(savePrefs, 4000);
+  }
+  // Every device's counts for one year, added up
+  function yearTotals(y) {
+    const per = Object.values(((S.prefs.stats || {}).years || {})[y] || {});
+    const t = { stories: 0, feeds: {}, months: Array(12).fill(0), days: new Set() };
+    for (const d of per) {
+      t.stories += d.stories || 0;
+      for (const [u, n] of Object.entries(d.feeds || {})) t.feeds[u] = (t.feeds[u] || 0) + n;
+      (d.months || []).forEach((n, i) => { t.months[i] += n || 0; });
+      for (const k of Object.keys(d.days || {})) t.days.add(k);
+    }
+    // minutes come from the reading goal's log (only kept while a goal is set)
+    for (const [k, v] of Object.entries(S.prefs.readLog || {})) if (k.startsWith(y)) {
+      const m = Object.values(v).reduce((a, b) => a + b, 0) / 60;
+      if (m >= 1) t.days.add(k.slice(5));
+      t.mins = (t.mins || 0) + m;
+    }
+    return t;
+  }
+  function longestRun(days, y) {
+    let best = 0, run = 0; const d = new Date(Number(y), 0, 1), end = new Date(Math.min(Date.now(), new Date(Number(y), 11, 31).getTime()));
+    while (d <= end) { if (days.has(dayKey(d).slice(5))) { run++; best = Math.max(best, run); } else run = 0; d.setDate(d.getDate() + 1); }
+    return best;
+  }
+  const nameOfUrl = u => S.feeds.find(f => f.url === u)?.title || (() => { try { return new URL(u.replace(/^watch:/, '')).hostname.replace(/^www\./, ''); } catch { return u; } })();
+  function yearHtml(y) {
+    const t = yearTotals(y), since = (S.prefs.stats || {}).since;
+    const books = Object.values(S.prefs.finished || {}).filter(at => (at || '').startsWith(y)).length;
+    const highlights = S.highlights.filter(h => (h.created_at || '').startsWith(y)).length;
+    const ranked = Object.entries(t.feeds).sort((a, b) => b[1] - a[1]);
+    const isP = u => { const f = S.feeds.find(x => x.url === u); return f ? kindOf(f) === 'person' : false; };
+    const people = ranked.filter(([u]) => isP(u)).slice(0, 5), pubs = ranked.filter(([u]) => !isP(u)).slice(0, 3);
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const max = Math.max(...t.months), busiest = max ? MONTHS[t.months.indexOf(max)] : '';
+    const hours = t.mins ? (t.mins >= 90 ? `${Math.round(t.mins / 60)} hours` : `${Math.round(t.mins)} minutes`) : '';
+    const tile = (n, label) => `<div class="yr-tile"><b>${esc(String(n))}</b><span>${esc(label)}</span></div>`;
+    const who = list => list.map(([u, n], i) => `<li><span class="yr-n">${i + 1}</span><span class="yr-who">${esc(nameOfUrl(u))}</span><span class="yr-c">${n} ${n === 1 ? 'story' : 'stories'}</span></li>`).join('');
+    const years = Object.keys((S.prefs.stats || {}).years || {}).sort();
+    if (!t.stories && !books && !t.mins) return `<h2>Your ${esc(y)} in reading</h2>
+      <p>Nothing counted yet. From now on, every story you open counts toward your year: who you read most, your busiest month and your longest run of reading days. Come back in a few weeks.</p>
+      <div class="row sheet-foot"><button class="btn primary" type="button" data-yr="done">Done</button></div>`;
+    return `<h2>Your ${esc(y)} in reading</h2>
+      ${years.length > 1 ? `<div class="yr-years">${years.map(x => `<button class="chip${x === y ? ' on' : ''}" type="button" data-yr-year="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
+      <div class="yr-tiles">${tile(t.stories, t.stories === 1 ? 'story read' : 'stories read')}${books ? tile(books, books === 1 ? 'book finished' : 'books finished') : ''}${hours ? tile(hours.split(' ')[0], hours.split(' ')[1] + ' reading') : ''}${tile(longestRun(t.days, y), 'days in a row, your longest run')}</div>
+      ${people.length ? `<h3 class="yr-h">The people you read most</h3><ol class="yr-list">${who(people)}</ol>` : ''}
+      ${pubs.length ? `<h3 class="yr-h">Publications</h3><ol class="yr-list">${who(pubs)}</ol>` : ''}
+      ${busiest ? `<h3 class="yr-h">Month by month</h3><div class="yr-bars" aria-label="Stories read each month">${t.months.map((n, i) => `<span title="${MONTHS[i]}: ${n}"><i style="height:${max ? Math.max(n ? 6 : 0, Math.round(100 * n / max)) : 0}%"></i><em>${MONTHS[i][0]}</em></span>`).join('')}</div>
+        <p class="note">Your busiest month was ${esc(busiest)}${highlights ? `, and you highlighted ${highlights} ${highlights === 1 ? 'passage' : 'passages'} this year` : ''}.</p>` : ''}
+      ${since && since.startsWith(y) ? `<p class="note">Counting began ${esc(new Date(since).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }))}, when this feature arrived.</p>` : ''}
+      <div class="row sheet-foot"><button class="btn primary" type="button" data-yr="done">Done</button></div>`;
+  }
+  function openYear(y = String(new Date().getFullYear())) {
+    const el = sheet('yearPanel', yearHtml(y), 'Your year in reading');
+    el.querySelector('.sheet').classList.add('yr');
+    el.onclick = e => {
+      if (e.target.closest('[data-yr="done"]')) el.hidden = true;
+      const b = e.target.closest('[data-yr-year]'); if (b) openYear(b.dataset.yrYear);
+    };
+  }
+
+  // ------------------------------------------------------------ Feed checkup
+  function checkupHtml() {
+    const now = Date.now(), st = S.prefs.stats || {}, since = st.since ? Date.parse(st.since) : now;
+    const tracked = now - since > 30 * DAY;
+    const feeds = S.feeds.filter(f => !isJobFeed(f));
+    const broken = feeds.filter(f => f.status === 'error');
+    const quiet = feeds.filter(f => f.status !== 'error' && f.status !== 'pending' && (!f.latest || now - Date.parse(f.latest) > 90 * DAY))
+      .sort((a, b) => (a.latest || '').localeCompare(b.latest || ''));
+    const opens = u => Object.values(st.years || {}).reduce((n, per) => n + Object.values(per).reduce((m, d) => m + ((d.feeds || {})[u] || 0), 0), 0);
+    const unopened = tracked ? feeds.filter(f => f.status !== 'error' && f.recent >= 4 && !opens(f.url) && !quiet.includes(f)).sort((a, b) => b.recent - a.recent) : [];
+    const row = (f, why) => `<li class="ck-row"><span class="fav" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
+      <span class="ck-body"><b>${esc(f.title)}</b><span>${esc(why)}</span></span>
+      <span class="ck-acts"><button class="btn" type="button" data-ck="go" data-id="${f.id}">Open</button><button class="btn danger" type="button" data-ck="drop" data-id="${f.id}">Unfollow</button></span></li>`;
+    const when = iso => { const d = Math.floor((now - Date.parse(iso)) / DAY); return d > 730 ? `${Math.round(d / 365)} years` : d > 60 ? `${Math.round(d / 30)} months` : `${d} days`; };
+    const sec = (title, sub, list, why) => list.length ? `<h3 class="yr-h">${title} <span class="count">${list.length}</span></h3><p class="note">${sub}</p><ul class="ck-list">${list.map(f => row(f, why(f))).join('')}</ul>` : '';
+    const body = sec('Not working', 'These couldn’t be read on the last refresh. A site may have moved its feed, or closed.', broken, f => f.error || 'Couldn’t be read')
+      + sec('Gone quiet', 'Nothing new in three months or more. Some writers come back; some have moved on.', quiet, f => f.latest ? `Last story ${when(f.latest)} ago` : 'No stories yet')
+      + sec('Never opened', 'Busy feeds you haven’t opened a story from since counting began. Fine if you skim the headlines; if not, they’re only noise.', unopened, f => `${f.recent} stories in the last 30 days, none opened`);
+    return `<h2>Feed checkup</h2>
+      <p>${feeds.length} feeds. ${broken.length + quiet.length + unopened.length ? 'A few worth a look:' : 'Everything is working and everyone is still writing.'}</p>
+      ${body}${tracked ? '' : '<p class="note">“Never opened” appears after a month of counting which stories you open.</p>'}
+      <div class="row sheet-foot"><button class="btn primary" type="button" data-ck="done">Done</button></div>`;
+  }
+  function openCheckup() {
+    const el = sheet('checkupPanel', checkupHtml(), 'Feed checkup');
+    el.onclick = async e => {
+      const b = e.target.closest('[data-ck]'); if (!b) return;
+      if (b.dataset.ck === 'done') { el.hidden = true; return; }
+      const f = feedById(Number(b.dataset.id)); if (!f) return;
+      if (b.dataset.ck === 'go') { el.hidden = true; selectView(String(f.id)); return; }
+      if (b.dataset.ck === 'drop') {
+        b.disabled = true;
+        try { await invoke('remove_feed', { id: f.id }); status(`Unfollowed ${f.title}.`); await load(); openCheckup(); }
+        catch (err) { status(msg(err), true); b.disabled = false; }
+      }
+    };
+  }
+
+  // ------------------------------------------------------------ Rules and keyword alerts
+  // A rule: words (any of them, in the title or the summary), optionally one feed, and what to do.
+  // Rules act on stories as they arrive, never on ones already here.
+  const RULE_ACTS = { alert: 'Let me know', save: 'Save to Read later', read: 'Mark read (skip it)' };
+  const rules = () => (S.prefs.rules || []).filter(r => r && (r.words || r.feed));
+  function ruleRe(words) {
+    const parts = String(words || '').split(',').map(w => w.trim()).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return parts.length ? new RegExp(`(^|[^\\p{L}\\p{N}])(${parts.join('|')})(?=$|[^\\p{L}\\p{N}])`, 'iu') : null;
+  }
+  function ruleMatches(r, it) {
+    if (r.feed) { const f = feedById(it.feed_id); if (!f || f.url !== r.feed) return false; }
+    const re = ruleRe(r.words);
+    return re ? re.test(`${it.title || ''} ${it.summary || ''}`) : !!r.feed;
+  }
+  let seenIds = null;
+  function processNew() {
+    if (!seenIds) { try { const raw = store.get('rulesSeen'); seenIds = raw ? new Set(JSON.parse(raw)) : null; } catch { seenIds = null; } }
+    const first = !seenIds; if (first) seenIds = new Set();
+    const fresh = S.items.filter(i => !seenIds.has(i.id));
+    fresh.forEach(i => seenIds.add(i.id));
+    if (fresh.length || first) {
+      const keep = [...seenIds]; store.set('rulesSeen', JSON.stringify(keep.slice(-4000))); if (keep.length > 4000) seenIds = new Set(keep.slice(-4000));
+    }
+    const rs = rules(); if (first || !rs.length || !fresh.length) return;
+    const read = [], save = [], alerts = new Map();
+    for (const it of fresh) {
+      if (it.read || isJobItem(it)) continue;
+      for (const r of rs) {
+        if (!ruleMatches(r, it)) continue;
+        if (r.act === 'read') read.push(it.id);
+        else if (r.act === 'save') { if (!it.saved) save.push(it.id); }
+        else { const k = r.words || nameOfUrl(r.feed); alerts.set(k, [...(alerts.get(k) || []), it]); }
+      }
+    }
+    if (save.length) mark([...new Set(save)], { saved: true });
+    if (read.length) mark([...new Set(read)], { read: true });
+    for (const [k, list] of alerts) {
+      const one = list[0], f = feedById(one.feed_id);
+      const title = list.length === 1 ? `${f?.title || 'New story'}: “${k}”` : `${list.length} new stories mention “${k}”`;
+      const body = list.length === 1 ? headline(one) : list.slice(0, 3).map(headline).join(' · ');
+      invoke('notify', { title, body, id: 'alert-' + one.id }).catch(() => {});
+      if (document.hasFocus()) status(`${title}. ${body}`);
+    }
+  }
+  function rulesHtml() {
+    const list = S.prefs.rules || [];
+    const feedOpts = sel => `<option value="">Any feed</option>` + S.feeds.filter(f => !isJobFeed(f)).map(f => `<option value="${esc(f.url)}"${f.url === sel ? ' selected' : ''}>${esc(f.title)}</option>`).join('');
+    const actOpts = sel => Object.entries(RULE_ACTS).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
+    const row = (r, i) => `<li class="rule" data-i="${i}">
+        <label>When a story mentions<input type="text" data-k="words" value="${esc(r.words || '')}" placeholder="words, separated by commas" autocomplete="off" spellcheck="false"></label>
+        <label>in<select data-k="feed">${feedOpts(r.feed)}</select></label>
+        <label>then<select data-k="act">${actOpts(r.act || 'alert')}</select></label>
+        <button class="icon" type="button" data-rule="del" aria-label="Delete this rule" title="Delete this rule">×</button></li>`;
+    return `<h2>Rules &amp; alerts</h2>
+      <p>Rules act on new stories as they arrive. An alert is a notification on this device; it’s how you hear the moment someone writes about your town, your company or a book you love.</p>
+      <ul class="rules">${list.map(row).join('') || '<li class="note">No rules yet.</li>'}</ul>
+      <div class="row"><button class="btn" type="button" data-rule="add">+ Add a rule</button><button class="btn" type="button" data-rule="test">Try them on today’s stories</button></div>
+      <p class="note" id="ruleNote">To hide stories that mention a word, use Muted words. Rules save as you type and sync with your other devices.</p>
+      <div class="row sheet-foot"><button class="btn primary" type="button" data-rule="done">Done</button></div>`;
+  }
+  let rulesSave = 0;
+  function openRules() {
+    const el = sheet('rulesPanel', rulesHtml(), 'Rules and alerts');
+    el.querySelector('.sheet').classList.add('wide-sheet');
+    const persist = () => { clearTimeout(rulesSave); rulesSave = setTimeout(savePrefs, 600); };
+    el.oninput = el.onchange = e => {
+      const li = e.target.closest('.rule'), k = e.target.dataset.k; if (!li || !k) return;
+      const list = [...(S.prefs.rules || [])], i = Number(li.dataset.i);
+      list[i] = { ...list[i], [k]: e.target.value }; S.prefs.rules = list; persist();
+    };
+    el.onclick = e => {
+      const b = e.target.closest('[data-rule]'); if (!b) return;
+      const k = b.dataset.rule;
+      if (k === 'done') { el.hidden = true; savePrefs(); return; }
+      if (k === 'add') {
+        S.prefs.rules = [...(S.prefs.rules || []), { words: '', feed: '', act: 'alert' }]; persist(); openRules();
+        const ins = $('rulesPanel').querySelectorAll('.rule input'); ins[ins.length - 1]?.focus();
+        if (!store.get('alertsAsked')) { store.set('alertsAsked', '1'); invoke('notify', { title: 'Alerts are on', body: 'You’ll see a notification like this when a new story matches a rule.', id: 'alerts-hello' }).catch(() => {}); }
+      }
+      if (k === 'del') { const list = [...(S.prefs.rules || [])]; list.splice(Number(b.closest('.rule').dataset.i), 1); S.prefs.rules = list; persist(); openRules(); }
+      if (k === 'test') {
+        const rs = rules(), hits = S.items.filter(i => isToday(i) && rs.some(r => ruleMatches(r, i)));
+        $('ruleNote').textContent = rs.length ? (hits.length ? `${hits.length} of today’s stories match: ${hits.slice(0, 3).map(headline).join(' · ')}${hits.length > 3 ? ' …' : ''}` : 'None of today’s stories match. New ones will be checked as they arrive.') : 'Add a rule first.';
+      }
+    };
+  }
+
+  // ------------------------------------------------------------ Search everything (stories the app has let go too)
+  const OLD = { q: '', rows: [], busy: false };
+  let olderTimer = 0;
+  function searchOlder() {
+    clearTimeout(olderTimer);
+    const q = S.q;
+    if (!q || q.length < 3) { OLD.q = ''; OLD.rows = []; return; }
+    olderTimer = setTimeout(async () => {
+      OLD.busy = true;
+      try { const rows = await invoke('search_all', { q, limit: 80 }); if (S.q === q) { OLD.q = q; OLD.rows = rows; renderList(); } }
+      catch { /* the list above still works */ }
+      finally { OLD.busy = false; }
+    }, 250);
+  }
+  function olderHtml(shownIds) {
+    if (!S.q || OLD.q !== S.q) return '';
+    const rows = OLD.rows.filter(r => !shownIds.has(r.id)).slice(0, 40);
+    if (!rows.length) return '';
+    return `<section class="older"><h3>Older stories <span class="count">${rows.length}</span></h3>
+      <p class="note">From everything you’ve followed, including stories this view doesn’t show or the app has let go.</p>
+      ${rows.map(r => `<button class="older-row" type="button" data-older="${esc(r.id)}" data-url="${esc(r.link)}">
+        <span class="o-t">${esc(r.title)}</span><span class="o-m">${esc(r.feed || nameOfUrl(r.link))} · ${esc(new Date(r.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</span></button>`).join('')}
+    </section>`;
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-older]'); if (!b) return;
+    if (item(b.dataset.older)) openReader(b.dataset.older); else openWeb(b.dataset.url);
+  });
+
+  // ------------------------------------------------------------ The Morning Edition
+  // Yesterday's reading laid out as a newspaper front page: the people you read up top, the newsroom in a column,
+  // the rest in brief by folder. Made once a morning (6 a.m.); stories after that wait for tomorrow's paper.
+  function editionWindow() {
+    const end = new Date(); if (end.getHours() < 6) end.setDate(end.getDate() - 1); end.setHours(6, 0, 0, 0);
+    let start = end.getTime() - DAY, stop = end.getTime();
+    const ok = i => !isJobItem(i) && !(mutesApply('all') && isMuted(i)) && !isFolded(i, 'all');
+    let list = S.items.filter(i => ok(i) && Date.parse(i.date) >= start && Date.parse(i.date) < stop);
+    if (list.length < 6) {
+      // a thin night (or the app was closed): the latest day of stories instead
+      const newest = Math.max(0, ...S.items.filter(ok).map(i => Date.parse(i.date) || 0));
+      stop = Math.max(Date.now(), newest + 1); start = Math.min(stop, newest + 1) - DAY;
+      list = S.items.filter(i => ok(i) && Date.parse(i.date) >= start);
+    }
+    return { end, list: list.sort((a, b) => b.date.localeCompare(a.date)) };
+  }
+  function editionHtml() {
+    const { end, list } = editionWindow();
+    const date = end.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const head = `<header class="ed-mast"><div class="ed-rule"><span>${esc(date)}</span><span>Written by people</span></div>
+      <h1>The Reading Room</h1><div class="ed-rule"><span>${list.length} ${list.length === 1 ? 'story' : 'stories'} from ${new Set(list.map(i => i.feed_id)).size} feeds</span>
+      <span class="ed-tools"><button class="linkish" type="button" data-ed="print">Print</button><button class="linkish" type="button" data-ed="read">Mark the edition read</button></span></div></header>`;
+    if (!list.length) return `<div class="edition">${head}<div class="empty"><strong>No paper today</strong><span>Nothing new arrived overnight. Press Refresh, or come back tomorrow morning.</span></div></div>`;
+    const used = new Set(), byFeed = new Set();
+    const take = (pred, n, oneEach = true) => {
+      const out = [];
+      for (const i of list) {
+        if (out.length >= n) break;
+        if (used.has(i.id) || (oneEach && byFeed.has(i.feed_id)) || !pred(i)) continue;
+        out.push(i); used.add(i.id); byFeed.add(i.feed_id);
+      }
+      return out;
+    };
+    const person = i => isPerson(i.feed_id), score = i => (isWeb(i.image) ? 2 : 0) + Math.min((i.summary || '').length / 200, 2);
+    const leadPick = [...list].filter(person).sort((a, b) => score(b) - score(a))[0] || [...list].sort((a, b) => score(b) - score(a))[0];
+    used.add(leadPick.id); byFeed.add(leadPick.feed_id);
+    const seconds = take(person, 2), news = take(i => !person(i), 6);
+    const by = i => esc(srcLabel(i));
+    const clip = (s, n) => { s = (s || '').trim(); return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s; };
+    const story = (i, cls, n) => `<article class="${cls}${i.read ? ' read' : ''}" data-ed-open="${esc(i.id)}">
+        ${cls === 'ed-lead' && isWeb(i.image) ? `<img src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : ''}
+        <p class="ed-by">${by(i)}</p><h2>${esc(headline(i))}</h2>${n ? `<p class="ed-sum">${esc(clip(i.summary, n))}</p>` : ''}</article>`;
+    // the rest, in brief, by folder
+    const rest = list.filter(i => !used.has(i.id));
+    const groups = new Map();
+    for (const i of rest) { const f = feedById(i.feed_id), g = (f && folderById(f.folder_id)?.name) || (person(i) ? 'People' : 'Elsewhere'); groups.set(g, [...(groups.get(g) || []), i]); }
+    const brief = [...groups].sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([g, items]) => `<section class="ed-brief"><h3>${esc(g)}</h3>
+      ${items.slice(0, 5).map(i => `<p data-ed-open="${esc(i.id)}"${i.read ? ' class="read"' : ''}><b>${esc(headline(i))}</b> <span>${by(i)}</span></p>`).join('')}
+      ${items.length > 5 ? `<p class="ed-more">and ${items.length - 5} more</p>` : ''}</section>`).join('');
+    const cur = currentBook(), b = cur && bookOf(cur), jobs = newJobs();
+    const boxes = [
+      b ? `<div class="ed-box" data-ed="book"><h4>Your book</h4><p><b>${esc(b.title)}</b> by ${esc(b.author)}</p><p class="ed-more">Pick up where you left off</p></div>` : '',
+      goalOn() ? `<div class="ed-box"><h4>Your reading</h4><p>${streak()} ${streak() === 1 ? 'day' : 'days'} in a row · goal ${goalCfg().mins} minutes a day</p></div>` : '',
+      jobs ? `<div class="ed-box" data-ed="jobs"><h4>Help Wanted</h4><p>${jobs} new ${jobs === 1 ? 'listing' : 'listings'}</p></div>` : '',
+    ].join('');
+    return `<div class="edition">${head}
+      <div class="ed-front">
+        <div class="ed-main">${story(leadPick, 'ed-lead', 420)}
+          ${seconds.length ? `<div class="ed-seconds">${seconds.map(i => story(i, 'ed-second', 200)).join('')}</div>` : ''}</div>
+        ${news.length ? `<aside class="ed-news"><h3>From the newsroom</h3>${news.map(i => story(i, 'ed-item', 0)).join('')}</aside>` : ''}
+      </div>
+      ${brief || boxes ? `<div class="ed-lower"><div class="ed-briefs"><h3 class="ed-kicker">In brief</h3><div class="ed-bcols">${brief}</div></div>${boxes ? `<aside class="ed-boxes">${boxes}</aside>` : ''}</div>` : ''}
+    </div>`;
+  }
+  document.addEventListener('click', e => {
+    const o = e.target.closest('[data-ed-open]'); if (o) { openReader(o.dataset.edOpen); return; }
+    const b = e.target.closest('[data-ed]'); if (!b) return;
+    if (b.dataset.ed === 'print') invoke('print_page').catch(() => window.print());
+    if (b.dataset.ed === 'read') { const ids = editionWindow().list.filter(i => !i.read).map(i => i.id); if (ids.length) { mark(ids, { read: true }); status(`Marked ${ids.length} ${ids.length === 1 ? 'story' : 'stories'} read.`); } }
+    if (b.dataset.ed === 'book') selectView('books');
+    if (b.dataset.ed === 'jobs') selectView('jobs');
+  });
+
+  $('rulesBtn').onclick = openRules;
+  $('checkupBtn').onclick = openCheckup;
+  $('yearBtn').onclick = () => openYear();
 
   // A thin line under the top bar once stories are scrolling beneath it.
   const scrollerOf = () => (isSplit() ? $('listView') : $('main'));

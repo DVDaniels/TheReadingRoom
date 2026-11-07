@@ -41,6 +41,8 @@ pub struct Feed {
     pub folder_id: Option<i64>,
     /// Stories from the last 30 days, to tell people from publications
     pub recent: i64,
+    /// The newest story's date (for the feed checkup: feeds that have gone quiet)
+    pub latest: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -190,6 +192,10 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
         }
     }
     conn.execute_batch(TRACKING)?;
+    // Search everything: a light copy (title, link, a bit of the summary) of stories as they're trimmed away
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS archive (id TEXT PRIMARY KEY, feed_id INTEGER, title TEXT NOT NULL, link TEXT DEFAULT '',
+        date TEXT NOT NULL, summary TEXT DEFAULT '', read INTEGER DEFAULT 0);
+        CREATE INDEX IF NOT EXISTS archive_date ON archive(date);")?;
     if seed_defaults {
         // Starter feeds carry no timestamp, so another Mac's choices always win over them.
         set_applying(&conn, true)?;
@@ -325,11 +331,13 @@ fn feed_from_row(r: &rusqlite::Row) -> rusqlite::Result<Feed> {
         last_fetched: r.get(6)?,
         folder_id: r.get(7)?,
         recent: r.get(8)?,
+        latest: r.get(9)?,
     })
 }
 
 const FEED_COLS: &str = "id, url, title, site, status, error, last_fetched, folder_id,
-    (SELECT COUNT(*) FROM items i WHERE i.feed_id = feeds.id AND i.date >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')) AS recent";
+    (SELECT COUNT(*) FROM items i WHERE i.feed_id = feeds.id AND i.date >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')) AS recent,
+    (SELECT MAX(date) FROM items i WHERE i.feed_id = feeds.id) AS latest";
 
 pub fn feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut st = conn.prepare(&format!("SELECT {FEED_COLS} FROM feeds ORDER BY title COLLATE NOCASE"))?;
@@ -512,6 +520,14 @@ pub fn store_fetch(
         "UPDATE feeds SET status='ok', error='', site=?1, title=?2, last_fetched=?3 WHERE id=?4",
         params![site, title, now, feed.id],
     )?;
+    // Before trimming old stories away, keep a light copy of them for Search everything
+    tx.execute(
+        "INSERT OR IGNORE INTO archive(id, feed_id, title, link, date, summary, read)
+           SELECT id, feed_id, title, link, date, substr(COALESCE(summary, ''), 1, 400), read FROM items WHERE feed_id=?1 AND saved=0
+           AND id NOT IN (SELECT item_id FROM highlights)
+           AND id NOT IN (SELECT id FROM items WHERE feed_id=?1 ORDER BY date DESC LIMIT ?2)",
+        params![feed.id, KEEP_PER_FEED],
+    )?;
     tx.execute(
         "DELETE FROM items WHERE feed_id=?1 AND saved=0
            AND id NOT IN (SELECT item_id FROM highlights)
@@ -611,4 +627,43 @@ mod tests {
         assert_eq!(feeds(&c).unwrap()[0].folder_id, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+
+// ---------------------------------------------------------------- search everything
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Found {
+    pub id: String,
+    pub feed_id: i64,
+    pub feed: String,
+    pub title: String,
+    pub link: String,
+    pub date: String,
+    pub summary: String,
+    /// still in the app (opens in the reader) or only in the archive (opens on the web)
+    pub kept: bool,
+}
+
+/// Every story whose title or summary has all the words, newest first: the ones still kept and the archive.
+pub fn search_all(conn: &Connection, query: &str, limit: i64) -> rusqlite::Result<Vec<Found>> {
+    let words: Vec<String> = query.split_whitespace().filter(|w| w.chars().count() > 1).take(6)
+        .map(|w| format!("%{}%", w.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"))).collect();
+    if words.is_empty() { return Ok(vec![]); }
+    let cond = |t: &str| words.iter().enumerate()
+        .map(|(i, _)| format!("({t}.title LIKE ?{n} ESCAPE '\\' OR {t}.summary LIKE ?{n} ESCAPE '\\')", n = i + 1))
+        .collect::<Vec<_>>().join(" AND ");
+    let sql = format!(
+        "SELECT * FROM (
+           SELECT i.id, i.feed_id, COALESCE(f.title, ''), i.title, i.link, i.date, substr(COALESCE(i.summary, ''), 1, 300), 1 FROM items i LEFT JOIN feeds f ON f.id = i.feed_id WHERE {a}
+           UNION ALL
+           SELECT a.id, a.feed_id, COALESCE(f.title, ''), a.title, a.link, a.date, a.summary, 0 FROM archive a LEFT JOIN feeds f ON f.id = a.feed_id
+             WHERE {b} AND a.id NOT IN (SELECT id FROM items))
+         ORDER BY 6 DESC LIMIT {limit}", a = cond("i"), b = cond("a"));
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map(rusqlite::params_from_iter(words.iter()), |r| Ok(Found {
+        id: r.get(0)?, feed_id: r.get::<_, Option<i64>>(1)?.unwrap_or(0), feed: r.get(2)?, title: r.get(3)?, link: r.get(4)?,
+        date: r.get(5)?, summary: r.get(6)?, kept: r.get::<_, i64>(7)? == 1,
+    }))?;
+    rows.collect()
 }
