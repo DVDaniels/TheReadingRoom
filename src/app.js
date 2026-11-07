@@ -3363,6 +3363,8 @@
       if (kind === 'linkedin') await invoke('open_share', { url: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` });
       if (kind === 'email') await invoke('open_external', { url: `mailto:?subject=${t}&body=${t}%0A%0A${u}` });
       if (kind === 'browser') await invoke('open_external', { url: it.link });
+      // the story's page, translated by Google into this device's language, in the web window
+      if (kind === 'translate') { const tl = (navigator.language || 'en').split('-')[0]; openWeb(`https://translate.google.com/translate?sl=auto&tl=${tl}&u=${u}`); }
       if (kind === 'copy') {
         try { await navigator.clipboard.writeText(it.link); status('Link copied.'); }
         catch { status(`Couldn’t copy automatically. The link is ${it.link}`, true); }
