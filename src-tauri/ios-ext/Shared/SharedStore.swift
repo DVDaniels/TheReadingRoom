@@ -14,7 +14,8 @@ enum SharedStore {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
          kSecAttrAccount as String: account,
-         kSecAttrAccessGroup as String: group]
+         kSecAttrAccessGroup as String: group,
+         kSecUseDataProtectionKeychain as String: true]
     }
 
     static func read(_ account: String) -> Data? {

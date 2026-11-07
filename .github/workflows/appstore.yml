@@ -6,6 +6,11 @@ name: Send to the Mac App Store
 # Bump the version in src-tauri/tauri.conf.json first: Apple only accepts each version number once.
 on:
   workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to App Store Connect (untick to only check that it builds)"
+        type: boolean
+        default: true
 
 jobs:
   appstore:
@@ -39,6 +44,9 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyjwt cryptography requests pyyaml
 
       - name: Load signing certificates
         run: |
@@ -60,7 +68,7 @@ jobs:
       - name: Add provisioning profile and team ID
         run: |
           echo "$PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
-          sed -i '' "s/TEAM_ID/$TEAM_ID/g" src-tauri/Entitlements.appstore.plist
+          sed -i '' "s/TEAM_ID/$TEAM_ID/g" src-tauri/Entitlements.appstore.plist src-tauri/Info.plist
 
       - name: Build the App Store version
         env:
@@ -70,6 +78,35 @@ jobs:
           echo '{"bundle":{"macOS":{"bundleVersion":"${{ github.run_number }}"}}}' > "$RUNNER_TEMP/build-number.json"
           echo "::notice title=Build number::${{ github.run_number }}"
           npx tauri build --bundles app --target universal-apple-darwin --config src-tauri/tauri.appstore.conf.json --config "$RUNNER_TEMP/build-number.json"
+
+      - name: Add the Share menu extension and widgets
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          BUILD_NO="${{ github.run_number }}" python .github/scripts/mac_extensions.py
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          X="$RUNNER_TEMP/macext"
+          (cd "$X" && xcodegen generate --spec project.yml > "$RUNNER_TEMP/xg.log" 2>&1) || { echo "::error title=xcodegen::$(tail -20 "$RUNNER_TEMP/xg.log" | tr '\n' ' ')"; exit 1; }
+          APP="$(ls -d src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app | head -1)"
+          mkdir -p "$APP/Contents/PlugIns"
+          for t in Share Widgets; do
+            kind=$(echo $t | tr 'A-Z' 'a-z')
+            if ! xcodebuild -project "$X/ReadingRoomMacExtensions.xcodeproj" -target "ReadingRoomMac$t" -configuration Release \
+                SYMROOT="$X/build" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/x-$kind.log" 2>&1; then
+              echo "::error title=Building the $t extension::$(grep -E 'error:' "$RUNNER_TEMP/x-$kind.log" | head -15 | tr '\n' ' ' | cut -c1-3000)"
+              echo "::error title=End of the $t log::$(tail -20 "$RUNNER_TEMP/x-$kind.log" | tr '\n' ' ' | cut -c1-2000)"
+              exit 1
+            fi
+            EX="$X/build/Release/ReadingRoomMac$t.appex"
+            cp "$X/$kind.provisionprofile" "$EX/Contents/embedded.provisionprofile"
+            codesign --force --sign "$APP_IDENTITY" --entitlements "$X/src/$t/$t.entitlements" "$EX"
+            rm -rf "$APP/Contents/PlugIns/ReadingRoomMac$t.appex"
+            cp -R "$EX" "$APP/Contents/PlugIns/"
+          done
+          # sign the app again, now with the extensions sealed inside
+          codesign --force --sign "$APP_IDENTITY" --entitlements src-tauri/Entitlements.appstore.plist "$APP"
+          codesign --verify --deep --strict "$APP" || { echo "::error title=Signature::The app's signature didn't verify after adding the extensions."; exit 1; }
+          echo "::notice title=Extensions::$(ls "$APP/Contents/PlugIns" | tr '\n' ' ')"
 
       - name: Package for the App Store
         run: |
@@ -83,6 +120,7 @@ jobs:
           fi
 
       - name: Upload to App Store Connect
+        if: ${{ inputs.upload }}
         run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"

@@ -4397,7 +4397,7 @@
   $('nlMode').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; openNewsletters(); };
 
   // ------------------------------------------------------------ Share menu and Home Screen widgets (iPhone and iPad)
-  const onIOS = () => document.documentElement.classList.contains('ios');
+  const onIOS = () => true; // iPhone, iPad and the Mac (elsewhere the app's side does nothing)
   async function takeShared() {
     if (!onIOS()) return;
     try {

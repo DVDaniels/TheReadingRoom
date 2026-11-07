@@ -21,5 +21,12 @@
   <string>TEAM_ID.com.daviddaniels.readingroom</string>
   <key>com.apple.developer.team-identifier</key>
   <string>TEAM_ID</string>
+  <!-- the app's own keychain first (so where sign-ins are kept doesn't change), then the one it shares
+       with the Share menu extension and the widgets -->
+  <key>keychain-access-groups</key>
+  <array>
+    <string>TEAM_ID.com.daviddaniels.readingroom</string>
+    <string>TEAM_ID.com.daviddaniels.readingroom.shared</string>
+  </array>
 </dict>
 </plist>

@@ -1,4 +1,4 @@
-//! "Save to The Reading Room" from the Share menu, and the Home Screen widgets.
+//! "Save to The Reading Room" from the Share menu, and the widgets (iPhone, iPad and Mac).
 //!
 //! The share extension and the widget are small separate programs that can't open the app's
 //! database. They meet the app in a shared keychain item instead (keychain sharing needs no
@@ -82,7 +82,7 @@ pub async fn page_item(client: &reqwest::Client, url: &str, title: &str) -> Pars
 
 // ---------------------------------------------------------------- the shared keychain (iPhone and iPad)
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 mod keychain {
     use security_framework::access_control::{ProtectionMode, SecAccessControl};
     use security_framework::passwords::{delete_generic_password_options, generic_password, set_generic_password_options, PasswordOptions};
@@ -94,12 +94,14 @@ mod keychain {
         use objc2_foundation::{NSBundle, NSString};
         let v = NSBundle::mainBundle().objectForInfoDictionaryKey(&NSString::from_str("ReadingRoomKeychainGroup"))?;
         let s = v.downcast::<NSString>().ok()?.to_string();
-        (!s.is_empty() && !s.starts_with('$')).then_some(s)
+        (!s.is_empty() && !s.starts_with('$') && !s.starts_with("TEAM_ID")).then_some(s)
     }
 
     fn options(account: &str) -> Option<PasswordOptions> {
         let mut o = PasswordOptions::new_generic_password(SERVICE, account);
         o.set_access_group(&group()?);
+        #[cfg(target_os = "macos")]
+        o.use_protected_keychain(); // the Mac's iPhone-style keychain, where access groups work
         Some(o)
     }
 
@@ -123,11 +125,11 @@ mod keychain {
 
 /// Pages waiting from the Share menu (and clears them).
 pub fn take_inbox() -> Vec<Shared> {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
         keychain::take("inbox").and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default()
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
     {
         vec![]
     }
@@ -135,9 +137,9 @@ pub fn take_inbox() -> Vec<Shared> {
 
 /// The summary the Home Screen widgets show.
 pub fn put_widget(json: &str) {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     keychain::put("widget", json.as_bytes());
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
     let _ = json;
 }
 

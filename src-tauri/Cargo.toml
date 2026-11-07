@@ -40,7 +40,7 @@ tauri-plugin-icloud-folder = { path = "plugins/icloud-folder" }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSURL", "NSData", "NSString", "NSError", "NSArray"] }
+objc2-foundation = { version = "0.3", features = ["NSURL", "NSData", "NSString", "NSError", "NSArray", "NSBundle"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSound", "UNNotificationTrigger", "block2"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
