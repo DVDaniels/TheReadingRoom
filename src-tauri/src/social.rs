@@ -1403,6 +1403,37 @@ fn embeddable(url: &str) -> Option<(&'static str, &'static str)> {
     }
 }
 
+/// A YouTube video's thumbnail picture, from its address.
+fn video_thumb(url: &str) -> Option<String> {
+    let u = url::Url::parse(url.trim()).ok()?;
+    let host = u.host_str()?.trim_start_matches("www.").trim_start_matches("m.").to_ascii_lowercase();
+    let id = match host.as_str() {
+        "youtu.be" => u.path().trim_start_matches('/').split('/').next().map(String::from),
+        "youtube.com" | "music.youtube.com" => {
+            if u.path() == "/watch" {
+                u.query_pairs().find(|(k, _)| k == "v").map(|(_, v)| v.to_string())
+            } else {
+                let mut seg = u.path().trim_start_matches('/').split('/');
+                match seg.next() {
+                    Some("shorts") | Some("live") | Some("embed") => seg.next().map(String::from),
+                    _ => None,
+                }
+            }
+        }
+        _ => None,
+    }?;
+    let ok = !id.is_empty() && id.len() <= 20 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    ok.then(|| format!("https://img.youtube.com/vi/{id}/hqdefault.jpg"))
+}
+
+/// The video a note is about: the one attached, or else the first one on a line of its own.
+fn note_video(text: &str, attached: &str) -> Option<String> {
+    if embeddable(attached).is_some() {
+        return Some(attached.trim().to_string());
+    }
+    text.lines().map(str::trim).find(|l| !l.contains(' ') && embeddable(l).is_some()).map(String::from)
+}
+
 /// An embed block: WordPress shows the video or player itself, not a link.
 fn embed_block(url: &str) -> Option<String> {
     let (slug, kind) = embeddable(url)?;
@@ -1585,10 +1616,16 @@ async fn masto_media(bytes: &[u8], alt: &str) -> Result<String, String> {
 }
 
 /// Share copies of a note you posted on your site: the words (shortened if needed), the photo attached
-/// with its description, and the link home.
+/// with its description, and the link home. A note about a video gets the video's picture on its Bluesky
+/// card (still linking home), and on Mastodon the video's address, so its preview shows the video.
 #[tauri::command]
-pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String) -> Vec<Posted> {
+pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String, video: Option<String>) -> Vec<Posted> {
     let bytes = if photo.is_empty() { None } else { photo_bytes(&photo).ok() };
+    let video = note_video(&text, video.as_deref().unwrap_or("")).filter(|v| v != &link);
+    let thumb = video.as_deref().and_then(video_thumb).or_else(|| video_thumb(&link)).unwrap_or_default();
+    // on Mastodon the video's address goes before the link home (the first link makes the preview),
+    // unless your words already include it
+    let masto_video = video.clone().filter(|v| !text.contains(v.as_str()));
     let mut out = Vec::new();
     for n in networks {
         let mut warn = String::new();
@@ -1619,13 +1656,14 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                 } else {
                     // no photo: the words, and a card for the note on your site
                     let words = fit(&text, 300);
-                    bsky_post(&words, &link, &title, &fit(&text, 200), "").await
+                    bsky_post(&words, &link, &title, &fit(&text, 200), &thumb).await
                 }
             }
             .await,
             "mastodon" => async {
-                let words = fit(&text, if link.is_empty() { 500 } else { 500 - 23 - 2 }); // Mastodon counts every link as 23
-                let status = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
+                let links: Vec<&str> = masto_video.iter().map(String::as_str).chain(Some(link.as_str()).filter(|l| !l.is_empty())).collect();
+                let words = fit(&text, 500 - links.len() * 25); // Mastodon counts every link as 23
+                let status = std::iter::once(words.as_str()).chain(links.iter().copied()).filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
                 let mut body = json!({ "status": status, "visibility": "public" });
                 if let Some(b) = &bytes {
                     // if the server won't take the photo, post the words and link anyway, and say why
@@ -1686,6 +1724,17 @@ mod embed_tests {
         assert!(embed_block("https://open.spotify.com/episode/x").unwrap().contains("is-type-rich"));
         assert!(embeddable("https://www.youtube.com/@someone").is_none());
         assert!(embeddable("https://daverupert.com/2026/post/").is_none());
+    }
+
+    #[test]
+    fn notes_about_videos_find_the_video_and_its_picture() {
+        assert_eq!(video_thumb("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10").as_deref(), Some("https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg"));
+        assert_eq!(video_thumb("https://youtu.be/dQw4w9WgXcQ?si=x").as_deref(), Some("https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg"));
+        assert!(video_thumb("https://youtube.com/shorts/abc_-1").is_some());
+        assert!(video_thumb("https://vimeo.com/123").is_none());
+        assert_eq!(note_video("hi", "https://youtu.be/x1").as_deref(), Some("https://youtu.be/x1"));
+        assert_eq!(note_video("Look:\nhttps://www.youtube.com/watch?v=x1\nnice", "https://blog.example/post").as_deref(), Some("https://www.youtube.com/watch?v=x1"));
+        assert!(note_video("see https://youtu.be/x1 in a sentence", "").is_none());
     }
 }
 
