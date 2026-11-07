@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Written by People: a list to follow in The Reading Room</title>
+  <meta name="description" content="20 personal blogs about the web, writing and making things, in one list you can follow. New blogs are added for you as the list grows.">
+  <link rel="canonical" href="https://readingroomapp.com/lists/">
+  <link rel="icon" href="../assets/img/icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <link rel="alternate" type="text/x-opml" title="Written by People" href="https://readingroomapp.com/lists/written-by-people.opml">
+  <link rel="blogroll" type="text/xml" title="Written by People" href="https://readingroomapp.com/lists/written-by-people.opml">
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../assets/img/icon.png" alt="" width="32" height="32">The Reading Room</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="../">Home</a>
+        <a href="./" aria-current="page">Lists</a>
+        <a href="../beta/">Beta</a>
+        <a href="../support/">Support</a>
+      </nav>
+    </header>
+  </div>
+
+  <main class="page wrap">
+    <div class="list-main">
+      <h1 class="display">Written by <span class="mark">people.</span></h1>
+      <p class="lede">20 personal blogs about the web, writing and making things. Follow the list once, and blogs I add later show up in your reader on their own.</p>
+
+      <div class="list-address">
+        <label for="listUrl">List address</label>
+        <div class="copy-row">
+          <input id="listUrl" type="text" readonly value="https://readingroomapp.com/lists/written-by-people.opml">
+          <button class="button" type="button" id="copyList">Copy</button>
+        </div>
+        <p class="fine" id="copyNote"><a href="written-by-people.opml" download>Download the file</a> for readers that only import.</p>
+      </div>
+
+      <section class="steps">
+        <h2 class="rule-h2">How to follow it</h2>
+        <ol>
+          <li><p><strong>Copy the address</strong> above.</p></li>
+          <li><p><strong>In The Reading Room</strong>, choose <em>+ Add a feed</em>, then <em>Follow a list of feeds (OPML)</em>, and paste it.</p></li>
+          <li><p><strong>Read.</strong> Every blog lands in a “Written by People” folder. The app checks the list twice a day and adds new blogs for you.</p></li>
+        </ol>
+        <p class="muted">Following lists is new, in <a href="../beta/">the beta</a> for now. Other readers that support OPML subscriptions, such as FreshRSS, can follow it too.</p>
+      </section>
+
+      <section class="steps">
+        <h2 class="rule-h2">Who’s on it</h2>
+        <ul class="blog-list">
+          <li><a href="https://daviddaniels.com/">David Daniels</a> <span class="muted">daviddaniels.com</span></li>
+          <li><a href="https://daverupert.com/">Dave Rupert</a> <span class="muted">daverupert.com</span></li>
+          <li><a href="https://danq.me/">Dan Q</a> <span class="muted">danq.me</span></li>
+          <li><a href="https://adactio.com/journal/">Jeremy Keith</a> <span class="muted">adactio.com/journal</span></li>
+          <li><a href="https://blog.jim-nielsen.com/">Jim Nielsen</a> <span class="muted">blog.jim-nielsen.com</span></li>
+          <li><a href="https://chriscoyier.net/">Chris Coyier</a> <span class="muted">chriscoyier.net</span></li>
+          <li><a href="https://ethanmarcotte.com/">Ethan Marcotte</a> <span class="muted">ethanmarcotte.com</span></li>
+          <li><a href="https://bradfrost.com/">Brad Frost</a> <span class="muted">bradfrost.com</span></li>
+          <li><a href="https://matthiasott.com/">Matthias Ott</a> <span class="muted">matthiasott.com</span></li>
+          <li><a href="https://localghost.dev/">Sophie Koonin</a> <span class="muted">localghost.dev</span></li>
+          <li><a href="https://manuelmoreale.com/">Manuel Moreale</a> <span class="muted">manuelmoreale.com</span></li>
+          <li><a href="https://kevquirk.com/">Kev Quirk</a> <span class="muted">kevquirk.com</span></li>
+          <li><a href="https://rknight.me/">Robb Knight</a> <span class="muted">rknight.me</span></li>
+          <li><a href="https://tracydurnell.com/">Tracy Durnell</a> <span class="muted">tracydurnell.com</span></li>
+          <li><a href="https://boffosocko.com/">Chris Aldrich</a> <span class="muted">boffosocko.com</span></li>
+          <li><a href="https://www.zylstra.org/blog/">Ton Zijlstra</a> <span class="muted">www.zylstra.org/blog</span></li>
+          <li><a href="https://interconnected.org/home/">Matt Webb</a> <span class="muted">interconnected.org/home</span></li>
+          <li><a href="https://simonwillison.net/">Simon Willison</a> <span class="muted">simonwillison.net</span></li>
+          <li><a href="https://austinkleon.com/">Austin Kleon</a> <span class="muted">austinkleon.com</span></li>
+          <li><a href="https://seths.blog/">Seth Godin</a> <span class="muted">seths.blog</span></li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Made by <a href="https://daviddaniels.com">David Daniels</a></span>
+      <nav aria-label="Footer">
+        <a href="../privacy/">Privacy</a>
+        <a href="../support/">Support</a>
+        <a href="https://github.com/DVDaniels/TheReadingRoom">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+  <script>
+    document.getElementById('copyList').onclick = async () => {
+      const f = document.getElementById('listUrl');
+      try { await navigator.clipboard.writeText(f.value); } catch { f.select(); document.execCommand('copy'); }
+      const b = document.getElementById('copyList'); b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy', 1800);
+    };
+  </script>
+</body>
+</html>
