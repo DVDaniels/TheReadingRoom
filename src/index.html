@@ -17,7 +17,7 @@
     </div>
     <nav class="nav" id="views" aria-label="Views"></nav>
     <div>
-      <div class="rail-head"><h2>Feeds</h2><button class="mini" id="newFolderBtn" type="button" title="New folder (⇧⌘N)" aria-label="New folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg></button></div>
+      <div class="rail-head"><button class="grp" type="button" id="feedsGrp" data-group="feeds" aria-expanded="true" aria-label="Collapse Feeds"><span class="grp-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span><span class="grp-name">Feeds</span><span class="count"></span></button><button class="mini" id="newFolderBtn" type="button" title="New folder (⇧⌘N)" aria-label="New folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg></button></div>
       <form class="folderform" id="folderForm" hidden>
         <input id="folderName" type="text" placeholder="Folder name" autocomplete="off" aria-label="Folder name" maxlength="60">
         <button class="btn primary" type="submit">Create</button>

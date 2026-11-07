@@ -297,6 +297,22 @@
       '<hr class="nav-gap">' +
       navButton('jobs', 'Help Wanted', newJobs() || '', { icon: ICONS.jobs });
 
+    // The Feeds heading folds the whole list away like the groups above; the feed or folder you're on stays
+    const feedsOpen = !canFold || !foldedGroups.has('feeds');
+    const fg = $('feedsGrp');
+    if (fg) {
+      fg.setAttribute('aria-expanded', String(feedsOpen));
+      fg.setAttribute('aria-label', `${feedsOpen ? 'Collapse' : 'Expand'} Feeds`);
+      const total = unreadIn('all');
+      fg.querySelector('.count').textContent = feedsOpen || !total ? '' : fmtCount(total);
+    }
+    if (!feedsOpen) {
+      const v = String(S.view), f = folderOf(S.view);
+      $('feeds').innerHTML = v === 'all' ? navButton('all', 'All', unreadIn('all'), { icon: ICONS.all })
+        : f ? navButton('folder:' + f.id, f.name, unreadIn('folder:' + f.id), { ini: f.name })
+        : feedById(S.view) && !isJobFeed(feedById(S.view)) ? feedButton(feedById(S.view)) : '';
+      return;
+    }
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
       const open = !collapsed.has(folder.id);

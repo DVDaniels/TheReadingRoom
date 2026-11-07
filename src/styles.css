@@ -189,6 +189,9 @@ html.ios .tagline { font-size: 14px; }
 /* Group headings in the top of the sidebar (Read, Explore, Library): click to fold a group away */
 .nav button.grp { gap: 6px; padding: 6px 10px 4px 4px; border-radius: 7px; color: var(--muted); }
 .nav button.grp:hover { background: var(--bg); color: var(--ink); }
+.rail-head button.grp { flex: 1; display: flex; align-items: center; gap: 6px; border: 0; background: none; font: inherit; padding: 6px 10px 4px 4px; border-radius: 7px; color: var(--muted); text-align: left; cursor: default; }
+.rail-head button.grp:hover { background: var(--bg); color: var(--ink); }
+.rail-head button.grp .count { margin-left: auto; font-size: 12px; }
 .grp-chev { width: 18px; display: grid; place-items: center; flex: none; }
 .grp-chev svg { width: 12px; height: 12px; transition: transform .15s; }
 .grp[aria-expanded="true"] .grp-chev svg { transform: rotate(90deg); }
