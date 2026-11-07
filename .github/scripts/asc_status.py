@@ -25,12 +25,12 @@ def note(title, msg):
 app = get("/apps", **{"filter[bundleId]": BUNDLE})["data"][0]
 aid = app["id"]
 note("App Store link", f"https://apps.apple.com/us/app/id{aid}  ({app['attributes'].get('name')})")
+for b in get("/builds", **{"filter[app]": aid, "sort": "-uploadedDate", "limit": 4, "include": "preReleaseVersion"})["data"]:
+    a = b["attributes"]
+    note(f"Build {a['version']}", f"{a.get('processingState')} uploaded {a.get('uploadedDate','')[:16]} expired={a.get('expired')}")
 for v in get(f"/apps/{aid}/appStoreVersions", limit=10)["data"]:
     a = v["attributes"]
     note(f"Version {a['platform']} {a['versionString']}", f"{a.get('appVersionState') or a.get('appStoreState')} (created {a.get('createdDate','')[:16]})")
 for s in get("/reviewSubmissions", **{"filter[app]": aid, "limit": 10})["data"]:
     a = s["attributes"]
     note(f"Review submission {a.get('platform')}", f"{a.get('state')} submitted {str(a.get('submittedDate'))[:16]}")
-for b in get("/builds", **{"filter[app]": aid, "sort": "-uploadedDate", "limit": 8, "include": "preReleaseVersion"})["data"]:
-    a = b["attributes"]
-    note(f"Build {a['version']}", f"{a.get('processingState')} uploaded {a.get('uploadedDate','')[:16]} expired={a.get('expired')}")
