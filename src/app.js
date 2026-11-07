@@ -2060,6 +2060,9 @@
 
 
   // ------------------------------------------------------------ people everywhere: videos, podcasts, social posts
+  // YouTube won't play inside the app directly (Error 153: the app isn't a website), so videos play through
+  // a small player page on readingroomapp.com, which hosts YouTube's privacy-enhanced player.
+  const ytPlayer = (id, title) => `<iframe src="https://readingroomapp.com/play/?v=${encodeURIComponent(id)}&title=${encodeURIComponent(title || '')}" title="${esc(title || 'Video')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
   const ytId = link => { const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(link || ''); return m ? m[1] : null; };
   const socialKind = link => /bsky\.app\/profile\/[^/]+\/post\//.test(link || '') ? 'Bluesky'
     : /^https?:\/\/[^/]+\/@[\w.]+\/\d+$/.test(link || '') ? 'Mastodon' : null;
@@ -2070,7 +2073,7 @@
     const box = $('rMedia'), yt = ytId(it.link);
     box.hidden = !(yt || it.audio); box.innerHTML = '';
     if (yt) {
-      box.innerHTML = `<div class="r-video"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="${esc(it.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+      box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title)}</div>`;
     } else if (it.audio) {
       const key = 'pos:' + it.id;
       box.innerHTML = `<div class="r-audio"><audio id="rAudio" controls preload="metadata" src="${esc(it.audio)}"></audio>
@@ -2961,7 +2964,7 @@
       if (!id || id === shown) { spot.remove(); return; } // the story's own video already plays above
       const v = document.createElement('div');
       v.className = 'r-video r-inline-video';
-      v.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+      v.innerHTML = ytPlayer(id, a.closest('figure')?.querySelector('figcaption')?.textContent || 'Video');
       spot.replaceWith(v);
     });
     body.querySelectorAll('img').forEach(img => {
