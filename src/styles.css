@@ -186,6 +186,17 @@ html.ios .tagline { font-size: 14px; }
 .folder > button[data-view] { padding-left: 4px; }
 .infolder button[data-view] { padding-left: 34px; }
 .nav button.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
+/* Group headings in the top of the sidebar (Read, Explore, Library): click to fold a group away */
+.nav button.grp { gap: 6px; padding: 6px 10px 4px 4px; border-radius: 7px; color: var(--muted); }
+.nav button.grp:hover { background: var(--bg); color: var(--ink); }
+.grp-chev { width: 18px; display: grid; place-items: center; flex: none; }
+.grp-chev svg { width: 12px; height: 12px; transition: transform .15s; }
+.grp[aria-expanded="true"] .grp-chev svg { transform: rotate(90deg); }
+.grp-name { flex: 1; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+.nav button.grp:hover .grp-name { color: var(--ink); }
+.nav .grp + hr.nav-gap { display: none; }
+@media (max-width: 760px) { .nav button.grp { display: none !important; } html.ios .nav button.grp { display: flex !important; } }
+@media (min-width: 761px) { body.rail-slim .nav button.grp { display: none !important; } }
 .feedbar select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; }
 
 /* Main */
@@ -1313,3 +1324,4 @@ body.rail-slim .nav button[aria-current="true"] .slim-ini { outline: 2px solid v
 #listMode { align-self: flex-start; font-size: 12px; }
 
 .r-inline-video { margin: 1.4em 0; }
+html.ios .rail .nav button.grp { padding: 12px 10px 4px 4px; font-size: 15px; }

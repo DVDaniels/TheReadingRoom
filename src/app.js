@@ -67,6 +67,9 @@
   // Which folders are collapsed is remembered between launches.
   const collapsed = new Set((() => { try { return JSON.parse(localStorage.getItem('collapsed') || '[]'); } catch { return []; } })());
   const saveCollapsed = () => { try { localStorage.setItem('collapsed', JSON.stringify([...collapsed])); } catch {} };
+  // Sidebar groups (Read, Explore, Library) can be folded too; also remembered between launches.
+  const foldedGroups = new Set((() => { try { return JSON.parse(localStorage.getItem('foldedGroups') || '[]'); } catch { return []; } })());
+  const saveFoldedGroups = () => { try { localStorage.setItem('foldedGroups', JSON.stringify([...foldedGroups])); } catch {} };
 
   function ago(iso) {
     const t = new Date(iso).getTime(); if (!t) return '';
@@ -264,18 +267,33 @@
     // The Dock icon shows the same number as Today
     const todayN = unreadIn('today');
     if (todayN !== lastBadge) { lastBadge = todayN; invoke('set_badge', { n: todayN }).catch(() => {}); }
-    // Read · Find and talk · Your library
+    // Read · Explore · Library, each under a heading that folds it away. A folded heading shows the
+    // group's total, and the view you're on stays visible even when its group is folded.
+    // Folding is off in the icon-only sidebar and the narrow chip strip, which show every view.
+    const canFold = !document.body.classList.contains('rail-slim') && !(phoneSize.matches && !document.documentElement.classList.contains('ios'));
+    const group = (id, name, items) => {
+      const open = !canFold || !foldedGroups.has(id);
+      const total = items.reduce((n, it) => n + (Number(it.count) || 0), 0);
+      const shown = open ? items : items.filter(it => String(S.view) === it.view);
+      return `<button class="grp" type="button" data-group="${id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${name}">`
+        + `<span class="grp-chev">${ICONS.chev}</span><span class="grp-name">${name}</span>`
+        + `<span class="count">${open || !total ? '' : fmtCount(total)}</span></button>`
+        + shown.map(it => navButton(it.view, it.label, it.count, { icon: it.icon })).join('');
+    };
     $('views').innerHTML =
-      navButton('today', 'Today', unreadIn('today'), { icon: ICONS.today }) +
-      navButton('people', 'People', unreadIn('people'), { icon: ICONS.people }) +
+      group('read', 'Read', [
+        { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
+        { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people }]) +
       '<hr class="nav-gap">' +
-      navButton('discover', 'Discover', newSuggestions() || '', { icon: ICONS.discover }) +
-      navButton('talk', 'Conversations', anySocial() ? newReplies() || '' : '', { icon: ICONS.talk }) +
+      group('explore', 'Explore', [
+        { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
+        { view: 'talk', label: 'Conversations', count: anySocial() ? newReplies() || '' : '', icon: ICONS.talk }]) +
       '<hr class="nav-gap">' +
-      navButton('saved', 'Read later', S.items.filter(i => i.saved).length, { icon: ICONS.later }) +
-      navButton('annotated', 'Annotated', new Set(S.highlights.map(h => h.item_id)).size, { icon: ICONS.notes }) +
-      navButton('recent', 'Recently read', '', { icon: ICONS.recent }) +
-      navButton('books', 'Books', '', { icon: ICONS.books }) +
+      group('library', 'Library', [
+        { view: 'saved', label: 'Read later', count: S.items.filter(i => i.saved).length, icon: ICONS.later },
+        { view: 'annotated', label: 'Annotated', count: new Set(S.highlights.map(h => h.item_id)).size, icon: ICONS.notes },
+        { view: 'recent', label: 'Recently read', count: '', icon: ICONS.recent },
+        { view: 'books', label: 'Books', count: '', icon: ICONS.books }]) +
       '<hr class="nav-gap">' +
       navButton('jobs', 'Help Wanted', newJobs() || '', { icon: ICONS.jobs });
 
@@ -3360,6 +3378,9 @@
     const a = e.target.closest('a[href]');
     if (a) { e.preventDefault(); if (S.view === 'books' && a.closest('.bk-text') && bookLink(a)) return; openWeb(a.href); return; }
 
+    const grp = e.target.closest('[data-group]');
+    if (grp) { const g = grp.dataset.group; foldedGroups.has(g) ? foldedGroups.delete(g) : foldedGroups.add(g); saveFoldedGroups(); renderRail(); return; }
+
     const chev = e.target.closest('[data-chev]');
     if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
 
@@ -3668,7 +3689,9 @@
     $('railToggle').setAttribute('aria-label', on ? 'Show the full sidebar' : 'Show only icons in the sidebar');
     if (chosen) try { localStorage.setItem('railSlim', on ? '1' : ''); } catch {}
     if (typeof layoutBook === 'function' && S.view === 'books' && B.open) setTimeout(layoutBook, 220);
+    try { renderRail(); } catch {} // folded groups open up in the icon-only sidebar
   }
+  phoneSize.addEventListener('change', () => { try { renderRail(); } catch {} });
   // On an iPad the sidebar folds to icons in portrait and opens out in landscape, until you choose with the button
   const ipadPortrait = window.matchMedia('(min-width: 761px) and (max-width: 1100px) and (orientation: portrait)');
   let slimSaved = null; try { slimSaved = localStorage.getItem('railSlim'); } catch {}
