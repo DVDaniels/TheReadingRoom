@@ -132,7 +132,8 @@ def main():
         for f in files:
             if f.endswith((".plist", ".entitlements")):
                 p = os.path.join(d, f)
-                open(p, "w").write(open(p).read().replace("__VERSION__", VERSION).replace("__BUILD__", BUILD).replace("__TEAM__", TEAM))
+                text = open(p).read().replace("__VERSION__", VERSION).replace("__BUILD__", BUILD).replace("__TEAM__", TEAM)
+                open(p, "w").write(text)
 
     def target(folder, bundle, deployment, frameworks):
         return {
