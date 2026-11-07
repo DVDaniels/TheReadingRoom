@@ -155,6 +155,12 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
         conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<img%'", [])?;
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '2')", [])?;
     }
+    // Version 1.2.2: embedded videos used to be dropped from saved copies (they leave an empty <figure>);
+    // let those download again (once) so their videos play.
+    if conn.query_row("SELECT value FROM meta WHERE key='article_cache'", [], |r| r.get::<_, String>(0)).optional()?.as_deref() != Some("3") {
+        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<figure%' AND content NOT LIKE '%#rr-video%'", [])?;
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '3')", [])?;
+    }
     // Version 1.0.1: whether we've looked for a story's picture on its web page
     if !has_column(&conn, "items", "shares")? {
         conn.execute("ALTER TABLE items ADD COLUMN shares TEXT DEFAULT ''", [])?;
