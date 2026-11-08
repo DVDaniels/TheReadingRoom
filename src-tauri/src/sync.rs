@@ -59,6 +59,9 @@ pub struct FolderRec {
     pub at: Option<String>,
     #[serde(default)]
     pub deleted: bool,
+    /// The folder it sits in, by sync id; "" for the top level. Missing (older versions): leave it as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -147,9 +150,12 @@ fn put_tombstone(conn: &Connection, kind: &str, key: &str, at: &Option<String>) 
 pub fn export(conn: &Connection, device_id: &str, device_name: &str) -> rusqlite::Result<SyncFile> {
     let mut f = SyncFile { format: FORMAT, device_id: device_id.into(), device_name: device_name.into(), ..Default::default() };
 
-    let mut st = conn.prepare("SELECT uid, name, updated_at FROM folders WHERE uid IS NOT NULL ORDER BY uid")?;
+    let mut st = conn.prepare(
+        "SELECT f.uid, f.name, f.updated_at, COALESCE(p.uid, '') FROM folders f LEFT JOIN folders p ON p.id = f.parent_id
+         WHERE f.uid IS NOT NULL ORDER BY f.uid",
+    )?;
     f.folders = st
-        .query_map([], |r| Ok(FolderRec { uid: r.get(0)?, name: r.get(1)?, at: r.get(2)?, deleted: false }))?
+        .query_map([], |r| Ok(FolderRec { uid: r.get(0)?, name: r.get(1)?, at: r.get(2)?, deleted: false, parent: Some(r.get(3)?) }))?
         .collect::<rusqlite::Result<_>>()?;
 
     let mut st = conn.prepare(
@@ -218,7 +224,7 @@ pub fn export(conn: &Connection, device_id: &str, device_name: &str) -> rusqlite
     for (kind, key, at) in gone {
         let at = Some(at);
         match kind.as_str() {
-            "folder" => f.folders.push(FolderRec { uid: key, name: String::new(), at, deleted: true }),
+            "folder" => f.folders.push(FolderRec { uid: key, name: String::new(), at, deleted: true, parent: None }),
             "feed" => f.feeds.push(FeedRec { url: key, title: String::new(), folder: None, at, deleted: true }),
             "highlight" => f.highlights.push(HighlightRec {
                 uid: key, link: String::new(), text: String::new(), note: String::new(), start: -1,
@@ -250,6 +256,7 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
     let mut out = Applied::default();
 
     // Folders, by their id
+    let mut nest: Vec<&FolderRec> = Vec::new();
     for r in &remote.folders {
         let local: Option<(i64, Option<String>)> = tx
             .query_row("SELECT id, updated_at FROM folders WHERE uid=?1", [&r.uid], |x| Ok((x.get(0)?, x.get(1)?)))
@@ -257,6 +264,7 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
         if r.deleted {
             if let Some((id, at)) = local {
                 if !newer(&at, &r.at) {
+                    tx.execute("UPDATE folders SET parent_id=NULL WHERE parent_id=?1", [id])?;
                     tx.execute("UPDATE feeds SET folder_id=NULL WHERE folder_id=?1", [id])?;
                     tx.execute("DELETE FROM folders WHERE id=?1", [id])?;
                     out.changes += 1;
@@ -276,6 +284,7 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
                         tx.execute("UPDATE folders SET name=?1, updated_at=?2 WHERE id=?3", params![r.name, r.at, id])?;
                         out.changes += 1;
                     }
+                    nest.push(r);
                 }
             }
             None => {
@@ -299,8 +308,26 @@ pub fn merge(conn: &mut Connection, remote: &SyncFile) -> rusqlite::Result<Appli
                         out.changes += 1;
                     }
                 }
+                nest.push(r);
             }
         }
+    }
+    // Then which folder each sits in (now that every folder is here). Two levels at most.
+    for r in nest {
+        let Some(parent) = &r.parent else { continue };
+        let parent_id: Option<i64> = if parent.is_empty() {
+            None
+        } else {
+            match tx.query_row("SELECT id FROM folders WHERE uid=?1 AND parent_id IS NULL", [parent], |x| x.get(0)).optional()? {
+                Some(p) => Some(p),
+                None => continue, // its folder isn't here (or is itself inside another): leave it
+            }
+        };
+        let changed = tx.execute(
+            "UPDATE folders SET parent_id=?1 WHERE uid=?2 AND parent_id IS NOT ?1 AND (?1 IS NULL OR NOT EXISTS (SELECT 1 FROM folders c WHERE c.parent_id = folders.id))",
+            params![parent_id, r.uid],
+        )?;
+        out.changes += changed;
     }
 
     // Feeds, by address

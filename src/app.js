@@ -48,6 +48,12 @@
   const msg = e => (typeof e === 'string' ? e : e?.message) || 'Something went wrong. Try again.';
   const fmtCount = n => n > 999 ? '1K+' : (n || '');
   const folderOf = v => typeof v === 'string' && v.startsWith('folder:') ? folderById(v.slice(7)) : null;
+  // Folders go two levels deep: top-level folders, and folders inside them
+  const parentOf = f => (f && f.parent_id ? folderById(f.parent_id) : null);
+  const isTopFolder = f => !parentOf(f);
+  const subfoldersOf = f => S.folders.filter(x => x.parent_id === f.id && x.id !== f.id);
+  const folderIdsIn = f => [f.id, ...subfoldersOf(f).map(x => x.id)];
+  const folderLabel = f => (parentOf(f) ? `${parentOf(f).name} › ${f.name}` : f.name);
   // Followed lists (dynamic OPML): each keeps its feeds in a folder of its own.
   const listOfFolder = id => S.lists.find(l => l.folder_id === id) || null;
   const LIST_MARK = '<span class="listmark" title="A followed list: feeds that join it are added for you" aria-label="Followed list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h7"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span>';
@@ -111,7 +117,7 @@
     if (view === 'discover' || view === 'guide' || view === 'talk' || view === 'books') return false;
     if (view === 'people') return isPerson(i.feed_id);
     const folder = folderOf(view);
-    if (folder) { const f = feedById(i.feed_id); return !!f && f.folder_id === folder.id; }
+    if (folder) { const f = feedById(i.feed_id); return !!f && folderIdsIn(folder).includes(f.folder_id); }
     return String(i.feed_id) === String(view);
   }
   const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition'].includes(S.view);
@@ -325,16 +331,20 @@
       return;
     }
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
-    for (const folder of S.folders) {
+    const folderBlock = (folder, sub) => {
       const open = !collapsed.has(folder.id);
       const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f) && !isEmailFeed(f));
+      const subs = sub ? [] : subfoldersOf(folder);
       const fl = listOfFolder(folder.id);
-      html += `<div class="folder${fl ? ' is-list' : ''}" data-folder="${folder.id}">
+      let h = `<div class="folder${fl ? ' is-list' : ''}${sub ? ' subfolder' : ''}" data-folder="${folder.id}">
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
-          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name, mark: fl ? LIST_MARK : '', title: fl ? `${folder.name}: a followed list` : '' })}
+          ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name, mark: fl ? LIST_MARK : '', title: fl ? `${folder.name}: a followed list` : folderLabel(folder) }).replace('<button ', '<button draggable="true" ')}
         </div>`;
-      if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
-    }
+      if (open) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${inside.map(feedButton).join('')}${subs.map(x => folderBlock(x, true)).join('')}`
+        + (!inside.length && !subs.length ? `<span class="note" style="padding:2px 0 6px ${sub ? 60 : 34}px;display:block">Drag feeds here</span>` : '') + '</div>';
+      return h;
+    };
+    for (const folder of S.folders.filter(isTopFolder)) html += folderBlock(folder, false);
     const loose = S.feeds.filter(f => (!f.folder_id || !folderById(f.folder_id)) && !isJobFeed(f) && !isEmailFeed(f));
     if (loose.length && S.folders.length) html += '<hr>';
     html += loose.map(feedButton).join('');
@@ -350,7 +360,8 @@
     return feedById(S.view)?.title || 'Feed';
   }
   function folderOptions(selected) {
-    return `<option value="">No folder</option>` + S.folders.map(f => `<option value="${f.id}"${f.id === selected ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
+    const opt = f => `<option value="${f.id}"${f.id === selected ? ' selected' : ''}>${esc(folderLabel(f))}</option>`;
+    return `<option value="">No folder</option>` + S.folders.filter(isTopFolder).map(f => opt(f) + subfoldersOf(f).map(opt).join('')).join('');
   }
 
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
@@ -380,7 +391,7 @@
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
       : S.view === 'talk' ? (anySocial() ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'Connect Mastodon or Bluesky on this device to see what people share and answer replies')
-      : `${unreadIn(S.view)} unread`;
+      : `${parentOf(folderOf(S.view)) ? `In ${parentOf(folderOf(S.view)).name} · ` : ''}${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     const onMail = S.view === 'email' && !!MAIL.account;
     $('mailActs').hidden = !onMail; $('refresh').hidden = onMail;
@@ -3778,16 +3789,42 @@
   });
 
   // Drag a feed onto a folder (or onto "All" to take it out of its folder).
-  let dragFeed = null;
-  document.addEventListener('dragstart', e => { const b = e.target.closest?.('[data-feed]'); if (b) { dragFeed = Number(b.dataset.feed); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragFeed)); } });
-  document.addEventListener('dragend', () => { dragFeed = null; document.querySelectorAll('.drop').forEach(x => x.classList.remove('drop')); });
+  // Drag a folder onto another to put it inside (two levels at most), or onto "All" to bring it back to the top.
+  let dragFeed = null, dragFolder = null;
+  document.addEventListener('dragstart', e => {
+    const b = e.target.closest?.('[data-feed]');
+    if (b) { dragFeed = Number(b.dataset.feed); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragFeed)); return; }
+    const fb = e.target.closest?.('.folder > button[data-view^="folder:"]');
+    if (fb) { dragFolder = Number(fb.dataset.view.slice(7)); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'folder:' + dragFolder); }
+  });
+  document.addEventListener('dragend', () => { dragFeed = null; dragFolder = null; document.querySelectorAll('.drop').forEach(x => x.classList.remove('drop')); });
   const dropTarget = e => {
-    const t = e.target.closest?.('[data-view]'); if (!t || dragFeed == null) return null;
+    const t = e.target.closest?.('[data-view]'); if (!t || (dragFeed == null && dragFolder == null)) return null;
     if (t.dataset.view === 'all') return { el: t, folder: null };
-    const m = /^folder:(\d+)$/.exec(t.dataset.view); return m ? { el: t, folder: Number(m[1]) } : null;
+    const m = /^folder:(\d+)$/.exec(t.dataset.view); if (!m) return null;
+    const target = folderById(m[1]);
+    if (dragFolder != null) {
+      const moving = folderById(dragFolder);
+      // only into a top-level folder, not into itself, and not a folder that has folders inside it
+      if (!target || !moving || target.id === moving.id || !isTopFolder(target) || subfoldersOf(moving).length || moving.parent_id === target.id) return null;
+    }
+    return { el: t, folder: Number(m[1]) };
   };
   document.addEventListener('dragover', e => { const d = dropTarget(e); document.querySelectorAll('.drop').forEach(x => x !== d?.el && x.classList.remove('drop')); if (d) { e.preventDefault(); d.el.classList.add('drop'); } });
-  document.addEventListener('drop', e => { const d = dropTarget(e); if (d) { e.preventDefault(); moveFeed(dragFeed, d.folder); } });
+  document.addEventListener('drop', e => {
+    const d = dropTarget(e); if (!d) return;
+    e.preventDefault();
+    if (dragFolder != null) moveFolder(dragFolder, d.folder); else moveFeed(dragFeed, d.folder);
+  });
+  async function moveFolder(id, parent) {
+    const f = folderById(id); if (!f || (f.parent_id || null) === parent) return;
+    try {
+      await invoke('set_folder_parent', { id, parent });
+      if (parent) collapsed.delete(parent);
+      status(parent ? `${f.name} is now inside ${folderById(parent).name}.` : `${f.name} is back at the top.`);
+      load();
+    } catch (e) { status(msg(e), true); }
+  }
 
   $('fAll').onclick = () => { S.unreadOnly = false; S.shown = 60; render(); };
   $('fUnread').onclick = () => { S.unreadOnly = true; S.shown = 60; render(); };
@@ -3827,8 +3864,8 @@
   function confirmDeleteFolder() {
     const f = folderOf(S.view); if (!f) return;
     if (listOfFolder(f.id)) return listAction('listUnfollow', listOfFolder(f.id).url);
-    const n = S.feeds.filter(x => x.folder_id === f.id).length;
-    showBanner(`<span>Delete the ${esc(f.name)} folder? ${n ? `Its ${n} ${n === 1 ? 'feed stays' : 'feeds stay'} in your reader, just outside any folder.` : 'It has no feeds in it.'}</span><button class="btn danger" id="yesDel">Delete folder</button><button class="btn" id="noDel">Cancel</button>`, false, 'confirm');
+    const n = S.feeds.filter(x => x.folder_id === f.id).length, subs = subfoldersOf(f).length;
+    showBanner(`<span>Delete the ${esc(f.name)} folder? ${n ? `Its ${n} ${n === 1 ? 'feed stays' : 'feeds stay'} in your reader, just outside any folder.` : 'It has no feeds in it.'}${subs ? ` The ${subs === 1 ? 'folder' : 'folders'} inside it move${subs === 1 ? 's' : ''} to the top.` : ''}</span><button class="btn danger" id="yesDel">Delete folder</button><button class="btn" id="noDel">Cancel</button>`, false, 'confirm');
     $('noDel').onclick = hideBanner;
     $('yesDel').onclick = async () => {
       hideBanner();
@@ -3891,7 +3928,16 @@
   });
 
   // new folder
-  function openNewFolder() { $('folderForm').hidden = false; $('folderName').value = ''; $('folderName').focus(); }
+  function openNewFolder() {
+    $('folderForm').hidden = false; $('folderName').value = '';
+    // inside which folder: the one you're looking at, if it's a top-level folder
+    const here = folderOf(S.view) || (feedById(S.view) && folderById(feedById(S.view).folder_id));
+    const top = here ? (isTopFolder(here) ? here : parentOf(here)) : null;
+    const tops = S.folders.filter(isTopFolder);
+    $('folderIn').innerHTML = `<option value="">At the top</option>` + tops.map(f => `<option value="${f.id}"${top && top.id === f.id ? ' selected' : ''}>Inside ${esc(f.name)}</option>`).join('');
+    $('folderIn').hidden = !tops.length;
+    $('folderName').focus();
+  }
   $('newFolderBtn').onclick = () => $('folderForm').hidden ? openNewFolder() : ($('folderForm').hidden = true);
   $('folderName').onkeydown = e => { if (e.key === 'Escape') $('folderForm').hidden = true; };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'topicQ' && (D.q || D.res)) { e.preventDefault(); e.stopPropagation(); clearTopic(); } }, true);
@@ -3906,7 +3952,9 @@
     e.preventDefault();
     const name = $('folderName').value.trim(); if (!name) return;
     try {
-      const id = await invoke('create_folder', { name });
+      const inside = $('folderIn') && $('folderIn').value ? Number($('folderIn').value) : null;
+      const id = await invoke('create_folder', { name, parent: inside });
+      if (inside) collapsed.delete(inside);
       $('folderForm').hidden = true; status(`Created ${name}. Drag feeds onto it, or pick it from a feed’s folder menu.`);
       await load(); selectView('folder:' + id);
     } catch (err) { status(msg(err), true); }

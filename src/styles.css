@@ -1541,3 +1541,10 @@ body.mail-view .tools .seg { flex: none; }
 .prose.mail-body table { display: table; border: 0; width: auto; max-width: 100%; font-size: inherit; margin: 0; }
 .prose.mail-body td, .prose.mail-body th { border: 0; padding: 0 6px 0 0; vertical-align: top; }
 .prose.mail-body img { max-width: 100%; height: auto; }
+
+/* Folders inside folders (two levels): the inner folder and its feeds step in once more */
+.folderform { flex-wrap: wrap; }
+.folderform select { flex: 1 1 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
+.folder.subfolder { margin-left: 26px; }
+.infolder.insub button[data-view] { padding-left: 60px; }
+.infolder .folder > button[data-view] { padding-left: 4px; }

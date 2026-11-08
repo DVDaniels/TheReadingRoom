@@ -27,6 +27,8 @@ pub const DEFAULT_FEEDS: &[(&str, &str)] = &[
 pub struct Folder {
     pub id: i64,
     pub name: String,
+    /// The folder it sits in (folders go two levels deep: a folder, and folders inside it)
+    pub parent_id: Option<i64>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -197,6 +199,10 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
             }
         }
     }
+    // Version 1.2.3: folders inside folders
+    if !has_column(&conn, "folders", "parent_id")? {
+        conn.execute("ALTER TABLE folders ADD COLUMN parent_id INTEGER", [])?;
+    }
     conn.execute_batch(TRACKING)?;
     // Search everything: a light copy (title, link, a bit of the summary) of stories as they're trimmed away
     conn.execute_batch("CREATE TABLE IF NOT EXISTS archive (id TEXT PRIMARY KEY, feed_id INTEGER, title TEXT NOT NULL, link TEXT DEFAULT '',
@@ -225,7 +231,8 @@ const TRACKING: &str = "
       WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
       BEGIN UPDATE folders SET uid = COALESCE(NEW.uid, lower(hex(randomblob(16)))),
                                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-    CREATE TRIGGER IF NOT EXISTS t_folders_upd AFTER UPDATE OF name ON folders
+    DROP TRIGGER IF EXISTS t_folders_upd;
+    CREATE TRIGGER t_folders_upd AFTER UPDATE OF name, parent_id ON folders
       WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'sync_applying')
       BEGIN UPDATE folders SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
     CREATE TRIGGER IF NOT EXISTS t_folders_del AFTER DELETE ON folders
@@ -279,8 +286,8 @@ pub fn delete_meta(conn: &Connection, key: &str) -> rusqlite::Result<()> {
 // ---------------------------------------------------------------- folders
 
 pub fn folders(conn: &Connection) -> rusqlite::Result<Vec<Folder>> {
-    let mut st = conn.prepare("SELECT id, name FROM folders ORDER BY name COLLATE NOCASE")?;
-    let rows = st.query_map([], |r| Ok(Folder { id: r.get(0)?, name: r.get(1)? }))?;
+    let mut st = conn.prepare("SELECT id, name, parent_id FROM folders ORDER BY name COLLATE NOCASE")?;
+    let rows = st.query_map([], |r| Ok(Folder { id: r.get(0)?, name: r.get(1)?, parent_id: r.get(2)? }))?;
     rows.collect()
 }
 
@@ -312,8 +319,32 @@ pub fn rename_folder(conn: &Connection, id: i64, name: &str) -> rusqlite::Result
     Ok(())
 }
 
-/// Delete a folder; its feeds stay, unfiled.
+/// The id of a folder with this name inside `parent` (or at the top), creating it if needed. A folder
+/// that already exists elsewhere moves there, unless that would make it three levels deep.
+pub fn folder_named_in(conn: &Connection, name: &str, parent: Option<i64>) -> rusqlite::Result<i64> {
+    let id = folder_named(conn, name)?;
+    let parent_is_top: bool = match parent {
+        Some(p) => conn.query_row("SELECT parent_id IS NULL FROM folders WHERE id=?1", [p], |r| r.get(0)).optional()?.unwrap_or(false),
+        None => false,
+    };
+    if parent_is_top && parent != Some(id) {
+        let has_children: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM folders WHERE parent_id=?1)", [id], |r| r.get(0))?;
+        let current: Option<i64> = conn.query_row("SELECT parent_id FROM folders WHERE id=?1", [id], |r| r.get(0))?;
+        if !has_children && current != parent {
+            set_folder_parent(conn, id, parent)?;
+        }
+    }
+    Ok(id)
+}
+
+pub fn set_folder_parent(conn: &Connection, id: i64, parent: Option<i64>) -> rusqlite::Result<()> {
+    conn.execute("UPDATE folders SET parent_id=?1 WHERE id=?2", params![parent, id])?;
+    Ok(())
+}
+
+/// Delete a folder; its feeds stay, unfiled, and folders inside it move up to the top.
 pub fn delete_folder(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("UPDATE folders SET parent_id=NULL WHERE parent_id=?1", [id])?;
     conn.execute("UPDATE feeds SET folder_id=NULL WHERE folder_id=?1", [id])?;
     conn.execute("DELETE FROM folders WHERE id=?1", [id])?;
     Ok(())
@@ -630,6 +661,15 @@ mod tests {
         mark(&mut c, &["x".into()], Some(true), None, "2026-10-28T02:00:00Z").unwrap();
         let i = &items(&c, 10).unwrap()[0];
         assert!(i.read && i.read_at.as_deref() == Some("2026-10-28T02:00:00Z") && i.image.ends_with("i.jpg"));
+        // Folders inside folders: Blogroll › Charlotte NC; deleting Blogroll moves Charlotte NC to the top
+        let blogroll = folder_named(&c, "Blogroll").unwrap();
+        let clt = folder_named_in(&c, "Charlotte NC", Some(blogroll)).unwrap();
+        assert_eq!(folders(&c).unwrap().iter().find(|x| x.id == clt).unwrap().parent_id, Some(blogroll));
+        // never three deep: a folder inside Charlotte NC stays at the top
+        let deeper = folder_named_in(&c, "Plaza Midwood", Some(clt)).unwrap();
+        assert_eq!(folders(&c).unwrap().iter().find(|x| x.id == deeper).unwrap().parent_id, None);
+        delete_folder(&c, blogroll).unwrap();
+        assert_eq!(folders(&c).unwrap().iter().find(|x| x.id == clt).unwrap().parent_id, None);
         delete_folder(&c, f).unwrap();
         assert_eq!(feeds(&c).unwrap()[0].folder_id, None);
         // A saved copy with a picture survives opening the database again (it used to be wiped each launch)

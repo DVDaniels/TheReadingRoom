@@ -930,16 +930,53 @@ fn clean_name(name: &str) -> Result<String, String> {
     }
 }
 
+/// Folders go two levels deep: a folder can sit inside a top-level folder, and that's all.
+fn check_nesting(conn: &rusqlite::Connection, id: Option<i64>, parent: Option<i64>) -> Result<(), String> {
+    use rusqlite::OptionalExtension;
+    let Some(p) = parent else { return Ok(()) };
+    if Some(p) == id {
+        return Err("A folder can't go inside itself.".into());
+    }
+    let parent_of_parent: Option<Option<i64>> =
+        conn.query_row("SELECT parent_id FROM folders WHERE id=?1", [p], |r| r.get(0)).optional().map_err(err)?;
+    match parent_of_parent {
+        None => return Err("That folder isn't here any more.".into()),
+        Some(Some(_)) => return Err("Folders go two levels deep: that folder is already inside another one.".into()),
+        Some(None) => {}
+    }
+    if let Some(id) = id {
+        let has_children: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM folders WHERE parent_id=?1)", [id], |r| r.get(0)).map_err(err)?;
+        if has_children {
+            return Err("Folders go two levels deep: this folder has folders inside it, so it stays at the top.".into());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
-fn create_folder(state: State<'_, Shared>, name: String) -> Result<i64, String> {
+fn create_folder(state: State<'_, Shared>, name: String, parent: Option<i64>) -> Result<i64, String> {
     let name = clean_name(&name)?;
     let conn = state.db.lock().unwrap();
     if db::folder_name_taken(&conn, &name, None).map_err(err)? {
         return Err(format!("You already have a folder called {name}."));
     }
-    let r = db::folder_named(&conn, &name).map_err(err);
+    check_nesting(&conn, None, parent)?;
+    let id = db::folder_named(&conn, &name).map_err(err)?;
+    if parent.is_some() {
+        db::set_folder_parent(&conn, id, parent).map_err(err)?;
+    }
     changed(state.inner());
-    r
+    Ok(id)
+}
+
+/// Put a folder inside another (or back at the top, with no parent).
+#[tauri::command]
+fn set_folder_parent(state: State<'_, Shared>, id: i64, parent: Option<i64>) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    check_nesting(&conn, Some(id), parent)?;
+    db::set_folder_parent(&conn, id, parent).map_err(err)?;
+    changed(state.inner());
+    Ok(())
 }
 
 #[tauri::command]
@@ -1881,7 +1918,13 @@ async fn import_opml(app: AppHandle, state: State<'_, Shared>) -> Result<usize, 
         let conn = state.db.lock().unwrap();
         for o in &outlines {
             let folder_id = match &o.folder {
-                Some(name) => Some(db::folder_named(&conn, name).map_err(err)?),
+                Some(name) => {
+                    let parent = match &o.parent {
+                        Some(p) => Some(db::folder_named_in(&conn, p, None).map_err(err)?),
+                        None => None,
+                    };
+                    Some(db::folder_named_in(&conn, name, parent).map_err(err)?)
+                }
                 None => None,
             };
             if let Some(id) = db::add_feed_if_new(&conn, &o.url, &o.title, folder_id).map_err(err)? {
@@ -2231,6 +2274,7 @@ pub fn run() {
             remove_feed,
             rename_feed,
             create_folder,
+            set_folder_parent,
             rename_folder,
             delete_folder,
             set_feed_folder,

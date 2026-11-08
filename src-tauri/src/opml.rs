@@ -9,6 +9,8 @@ pub struct Outline {
     pub url: String,
     pub title: String,
     pub folder: Option<String>,
+    /// The folder that folder sits in (OPML can nest deeper; the app keeps the two innermost)
+    pub parent: Option<String>,
 }
 
 struct Attrs {
@@ -36,6 +38,14 @@ fn is_outline(e: &BytesStart) -> bool {
     String::from_utf8_lossy(e.local_name().as_ref()).eq_ignore_ascii_case("outline")
 }
 
+/// The innermost folder and the one around it.
+fn folders_of(stack: &[Option<String>]) -> (Option<String>, Option<String>) {
+    let mut names = stack.iter().rev().flatten();
+    let folder = names.next().cloned();
+    let parent = names.next().cloned();
+    (folder, parent)
+}
+
 pub fn parse(text: &str) -> Result<Vec<Outline>, String> {
     let mut reader = Reader::from_str(text);
     reader.config_mut().trim_text(true);
@@ -44,13 +54,13 @@ pub fn parse(text: &str) -> Result<Vec<Outline>, String> {
     // One entry per open <outline>: Some(name) when it's a folder.
     let mut stack: Vec<Option<String>> = Vec::new();
 
-    let mut push_feed = |a: Attrs, folder: Option<String>| {
+    let mut push_feed = |a: Attrs, (folder, parent): (Option<String>, Option<String>)| {
         if a.url.starts_with("http://") || a.url.starts_with("https://") {
             let title = [a.title, a.text]
                 .into_iter()
                 .find(|t| !t.is_empty())
                 .unwrap_or_else(|| url::Url::parse(&a.url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or(a.url.clone()));
-            out.push(Outline { url: a.url, title, folder });
+            out.push(Outline { url: a.url, title, folder, parent });
         }
     };
 
@@ -68,15 +78,13 @@ pub fn parse(text: &str) -> Result<Vec<Outline>, String> {
                     let name = if a.title.is_empty() { a.text } else { a.title };
                     stack.push(Some(name).filter(|n| !n.is_empty()));
                 } else {
-                    let folder = stack.iter().rev().flatten().next().cloned();
-                    push_feed(a, folder);
+                    push_feed(a, folders_of(&stack));
                     stack.push(None);
                 }
             }
             Ok(Event::Empty(e)) => {
                 if is_outline(&e) {
-                    let folder = stack.iter().rev().flatten().next().cloned();
-                    push_feed(attrs(&e), folder);
+                    push_feed(attrs(&e), folders_of(&stack));
                 }
             }
             Ok(Event::End(e)) => {
@@ -146,10 +154,18 @@ fn feed_line(f: &Feed, indent: &str) -> String {
 pub fn export(folders: &[Folder], feeds: &[Feed], now: &str) -> String {
     let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n");
     s += &format!("  <head><title>The Reading Room subscriptions</title><dateCreated>{now}</dateCreated></head>\n  <body>\n");
-    for folder in folders {
-        let inside: Vec<_> = feeds.iter().filter(|f| f.folder_id == Some(folder.id)).collect();
+    // Top-level folders, each with the folders inside it (folders whose parent is gone count as top-level)
+    let top = |f: &&Folder| f.parent_id.map_or(true, |p| !folders.iter().any(|x| x.id == p));
+    for folder in folders.iter().filter(top) {
         s += &format!("    <outline text=\"{n}\" title=\"{n}\">\n", n = esc(&folder.name));
-        for f in inside {
+        for sub in folders.iter().filter(|x| x.parent_id == Some(folder.id) && x.id != folder.id) {
+            s += &format!("      <outline text=\"{n}\" title=\"{n}\">\n", n = esc(&sub.name));
+            for f in feeds.iter().filter(|f| f.folder_id == Some(sub.id)) {
+                s += &feed_line(f, "        ");
+            }
+            s += "      </outline>\n";
+        }
+        for f in feeds.iter().filter(|f| f.folder_id == Some(folder.id)) {
             s += &feed_line(f, "      ");
         }
         s += "    </outline>\n";
@@ -188,11 +204,15 @@ mod tests {
     #[test]
     fn round_trips_folders() {
         use crate::db::{Feed, Folder};
-        let folders = vec![Folder { id: 1, name: "Crypto".into() }];
+        let folders = vec![Folder { id: 1, name: "Crypto".into(), parent_id: None }, Folder { id: 2, name: "Charlotte NC".into(), parent_id: Some(3) }, Folder { id: 3, name: "Blogroll".into(), parent_id: None }];
         let f = |id, folder_id| Feed { id, url: format!("https://f{id}.com/rss"), title: format!("F{id}"), site: String::new(), status: "ok".into(), error: String::new(), last_fetched: None, folder_id, recent: 0, latest: None };
-        let xml = super::export(&folders, &[f(1, Some(1)), f(2, None)], "now");
+        let xml = super::export(&folders, &[f(1, Some(1)), f(2, None), f(3, Some(2)), f(4, Some(3))], "now");
         let back = super::parse(&xml).unwrap();
-        assert_eq!(back[0].folder.as_deref(), Some("Crypto"));
-        assert_eq!(back[1].folder, None);
+        let find = |u: &str| back.iter().find(|o| o.url.contains(u)).unwrap();
+        assert_eq!(find("f1.").folder.as_deref(), Some("Crypto"));
+        assert_eq!(find("f2.").folder, None);
+        // Blogroll › Charlotte NC comes back nested
+        assert_eq!((find("f3.").folder.as_deref(), find("f3.").parent.as_deref()), (Some("Charlotte NC"), Some("Blogroll")));
+        assert_eq!((find("f4.").folder.as_deref(), find("f4.").parent.as_deref()), (Some("Blogroll"), None));
     }
 }
