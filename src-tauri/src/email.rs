@@ -261,7 +261,7 @@ fn angle(id: &str) -> String {
 }
 
 /// The email as it goes out (and as it's filed in Sent).
-pub fn compose(a: &Account, o: &Outgoing) -> String {
+pub fn compose(a: &Account, o: &Outgoing<'_>) -> String {
     use base64::Engine;
     use sha1::{Digest, Sha1};
     let now = chrono::Local::now();
@@ -342,7 +342,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Smtp<S> {
 }
 
 /// Send over SMTP: port 465 is secure from the start, other ports (587) switch to secure with STARTTLS.
-pub async fn send(a: &Account, o: &Outgoing) -> Result<String, String> {
+pub async fn send(a: &Account, o: &Outgoing<'_>) -> Result<String, String> {
     if !o.to.contains('@') || o.to.contains(['\r', '\n', '<', '>']) {
         return Err("There's no address to reply to.".into());
     }
