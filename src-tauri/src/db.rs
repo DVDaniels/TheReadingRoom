@@ -153,16 +153,20 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     if !has_column(&conn, "items", "byline")? {
         conn.execute("ALTER TABLE items ADD COLUMN byline TEXT", [])?;
     }
-    // Version 1.0.1: saved copies of articles with pictures were made before lazy-loaded photos were
-    // understood; let them download again (once) so their pictures show.
-    if conn.query_row("SELECT value FROM meta WHERE key='article_cache'", [], |r| r.get::<_, String>(0)).optional()?.as_deref() != Some("2") {
-        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<img%'", [])?;
-        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '2')", [])?;
+    // Saved copies of articles that need downloading again, once each (the "article_cache" step):
+    // 2 (version 1.0.1) copies with pictures made before lazy-loaded photos were understood;
+    // 3 (version 1.2.2) copies that dropped embedded videos (they left an empty <figure>).
+    // (Before 1.2.3 these two steps undid each other's mark, so both ran at every launch.)
+    let step: u32 = conn
+        .query_row("SELECT value FROM meta WHERE key='article_cache'", [], |r| r.get::<_, String>(0))
+        .optional()?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if step < 2 {
+        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<img%' AND link NOT LIKE 'email:%'", [])?;
     }
-    // Version 1.2.2: embedded videos used to be dropped from saved copies (they leave an empty <figure>);
-    // let those download again (once) so their videos play.
-    if conn.query_row("SELECT value FROM meta WHERE key='article_cache'", [], |r| r.get::<_, String>(0)).optional()?.as_deref() != Some("3") {
-        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<figure%' AND content NOT LIKE '%#rr-video%'", [])?;
+    if step < 3 {
+        conn.execute("UPDATE items SET content = NULL, byline = NULL WHERE content LIKE '%<figure%' AND content NOT LIKE '%#rr-video%' AND link NOT LIKE 'email:%'", [])?;
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('article_cache', '3')", [])?;
     }
     // Version 1.0.1: whether we've looked for a story's picture on its web page
@@ -628,6 +632,12 @@ mod tests {
         assert!(i.read && i.read_at.as_deref() == Some("2026-10-28T02:00:00Z") && i.image.ends_with("i.jpg"));
         delete_folder(&c, f).unwrap();
         assert_eq!(feeds(&c).unwrap()[0].folder_id, None);
+        // A saved copy with a picture survives opening the database again (it used to be wiped each launch)
+        cache_article(&c, "x", "<p><img src=\"https://a.com/i.jpg\"><figure>f</figure></p>", "Ann").unwrap();
+        drop(c);
+        let c = open(&path, false).unwrap();
+        let c = { drop(c); open(&path, false).unwrap() };
+        assert_eq!(cached_article(&c, "x").unwrap().map(|k| k.byline), Some("Ann".to_string()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

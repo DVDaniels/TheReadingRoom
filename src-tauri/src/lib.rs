@@ -629,7 +629,10 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
     let known: std::collections::HashSet<String> = {
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
-        let mut st = conn.prepare("SELECT uid FROM email_meta").map_err(err)?;
+        // an email counts as fetched only while its text is still here (else it's downloaded again)
+        let mut st = conn
+            .prepare("SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link WHERE COALESCE(i.content, '') <> ''")
+            .map_err(err)?;
         let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
         rows.filter_map(Result::ok).collect()
     };
@@ -930,6 +933,16 @@ async fn get_article(state: State<'_, Shared>, item_id: String, refetch: Option<
         }
         db::item_link(&conn, &item_id).map_err(err)?.unwrap_or_default()
     };
+    if link.starts_with("email:") {
+        // An email whose text isn't here (yet): show its preview; the next check downloads it again
+        let conn = state.db.lock().unwrap();
+        let summary: String = conn.query_row("SELECT COALESCE(summary,'') FROM items WHERE id=?1", [&item_id], |r| r.get(0)).unwrap_or_default();
+        let html = format!(
+            "<p>{}</p><p class=\"note\" id=\"rMailWait\">Getting the whole email from your mailbox…</p>",
+            html_escape::encode_text(&summary)
+        );
+        return Ok(article::Article { html, byline: String::new() });
+    }
     if !link.starts_with("http") {
         return Err("This story has no web page to open.".into());
     }

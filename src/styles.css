@@ -1530,3 +1530,10 @@ html.ios .rail .nav button.grp { padding: 12px 10px 4px 4px; font-size: 15px; }
 #mcBody, .mail-form textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; box-sizing: border-box; resize: vertical; line-height: 1.5; }
 #mcBody { min-height: 220px; }
 #mailComposePanel .sheet-foot { display: flex; gap: 8px; justify-content: flex-end; }
+.tools .mail-acts { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.tools .mail-acts[hidden] { display: none; }
+body.mail-view .tools { align-items: center; }
+body.mail-view .tools .search { order: 9; flex: 1 1 100%; width: auto; }
+body.mail-view .tools .seg { flex: none; }
+#mailCheck.spinning svg { animation: rr-spin 1s linear infinite; }
+@keyframes rr-spin { to { transform: rotate(360deg); } }

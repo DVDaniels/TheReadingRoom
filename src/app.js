@@ -382,13 +382,16 @@
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     const onMail = S.view === 'email' && !!MAIL.account;
-    $('mailNew').hidden = !onMail; $('mailSet').hidden = !onMail; $('refresh').classList.toggle('primary', !onMail);
+    $('mailActs').hidden = !onMail; $('refresh').hidden = onMail;
+    document.body.classList.toggle('mail-view', onMail);
+    $('q').placeholder = onMail ? 'Search email' : 'Search stories';
+    $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('seg').hidden = !usesUnreadFilter();
-    $('markAll').hidden = !usesUnreadFilter();
+    $('markAll').hidden = !usesUnreadFilter() || onMail; // in Email, mark read one at a time (or with m)
     $('refresh').disabled = S.refreshing;
     $('refresh').textContent = S.refreshing ? 'Refreshing…' : 'Refresh';
 
@@ -2318,7 +2321,7 @@
     if (!MAIL.account || MAIL.checking) return;
     if (quiet && Date.now() - MAIL.last < 120e3) return;
     MAIL.checking = true; MAIL.last = Date.now();
-    if (S.view === 'email') renderList();
+    if (S.view === 'email') { renderList(); renderHead(); }
     try {
       const r = await invoke('email_refresh'), n = r?.added || 0;
       MAIL.error = ''; MAIL.inbox = r?.inbox ?? null; MAIL.checkedAt = new Date();
@@ -2448,11 +2451,13 @@
   }
   $('mailNew').onclick = () => openMailCompose();
   $('mailSet').onclick = () => openMailSettings();
+  $('mailCheck').onclick = () => { refresh(); };
 
   function mailSub() {
     if (!MAIL.account) return 'Read and answer one mailbox of your own here';
-    const parts = [MAIL.account.address, `${unreadIn('email')} unread`];
-    if (MAIL.inbox != null) parts.push(`${MAIL.inbox} in the inbox`);
+    const n = unreadIn('email'), parts = [MAIL.account.address];
+    if (n) parts.push(`${n} unread`);
+    if (MAIL.inbox === 0) parts.push('the inbox is empty');
     parts.push(MAIL.checking ? 'checking…' : MAIL.checkedAt ? `checked ${MAIL.checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'not checked yet');
     return parts.join(' · ');
   }
@@ -3211,6 +3216,7 @@
     const em = isEmailItem(it);
     $('rReply').textContent = em || isPhone() ? 'Reply' : 'Write back';
     $('rOriginal').hidden = em; $('rShare').hidden = em; // an email has no web page
+    $('rReply').classList.toggle('primary', em);
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
     $('rTitle').textContent = headline(it);
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -3236,6 +3242,10 @@
       articleHtml = a.html;
       if (a.byline && $('rByline')) $('rByline').textContent = a.byline;
       paintArticle();
+      if (isEmailItem(it) && a.html.includes('rMailWait') && !MAIL.refetched?.has(it.id)) {
+        (MAIL.refetched ||= new Set()).add(it.id);
+        checkMail().then(() => { if (articleFor === it.id) loadArticle(item(it.id) || it); });
+      }
     } catch (e) {
       if (articleFor !== it.id) return;
       articleHtml = '';
