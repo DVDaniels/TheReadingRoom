@@ -75,15 +75,20 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
         run: |
           # Each upload needs its own build number; the version (1.0.1 …) comes from tauri.conf.json.
-          echo '{"bundle":{"macOS":{"bundleVersion":"${{ github.run_number }}"}}}' > "$RUNNER_TEMP/build-number.json"
-          echo "::notice title=Build number::${{ github.run_number }}"
+          # The Mac and iPhone/iPad apps share one App Store Connect record, and a build number the other
+          # already used is dropped without a word (Mac build 90 met iPhone 1.2.2 build 90). So Mac builds
+          # count from 1000 (run 91 is build 1091) and never meet the iPhone's, which count from 1.
+          BUILD_NO=$(( ${{ github.run_number }} + 1000 ))
+          echo "BUILD_NO=$BUILD_NO" >> "$GITHUB_ENV"
+          echo "{\"bundle\":{\"macOS\":{\"bundleVersion\":\"$BUILD_NO\"}}}" > "$RUNNER_TEMP/build-number.json"
+          echo "::notice title=Build number::$BUILD_NO"
           npx tauri build --bundles app --target universal-apple-darwin --config src-tauri/tauri.appstore.conf.json --config "$RUNNER_TEMP/build-number.json"
 
       - name: Add the Share menu extension and widgets
         run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          BUILD_NO="${{ github.run_number }}" python .github/scripts/mac_extensions.py
+          BUILD_NO="$BUILD_NO" python .github/scripts/mac_extensions.py
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           X="$RUNNER_TEMP/macext"
           (cd "$X" && xcodegen generate --spec project.yml > "$RUNNER_TEMP/xg.log" 2>&1) || { echo "::error title=xcodegen::$(tail -20 "$RUNNER_TEMP/xg.log" | tr '\n' ' ')"; exit 1; }
