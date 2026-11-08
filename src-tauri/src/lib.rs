@@ -626,19 +626,40 @@ fn email_disconnect() {
 #[tauri::command]
 async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
     let Some(a) = email_account_saved() else { return Ok(serde_json::json!({ "added": 0, "inbox": null })) };
-    let known: std::collections::HashSet<String> = {
+    let uids = |conn: &rusqlite::Connection, sql: &str| -> Result<std::collections::HashSet<String>, String> {
+        let mut st = conn.prepare(sql).map_err(err)?;
+        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+        Ok(rows.filter_map(Result::ok).collect())
+    };
+    let (known, seen) = {
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
         // an email counts as fetched only while its text is still here (else it's downloaded again)
-        let mut st = conn
-            .prepare("SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link WHERE COALESCE(i.content, '') <> ''")
-            .map_err(err)?;
-        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
-        rows.filter_map(Result::ok).collect()
+        let known = uids(&conn, "SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link WHERE COALESCE(i.content, '') <> ''")?;
+        let seen = uids(&conn, "SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link")?;
+        (known, seen)
     };
-    let (mails, inbox) = email::fetch(&a, &known).await?;
+    let email::Inbox { mails, count: inbox, gone } = email::fetch(&a, &known, &seen).await?;
+    // Emails deleted (or moved out of the inbox) elsewhere leave the Email tab too, unless kept in Read later
+    let removed = if gone.is_empty() {
+        0
+    } else {
+        let conn = state.db.lock().unwrap();
+        let mut n = 0;
+        for uid in &gone {
+            n += conn
+                .execute("DELETE FROM items WHERE saved=0 AND link IN (SELECT link FROM email_meta WHERE uid=?1)", [uid])
+                .map_err(err)?;
+            conn.execute("DELETE FROM email_meta WHERE uid=?1", [uid]).map_err(err)?;
+        }
+        n
+    };
     if mails.is_empty() {
-        return Ok(serde_json::json!({ "added": 0, "inbox": inbox }));
+        if removed > 0 {
+            let _ = app.emit("state-changed", ());
+            update_badge(&app);
+        }
+        return Ok(serde_json::json!({ "added": 0, "inbox": inbox, "removed": removed }));
     }
     let now = feeds::now_iso();
     let added = {
@@ -675,7 +696,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
     let _ = app.emit("state-changed", ());
     update_badge(&app);
     changed(state.inner());
-    Ok(serde_json::json!({ "added": added, "inbox": inbox }))
+    Ok(serde_json::json!({ "added": added, "inbox": inbox, "removed": removed }))
 }
 
 /// Who a reply to this email goes to, and its subject.
@@ -718,6 +739,33 @@ async fn email_reply(state: State<'_, Shared>, item_id: String, body: String) ->
     let raw = email::send(&a, &out).await?;
     email::file_sent(&a, &raw).await;
     Ok(to)
+}
+
+/// Delete an email: it goes to the mailbox's Trash (where you can still get it back) and leaves the Email tab.
+#[tauri::command]
+async fn email_delete(app: AppHandle, state: State<'_, Shared>, item_id: String) -> Result<Option<String>, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let (link, uid, msg_id) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        conn.query_row(
+            "SELECT i.link, COALESCE(m.uid,''), COALESCE(m.message_id,'') FROM items i LEFT JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+        )
+        .map_err(|_| "That email isn't here any more.".to_string())?
+    };
+    let folder = email::trash(&a, &uid, &msg_id).await?;
+    {
+        let conn = state.db.lock().unwrap();
+        conn.execute("DELETE FROM highlights WHERE item_id=?1", [&item_id]).map_err(err)?;
+        conn.execute("DELETE FROM items WHERE id=?1", [&item_id]).map_err(err)?;
+        conn.execute("DELETE FROM email_meta WHERE link=?1", [&link]).map_err(err)?;
+    }
+    let _ = app.emit("state-changed", ());
+    update_badge(&app);
+    changed(state.inner());
+    Ok(folder)
 }
 
 /// Send a new email from your mailbox (Write back, Share › Email, New email), and file it in Sent.
@@ -2173,6 +2221,7 @@ pub fn run() {
             email_reply_to,
             email_reply,
             email_send,
+            email_delete,
             save_url,
             share_inbox,
             widget_data,

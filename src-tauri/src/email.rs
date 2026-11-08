@@ -217,15 +217,30 @@ pub async fn check(a: &Account) -> Result<(), String> {
 
 // ---------------------------------------------------------------- reading the inbox
 
-/// The newest emails in the inbox that aren't in `known` yet.
-pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<(Vec<Mail>, u32), String> {
+pub struct Inbox {
+    /// New emails (not in `have`)
+    pub mails: Vec<Mail>,
+    /// How many emails the inbox holds
+    pub count: u32,
+    /// Emails the app has that aren't in the inbox any more (deleted or moved elsewhere): "<uidvalidity>:<uid>"
+    pub gone: Vec<String>,
+}
+
+/// The newest emails in the inbox that aren't in `have` yet, and which of `seen` have left it.
+pub async fn fetch(a: &Account, have: &HashSet<String>, seen: &HashSet<String>) -> Result<Inbox, String> {
+    let known = have;
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
     let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
     let validity = mb.uid_validity.unwrap_or(0);
+    // Emails from this inbox the app has, by number (a different uidvalidity means the server renumbered: can't tell)
+    let ours: Vec<(String, u32)> = seen
+        .iter()
+        .filter_map(|k| k.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok().map(|u| (k.clone(), u))))
+        .collect();
     if mb.exists == 0 {
         let _ = s.logout().await;
-        return Ok((vec![], 0));
+        return Ok(Inbox { mails: vec![], count: 0, gone: ours.into_iter().map(|(k, _)| k).collect() });
     }
     let first = mb.exists.saturating_sub(NEWEST - 1).max(1);
     let heads: Vec<_> = s
@@ -235,6 +250,11 @@ pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<(Vec<Mail>, u
         .try_collect()
         .await
         .map_err(|e| format!("Couldn't list the inbox ({e})."))?;
+    // Anything at or above the oldest number still looked at, that isn't there now, has left the inbox
+    let present: HashSet<u32> = heads.iter().filter_map(|h| h.uid).collect();
+    // (when the whole inbox was looked at, anything missing has gone; otherwise only above the oldest looked at)
+    let oldest = if first == 1 { 0 } else { present.iter().min().copied().unwrap_or(u32::MAX) };
+    let gone: Vec<String> = ours.into_iter().filter(|(_, u)| *u >= oldest && !present.contains(u)).map(|(k, _)| k).collect();
     let mut small = vec![];
     let mut big = vec![];
     for h in &heads {
@@ -268,7 +288,60 @@ pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<(Vec<Mail>, u
         }
     }
     let _ = s.logout().await;
-    Ok((out, mb.exists))
+    Ok(Inbox { mails: out, count: mb.exists, gone })
+}
+
+/// Move an email to the mailbox's Trash (or, with no Trash folder, delete it). `uid` is "<uidvalidity>:<uid>";
+/// if the server has renumbered since, the email is found by its Message-ID. Returns the folder it went to.
+pub async fn trash(a: &Account, uid: &str, message_id: &str) -> Result<Option<String>, String> {
+    use futures::TryStreamExt;
+    let mut s = imap_login(a).await?;
+    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+    let validity = mb.uid_validity.unwrap_or(0).to_string();
+    let mut target = uid.split_once(':').filter(|(v, _)| *v == validity).map(|(_, u)| u.to_string());
+    if target.is_none() && !message_id.is_empty() {
+        let id = message_id.trim().trim_start_matches('<').trim_end_matches('>').replace('"', "");
+        if let Ok(found) = s.uid_search(format!("HEADER Message-ID \"{id}\"")).await {
+            target = found.into_iter().next().map(|u| u.to_string());
+        }
+    }
+    let Some(target) = target else {
+        let _ = s.logout().await;
+        return Ok(None); // not in the inbox any more: nothing to do there
+    };
+    let mut trash = None;
+    if let Ok(list) = s.list(Some(""), Some("*")).await {
+        let names: Vec<_> = list.try_collect().await.unwrap_or_default();
+        trash = names.iter().find(|n| n.attributes().iter().any(|at| format!("{at:?}").contains("Trash"))).map(|n| n.name().to_string());
+        if trash.is_none() {
+            for want in ["Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash", "Papierkorb", "[Gmail]/Trash", "[Gmail]/Bin", "Bin"] {
+                if let Some(n) = names.iter().find(|n| n.name().eq_ignore_ascii_case(want)) {
+                    trash = Some(n.name().to_string());
+                    break;
+                }
+            }
+        }
+    }
+    let moved = match &trash {
+        Some(t) => s.uid_mv(&target, t).await.is_ok(),
+        None => false,
+    };
+    if !moved {
+        // No MOVE (or no Trash): copy to Trash if there is one, then delete from the inbox
+        if let Some(t) = &trash {
+            s.uid_copy(&target, t).await.map_err(|e| format!("Couldn't move the email to {t} ({e})."))?;
+        }
+        let _: Vec<_> = s
+            .uid_store(&target, "+FLAGS.SILENT (\\Deleted)")
+            .await
+            .map_err(|e| format!("Couldn't delete the email ({e})."))?
+            .try_collect()
+            .await
+            .unwrap_or_default();
+        let _: Vec<_> = s.expunge().await.map_err(|e| format!("Couldn't delete the email ({e})."))?.try_collect().await.unwrap_or_default();
+    }
+    let _ = s.logout().await;
+    Ok(trash)
 }
 
 pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {

@@ -15,6 +15,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map(), small: null, smallErr: '', smallMore: false };
   const ICONS = {
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
     email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>',
     site: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="18" height="18"><path d="M4 11l8-6.5 8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
     books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg>',
@@ -2360,7 +2361,7 @@
     const pick = a ? (Object.keys(MAIL_HOSTS).find(k => MAIL_HOSTS[k].imap === a.imap_host) || 'other') : 'ionos';
     const opts = Object.entries(MAIL_HOSTS).map(([k, v]) => `<option value="${k}"${k === pick ? ' selected' : ''}>${v.label}</option>`).join('');
     const el = sheet('mailPanel', `<h2>Email</h2>
-      <p>Connect one mailbox to read its inbox in the Email tab and reply from it. Best: an address on your own domain that you use only for this app, like reading@yoursite.com. The app only reads the inbox; it never deletes or moves mail.</p>
+      <p>Connect one mailbox to read its inbox in the Email tab and reply from it. Best: an address on your own domain that you use only for this app, like reading@yoursite.com. The app reads the inbox; it only moves an email (to the Trash) when you delete it.</p>
       <form class="mail-form" id="mailForm" autocomplete="off">
         <label>Email provider<select id="mailProv">${opts}</select></label>
         <label>Your name <span class="hint">(shown on replies)</span><input id="mailName" type="text" maxlength="80" value="${esc(a?.name || '')}" placeholder="David Daniels"></label>
@@ -2455,6 +2456,20 @@
     };
   }
   $('mailNew').onclick = () => openMailCompose();
+  $('rDelete').onclick = () => { const it = item(S.readerId); if (it) deleteMail(it); };
+  // Delete: the email goes to the mailbox's Trash and leaves the Email tab at once (put back if the server says no)
+  async function deleteMail(it) {
+    if (!it || !isEmailItem(it)) return;
+    const list = visible(), i = list.findIndex(x => x.id === it.id), next = list[i + 1] || list[i - 1];
+    const wasOpen = S.readerId === it.id;
+    S.items = S.items.filter(x => x.id !== it.id);
+    if (wasOpen) { if (next && isSplit()) openReader(next.id); else closeReader(); }
+    render();
+    try {
+      const folder = await invoke('email_delete', { itemId: it.id });
+      status(folder ? `Moved to ${folder}.` : 'Deleted.');
+    } catch (e) { status(msg(e), true); load(); }
+  }
   $('mailSet').onclick = () => openMailSettings();
   $('mailCheck').onclick = () => { refresh(); };
 
@@ -2480,6 +2495,7 @@
       <button class="mr-main title" data-act="open"><span class="mr-top"><span class="mr-from">${esc(from)}</span><time datetime="${esc(it.date)}">${esc(mailWhen(it.date))}</time></span>
         <span class="mr-subj">${esc(headline(it))}</span>${it.summary ? `<span class="mr-snip">${esc(it.summary)}</span>` : ''}</button>
       <div class="acts mr-acts">
+        <button class="icon" data-act="mdel" title="Move to the Trash" aria-label="Move to the Trash">${ICONS.trash}</button>
         <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
         <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
       </div></article>`;
@@ -3222,6 +3238,7 @@
     $('rReply').textContent = em || isPhone() ? 'Reply' : 'Write back';
     $('rOriginal').hidden = em; $('rShare').hidden = em; // an email has no web page
     $('rReply').classList.toggle('primary', em);
+    $('rDelete').hidden = !em;
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
     $('rTitle').textContent = headline(it);
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -3757,6 +3774,7 @@
     }
     if (act.dataset.act === 'save') mark(id, { saved: !it.saved });
     if (act.dataset.act === 'read') mark(id, { read: !it.read });
+    if (act.dataset.act === 'mdel') deleteMail(it);
   });
 
   // Drag a feed onto a folder (or onto "All" to take it out of its folder).
@@ -4070,6 +4088,7 @@
       document.querySelector(`.story[data-id="${CSS.escape(S.selId)}"]`)?.scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'Enter' && !S.readerId && S.selId) { openReader(S.selId); }
     else if (cur && e.key === 's') { const it = item(cur); if (it) mark(it.id, { saved: !it.saved }); }
+    else if (cur && (e.key === 'Delete' || e.key === 'Backspace') && isEmailItem(item(cur) || {}) && !document.querySelector('.overlay:not([hidden])')) { e.preventDefault(); deleteMail(item(cur)); }
     else if (cur && e.key === 'm') { const it = item(cur); if (it) mark(it.id, { read: !it.read }); }
     else if (cur && e.key === 'o') { const it = item(cur); if (it && isWeb(it.link)) openWeb(it.link); }
   });
