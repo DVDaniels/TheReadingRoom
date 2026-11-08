@@ -2249,6 +2249,7 @@
   const closeSettings = () => { $('settingsPanel').hidden = true; };
   $('settingsBtn').onclick = () => { $('settingsPanel').hidden = false; $('settingsDone').focus(); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
+  $('settingsDone').onclick = e => { e.stopPropagation(); closeSettings(); };
   $('settingsPanel').addEventListener('click', e => {
     const t = e.target.closest('[data-theme]');
     if (t) { typePrefs.theme = t.dataset.theme; applyType(); return; } // Appearance changes in place; Settings stays open
