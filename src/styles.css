@@ -1450,6 +1450,10 @@ html.ios .rail .nav button.grp { padding: 12px 10px 4px 4px; font-size: 15px; }
 
 /* ---------------------------------------------------------------- Newsletters */
 .nl-list { margin: 12px 0 4px; }
+.nl-list .nl-row { flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.nl-list .nl-row:last-child { border-bottom: 0; }
+.nl-list .nl-row .ck-body { flex: 1 1 220px; display: flex; flex-direction: column; gap: 2px; }
+.nl-list .nl-row .ck-acts { display: flex; gap: 6px; }
 .nl-row.fresh .ck-body b { color: var(--accent); }
 .nl-mail { font-family: var(--font-mono); font-size: 12px !important; white-space: normal !important; word-break: break-all; user-select: all; -webkit-user-select: all; }
 .nl-new { margin: 14px 0 8px; display: flex; flex-direction: column; gap: 6px; }

@@ -921,7 +921,7 @@
           <li>Press <b>Copy address</b>, go to the newsletter’s sign-up page, and paste it in place of your own email.</li>
           <li>Refresh after a minute. The newsletter’s welcome email arrives as a story. If it asks you to confirm, open it and tap the confirm link.</li>
         </ol>
-        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, unfollow its feed or use the unsubscribe link in any issue.</p>
+        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, use the unsubscribe link in any issue. To get rid of an address, choose <b>Remove</b> next to it there; its feed is unfollowed too.</p>
         <p>The addresses come from Kill the Newsletter, a free, open-source service; your own email is never used. Anyone who knows an address can send to it, so use it only for newsletters.</p>
         <p style="margin-top:12px"><button class="btn primary" type="button" id="guideNewsletters">Make a newsletter address</button></p></section>
 
@@ -4382,13 +4382,13 @@
   function newslettersHtml(fresh) {
     const list = S.prefs.newsletters || [];
     const row = n => `<li class="nl-row${fresh && n.email === fresh ? ' fresh' : ''}"><span class="ck-body"><b>${esc(n.title)}</b><span class="nl-mail">${esc(n.email)}</span></span>
-      <span class="ck-acts"><button class="btn${fresh && n.email === fresh ? ' primary' : ''}" type="button" data-nl="copy" data-mail="${esc(n.email)}">Copy address</button></span></li>`;
+      <span class="ck-acts"><button class="btn${fresh && n.email === fresh ? ' primary' : ''}" type="button" data-nl="copy" data-mail="${esc(n.email)}">Copy address</button><button class="btn danger" type="button" data-nl="remove" data-mail="${esc(n.email)}">Remove</button></span></li>`;
     return `<h2>Newsletters</h2>
       <p>Read newsletters here instead of in your inbox. Make an address, subscribe to newsletters with it, and each issue arrives as a story in its own feed.</p>
       ${list.length ? `<ul class="ck-list nl-list">${list.map(row).join('')}</ul>` : ''}
       <form class="nl-new" id="nlForm"><label for="nlName">${list.length ? 'Another address' : 'Name this address'}</label>
         <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div></form>
-      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unfollow its feed.</p>
+      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unsubscribe from the newsletter, then Remove the address here.</p>
       <div class="row sheet-foot"><button class="btn primary" type="button" data-nl="done">Done</button></div>`;
   }
   function openNewsletters(fresh) {
@@ -4401,6 +4401,17 @@
         try { await navigator.clipboard.writeText(b.dataset.mail); b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = 'Copy address'; }, 2000); }
         catch { note(`Couldn’t copy. The address is ${b.dataset.mail}`, true); }
       }
+      if (b.dataset.nl === 'remove') {
+        // Ask once more on the button itself, then unfollow the address's feed and drop it from the list
+        if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Remove and unfollow?'; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'Remove'; } }, 4000); return; }
+        const n = (S.prefs.newsletters || []).find(x => x.email === b.dataset.mail); if (!n) return;
+        const f = S.feeds.find(x => x.url === n.feed);
+        try { if (f) await invoke('remove_feed', { id: f.id }); } catch (err) { note(msg(err), true); return; }
+        S.prefs.newsletters = (S.prefs.newsletters || []).filter(x => x.email !== n.email);
+        await savePrefs(); await load();
+        openNewsletters();
+        note(`Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. Anything still sent to it won’t reach you, so unsubscribe from its newsletters if you haven’t.`);
+      }
     };
     $('nlForm').onsubmit = async e => {
       e.preventDefault();
@@ -4410,14 +4421,15 @@
         const n = await invoke('newsletter_address', { title });
         const r = await invoke('add_feed', { url: n.feed, title, folderId: null }).catch(() => null);
         await load();
-        S.prefs.newsletters = [...(S.prefs.newsletters || []), { title, email: n.email, feed: n.feed, at: new Date().toISOString() }];
+        S.prefs.newsletters = [...(S.prefs.newsletters || []), { title, email: n.email, feed: n.feed, at: new Date().toISOString(), added: !!r }];
         await savePrefs();
         openNewsletters(n.email);
         $('nlNote').textContent = r ? `Your address is ready, and its feed “${title}” is in your feeds. Copy the address and use it to sign up for newsletters. The welcome email may take a minute to show up after a refresh.` : 'Your address is ready. Its feed couldn’t be added just now; it will be added next time you open this.';
       } catch (err) { note(msg(err), true); btn.disabled = false; btn.textContent = 'Make an address'; }
     };
-    // a feed that didn't get added the first time
-    for (const n of S.prefs.newsletters || []) if (!S.feeds.some(f => f.url === n.feed)) invoke('add_feed', { url: n.feed, title: n.title, folderId: null }).then(load).catch(() => {});
+    // a feed that didn't get added the first time (only those: a feed you unfollowed stays unfollowed)
+    for (const n of S.prefs.newsletters || []) if (n.added === false && !S.feeds.some(f => f.url === n.feed))
+      invoke('add_feed', { url: n.feed, title: n.title, folderId: null }).then(async () => { n.added = true; await savePrefs(); load(); }).catch(() => {});
   }
   $('nlMode').onclick = () => { $('addForm').hidden = true; $('showAdd').hidden = false; openNewsletters(); };
 
