@@ -375,13 +375,15 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
-      : S.view === 'email' ? (MAIL.account ? `${unreadIn('email')} unread in ${MAIL.account.address}` : 'Read and answer one mailbox of your own here')
+      : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
       : S.view === 'talk' ? (anySocial() ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'Connect Mastodon or Bluesky on this device to see what people share and answer replies')
       : `${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    const onMail = S.view === 'email' && !!MAIL.account;
+    $('mailNew').hidden = !onMail; $('mailSet').hidden = !onMail; $('refresh').classList.toggle('primary', !onMail);
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
@@ -689,6 +691,11 @@
     if (!list.length) {
       const [t, d] = emptyText();
       $('list').innerHTML = brief + (older || !t ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older;
+      return;
+    }
+    if (S.view === 'email') {
+      $('list').innerHTML = brief + `<div class="mail-list">${list.map(mailRow).join('')}</div>`
+        + (all.length > list.length ? `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>` : '');
       return;
     }
     let out = brief, lastDay = '';
@@ -2324,10 +2331,14 @@
     if (!MAIL.account) return `<div class="mailbar mail-intro"><div><strong>Read your email here</strong>
       <span>Connect one mailbox and its inbox shows up in this tab, beside your reading. Replies go out from the same address. It works best with an address on your own domain that you use only for this app, like reading@yoursite.com.</span></div>
       <span class="mb-acts"><button class="btn primary" type="button" data-mailbar="setup">Connect your email</button></span></div>`;
-    return `<div class="mailbar"><div><span class="mb-lbl">${MAIL.checking ? 'Checking your inbox…' : 'Your inbox'}</span><span class="nl-mail">${esc(MAIL.account.address)}</span>
-      ${MAIL.error ? `<span class="mb-err">${esc(MAIL.error)}</span>` : MAIL.checkedAt ? `<span class="mb-lbl">${MAIL.inbox === 0 ? 'The inbox on the server is empty.' : `${MAIL.inbox} ${MAIL.inbox === 1 ? 'email' : 'emails'} in the inbox on the server`} · checked ${MAIL.checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}
-      ${MAIL.elsewhere ? `<span class="mb-err">Mail for ${esc(MAIL.account.address.split('@')[1])} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>` : ''}</div>
-      <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Check now</button><button class="btn" type="button" data-mailbar="setup">Settings</button></span></div>`;
+    const domain = MAIL.account.address.split('@')[1];
+    const problems = [
+      MAIL.error && `<span class="mb-err">${esc(MAIL.error)}</span>`,
+      MAIL.elsewhere && `<span class="mb-err">Mail for ${esc(domain)} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>`,
+    ].filter(Boolean);
+    if (!problems.length) return '';
+    return `<div class="mailbar mail-problem"><div>${problems.join('')}</div>
+      <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Try again</button><button class="btn" type="button" data-mailbar="setup">Email settings</button></span></div>`;
   }
   $('list').addEventListener('click', e => {
     const b = e.target.closest('[data-mailbar]'); if (!b) return;
@@ -2352,6 +2363,7 @@
           <div class="mail-srv"><label>Incoming (IMAP)<input id="mailImap" type="text" spellcheck="false" autocapitalize="off"></label><label>Port<input id="mailImapPort" type="number" min="1" max="65535"></label></div>
           <div class="mail-srv"><label>Outgoing (SMTP)<input id="mailSmtp" type="text" spellcheck="false" autocapitalize="off"></label><label>Port<input id="mailSmtpPort" type="number" min="1" max="65535"></label></div>
         </details>
+        <label>Signature <span class="hint">(added to every email you send; leave empty for none)</span><textarea id="mailSig" rows="3">${esc(mailSig())}</textarea></label>
         <p class="note" id="mailNote">${a ? `Connected to ${esc(a.address)}.` : 'Your password stays in the Keychain on your devices. Nothing goes through The Reading Room’s servers.'}</p>
         <div class="row sheet-foot">${a ? '<button class="btn danger" type="button" id="mailOff">Disconnect</button>' : ''}<button class="btn" type="button" id="mailCancel">${a ? 'Done' : 'Cancel'}</button><button class="btn primary" type="submit" id="mailGo">${a ? 'Save' : 'Connect'}</button></div>
       </form>`, 'Email');
@@ -2378,6 +2390,8 @@
       e.preventDefault();
       const account = { address: $('mailAddr').value.trim(), name: $('mailName').value.trim(), password: $('mailPw').value,
         imap_host: $('mailImap').value.trim(), imap_port: Number($('mailImapPort').value) || 993, smtp_host: $('mailSmtp').value.trim(), smtp_port: Number($('mailSmtpPort').value) || 465 };
+      const sig = $('mailSig').value;
+      if (sig !== mailSig()) { S.prefs.mailSig = sig; savePrefs(); }
       const go = $('mailGo'); go.disabled = true; go.textContent = 'Signing in…'; note('');
       try {
         const res = await invoke('email_connect', { account });
@@ -2391,26 +2405,74 @@
     };
   }
 
-  function openMailReply(it) {
-    const el = sheet('mailReplyPanel', `<h2>Reply</h2>
-      <div class="mr-head"><div><span class="mb-lbl">To</span><span id="mrTo">…</span></div><div><span class="mb-lbl">Subject</span><span id="mrSubj">…</span></div><div><span class="mb-lbl">From</span><span id="mrFrom">…</span></div></div>
-      <textarea id="mrBody" rows="10" placeholder="Write your reply"></textarea>
-      <p class="note" id="mrNote">Sent from your mailbox, and filed in its Sent folder.</p>
-      <div class="row sheet-foot"><button class="btn" type="button" id="mrCancel">Cancel</button><button class="btn primary" type="button" id="mrSend" disabled>Send</button></div>`, 'Reply');
-    const note = (t, err) => { $('mrNote').textContent = t; $('mrNote').classList.toggle('err', !!err); };
-    $('mrCancel').onclick = () => { el.hidden = true; };
-    invoke('email_reply_to', { itemId: it.id }).then(r => {
-      $('mrTo').textContent = r.name && r.name !== r.to ? `${r.name} <${r.to}>` : r.to;
-      $('mrSubj').textContent = r.subject; $('mrFrom').textContent = r.from || 'Connect your email in Settings first';
-      $('mrSend').disabled = !r.from;
-      $('mrBody').focus();
-    }).catch(e => note(msg(e), true));
-    $('mrSend').onclick = async () => {
-      const body = $('mrBody').value; if (!body.trim()) { note('Write something first.', true); return; }
-      const b = $('mrSend'); b.disabled = true; b.textContent = 'Sending…'; note('');
-      try { const to = await invoke('email_reply', { itemId: it.id, body }); el.hidden = true; status(`Reply sent to ${to}.`); }
-      catch (e) { note(msg(e), true); b.disabled = false; b.textContent = 'Send'; }
+  // ---- writing: one sheet for new emails, replies and Write back. Your signature goes at the end.
+  const DEFAULT_SIG = '—\nSent from The Reading Room\nhttps://readingroomapp.com';
+  const mailSig = () => (typeof S.prefs.mailSig === 'string' ? S.prefs.mailSig : DEFAULT_SIG);
+  const withSig = body => { const sig = mailSig().trim(); return `${body || ''}${sig ? `\n\n${sig}` : ''}`; };
+
+  async function openMailReply(it) {
+    try {
+      const r = await invoke('email_reply_to', { itemId: it.id });
+      openMailCompose({ to: r.to, toName: r.name, subject: r.subject, replyTo: it.id });
+    } catch (e) { status(msg(e), true); }
+  }
+
+  function openMailCompose({ to = '', toName = '', subject = '', body = '', replyTo = null } = {}) {
+    if (!MAIL.account) { openMailSettings(); status('Connect your email first.'); return; }
+    const fixedTo = !!replyTo;
+    const el = sheet('mailComposePanel', `<h2>${replyTo ? 'Reply' : 'New email'}</h2>
+      <div class="mail-form mc-fields">
+        <label class="mc-line"><span>To</span>${fixedTo ? `<span class="mc-fixed">${esc(toName && toName !== to ? `${toName} <${to}>` : to)}</span>` : `<input id="mcTo" type="email" value="${esc(to)}" placeholder="name@example.com" spellcheck="false" autocapitalize="off">`}</label>
+        <label class="mc-line"><span>Subject</span>${fixedTo ? `<span class="mc-fixed">${esc(subject)}</span>` : `<input id="mcSubj" type="text" value="${esc(subject)}">`}</label>
+        <div class="mc-line"><span>From</span><span class="mc-fixed">${esc(MAIL.account.name ? `${MAIL.account.name} <${MAIL.account.address}>` : MAIL.account.address)}</span></div>
+      </div>
+      <textarea id="mcBody" rows="11"></textarea>
+      <p class="note" id="mcNote">Sent from your mailbox and filed in its Sent folder. Change the signature in Email settings.</p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="mcCancel">Cancel</button><button class="btn primary" type="button" id="mcSend">Send</button></div>`, replyTo ? 'Reply' : 'New email');
+    const box = $('mcBody');
+    box.value = withSig(body.startsWith('\n') ? body : body ? `\n\n${body}` : '');
+    const note = (t, err) => { $('mcNote').textContent = t; $('mcNote').classList.toggle('err', !!err); };
+    $('mcCancel').onclick = () => { el.hidden = true; };
+    setTimeout(() => { if (!fixedTo && !$('mcTo').value) $('mcTo').focus(); else { box.focus(); box.setSelectionRange(0, 0); box.scrollTop = 0; } }, 30);
+    $('mcSend').onclick = async () => {
+      const text = box.value, b = $('mcSend');
+      if (!text.replace(mailSig(), '').trim()) { note('Write something first.', true); return; }
+      b.disabled = true; b.textContent = 'Sending…'; note('');
+      try {
+        const sentTo = replyTo
+          ? await invoke('email_reply', { itemId: replyTo, body: text })
+          : await invoke('email_send', { to: $('mcTo').value, subject: $('mcSubj').value, body: text });
+        el.hidden = true; status(`Sent to ${sentTo}.`);
+      } catch (e) { note(msg(e), true); b.disabled = false; b.textContent = 'Send'; }
     };
+  }
+  $('mailNew').onclick = () => openMailCompose();
+  $('mailSet').onclick = () => openMailSettings();
+
+  function mailSub() {
+    if (!MAIL.account) return 'Read and answer one mailbox of your own here';
+    const parts = [MAIL.account.address, `${unreadIn('email')} unread`];
+    if (MAIL.inbox != null) parts.push(`${MAIL.inbox} in the inbox`);
+    parts.push(MAIL.checking ? 'checking…' : MAIL.checkedAt ? `checked ${MAIL.checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'not checked yet');
+    return parts.join(' · ');
+  }
+  // When: the time today, the day this week, otherwise the date
+  function mailWhen(d) {
+    const t = new Date(d), now = new Date();
+    if (t.toDateString() === now.toDateString()) return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (now - t < 6 * DAY) return t.toLocaleDateString([], { weekday: 'short' });
+    return t.toLocaleDateString([], t.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function mailRow(it) {
+    const from = srcLabel(it);
+    return `<article class="story mail-row${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}${S.readerId === it.id ? ' open' : ''}" data-id="${esc(it.id)}">
+      <span class="mr-av" style="--h:${hueFor('mail:' + from)}" aria-hidden="true">${esc((from.trim()[0] || '?').toUpperCase())}</span>
+      <button class="mr-main title" data-act="open"><span class="mr-top"><span class="mr-from">${esc(from)}</span><time datetime="${esc(it.date)}">${esc(mailWhen(it.date))}</time></span>
+        <span class="mr-subj">${esc(headline(it))}</span>${it.summary ? `<span class="mr-snip">${esc(it.summary)}</span>` : ''}</button>
+      <div class="acts mr-acts">
+        <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
+        <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
+      </div></article>`;
   }
   loadMailAccount().then(() => { if (MAIL.account) { if (S.view === 'email') render(); setTimeout(() => checkMail(true), 2500); } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkMail(true); });
@@ -3036,7 +3098,9 @@
     if (o.email) {
       const subject = o.email.subject || `Re: ${headline(it)}`;
       const body = `\n\n\n—\nIn reply to “${headline(it)}”\n${it.link}`;
-      rows.push(`<button type="button" role="menuitem" data-reply="${esc(`mailto:${o.email.address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)}">${ICON_MAIL}<span>Reply by email<small>${esc(o.email.address)}</small></span></button>`);
+      rows.push(MAIL.account
+        ? `<button type="button" role="menuitem" data-reply-mail="${esc(o.email.address)}" data-subject="${esc(subject)}">${ICON_MAIL}<span>Reply by email<small>to ${esc(o.email.address)}, from ${esc(MAIL.account.address)}</small></span></button>`
+        : `<button type="button" role="menuitem" data-reply="${esc(`mailto:${o.email.address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)}">${ICON_MAIL}<span>Reply by email<small>${esc(o.email.address)}</small></span></button>`);
     }
     if (o.comments) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.comments)}">${ICON_TALK}<span>Leave a comment<small>on the post</small></span></button>`);
     // With that network connected, Write back answers from your own account in the app (no website sign-in)
@@ -3057,8 +3121,12 @@
     return `<p class="menu-head">Write back to ${esc(who)}</p>${rows.join('')}${wm}`;
   }
   $('replyMenu').addEventListener('click', async e => {
-    const b = e.target.closest('[data-reply], [data-reply-web], [data-reply-app], [data-mention-app]'); if (!b) return;
+    const b = e.target.closest('[data-reply], [data-reply-web], [data-reply-app], [data-mention-app], [data-reply-mail]'); if (!b) return;
     $('replyMenu').hidden = true;
+    if (b.dataset.replyMail) {
+      const it = item(S.readerId);
+      return openMailCompose({ to: b.dataset.replyMail, subject: b.dataset.subject, body: it ? `\n\n—\nIn reply to “${headline(it)}”\n${it.link}` : '' });
+    }
     if (b.dataset.replyApp) return replyFromApp(b.dataset.replyApp);
     if (b.dataset.mentionApp) {
       const [net, url] = b.dataset.mentionApp.split('|'), it = item(S.readerId);
@@ -3547,7 +3615,10 @@
     try {
       if (kind === 'x') await invoke('open_share', { url: `https://x.com/intent/post?text=${t}&url=${u}` });
       if (kind === 'linkedin') await invoke('open_share', { url: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` });
-      if (kind === 'email') await invoke('open_external', { url: `mailto:?subject=${t}&body=${t}%0A%0A${u}` });
+      if (kind === 'email') {
+        if (MAIL.account) openMailCompose({ to: '', subject: it.title, body: `${it.title}\n${it.link}` });
+        else await invoke('open_external', { url: `mailto:?subject=${t}&body=${t}%0A%0A${u}` });
+      }
       if (kind === 'browser') await invoke('open_external', { url: it.link });
       // the story's page, translated by Google into this device's language, in the web window
       if (kind === 'translate') { const tl = (navigator.language || 'en').split('-')[0]; openWeb(`https://translate.google.com/translate?sl=auto&tl=${tl}&u=${u}`); }

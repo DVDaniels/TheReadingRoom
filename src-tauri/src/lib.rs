@@ -717,6 +717,23 @@ async fn email_reply(state: State<'_, Shared>, item_id: String, body: String) ->
     Ok(to)
 }
 
+/// Send a new email from your mailbox (Write back, Share › Email, New email), and file it in Sent.
+#[tauri::command]
+async fn email_send(to: String, subject: String, body: String) -> Result<String, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let to = to.trim().trim_start_matches("mailto:").to_string();
+    if !to.contains('@') || to.contains([' ', ',', ';']) {
+        return Err("Enter one email address to send to.".into());
+    }
+    if body.trim().is_empty() {
+        return Err("Write something first.".into());
+    }
+    let out = email::Outgoing { to: &to, subject: subject.trim(), body: &body, in_reply_to: "", references: "" };
+    let raw = email::send(&a, &out).await?;
+    email::file_sent(&a, &raw).await;
+    Ok(to)
+}
+
 /// Save a page you found elsewhere to Read later (in a feed of its own, "Saved pages").
 async fn save_page(app: &AppHandle, url: &str, title: &str) -> Result<String, String> {
     let st: Shared = app.state::<Shared>().inner().clone();
@@ -2142,6 +2159,7 @@ pub fn run() {
             email_refresh,
             email_reply_to,
             email_reply,
+            email_send,
             save_url,
             share_inbox,
             widget_data,
