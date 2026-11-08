@@ -3260,9 +3260,21 @@
   }
 
   // Story HTML comes from the Rust side already cleaned (no scripts, styles or event handlers).
+  // Emails are laid out with tables (no lines between cells) and carry hidden lines meant for inbox previews.
+  // Here: drop the empty spacer cells and rows, and a first line that only repeats the subject.
+  function tidyMail(body, it) {
+    const empty = el => !el.textContent.trim() && !el.querySelector('img, a, hr');
+    body.querySelectorAll('tr').forEach(tr => { if (empty(tr)) tr.remove(); });
+    body.querySelectorAll('td, th').forEach(td => { if (empty(td)) td.remove(); });
+    const first = [...body.querySelectorAll('p, div, span, td, h1, h2')].find(el => el.textContent.trim());
+    if (first && it && first.textContent.trim() === headline(it).trim() && !first.querySelector('img')) first.remove();
+  }
   function paintArticle() {
     const body = $('rBody');
     body.innerHTML = articleHtml;
+    const isMail = isEmailItem(item(S.readerId) || {});
+    body.classList.toggle('mail-body', isMail);
+    if (isMail) tidyMail(body, item(S.readerId));
     // YouTube players in the story come through as marked links; play them right here
     const shown = ytId(item(S.readerId)?.link);
     body.querySelectorAll('a[href$="#rr-video"]').forEach(a => {

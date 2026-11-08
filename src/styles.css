@@ -1537,3 +1537,7 @@ body.mail-view .tools .search { order: 9; flex: 1 1 100%; width: auto; }
 body.mail-view .tools .seg { flex: none; }
 #mailCheck.spinning svg { animation: rr-spin 1s linear infinite; }
 @keyframes rr-spin { to { transform: rotate(360deg); } }
+/* An email in the reader: its tables are only for layout */
+.prose.mail-body table { display: table; border: 0; width: auto; max-width: 100%; font-size: inherit; margin: 0; }
+.prose.mail-body td, .prose.mail-body th { border: 0; padding: 0 6px 0 0; vertical-align: top; }
+.prose.mail-body img { max-width: 100%; height: auto; }
