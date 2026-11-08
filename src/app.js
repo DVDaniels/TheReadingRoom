@@ -3130,8 +3130,11 @@
   const ICON_TALK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>';
   const ICON_AT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>';
   const ICON_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9H3z"/></svg>';
+  // Feeds write an address as "name@site.com (Name)" or "Name <name@site.com>": keep the address
+  const plainAddress = t => ((t || '').match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0];
   function replyItems(it, o) {
     const who = feedById(it.feed_id)?.title || 'the writer', rows = [];
+    if (o.email && plainAddress(o.email.address)) o = { ...o, email: { ...o.email, address: plainAddress(o.email.address) } };
     if (o.email) {
       const subject = o.email.subject || `Re: ${headline(it)}`;
       const body = `\n\n\n—\nIn reply to “${headline(it)}”\n${it.link}`;

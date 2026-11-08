@@ -510,10 +510,13 @@ struct Smtp<S> {
 
 impl<S: AsyncRead + AsyncWrite + Unpin> Smtp<S> {
     async fn reply(&mut self) -> Result<(u16, String), String> {
+        self.reply_within(WAIT).await
+    }
+    async fn reply_within(&mut self, wait: Duration) -> Result<(u16, String), String> {
         let mut all = String::new();
         loop {
             let mut line = String::new();
-            let n = tokio::time::timeout(WAIT, self.io.read_line(&mut line))
+            let n = tokio::time::timeout(wait, self.io.read_line(&mut line))
                 .await
                 .map_err(|_| "The mail server stopped answering.".to_string())?
                 .map_err(|e| format!("Lost the connection to the mail server ({e})."))?;
@@ -548,18 +551,40 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Smtp<S> {
         self.cmd("DATA", 354, "The mail server wouldn't take the email").await?;
         // A line starting with a dot gets a second one, so it isn't read as the end
         let stuffed: String = msg.split("\r\n").map(|l| if l.starts_with('.') { format!(".{l}") } else { l.to_string() }).collect::<Vec<_>>().join("\r\n");
-        let body = format!("{}\r\n.", stuffed.trim_end_matches("\r\n"));
-        self.cmd(&body, 250, "The mail server didn't send the email").await?;
+        let body = format!("{}\r\n.\r\n", stuffed.trim_end_matches("\r\n"));
+        // The server answers once it has taken the email on. Proton Mail Bridge encrypts and hands it
+        // to Proton first, which can take a while: wait up to two minutes.
+        self.io.get_mut().write_all(body.as_bytes()).await.map_err(|e| format!("Lost the connection to the mail server ({e})."))?;
+        self.io.get_mut().flush().await.map_err(|e| e.to_string())?;
+        let (code, text) = self.reply_within(Duration::from_secs(120)).await.map_err(|_| {
+            "The mail server took too long to confirm the email. It may have been sent anyway: look in your Sent folder before sending it again.".to_string()
+        })?;
+        if code / 100 != 2 {
+            let said = text.lines().last().unwrap_or("").get(4..).unwrap_or("").trim().to_string();
+            return Err(format!("The mail server didn't send the email ({code} {said})"));
+        }
         let _ = self.cmd("QUIT", 221, "").await;
         Ok(())
     }
 }
 
+/// The address alone, from the ways feeds and people write one: "name@site.com (Name)",
+/// "Name <name@site.com>", "mailto:name@site.com".
+pub fn plain_address(s: &str) -> Option<String> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r#"[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#).unwrap());
+    let s = s.trim().trim_start_matches("mailto:");
+    let found: Vec<&str> = re.find_iter(s).map(|m| m.as_str()).collect();
+    match found.as_slice() {
+        [one] => Some(one.trim_end_matches('.').to_string()),
+        _ => None, // none, or more than one
+    }
+}
+
 /// Send over SMTP: port 465 is secure from the start, other ports (587) switch to secure with STARTTLS.
 pub async fn send(a: &Account, o: &Outgoing<'_>) -> Result<String, String> {
-    if !o.to.contains('@') || o.to.contains(['\r', '\n', '<', '>']) {
-        return Err("There's no address to reply to.".into());
-    }
+    let to = plain_address(o.to).ok_or("Enter one email address to send to.")?;
+    let o = &Outgoing { to: &to, ..*o };
     let msg = compose(a, o);
     let raw = tcp(&a.smtp_host, a.smtp_port).await?;
     if a.smtp_port == 465 {
@@ -628,6 +653,15 @@ mod tests {
         assert!(m.html.contains("<b>rich</b>"), "{}", m.html);
         assert_eq!(m.summary, "plain");
         assert!(m.link.starts_with("email:uid-1:6"));
+    }
+
+    #[test]
+    fn finds_the_address() {
+        assert_eq!(plain_address("hello@mikebifulco.com (Mike Bifulco @irreverentmike)").as_deref(), Some("hello@mikebifulco.com"));
+        assert_eq!(plain_address("Sam Rivera <sam@example.com>").as_deref(), Some("sam@example.com"));
+        assert_eq!(plain_address("mailto:sam@example.com").as_deref(), Some("sam@example.com"));
+        assert_eq!(plain_address("a@b.com, c@d.com"), None);
+        assert_eq!(plain_address("nobody"), None);
     }
 
     #[test]

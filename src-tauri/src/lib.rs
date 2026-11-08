@@ -772,10 +772,7 @@ async fn email_delete(app: AppHandle, state: State<'_, Shared>, item_id: String)
 #[tauri::command]
 async fn email_send(to: String, subject: String, body: String) -> Result<String, String> {
     let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
-    let to = to.trim().trim_start_matches("mailto:").to_string();
-    if !to.contains('@') || to.contains([' ', ',', ';']) {
-        return Err("Enter one email address to send to.".into());
-    }
+    let to = email::plain_address(&to).ok_or("Enter one email address to send to.")?;
     if body.trim().is_empty() {
         return Err("Write something first.".into());
     }
