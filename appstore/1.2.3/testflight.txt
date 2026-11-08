@@ -1,0 +1,17 @@
+Thanks for testing The Reading Room! New in this build:
+
+EMAIL
+Settings › Email lets you connect one email address of your own (a mailbox on your own domain works best: IONOS, Fastmail, iCloud, Proton through Proton Mail Bridge on the Mac, and others). Please try:
+• Connecting your mailbox and checking for new mail.
+• Reading an email, including newsletters with pictures and tables.
+• Replying, writing a new email, and "Write back" to a writer from any story.
+• Deleting an email (it goes to your mailbox's Trash).
+• Each device has its own mailbox: disconnecting on one shouldn't affect another.
+
+FOLDERS INSIDE FOLDERS
+You can now put a folder inside another folder (two levels), for example Blogroll › Charlotte NC.
+• Make a new folder and choose a folder to put it in, or drag a folder onto another.
+• Open the outer folder: it should show stories from everything inside it.
+• Check that your folders look the same on your other devices.
+
+Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.

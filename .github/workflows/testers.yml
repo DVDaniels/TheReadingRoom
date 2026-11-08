@@ -1,0 +1,35 @@
+name: Send to testers
+
+# Run by hand to hand an already-uploaded build to the public-link testers: adds it to the group,
+# sets What to Test (appstore/<version>/testflight.txt), turns on notify, and sends it to TestFlight review.
+# Use it when an earlier review was still going, or for a build uploaded with "testers" unticked.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Which app"
+        type: choice
+        options: [IOS, MAC_OS]
+        default: IOS
+      build:
+        description: "Build number (or latest)"
+        default: latest
+      group:
+        description: "External TestFlight group"
+        default: RSS Testers
+
+jobs:
+  testers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          python .github/scripts/asc_testers.py "${{ inputs.platform }}" "${{ inputs.build }}" "${{ inputs.group }}"
