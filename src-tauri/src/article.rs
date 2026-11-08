@@ -33,7 +33,42 @@ pub fn extract(html: &str, url: &str) -> Result<Article, String> {
     if a.text_content.trim().chars().count() < MIN_TEXT {
         return Err("This page didn't share its full article (it may be behind a paywall or built by scripts).".into());
     }
-    Ok(Article { html: clean(&unlazy(&a.content), url), byline: a.byline.unwrap_or_default().trim().to_string() })
+    let body = unlazy(&a.content);
+    let body = match lead_image(html, url, &body) {
+        Some(src) => format!(r#"<figure><img src="{}" alt=""></figure>{body}"#, html_escape::encode_double_quoted_attribute(&src)),
+        None => body,
+    };
+    Ok(Article { html: clean(&body, url), byline: a.byline.unwrap_or_default().trim().to_string() })
+}
+
+/// The post's featured image, when pulling out the article left it behind. WordPress and most blogs put it
+/// above the article body, in the post header, so the reader drops it along with the menus. The page still
+/// names it as its sharing picture (og:image), so bring that back at the top, unless the article already
+/// shows the same picture (often in another size: photo-1024x683.jpg is photo.jpg).
+fn lead_image(page: &str, url: &str, body: &str) -> Option<String> {
+    let base = url::Url::parse(url).ok()?;
+    let src = crate::feeds::pick_page_image(page, &base)?;
+    let low = src.to_ascii_lowercase();
+    // Stand-ins, not a post's own picture: Jetpack's blank, site icons, logos, avatars.
+    if ["blank.jpg", "/i/blank", "cropped-", "logo", "gravatar", "avatar", "site-icon", "favicon"].iter().any(|x| low.contains(x)) {
+        return None;
+    }
+    let stem = picture_stem(&src);
+    if stem.len() >= 3 && body.to_ascii_lowercase().contains(&stem) {
+        return None;
+    }
+    Some(src)
+}
+
+/// "https://x.com/wp-content/uploads/2026/11/My-Photo-1024x683.jpg?w=1200" → "my-photo"
+fn picture_stem(src: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+    static SIZE: OnceLock<Regex> = OnceLock::new();
+    let file = src.split(['?', '#']).next().unwrap_or("").rsplit('/').next().unwrap_or("").to_ascii_lowercase();
+    let name = file.rsplit_once('.').map_or(file.as_str(), |(n, _)| n).to_string();
+    let size = SIZE.get_or_init(|| Regex::new(r"(-\d+x\d+|-scaled|-e\d{10,})+$").unwrap());
+    size.replace(&name, "").to_string()
 }
 
 /// Many sites (the New York Post, for one) load photos as you scroll: the page carries a blank stand-in as
@@ -130,6 +165,22 @@ mod tests {
         assert!(a.html.contains("https://ex.com/pic.jpg"));
         assert!(a.html.contains("https://ex.com/next"));
         assert!(!a.html.contains("onerror") && !a.html.contains("onclick") && !a.html.contains("<script"));
+    }
+
+    #[test]
+    fn brings_back_the_featured_image() {
+        let body = "<p>".to_string() + &"This is a sentence in the article body. ".repeat(20) + "</p>";
+        let page = |inline: &str| format!(r#"<html><head><title>Post</title>
+            <meta property="og:image" content="https://daviddaniels.com/wp-content/uploads/2026/11/reading-room.jpg"></head>
+            <body><nav>menu</nav><header><img class="wp-post-image" src="/wp-content/uploads/2026/11/reading-room-1024x683.jpg"></header>
+            <article><h1>Post</h1>{body}{inline}</article></body></html>"#);
+        let a = super::extract(&page(""), "https://daviddaniels.com/technology/post/").unwrap();
+        assert!(a.html.starts_with(r#"<figure><img src="https://daviddaniels.com/wp-content/uploads/2026/11/reading-room.jpg""#), "{}", a.html);
+        // Already in the article (another size): don't show it twice.
+        let a = super::extract(&page(r#"<p><img src="/wp-content/uploads/2026/11/reading-room-768x512.jpg"></p>"#), "https://daviddaniels.com/technology/post/").unwrap();
+        assert_eq!(a.html.matches("<img").count(), 1, "{}", a.html);
+        assert_eq!(super::picture_stem("https://x.com/u/My-Photo-1024x683.jpg?w=1200"), "my-photo");
+        assert_eq!(super::picture_stem("https://x.com/u/big-scaled.jpeg"), "big");
     }
 
     #[test]
