@@ -738,6 +738,9 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 .set-item { background: none; border: 0; padding: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
 .set-item:hover { color: var(--accent); }
 .set-item.syncbtn { padding: 0; font-size: 15px; color: var(--ink); }
+.set-theme { display: flex; flex-direction: column; gap: 6px; }
+.set-theme .seg { align-self: flex-start; }
+.set-theme > span { font-size: 13px; color: var(--muted); line-height: 1.4; }
 html.ios .set-item { font-size: 17px; }
 html.ios .set-list li { padding: 12px 14px; }
 html.ios .set-item.syncbtn { padding: 0; font-size: 17px; }

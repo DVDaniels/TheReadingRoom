@@ -2249,7 +2249,11 @@
   const closeSettings = () => { $('settingsPanel').hidden = true; };
   $('settingsBtn').onclick = () => { $('settingsPanel').hidden = false; $('settingsDone').focus(); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
-  $('settingsPanel').addEventListener('click', e => { if (e.target.closest('button')) closeSettings(); });
+  $('settingsPanel').addEventListener('click', e => {
+    const t = e.target.closest('[data-theme]');
+    if (t) { typePrefs.theme = t.dataset.theme; applyType(); return; } // Appearance changes in place; Settings stays open
+    if (e.target.closest('button')) closeSettings();
+  });
 
   // ---- posting a story with your note
   const LIMIT = { bluesky: 300, mastodon: 500 };
@@ -3335,7 +3339,7 @@
     document.querySelectorAll('#uiSeg button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.ui) === typePrefs.ui)));
     $('sizeNow').textContent = typePrefs.size;
     document.querySelectorAll('#widthSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.width === typePrefs.width)));
-    document.querySelectorAll('#themeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === typePrefs.theme)));
+    document.querySelectorAll('#themeSeg button, #setThemeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === typePrefs.theme)));
     try { localStorage.setItem('readerPrefs', JSON.stringify(typePrefs)); } catch {}
     window.__TAURI__.event.emit?.('app-theme', typePrefs.theme).catch?.(() => {}); // the web window's toolbar follows
   }
