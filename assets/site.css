@@ -176,3 +176,12 @@ kbd { display: inline-block; min-width: 44px; padding: 2px 8px; background: var(
 /* Numbered how-to steps on the support page */
 .howto { margin: 8px 0 12px; padding-left: 1.4em; }
 .howto li { margin: 4px 0; }
+
+/* Beta page: what's in the current beta */
+.beta-new { margin-top: 56px; }
+.beta-new ul { margin: 12px 0; padding-left: 1.2em; }
+.beta-new li { margin: 10px 0; line-height: 1.55; }
+.beta-note { margin: 4px 0 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; }
+.beta-note h3 { margin-top: 0; }
+.beta-note ul { margin: 8px 0 0; padding-left: 1.2em; }
+.beta-note li { margin: 6px 0; }
