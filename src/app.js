@@ -917,7 +917,7 @@
         <p>Read newsletters here, beside everything else, instead of in your email. The app makes you a private email address; you sign up for newsletters with it, and each issue arrives as a story.</p>
         <ol class="g-steps">
           <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''}, then <b>Read newsletters here</b>.</li>
-          <li>Under <b>Name this address</b>, type a name, like the newsletter’s name, and press <b>Make an address</b>. A feed with that name joins your feeds.</li>
+          <li>Under <b>Name this address</b>, type a name, like the newsletter’s name, and press <b>Make an address</b>. A feed with that name appears in a <b>Newsletters</b> folder, made the first time, or in the folder you pick under <b>Put its feed in</b>.</li>
           <li>Press <b>Copy address</b>, go to the newsletter’s sign-up page, and paste it in place of your own email.</li>
           <li>Refresh after a minute. The newsletter’s welcome email arrives as a story. If it asks you to confirm, open it and tap the confirm link.</li>
         </ol>
@@ -4379,6 +4379,14 @@
 
   // ------------------------------------------------------------ Newsletters in your reader
   // A private address from Kill the Newsletter: subscribe with it, and each issue arrives as a story.
+  // New newsletter feeds go in a "Newsletters" folder unless you pick another (the folder is made the first time)
+  const nlFolder = () => S.folders.find(f => f.name.trim().toLowerCase() === 'newsletters');
+  function nlFolderOptions() {
+    const nf = nlFolder(), last = S.prefs.nlFolder; // last choice: a folder id, '' for none, or undefined
+    const pick = last === '' ? '' : last != null && folderById(Number(last)) ? Number(last) : nf ? nf.id : 'new';
+    return (nf ? '' : `<option value="new"${pick === 'new' ? ' selected' : ''}>Newsletters (new folder)</option>`) + folderOptions(pick === 'new' ? undefined : pick)
+      .replace('<option value="">No folder</option>', `<option value=""${pick === '' ? ' selected' : ''}>No folder</option>`);
+  }
   function newslettersHtml(fresh) {
     const list = S.prefs.newsletters || [];
     const row = n => `<li class="nl-row${fresh && n.email === fresh ? ' fresh' : ''}"><span class="ck-body"><b>${esc(n.title)}</b><span class="nl-mail">${esc(n.email)}</span></span>
@@ -4387,7 +4395,8 @@
       <p>Read newsletters here instead of in your inbox. Make an address, subscribe to newsletters with it, and each issue arrives as a story in its own feed.</p>
       ${list.length ? `<ul class="ck-list nl-list">${list.map(row).join('')}</ul>` : ''}
       <form class="nl-new" id="nlForm"><label for="nlName">${list.length ? 'Another address' : 'Name this address'}</label>
-        <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div></form>
+        <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div>
+        <div class="row nl-folder"><label for="nlFolder">Put its feed in</label><select id="nlFolder">${nlFolderOptions()}</select></div></form>
       <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unsubscribe from the newsletter, then Remove the address here.</p>
       <div class="row sheet-foot"><button class="btn primary" type="button" data-nl="done">Done</button></div>`;
   }
@@ -4419,12 +4428,23 @@
       btn.disabled = true; btn.textContent = 'Making…'; note('');
       try {
         const n = await invoke('newsletter_address', { title });
-        const r = await invoke('add_feed', { url: n.feed, title, folderId: null }).catch(() => null);
+        const choice = $('nlFolder').value;
+        let folderId = choice === 'new' ? nlFolder()?.id ?? null : choice ? Number(choice) : null;
+        if (choice === 'new' && folderId == null) {
+          // First time: make the folder and move in the newsletter feeds you already have that aren't in a folder
+          folderId = await invoke('create_folder', { name: 'Newsletters' }).catch(() => null);
+          if (folderId != null) for (const old of S.prefs.newsletters || []) {
+            const f = S.feeds.find(x => x.url === old.feed && !x.folder_id);
+            if (f) await invoke('set_feed_folder', { feedId: f.id, folderId }).catch(() => {});
+          }
+        }
+        S.prefs.nlFolder = choice === 'new' ? (folderId ?? undefined) : choice === '' ? '' : folderId;
+        const r = await invoke('add_feed', { url: n.feed, title, folderId }).catch(() => null);
         await load();
         S.prefs.newsletters = [...(S.prefs.newsletters || []), { title, email: n.email, feed: n.feed, at: new Date().toISOString(), added: !!r }];
         await savePrefs();
         openNewsletters(n.email);
-        $('nlNote').textContent = r ? `Your address is ready, and its feed “${title}” is in your feeds. Copy the address and use it to sign up for newsletters. The welcome email may take a minute to show up after a refresh.` : 'Your address is ready. Its feed couldn’t be added just now; it will be added next time you open this.';
+        $('nlNote').textContent = r ? `Your address is ready, and its feed “${title}” is in your feeds${folderId != null && folderById(folderId) ? ` under ${folderById(folderId).name}` : ''}. Copy the address and use it to sign up for newsletters. The welcome email may take a minute to show up after a refresh.` : 'Your address is ready. Its feed couldn’t be added just now; it will be added next time you open this.';
       } catch (err) { note(msg(err), true); btn.disabled = false; btn.textContent = 'Make an address'; }
     };
     // a feed that didn't get added the first time (only those: a feed you unfollowed stays unfollowed)
