@@ -665,7 +665,7 @@
   function renderList() {
     syncHome();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
-    if (S.view === 'guide') { $('list').innerHTML = guideHtml(); store.set('guideSeen', '1'); return; }
+    if (S.view === 'guide') { $('list').innerHTML = guideHtml(); buildGuideToc(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
@@ -860,6 +860,20 @@
     ['daviddaniels.com', 'David Daniels', 'Personal essays since 2001, from the person who made this app.'],
   ];
   const followsDomain = d => S.feeds.some(f => [f.url, f.site].some(u => (u || '').replace(/^https?:\/\/(www\.)?/, '').startsWith(d)));
+  // The guide's contents: one link per section, built from its headings, and a way back up from each section
+  function buildGuideToc() {
+    const toc = $('gToc'); if (!toc) return;
+    const secs = [...document.querySelectorAll('.guide .g-sec')];
+    secs.forEach((sec, i) => {
+      if (!sec.id) sec.id = 'g-s' + i;
+      const h = sec.querySelector('h2');
+      if (h && !h.querySelector('.g-up')) h.insertAdjacentHTML('beforeend', '<button class="g-up" type="button" data-guide-jump="gToc" title="Back to contents" aria-label="Back to contents">↑ Contents</button>');
+    });
+    toc.innerHTML = '<p class="g-toc-h">On this page</p><ol>' + secs.map(sec => {
+      const h = sec.querySelector('h2'); const label = h ? h.firstChild.textContent.trim() : '';
+      return `<li><button type="button" class="b-link" data-guide-jump="${sec.id}">${esc(label)}</button></li>`;
+    }).join('') + '</ol>';
+  }
   function guideHtml() {
     const starter = ([d, name, about]) => {
       const on = followsDomain(d);
@@ -874,6 +888,7 @@
       <p class="g-kicker">The Reading Room Guide</p>
       <h2 class="g-hero">Read the web the way it was meant to be read: written by people, in the order they wrote it.</h2>
       <p class="g-lede">If you’ve never used an RSS reader, this is a five-minute introduction. Nothing to sign up for, nothing to learn by heart.</p>
+      <nav class="g-toc" id="gToc" aria-label="On this page"></nav>
 
       <section class="g-sec"><h2>What is RSS?</h2>
         <p>Almost every blog, newsletter and news site quietly publishes a list of its newest posts. That list is called a <b>feed</b> (RSS is the name of the format). A reader like this one checks the feeds you choose and shows you what’s new.</p>
@@ -3436,6 +3451,13 @@
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
     if (e.target.closest('[data-guide-posse]')) { closeReader(true); selectView('guide'); setTimeout(() => document.getElementById('g-posse')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80); return; }
+    const gj = e.target.closest('[data-guide-jump]');
+    if (gj) {
+      // Stop below the sticky title bar, so the heading isn't hidden under it
+      const to = document.getElementById(gj.dataset.guideJump);
+      if (to) { to.style.scrollMarginTop = (($('listTop')?.offsetHeight || 0) + 16) + 'px'; to.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+      return;
+    }
     const gf = e.target.closest('[data-guide-follow]');
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }

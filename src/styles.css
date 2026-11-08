@@ -698,6 +698,17 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 .g-hero { font-family: var(--font-read); font-size: clamp(26px, 3vw, 36px); line-height: 1.18; letter-spacing: var(--tight); margin: 0 0 12px; text-wrap: balance; }
 .g-lede { font-size: 18px; color: var(--muted); }
 .g-sec { margin-top: 34px; }
+.g-sec { scroll-margin-top: 16px; }
+.g-toc { margin-top: 22px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); scroll-margin-top: 16px; }
+.g-toc-h { margin: 0 0 8px !important; font-size: 12px !important; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.g-toc ol { margin: 0; padding-left: 1.4em; columns: 2 220px; column-gap: 28px; }
+.g-toc li { margin: 3px 0; break-inside: avoid; color: var(--muted); }
+.g-toc .b-link { font-size: 15px; text-align: left; }
+.g-sec h2 { display: flex; align-items: baseline; gap: 12px; }
+.g-up { margin-left: auto; flex: none; background: none; border: 0; padding: 0; font: inherit; font-family: var(--font-ui, inherit); font-size: 12px; color: var(--muted); cursor: pointer; }
+.g-up:hover { color: var(--accent); }
+html.ios .g-toc .b-link { font-size: 17px; }
+html.ios .g-toc li { margin: 6px 0; }
 .g-sec h2 { font-family: var(--font-read); font-size: 23px; letter-spacing: var(--tight-sm); margin: 0 0 10px; }
 .g-how { display: flex; align-items: stretch; gap: 10px; margin: 16px 0 18px; }
 .g-how > div:not(.g-arrow) { flex: 1; background: var(--accent-soft); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
