@@ -172,3 +172,7 @@ kbd { display: inline-block; min-width: 44px; padding: 2px 8px; background: var(
 .steps .blog-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); counter-increment: none; }
 .steps .blog-list li::before { content: none; }
 .blog-list .muted { font-family: var(--mono); font-size: 13px; }
+
+/* Numbered how-to steps on the support page */
+.howto { margin: 8px 0 12px; padding-left: 1.4em; }
+.howto li { margin: 4px 0; }
