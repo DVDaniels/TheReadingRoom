@@ -531,29 +531,79 @@ struct Newsletter {
     feed: String,
 }
 
-/// Newsletters in your reader: a private email address from Kill the Newsletter (free, open source).
-/// Newsletters sent to it arrive as stories in a feed, which joins your feeds.
+/// The Reading Room's own mail service (mail/ in the repo): addresses @readingroomapp.com.
+const MAIL_SERVICE: &str = "https://mail.readingroomapp.com";
+
+/// Email in your reader: a private address. Mail sent to it (newsletters, or anything you forward)
+/// arrives as stories in a feed, which joins your feeds. The address comes from The Reading Room's
+/// own mail service; if that can't be reached, from Kill the Newsletter (free, open source).
 #[tauri::command]
 async fn newsletter_address(state: State<'_, Shared>, title: String) -> Result<Newsletter, String> {
     let title: String = title.trim().chars().take(200).collect();
     let title = if title.is_empty() { "Newsletters".to_string() } else { title };
+    let ours = state
+        .client
+        .post(format!("{MAIL_SERVICE}/new"))
+        .header("Accept", "application/json")
+        .json(&serde_json::json!({ "title": title }))
+        .send()
+        .await;
+    match ours {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(n) = resp.json::<Newsletter>().await {
+                if n.email.contains('@') && n.feed.starts_with(MAIL_SERVICE) {
+                    return Ok(n);
+                }
+            }
+        }
+        // Too many addresses today: say so rather than quietly using another service
+        Ok(resp) if resp.status().as_u16() == 429 => {
+            return Err("That’s a lot of new addresses for one day. Try again tomorrow.".into());
+        }
+        _ => {}
+    }
+    kill_the_newsletter(&state, &title).await
+}
+
+async fn kill_the_newsletter(state: &Shared, title: &str) -> Result<Newsletter, String> {
     let resp = state
         .client
         .post("https://kill-the-newsletter.com/feeds")
         .header("Accept", "application/json")
         .header("CSRF-Protection", "true")
-        .form(&[("title", title.as_str())])
+        .form(&[("title", title)])
         .send()
         .await
-        .map_err(|_| "Couldn't reach Kill the Newsletter. Check your connection and try again.".to_string())?;
+        .map_err(|_| "Couldn't make an address. Check your connection and try again.".to_string())?;
     if !resp.status().is_success() {
-        return Err(format!("Kill the Newsletter answered with error {}. Try again in a little while.", resp.status().as_u16()));
+        return Err(format!("Couldn't make an address (error {}). Try again in a little while.", resp.status().as_u16()));
     }
-    let n: Newsletter = resp.json().await.map_err(|_| "Kill the Newsletter sent something unexpected. Try again in a little while.".to_string())?;
+    let n: Newsletter = resp.json().await.map_err(|_| "Couldn't make an address just now. Try again in a little while.".to_string())?;
     if !n.email.contains('@') || !n.feed.starts_with("https://") {
-        return Err("Kill the Newsletter sent something unexpected. Try again in a little while.".into());
+        return Err("Couldn't make an address just now. Try again in a little while.".into());
     }
     Ok(n)
+}
+
+/// Remove an address for good: on The Reading Room's mail service this deletes the address and
+/// everything sent to it. (Kill the Newsletter addresses can't be deleted from here.)
+#[tauri::command]
+async fn newsletter_remove(state: State<'_, Shared>, feed: String) -> Result<bool, String> {
+    let Some(rest) = feed.strip_prefix(&format!("{MAIL_SERVICE}/feeds/")) else { return Ok(false) };
+    let tok = rest.trim_end_matches(".xml");
+    if tok.is_empty() || !tok.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Ok(false);
+    }
+    let resp = state
+        .client
+        .delete(format!("{MAIL_SERVICE}/feeds/{tok}"))
+        .send()
+        .await
+        .map_err(|_| "Couldn't reach the mail service to delete the address. Check your connection and try again.".to_string())?;
+    match resp.status().as_u16() {
+        200 | 404 => Ok(true), // gone either way
+        n => Err(format!("The mail service answered with error {n}. Try Remove again in a little while.")),
+    }
 }
 
 /// Save a page you found elsewhere to Read later (in a feed of its own, "Saved pages").
@@ -1975,6 +2025,7 @@ pub fn run() {
             add_feed,
             watch_page,
             newsletter_address,
+            newsletter_remove,
             save_url,
             share_inbox,
             widget_data,

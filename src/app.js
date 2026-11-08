@@ -929,15 +929,15 @@
         <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> in Settings to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
 
       <section class="g-sec" id="g-newsletters"><h2>Newsletters, out of your inbox</h2>
-        <p>Read newsletters here, beside everything else, instead of in your email. The app makes you a private email address; you sign up for newsletters with it, and each issue arrives as a story.</p>
+        <p>Read newsletters and other email here, beside everything else, instead of in your inbox. The app makes you a private email address ending in @readingroomapp.com; you sign up for newsletters with it, or forward an email to it, and each one arrives as a story.</p>
         <ol class="g-steps">
           <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''}, then <b>Read newsletters here</b>.</li>
           <li>Under <b>Name this address</b>, type a name, like the newsletter’s name, and press <b>Make an address</b>. A feed with that name appears in a <b>Newsletters</b> folder, made the first time, or in the folder you pick under <b>Put its feed in</b>.</li>
           <li>Press <b>Copy address</b>, go to the newsletter’s sign-up page, and paste it in place of your own email.</li>
           <li>Refresh after a minute. The newsletter’s welcome email arrives as a story. If it asks you to confirm, open it and tap the confirm link.</li>
         </ol>
-        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, use the unsubscribe link in any issue. To get rid of an address, choose <b>Remove</b> next to it there; its feed is unfollowed too.</p>
-        <p>The addresses come from Kill the Newsletter, a free, open-source service; your own email is never used. Anyone who knows an address can send to it, so use it only for newsletters.</p>
+        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, use the unsubscribe link in any issue. To get rid of an address, choose <b>Remove</b> next to it there; the address and everything sent to it are deleted, and its feed is unfollowed.</p>
+        <p>Your own email is never used or read. Anyone who knows an address can send to it, so give it only to newsletters and people you want to read here. Addresses made before November 2026 come from Kill the Newsletter, a free, open-source service, and keep working.</p>
         <p style="margin-top:12px"><button class="btn primary" type="button" id="guideNewsletters">Make a newsletter address</button></p></section>
 
       <section class="g-sec"><h2>Finding more good writers</h2>
@@ -4401,7 +4401,8 @@
   });
 
   // ------------------------------------------------------------ Newsletters in your reader
-  // A private address from Kill the Newsletter: subscribe with it, and each issue arrives as a story.
+  // A private address (from The Reading Room's mail service, or Kill the Newsletter if that can't be reached):
+  // subscribe with it or forward mail to it, and each email arrives as a story.
   // New newsletter feeds go in a "Newsletters" folder unless you pick another (the folder is made the first time)
   const nlFolder = () => S.folders.find(f => f.name.trim().toLowerCase() === 'newsletters');
   function nlFolderOptions() {
@@ -4415,12 +4416,12 @@
     const row = n => `<li class="nl-row${fresh && n.email === fresh ? ' fresh' : ''}"><span class="ck-body"><b>${esc(n.title)}</b><span class="nl-mail">${esc(n.email)}</span></span>
       <span class="ck-acts"><button class="btn${fresh && n.email === fresh ? ' primary' : ''}" type="button" data-nl="copy" data-mail="${esc(n.email)}">Copy address</button><button class="btn danger" type="button" data-nl="remove" data-mail="${esc(n.email)}">Remove</button></span></li>`;
     return `<h2>Newsletters</h2>
-      <p>Read newsletters here instead of in your inbox. Make an address, subscribe to newsletters with it, and each issue arrives as a story in its own feed.</p>
+      <p>Get email here instead of in your inbox. Make an address, subscribe to newsletters with it or forward emails to it, and each one arrives as a story in its own feed.</p>
       ${list.length ? `<ul class="ck-list nl-list">${list.map(row).join('')}</ul>` : ''}
       <form class="nl-new" id="nlForm"><label for="nlName">${list.length ? 'Another address' : 'Name this address'}</label>
         <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div>
         <div class="row nl-folder"><label for="nlFolder">Put its feed in</label><select id="nlFolder">${nlFolderOptions()}</select></div></form>
-      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unsubscribe from the newsletter, then Remove the address here.</p>
+      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. Addresses end in @readingroomapp.com. Anyone with an address can send to it, so give it only to newsletters and people you want to read here. To stop one, unsubscribe from its newsletters, then Remove the address here: that deletes it and everything sent to it.</p>
       <div class="row sheet-foot"><button class="btn primary" type="button" data-nl="done">Done</button></div>`;
   }
   function openNewsletters(fresh) {
@@ -4438,11 +4439,12 @@
         if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Remove and unfollow?'; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'Remove'; } }, 4000); return; }
         const n = (S.prefs.newsletters || []).find(x => x.email === b.dataset.mail); if (!n) return;
         const f = S.feeds.find(x => x.url === n.feed);
-        try { if (f) await invoke('remove_feed', { id: f.id }); } catch (err) { note(msg(err), true); return; }
+        let gone = false;
+        try { gone = await invoke('newsletter_remove', { feed: n.feed }); if (f) await invoke('remove_feed', { id: f.id }); } catch (err) { note(msg(err), true); return; }
         S.prefs.newsletters = (S.prefs.newsletters || []).filter(x => x.email !== n.email);
         await savePrefs(); await load();
         openNewsletters();
-        note(`Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. Anything still sent to it won’t reach you, so unsubscribe from its newsletters if you haven’t.`);
+        note(gone ? `Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. The address is deleted, so mail sent to it now bounces.` : `Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. Anything still sent to it won’t reach you, so unsubscribe from its newsletters if you haven’t.`);
       }
     };
     $('nlForm').onsubmit = async e => {

@@ -1,0 +1,16 @@
+{
+  "name": "reading-room-mail",
+  "private": true,
+  "description": "Email addresses for The Reading Room: mail sent to one arrives in the app as stories in a feed.",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "postal-mime": "^2.7.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

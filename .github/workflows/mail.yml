@@ -1,0 +1,42 @@
+name: Mail service
+
+# Puts the mail service (mail/) on Cloudflare: makes its database the first time, sets up the
+# tables, and deploys. Run by hand after changing mail/. Needs two repository secrets:
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (see mail/README.md).
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mail
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Database (made the first time)
+        run: |
+          id=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="reading-room-mail") | .uuid')
+          if [ -z "$id" ]; then
+            npx wrangler d1 create reading-room-mail
+            id=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="reading-room-mail") | .uuid')
+          fi
+          test -n "$id"
+          sed -i "s/DATABASE_ID/$id/" wrangler.toml
+          npx wrangler d1 execute reading-room-mail --remote --file=schema.sql
+      - name: Deploy
+        run: npx wrangler deploy
+      - name: Check it answers
+        run: |
+          sleep 10
+          curl -fsS https://mail.readingroomapp.com/ && echo "::notice::Mail service is up at mail.readingroomapp.com" \
+            || echo "::warning::Deployed, but mail.readingroomapp.com didn't answer yet. It can take a few minutes the first time."
