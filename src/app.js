@@ -48,7 +48,7 @@
   const msg = e => (typeof e === 'string' ? e : e?.message) || 'Something went wrong. Try again.';
   const fmtCount = n => n > 999 ? '1K+' : (n || '');
   const folderOf = v => typeof v === 'string' && v.startsWith('folder:') ? folderById(v.slice(7)) : null;
-  // Folders go two levels deep: top-level folders, and folders inside them
+  // Folders go two levels deep: top-level folders, and folders inside them (inside a folder, its folders come first, then its feeds)
   const parentOf = f => (f && f.parent_id ? folderById(f.parent_id) : null);
   const isTopFolder = f => !parentOf(f);
   const subfoldersOf = f => S.folders.filter(x => x.parent_id === f.id && x.id !== f.id);
@@ -340,7 +340,7 @@
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
           ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name, mark: fl ? LIST_MARK : '', title: fl ? `${folder.name}: a followed list` : folderLabel(folder) }).replace('<button ', '<button draggable="true" ')}
         </div>`;
-      if (open) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${inside.map(feedButton).join('')}${subs.map(x => folderBlock(x, true)).join('')}`
+      if (open) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${subs.map(x => folderBlock(x, true)).join('')}${inside.map(feedButton).join('')}`
         + (!inside.length && !subs.length ? `<span class="note" style="padding:2px 0 6px ${sub ? 60 : 34}px;display:block">Drag feeds here</span>` : '') + '</div>';
       return h;
     };
