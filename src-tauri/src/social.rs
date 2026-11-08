@@ -36,17 +36,17 @@ fn client() -> &'static reqwest::Client {
 // device signs out too, rather than copying its old one back. If iCloud Keychain can't be read at all,
 // the device's own copy is used, so nothing ever signs you out by surprise.
 
-fn local_get(key: &str) -> Option<String> {
+pub(crate) fn local_get(key: &str) -> Option<String> {
     keyring::Entry::new(SERVICE, key).ok()?.get_password().ok()
 }
 
-fn local_set(key: &str, v: &str) -> Result<(), String> {
+pub(crate) fn local_set(key: &str, v: &str) -> Result<(), String> {
     keyring::Entry::new(SERVICE, key)
         .and_then(|e| e.set_password(v))
         .map_err(|e| e.to_string())
 }
 
-fn local_delete(key: &str) {
+pub(crate) fn local_delete(key: &str) {
     if let Ok(e) = keyring::Entry::new(SERVICE, key) {
         let _ = e.delete_credential();
     }

@@ -559,10 +559,24 @@ async fn newsletter_address(state: State<'_, Shared>, title: String) -> Result<N
 
 // ---- Email: one mailbox of your own, read in the Email tab (see email.rs)
 
-const EMAIL_KEY: &str = "email";
+// Each device keeps its own mailbox, in its own Keychain (not iCloud Keychain): Proton through Bridge
+// only works on the Mac, and disconnecting one device shouldn't sign out the others.
+const EMAIL_KEY: &str = "email-device";
+// Builds 87–1095 kept one shared sign-in in iCloud Keychain under this name
+const EMAIL_SHARED_KEY: &str = "email";
 
 fn email_account_saved() -> Option<email::Account> {
-    social::secret_get(EMAIL_KEY).and_then(|v| serde_json::from_value(v).ok())
+    if let Some(a) = social::local_get(EMAIL_KEY).and_then(|s| serde_json::from_str(&s).ok()) {
+        return Some(a);
+    }
+    // First time on this version: take the shared sign-in, if there is one, for this device
+    let a: email::Account = social::secret_get(EMAIL_SHARED_KEY).and_then(|v| serde_json::from_value(v).ok())?;
+    let _ = social::local_set(EMAIL_KEY, &serde_json::to_string(&a).ok()?);
+    Some(a)
+}
+
+fn email_account_store(a: &email::Account) -> Result<(), String> {
+    social::local_set(EMAIL_KEY, &serde_json::to_string(a).map_err(err)?).map_err(|e| format!("Couldn't save the sign-in to the Keychain ({e})."))
 }
 
 fn email_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
@@ -604,7 +618,7 @@ async fn email_connect(state: State<'_, Shared>, account: email::Account) -> Res
     }
     email::check(&a).await?;
     let elsewhere = email::delivered_elsewhere(&state.client, &a).await;
-    social::secret_set(EMAIL_KEY, &serde_json::to_value(&a).map_err(err)?)?;
+    email_account_store(&a)?;
     {
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
@@ -616,10 +630,12 @@ async fn email_connect(state: State<'_, Shared>, account: email::Account) -> Res
     Ok(out)
 }
 
-/// Forget the mailbox on this device (and your others, through iCloud Keychain). Emails already here stay.
+/// Forget the mailbox on this device only. Emails already here stay.
 #[tauri::command]
 fn email_disconnect() {
-    social::secret_delete(EMAIL_KEY);
+    social::local_delete(EMAIL_KEY);
+    // the old shared sign-in, so this device doesn't take it up again
+    social::secret_delete(EMAIL_SHARED_KEY);
 }
 
 /// Bring in new email from the inbox: how many arrived, and how many the inbox holds.

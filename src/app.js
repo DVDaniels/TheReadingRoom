@@ -2384,7 +2384,7 @@
           <div class="mail-srv"><label>Outgoing (SMTP)<input id="mailSmtp" type="text" spellcheck="false" autocapitalize="off"></label><label>Port<input id="mailSmtpPort" type="number" min="1" max="65535"></label></div>
         </details>
         <label>Signature <span class="hint">(added to every email you send; leave empty for none)</span><textarea id="mailSig" rows="3">${esc(mailSig())}</textarea></label>
-        <p class="note" id="mailNote">${a ? `Connected to ${esc(a.address)}.` : 'Your password stays in the Keychain on your devices. Nothing goes through The Reading Room’s servers.'}</p>
+        <p class="note" id="mailNote">${a ? `Connected to ${esc(a.address)}.` : 'Each device connects its own mailbox (so your Mac can use one and your iPhone another). Your password stays in this device’s Keychain, and nothing goes through The Reading Room’s servers.'}</p>
         <div class="row sheet-foot">${a ? '<button class="btn danger" type="button" id="mailOff">Disconnect</button>' : ''}<button class="btn" type="button" id="mailCancel">${a ? 'Done' : 'Cancel'}</button><button class="btn primary" type="submit" id="mailGo">${a ? 'Save' : 'Connect'}</button></div>
       </form>`, 'Email');
     const note = (t, err) => { $('mailNote').textContent = t; $('mailNote').classList.toggle('err', !!err); };
@@ -2404,7 +2404,7 @@
       if (btn.dataset.sure !== '1') { btn.dataset.sure = '1'; btn.textContent = 'Disconnect this mailbox?'; return; }
       await invoke('email_disconnect').catch(() => {});
       await loadMailAccount(); el.hidden = true; render();
-      status('Email disconnected. Mail already in the Email tab stays.');
+      status('Email disconnected on this device. Your other devices keep theirs, and mail already in the Email tab stays.');
     };
     $('mailForm').onsubmit = async e => {
       e.preventDefault();
