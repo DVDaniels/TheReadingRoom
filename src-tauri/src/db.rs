@@ -59,6 +59,8 @@ pub struct Item {
     pub read: bool,
     pub saved: bool,
     pub read_at: Option<String>,
+    /// Who wrote it, once known (an email's sender; an article's byline after it's opened)
+    pub byline: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -398,7 +400,7 @@ pub fn rename_feed(conn: &Connection, id: i64, title: &str) -> rusqlite::Result<
 
 pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
     let mut st = conn.prepare(
-        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, '')
+        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, '')
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
@@ -418,6 +420,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
             read_at: r.get(9)?,
             audio: r.get(10)?,
             shares: r.get(11)?,
+            byline: r.get(12)?,
         })
     })?;
     rows.collect()

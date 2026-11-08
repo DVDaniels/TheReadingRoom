@@ -27,11 +27,16 @@ regex = "1"
 html-escape = "0.2"
 quick-xml = "0.36"
 futures = "0.3"
-tokio = { version = "1", features = ["time", "sync", "macros"] }
+tokio = { version = "1", features = ["time", "sync", "macros", "net", "io-util"] }
 url = "2"
 base64 = "0.22"
 keyring = { version = "3", features = ["apple-native"] }
 libc = "0.2"
+# Email: read one mailbox over IMAP, reply over SMTP (email.rs)
+async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+webpki-roots = "0.26"
+mail-parser = "0.11"
 
 dom_smoothie = "0.19.0"
 ammonia = "4.2.4"

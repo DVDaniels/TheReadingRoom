@@ -15,6 +15,7 @@ mod sync;
 mod topics;
 mod watch;
 mod share;
+mod email;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -531,79 +532,186 @@ struct Newsletter {
     feed: String,
 }
 
-/// The Reading Room's own mail service (mail/ in the repo): addresses @readingroomapp.com.
-const MAIL_SERVICE: &str = "https://mail.readingroomapp.com";
-
-/// Email in your reader: a private address. Mail sent to it (newsletters, or anything you forward)
-/// arrives as stories in a feed, which joins your feeds. The address comes from The Reading Room's
-/// own mail service; if that can't be reached, from Kill the Newsletter (free, open source).
+/// Newsletters in your reader: a private email address from Kill the Newsletter (free, open source).
+/// Newsletters sent to it arrive as stories in a feed, which joins your feeds.
 #[tauri::command]
 async fn newsletter_address(state: State<'_, Shared>, title: String) -> Result<Newsletter, String> {
     let title: String = title.trim().chars().take(200).collect();
     let title = if title.is_empty() { "Newsletters".to_string() } else { title };
-    let ours = state
-        .client
-        .post(format!("{MAIL_SERVICE}/new"))
-        .header("Accept", "application/json")
-        .json(&serde_json::json!({ "title": title }))
-        .send()
-        .await;
-    match ours {
-        Ok(resp) if resp.status().is_success() => {
-            if let Ok(n) = resp.json::<Newsletter>().await {
-                if n.email.contains('@') && n.feed.starts_with(MAIL_SERVICE) {
-                    return Ok(n);
-                }
-            }
-        }
-        // Too many addresses today: say so rather than quietly using another service
-        Ok(resp) if resp.status().as_u16() == 429 => {
-            return Err("That’s a lot of new addresses for one day. Try again tomorrow.".into());
-        }
-        _ => {}
-    }
-    kill_the_newsletter(&state, &title).await
-}
-
-async fn kill_the_newsletter(state: &Shared, title: &str) -> Result<Newsletter, String> {
     let resp = state
         .client
         .post("https://kill-the-newsletter.com/feeds")
         .header("Accept", "application/json")
         .header("CSRF-Protection", "true")
-        .form(&[("title", title)])
+        .form(&[("title", title.as_str())])
         .send()
         .await
-        .map_err(|_| "Couldn't make an address. Check your connection and try again.".to_string())?;
+        .map_err(|_| "Couldn't reach Kill the Newsletter. Check your connection and try again.".to_string())?;
     if !resp.status().is_success() {
-        return Err(format!("Couldn't make an address (error {}). Try again in a little while.", resp.status().as_u16()));
+        return Err(format!("Kill the Newsletter answered with error {}. Try again in a little while.", resp.status().as_u16()));
     }
-    let n: Newsletter = resp.json().await.map_err(|_| "Couldn't make an address just now. Try again in a little while.".to_string())?;
+    let n: Newsletter = resp.json().await.map_err(|_| "Kill the Newsletter sent something unexpected. Try again in a little while.".to_string())?;
     if !n.email.contains('@') || !n.feed.starts_with("https://") {
-        return Err("Couldn't make an address just now. Try again in a little while.".into());
+        return Err("Kill the Newsletter sent something unexpected. Try again in a little while.".into());
     }
     Ok(n)
 }
 
-/// Remove an address for good: on The Reading Room's mail service this deletes the address and
-/// everything sent to it. (Kill the Newsletter addresses can't be deleted from here.)
+// ---- Email: one mailbox of your own, read in the Email tab (see email.rs)
+
+const EMAIL_KEY: &str = "email";
+
+fn email_account_saved() -> Option<email::Account> {
+    social::secret_get(EMAIL_KEY).and_then(|v| serde_json::from_value(v).ok())
+}
+
+fn email_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS email_meta (
+            link TEXT PRIMARY KEY, uid TEXT NOT NULL DEFAULT '', from_name TEXT NOT NULL DEFAULT '',
+            from_addr TEXT NOT NULL DEFAULT '', reply_to TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '',
+            refs TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL DEFAULT '');
+         CREATE INDEX IF NOT EXISTS email_meta_uid ON email_meta(uid);",
+    )
+}
+
+fn email_feed(conn: &rusqlite::Connection) -> Result<db::Feed, String> {
+    let id = match db::feeds(conn).map_err(err)?.into_iter().find(|f| f.url == email::FEED) {
+        Some(f) => f.id,
+        None => db::add_feed(conn, email::FEED, email::TITLE, "", None).map_err(err)?,
+    };
+    db::feed(conn, id).map_err(err)?.ok_or_else(|| "The Email feed went missing.".to_string())
+}
+
+/// The connected mailbox (without its password), or null.
 #[tauri::command]
-async fn newsletter_remove(state: State<'_, Shared>, feed: String) -> Result<bool, String> {
-    let Some(rest) = feed.strip_prefix(&format!("{MAIL_SERVICE}/feeds/")) else { return Ok(false) };
-    let tok = rest.trim_end_matches(".xml");
-    if tok.is_empty() || !tok.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Ok(false);
+fn email_account() -> Option<serde_json::Value> {
+    email_account_saved().map(|a| a.public())
+}
+
+/// Check the sign-in with the mail server, then keep it in the Keychain. A blank password keeps the saved one.
+#[tauri::command]
+async fn email_connect(state: State<'_, Shared>, account: email::Account) -> Result<serde_json::Value, String> {
+    let mut a = account;
+    a.address = a.address.trim().to_string();
+    a.imap_host = a.imap_host.trim().to_string();
+    a.smtp_host = a.smtp_host.trim().to_string();
+    if a.password.is_empty() {
+        a.password = email_account_saved().filter(|o| o.address.eq_ignore_ascii_case(&a.address)).map(|o| o.password).unwrap_or_default();
     }
-    let resp = state
-        .client
-        .delete(format!("{MAIL_SERVICE}/feeds/{tok}"))
-        .send()
-        .await
-        .map_err(|_| "Couldn't reach the mail service to delete the address. Check your connection and try again.".to_string())?;
-    match resp.status().as_u16() {
-        200 | 404 => Ok(true), // gone either way
-        n => Err(format!("The mail service answered with error {n}. Try Remove again in a little while.")),
+    if !a.address.contains('@') || a.password.is_empty() || a.imap_host.is_empty() || a.smtp_host.is_empty() {
+        return Err("Fill in the address, password and both servers.".into());
     }
+    email::check(&a).await?;
+    social::secret_set(EMAIL_KEY, &serde_json::to_value(&a).map_err(err)?)?;
+    {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        email_feed(&conn)?;
+    }
+    changed(state.inner());
+    Ok(a.public())
+}
+
+/// Forget the mailbox on this device (and your others, through iCloud Keychain). Emails already here stay.
+#[tauri::command]
+fn email_disconnect() {
+    social::secret_delete(EMAIL_KEY);
+}
+
+/// Bring in new email from the inbox. Returns how many arrived.
+#[tauri::command]
+async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<usize, String> {
+    let Some(a) = email_account_saved() else { return Ok(0) };
+    let known: std::collections::HashSet<String> = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        let mut st = conn.prepare("SELECT uid FROM email_meta").map_err(err)?;
+        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+        rows.filter_map(Result::ok).collect()
+    };
+    let mails = email::fetch(&a, &known).await?;
+    if mails.is_empty() {
+        return Ok(0);
+    }
+    let now = feeds::now_iso();
+    let added = {
+        let mut conn = state.db.lock().unwrap();
+        let feed = email_feed(&conn)?;
+        let fresh: Vec<db::NewItem> = mails
+            .iter()
+            .map(|m| db::NewItem {
+                id: feeds::item_id(feed.id, &m.link),
+                title: m.subject.clone(),
+                link: m.link.clone(),
+                date: m.date.clone(),
+                summary: m.summary.clone(),
+                image: String::new(),
+                audio: String::new(),
+                shares: String::new(),
+            })
+            .collect();
+        let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
+        for m in &mails {
+            // the story may have come first through sync from another device, under its own id
+            let id: Option<String> = conn.query_row("SELECT id FROM items WHERE link=?1 LIMIT 1", [&m.link], |r| r.get(0)).ok();
+            if let Some(id) = id {
+                db::cache_article(&conn, &id, &article::clean(&m.html, ""), &m.from_name).map_err(err)?;
+            }
+            conn.execute(
+                "INSERT OR REPLACE INTO email_meta(link, uid, from_name, from_addr, reply_to, message_id, refs, subject) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                rusqlite::params![m.link, m.uid, m.from_name, m.from_addr, m.reply_to, m.message_id, m.references, m.subject],
+            )
+            .map_err(err)?;
+        }
+        added
+    };
+    let _ = app.emit("state-changed", ());
+    update_badge(&app);
+    changed(state.inner());
+    Ok(added)
+}
+
+/// Who a reply to this email goes to, and its subject.
+#[tauri::command]
+fn email_reply_to(state: State<'_, Shared>, item_id: String) -> Result<serde_json::Value, String> {
+    let conn = state.db.lock().unwrap();
+    email_table(&conn).map_err(err)?;
+    let r = conn
+        .query_row(
+            "SELECT m.from_name, CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject
+             FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+        )
+        .map_err(|_| "This email can't be replied to from here.".to_string())?;
+    let subject = if r.2.to_lowercase().starts_with("re:") { r.2.clone() } else { format!("Re: {}", r.2) };
+    Ok(serde_json::json!({ "name": r.0, "to": r.1, "subject": subject, "from": email_account_saved().map(|a| a.address) }))
+}
+
+/// Send a reply from your mailbox, and file it in its Sent folder.
+#[tauri::command]
+async fn email_reply(state: State<'_, Shared>, item_id: String, body: String) -> Result<String, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    if body.trim().is_empty() {
+        return Err("Write something first.".into());
+    }
+    let (to, subject, msg_id, refs) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        conn.query_row(
+            "SELECT CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject, m.message_id, m.refs
+             FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)),
+        )
+        .map_err(|_| "This email can't be replied to from here.".to_string())?
+    };
+    let subject = if subject.to_lowercase().starts_with("re:") { subject } else { format!("Re: {subject}") };
+    let out = email::Outgoing { to: &to, subject: &subject, body: &body, in_reply_to: &msg_id, references: &refs };
+    let raw = email::send(&a, &out).await?;
+    email::file_sent(&a, &raw).await;
+    Ok(to)
 }
 
 /// Save a page you found elsewhere to Read later (in a feed of its own, "Saved pages").
@@ -2025,7 +2133,12 @@ pub fn run() {
             add_feed,
             watch_page,
             newsletter_address,
-            newsletter_remove,
+            email_account,
+            email_connect,
+            email_disconnect,
+            email_refresh,
+            email_reply_to,
+            email_reply,
             save_url,
             share_inbox,
             widget_data,

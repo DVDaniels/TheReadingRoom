@@ -124,11 +124,11 @@ fn secret_raw(key: &str) -> Option<String> {
     }
 }
 
-fn secret_get(key: &str) -> Option<Value> {
+pub(crate) fn secret_get(key: &str) -> Option<Value> {
     serde_json::from_str(&secret_raw(key)?).ok()
 }
 
-fn secret_set(key: &str, v: &Value) -> Result<(), String> {
+pub(crate) fn secret_set(key: &str, v: &Value) -> Result<(), String> {
     let s = v.to_string();
     let here = local_set(key, &s);
     if icloud::set(key, &s) {
@@ -138,7 +138,7 @@ fn secret_set(key: &str, v: &Value) -> Result<(), String> {
     here.map_err(|e| format!("Couldn't save the sign-in to the Keychain ({e})."))
 }
 
-fn secret_delete(key: &str) {
+pub(crate) fn secret_delete(key: &str) {
     icloud::delete(key);
     local_delete(key);
     local_delete(&moved_mark(key));

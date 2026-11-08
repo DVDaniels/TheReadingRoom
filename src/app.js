@@ -15,6 +15,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map(), small: null, smallErr: '', smallMore: false };
   const ICONS = {
+    email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>',
     site: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="18" height="18"><path d="M4 11l8-6.5 8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
     books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg>',
     jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/></svg>',
@@ -91,7 +92,14 @@
 
   // ------------------------------------------------------------ which stories show
   const isToday = i => Date.now() - new Date(i.date).getTime() < DAY;
+  // Email: one mailbox of your own, read in its own tab. Its stories live in a feed of their own, kept out of the sidebar's feeds.
+  const EMAIL_FEED = 'saved:email';
+  const isEmailFeed = f => !!f && f.url === EMAIL_FEED;
+  const isEmailItem = i => isEmailFeed(feedById(i.feed_id));
+  const MAIL = { account: null, checking: false, last: 0, error: '' };
   function inScope(i, view = S.view) {
+    if (view === 'email') return isEmailItem(i);
+    if ((view === 'all' || view === 'today' || view === 'people') && isEmailItem(i)) return false; // your mail stays in Email
     if (view === 'jobs') return isJobItem(i);
     if ((view === 'all' || view === 'today' || view === 'people') && isJobItem(i)) return false;
     if (view === 'all') return true;
@@ -134,7 +142,7 @@
   // Stories from a news search name the real website at the end of the title: show that instead
   const viaNews = it => isNewsSearch(feedById(it.feed_id));
   const headline = it => viaNews(it) ? (it.title || '').replace(/\s[-–—|]\s[^-–—|]{2,60}$/, '') : (it.title || '');
-  const srcLabel = it => viaNews(it) ? outletOf(it) : (feedById(it.feed_id)?.title || '');
+  const srcLabel = it => isEmailItem(it) ? (it.byline || 'Email') : viaNews(it) ? outletOf(it) : (feedById(it.feed_id)?.title || '');
   const viaTag = it => viaNews(it) ? '<span class="via">via Google News</span>' : '';
   function hiddenSource(it) {
     const h = S.prefs.hidden; if (!h?.length || !viaNews(it)) return false;
@@ -285,7 +293,8 @@
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
-        { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition }]) +
+        { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
+        { view: 'email', label: 'Email', count: unreadIn('email'), icon: ICONS.email }]) +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
@@ -317,7 +326,7 @@
     let html = navButton('all', 'All', unreadIn('all'), { icon: ICONS.all });
     for (const folder of S.folders) {
       const open = !collapsed.has(folder.id);
-      const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f));
+      const inside = S.feeds.filter(f => f.folder_id === folder.id && !isJobFeed(f) && !isEmailFeed(f));
       const fl = listOfFolder(folder.id);
       html += `<div class="folder${fl ? ' is-list' : ''}" data-folder="${folder.id}">
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
@@ -325,7 +334,7 @@
         </div>`;
       if (open) html += `<div class="infolder" data-folder="${folder.id}">${inside.map(feedButton).join('') || '<span class="note" style="padding:2px 0 6px 34px;display:block">Drag feeds here</span>'}</div>`;
     }
-    const loose = S.feeds.filter(f => (!f.folder_id || !folderById(f.folder_id)) && !isJobFeed(f));
+    const loose = S.feeds.filter(f => (!f.folder_id || !folderById(f.folder_id)) && !isJobFeed(f) && !isEmailFeed(f));
     if (loose.length && S.folders.length) html += '<hr>';
     html += loose.map(feedButton).join('');
     if (!S.feeds.length) html += '<span class="note" style="padding:0 10px">No feeds yet. Add one below.</span>';
@@ -334,7 +343,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -366,6 +375,7 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
+      : S.view === 'email' ? (MAIL.account ? `${unreadIn('email')} unread in ${MAIL.account.address}` : 'Read and answer one mailbox of your own here')
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
       : S.view === 'talk' ? (anySocial() ? `What the people you follow share, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'Connect Mastodon or Bluesky on this device to see what people share and answer replies')
@@ -454,6 +464,7 @@
   // ------------------------------------------------------------ render: stories
   function emptyText() {
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
+    if (S.view === 'email') return MAIL.account ? (S.unreadOnly ? ['No unread email', 'Switch to “All” to see email you’ve read, or press Refresh.'] : ['No email yet', 'Press Refresh to check your inbox.']) : ['', ''];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
     if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
@@ -673,11 +684,11 @@
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = briefHtml();
-    const older = olderHtml(new Set(all.map(i => i.id)));
+    const brief = S.view === 'email' ? mailBarHtml() : briefHtml();
+    const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
-      $('list').innerHTML = brief + (older ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older;
+      $('list').innerHTML = brief + (older || !t ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older;
       return;
     }
     let out = brief, lastDay = '';
@@ -689,7 +700,7 @@
       const quotes = S.view === 'annotated' ? S.highlights.filter(h => h.item_id === it.id).map(h =>
         `<div class="quote"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
       out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
-        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : tileHtml(f)}
+        ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : isEmailItem(it) ? tileHtml({ url: "mail:" + srcLabel(it), title: srcLabel(it) }) : tileHtml(f)}
         <div class="body">
           <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}${kindTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
           ${alsoLine(it)}
@@ -699,7 +710,7 @@
         </div>
         <div class="acts">
           ${viaNews(it) ? `<button class="icon" data-act="hidesrc" title="Hide stories from ${esc(outletOf(it))}" aria-label="Hide stories from ${esc(outletOf(it))}">${ICONS.hide}</button>` : ''}
-          <button class="icon" data-act="share" title="Share" aria-label="Share" aria-haspopup="menu">${ICONS.share}</button>
+          ${isEmailItem(it) ? "" : `<button class="icon" data-act="share" title="Share" aria-label="Share" aria-haspopup="menu">${ICONS.share}</button>`}
           <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
           <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
         </div>
@@ -759,7 +770,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'edition', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       render(); welcome(); processNew();
     } catch (e) { status(msg(e), true); }
@@ -782,6 +793,7 @@
     if (S.refreshing) return;
     S.refreshing = true; renderHead(); status('');
     try { await invoke('refresh'); } catch (e) { S.refreshing = false; renderHead(); status(msg(e), true); }
+    checkMail();
   }
 
   async function moveFeed(feedId, folderId) {
@@ -929,15 +941,15 @@
         <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> in Settings to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
 
       <section class="g-sec" id="g-newsletters"><h2>Newsletters, out of your inbox</h2>
-        <p>Read newsletters and other email here, beside everything else, instead of in your inbox. The app makes you a private email address ending in @readingroomapp.com; you sign up for newsletters with it, or forward an email to it, and each one arrives as a story.</p>
+        <p>Read newsletters here, beside everything else, instead of in your email. The app makes you a private email address; you sign up for newsletters with it, and each issue arrives as a story.</p>
         <ol class="g-steps">
           <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''}, then <b>Read newsletters here</b>.</li>
           <li>Under <b>Name this address</b>, type a name, like the newsletter’s name, and press <b>Make an address</b>. A feed with that name appears in a <b>Newsletters</b> folder, made the first time, or in the folder you pick under <b>Put its feed in</b>.</li>
           <li>Press <b>Copy address</b>, go to the newsletter’s sign-up page, and paste it in place of your own email.</li>
           <li>Refresh after a minute. The newsletter’s welcome email arrives as a story. If it asks you to confirm, open it and tap the confirm link.</li>
         </ol>
-        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, use the unsubscribe link in any issue. To get rid of an address, choose <b>Remove</b> next to it there; the address and everything sent to it are deleted, and its feed is unfollowed.</p>
-        <p>Your own email is never used or read. Anyone who knows an address can send to it, so give it only to newsletters and people you want to read here. Addresses made before November 2026 come from Kill the Newsletter, a free, open-source service, and keep working.</p>
+        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, use the unsubscribe link in any issue. To get rid of an address, choose <b>Remove</b> next to it there; its feed is unfollowed too.</p>
+        <p>The addresses come from Kill the Newsletter, a free, open-source service; your own email is never used. Anyone who knows an address can send to it, so use it only for newsletters.</p>
         <p style="margin-top:12px"><button class="btn primary" type="button" id="guideNewsletters">Make a newsletter address</button></p></section>
 
       <section class="g-sec"><h2>Finding more good writers</h2>
@@ -2271,6 +2283,136 @@
     if (e.target.closest('button')) closeSettings();
   });
 
+  // ------------------------------------------------------------ Email: one mailbox of your own
+  // The app reads its inbox (IMAP) into the Email tab and sends replies from it (SMTP), like Mail does.
+  // Best with an address on your own domain used only for the app. The sign-in is kept in the Keychain.
+  const MAIL_HOSTS = {
+    ionos: { label: 'IONOS', imap: 'imap.ionos.com', imapPort: 993, smtp: 'smtp.ionos.com', smtpPort: 465 },
+    gmail: { label: 'Gmail', imap: 'imap.gmail.com', imapPort: 993, smtp: 'smtp.gmail.com', smtpPort: 465 },
+    icloud: { label: 'iCloud Mail', imap: 'imap.mail.me.com', imapPort: 993, smtp: 'smtp.mail.me.com', smtpPort: 587 },
+    fastmail: { label: 'Fastmail', imap: 'imap.fastmail.com', imapPort: 993, smtp: 'smtp.fastmail.com', smtpPort: 465 },
+    yahoo: { label: 'Yahoo Mail', imap: 'imap.mail.yahoo.com', imapPort: 993, smtp: 'smtp.mail.yahoo.com', smtpPort: 465 },
+    other: { label: 'Another provider', imap: '', imapPort: 993, smtp: '', smtpPort: 465 },
+  };
+  function mailProviderFor(addr) {
+    const d = (addr.split('@')[1] || '').toLowerCase();
+    if (/^(gmail|googlemail)\.com$/.test(d)) return 'gmail';
+    if (/^(icloud|me|mac)\.com$/.test(d)) return 'icloud';
+    if (/^fastmail\.(com|fm)$/.test(d)) return 'fastmail';
+    if (/^yahoo\./.test(d)) return 'yahoo';
+    return null;
+  }
+  async function loadMailAccount() {
+    try { MAIL.account = await invoke('email_account'); } catch { MAIL.account = null; }
+    const n = $('mailSetNote'); if (n) n.textContent = MAIL.account ? `Connected: ${MAIL.account.address}` : 'Read and answer one mailbox of your own in the Email tab';
+  }
+  // New mail: on start, with Refresh, and when you come back to the app (at most every 2 minutes)
+  async function checkMail(quiet) {
+    if (!MAIL.account || MAIL.checking) return;
+    if (quiet && Date.now() - MAIL.last < 120e3) return;
+    MAIL.checking = true; MAIL.last = Date.now();
+    if (S.view === 'email') renderList();
+    try {
+      const n = await invoke('email_refresh');
+      MAIL.error = '';
+      if (n && !quiet) status(`${n} new ${n === 1 ? 'email' : 'emails'}.`);
+    } catch (e) { MAIL.error = msg(e); }
+    MAIL.checking = false;
+    if (S.view === 'email') { renderList(); renderHead(); }
+  }
+  function mailBarHtml() {
+    if (!MAIL.account) return `<div class="mailbar mail-intro"><div><strong>Read your email here</strong>
+      <span>Connect one mailbox and its inbox shows up in this tab, beside your reading. Replies go out from the same address. It works best with an address on your own domain that you use only for this app, like reading@yoursite.com.</span></div>
+      <span class="mb-acts"><button class="btn primary" type="button" data-mailbar="setup">Connect your email</button></span></div>`;
+    return `<div class="mailbar"><div><span class="mb-lbl">${MAIL.checking ? 'Checking your inbox…' : 'Your inbox'}</span><span class="nl-mail">${esc(MAIL.account.address)}</span>
+      ${MAIL.error ? `<span class="mb-err">${esc(MAIL.error)}</span>` : ''}</div>
+      <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Check now</button><button class="btn" type="button" data-mailbar="setup">Settings</button></span></div>`;
+  }
+  $('list').addEventListener('click', e => {
+    const b = e.target.closest('[data-mailbar]'); if (!b) return;
+    if (b.dataset.mailbar === 'setup') openMailSettings();
+    if (b.dataset.mailbar === 'check') checkMail();
+  });
+  $('mailBtn').onclick = () => openMailSettings();
+
+  function openMailSettings() {
+    const a = MAIL.account;
+    const pick = a ? (Object.keys(MAIL_HOSTS).find(k => MAIL_HOSTS[k].imap === a.imap_host) || 'other') : 'ionos';
+    const opts = Object.entries(MAIL_HOSTS).map(([k, v]) => `<option value="${k}"${k === pick ? ' selected' : ''}>${v.label}</option>`).join('');
+    const el = sheet('mailPanel', `<h2>Email</h2>
+      <p>Connect one mailbox to read its inbox in the Email tab and reply from it. Best: an address on your own domain that you use only for this app, like reading@yoursite.com. The app only reads the inbox; it never deletes or moves mail.</p>
+      <form class="mail-form" id="mailForm" autocomplete="off">
+        <label>Email provider<select id="mailProv">${opts}</select></label>
+        <label>Your name <span class="hint">(shown on replies)</span><input id="mailName" type="text" maxlength="80" value="${esc(a?.name || '')}" placeholder="David Daniels"></label>
+        <label>Email address<input id="mailAddr" type="email" required value="${esc(a?.address || '')}" placeholder="reading@yoursite.com" spellcheck="false" autocapitalize="off"></label>
+        <label>Password<input id="mailPw" type="password" ${a ? 'placeholder="Saved (leave empty to keep it)"' : 'required'} autocomplete="new-password"></label>
+        <p class="note" id="mailPwNote"></p>
+        <details id="mailServers"${pick === 'other' ? ' open' : ''}><summary>Mail servers</summary>
+          <div class="mail-srv"><label>Incoming (IMAP)<input id="mailImap" type="text" spellcheck="false" autocapitalize="off"></label><label>Port<input id="mailImapPort" type="number" min="1" max="65535"></label></div>
+          <div class="mail-srv"><label>Outgoing (SMTP)<input id="mailSmtp" type="text" spellcheck="false" autocapitalize="off"></label><label>Port<input id="mailSmtpPort" type="number" min="1" max="65535"></label></div>
+        </details>
+        <p class="note" id="mailNote">${a ? `Connected to ${esc(a.address)}.` : 'Your password stays in the Keychain on your devices. Nothing goes through The Reading Room’s servers.'}</p>
+        <div class="row sheet-foot">${a ? '<button class="btn danger" type="button" id="mailOff">Disconnect</button>' : ''}<button class="btn" type="button" id="mailCancel">${a ? 'Done' : 'Cancel'}</button><button class="btn primary" type="submit" id="mailGo">${a ? 'Save' : 'Connect'}</button></div>
+      </form>`, 'Email');
+    const note = (t, err) => { $('mailNote').textContent = t; $('mailNote').classList.toggle('err', !!err); };
+    const fill = k => {
+      const h = MAIL_HOSTS[k];
+      if (k !== 'other') { $('mailImap').value = h.imap; $('mailImapPort').value = h.imapPort; $('mailSmtp').value = h.smtp; $('mailSmtpPort').value = h.smtpPort; }
+      else if (!$('mailImap').value) { $('mailImapPort').value = h.imapPort; $('mailSmtpPort').value = h.smtpPort; }
+      $('mailPwNote').textContent = { gmail: 'Gmail needs an app password: in your Google Account, turn on 2-Step Verification, then make one under App passwords.', icloud: 'iCloud needs an app-specific password: make one at account.apple.com under Sign-In and Security.', yahoo: 'Yahoo needs an app password: make one in your Yahoo account’s security settings.', fastmail: 'Fastmail needs an app password: make one under Settings › Privacy & Security.', ionos: 'The mailbox password you set in your IONOS control panel.', other: 'Your mailbox password. Your provider’s help pages list its IMAP and SMTP servers.' }[k] || '';
+    };
+    fill(pick);
+    if (a) { $('mailImap').value = a.imap_host; $('mailImapPort').value = a.imap_port; $('mailSmtp').value = a.smtp_host; $('mailSmtpPort').value = a.smtp_port; }
+    $('mailProv').onchange = () => { fill($('mailProv').value); if ($('mailProv').value === 'other') $('mailServers').open = true; };
+    $('mailAddr').onchange = () => { const k = mailProviderFor($('mailAddr').value.trim()); if (k && k !== $('mailProv').value) { $('mailProv').value = k; fill(k); } };
+    $('mailCancel').onclick = () => { el.hidden = true; };
+    if ($('mailOff')) $('mailOff').onclick = async () => {
+      const btn = $('mailOff');
+      if (btn.dataset.sure !== '1') { btn.dataset.sure = '1'; btn.textContent = 'Disconnect this mailbox?'; return; }
+      await invoke('email_disconnect').catch(() => {});
+      await loadMailAccount(); el.hidden = true; render();
+      status('Email disconnected. Mail already in the Email tab stays.');
+    };
+    $('mailForm').onsubmit = async e => {
+      e.preventDefault();
+      const account = { address: $('mailAddr').value.trim(), name: $('mailName').value.trim(), password: $('mailPw').value,
+        imap_host: $('mailImap').value.trim(), imap_port: Number($('mailImapPort').value) || 993, smtp_host: $('mailSmtp').value.trim(), smtp_port: Number($('mailSmtpPort').value) || 465 };
+      const go = $('mailGo'); go.disabled = true; go.textContent = 'Signing in…'; note('');
+      try {
+        await invoke('email_connect', { account });
+        await loadMailAccount();
+        el.hidden = true;
+        await load();
+        selectView('email');
+        checkMail();
+      } catch (err) { note(msg(err), true); go.disabled = false; go.textContent = a ? 'Save' : 'Connect'; }
+    };
+  }
+
+  function openMailReply(it) {
+    const el = sheet('mailReplyPanel', `<h2>Reply</h2>
+      <div class="mr-head"><div><span class="mb-lbl">To</span><span id="mrTo">…</span></div><div><span class="mb-lbl">Subject</span><span id="mrSubj">…</span></div><div><span class="mb-lbl">From</span><span id="mrFrom">…</span></div></div>
+      <textarea id="mrBody" rows="10" placeholder="Write your reply"></textarea>
+      <p class="note" id="mrNote">Sent from your mailbox, and filed in its Sent folder.</p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="mrCancel">Cancel</button><button class="btn primary" type="button" id="mrSend" disabled>Send</button></div>`, 'Reply');
+    const note = (t, err) => { $('mrNote').textContent = t; $('mrNote').classList.toggle('err', !!err); };
+    $('mrCancel').onclick = () => { el.hidden = true; };
+    invoke('email_reply_to', { itemId: it.id }).then(r => {
+      $('mrTo').textContent = r.name && r.name !== r.to ? `${r.name} <${r.to}>` : r.to;
+      $('mrSubj').textContent = r.subject; $('mrFrom').textContent = r.from || 'Connect your email in Settings first';
+      $('mrSend').disabled = !r.from;
+      $('mrBody').focus();
+    }).catch(e => note(msg(e), true));
+    $('mrSend').onclick = async () => {
+      const body = $('mrBody').value; if (!body.trim()) { note('Write something first.', true); return; }
+      const b = $('mrSend'); b.disabled = true; b.textContent = 'Sending…'; note('');
+      try { const to = await invoke('email_reply', { itemId: it.id, body }); el.hidden = true; status(`Reply sent to ${to}.`); }
+      catch (e) { note(msg(e), true); b.disabled = false; b.textContent = 'Send'; }
+    };
+  }
+  loadMailAccount().then(() => { if (MAIL.account) { if (S.view === 'email') render(); setTimeout(() => checkMail(true), 2500); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkMail(true); });
+
   // ---- posting a story with your note
   const LIMIT = { bluesky: 300, mastodon: 500 };
 
@@ -2996,11 +3138,13 @@
     $('rBackLabel').textContent = viewName();
     $('rSave').textContent = isPhone() ? (it.saved ? 'Saved ✓' : 'Save') : (it.saved ? 'Saved ✓' : 'Read later');
     $('rOriginal').textContent = isPhone() ? 'Web' : 'View original';
-    $('rReply').textContent = isPhone() ? 'Reply' : 'Write back';
+    const em = isEmailItem(it);
+    $('rReply').textContent = em || isPhone() ? 'Reply' : 'Write back';
+    $('rOriginal').hidden = em; $('rShare').hidden = em; // an email has no web page
     $('rSave').setAttribute('aria-pressed', String(!!it.saved));
     $('rTitle').textContent = headline(it);
     const when = new Date(it.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    $('rMeta').innerHTML = `<span class="src">${esc(f ? f.title : '')}</span><time datetime="${esc(it.date)}">${esc(when)}</time><span id="rByline"></span>`;
+    $('rMeta').innerHTML = `<span class="src">${esc(em ? 'Email' : f ? f.title : '')}</span><time datetime="${esc(it.date)}">${esc(when)}</time><span id="rByline"></span>`;
     const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === it.id);
     $('rPrev').disabled = i <= 0; $('rNext').disabled = i < 0 || i >= list.length - 1;
     renderNotes();
@@ -3421,7 +3565,7 @@
   $('rClose').onclick = () => closeReader();
   $('rSave').onclick = () => { const it = item(S.readerId); if (it) mark(it.id, { saved: !it.saved }); };
   $('rShare').onclick = e => openShareMenu(e.currentTarget, item(S.readerId));
-  $('rReply').onclick = e => openReply(e.currentTarget);
+  $('rReply').onclick = e => { const it = item(S.readerId); if (it && isEmailItem(it)) openMailReply(it); else openReply(e.currentTarget); };
   $('rOriginal').onclick = () => { const it = item(S.readerId); if (it) openWeb(it.link); };
   const step = d => { const list = visible().slice(0, S.shown), i = list.findIndex(x => x.id === S.readerId); const n = list[i + d]; if (n) openReader(n.id); };
   $('rPrev').onclick = () => step(-1);
@@ -4401,8 +4545,7 @@
   });
 
   // ------------------------------------------------------------ Newsletters in your reader
-  // A private address (from The Reading Room's mail service, or Kill the Newsletter if that can't be reached):
-  // subscribe with it or forward mail to it, and each email arrives as a story.
+  // A private address from Kill the Newsletter: subscribe with it, and each issue arrives as a story.
   // New newsletter feeds go in a "Newsletters" folder unless you pick another (the folder is made the first time)
   const nlFolder = () => S.folders.find(f => f.name.trim().toLowerCase() === 'newsletters');
   function nlFolderOptions() {
@@ -4416,12 +4559,12 @@
     const row = n => `<li class="nl-row${fresh && n.email === fresh ? ' fresh' : ''}"><span class="ck-body"><b>${esc(n.title)}</b><span class="nl-mail">${esc(n.email)}</span></span>
       <span class="ck-acts"><button class="btn${fresh && n.email === fresh ? ' primary' : ''}" type="button" data-nl="copy" data-mail="${esc(n.email)}">Copy address</button><button class="btn danger" type="button" data-nl="remove" data-mail="${esc(n.email)}">Remove</button></span></li>`;
     return `<h2>Newsletters</h2>
-      <p>Get email here instead of in your inbox. Make an address, subscribe to newsletters with it or forward emails to it, and each one arrives as a story in its own feed.</p>
+      <p>Read newsletters here instead of in your inbox. Make an address, subscribe to newsletters with it, and each issue arrives as a story in its own feed.</p>
       ${list.length ? `<ul class="ck-list nl-list">${list.map(row).join('')}</ul>` : ''}
       <form class="nl-new" id="nlForm"><label for="nlName">${list.length ? 'Another address' : 'Name this address'}</label>
         <div class="row"><input id="nlName" type="text" maxlength="80" placeholder="e.g. Newsletters, or one newsletter’s name" autocomplete="off"><button class="btn primary" type="submit" id="nlMake">Make an address</button></div>
         <div class="row nl-folder"><label for="nlFolder">Put its feed in</label><select id="nlFolder">${nlFolderOptions()}</select></div></form>
-      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. Addresses end in @readingroomapp.com. Anyone with an address can send to it, so give it only to newsletters and people you want to read here. To stop one, unsubscribe from its newsletters, then Remove the address here: that deletes it and everything sent to it.</p>
+      <p class="note" id="nlNote">One address can take many newsletters; they’ll share one feed. Make one per newsletter if you’d like them apart. The addresses come from Kill the Newsletter, a free, open-source service: anyone with an address can send to it, so use it only for newsletters. To stop one, unsubscribe from the newsletter, then Remove the address here.</p>
       <div class="row sheet-foot"><button class="btn primary" type="button" data-nl="done">Done</button></div>`;
   }
   function openNewsletters(fresh) {
@@ -4439,12 +4582,11 @@
         if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Remove and unfollow?'; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'Remove'; } }, 4000); return; }
         const n = (S.prefs.newsletters || []).find(x => x.email === b.dataset.mail); if (!n) return;
         const f = S.feeds.find(x => x.url === n.feed);
-        let gone = false;
-        try { gone = await invoke('newsletter_remove', { feed: n.feed }); if (f) await invoke('remove_feed', { id: f.id }); } catch (err) { note(msg(err), true); return; }
+        try { if (f) await invoke('remove_feed', { id: f.id }); } catch (err) { note(msg(err), true); return; }
         S.prefs.newsletters = (S.prefs.newsletters || []).filter(x => x.email !== n.email);
         await savePrefs(); await load();
         openNewsletters();
-        note(gone ? `Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. The address is deleted, so mail sent to it now bounces.` : `Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. Anything still sent to it won’t reach you, so unsubscribe from its newsletters if you haven’t.`);
+        note(`Removed ${n.email}${f ? ` and unfollowed “${f.title}”` : ''}. Anything still sent to it won’t reach you, so unsubscribe from its newsletters if you haven’t.`);
       }
     };
     $('nlForm').onsubmit = async e => {
