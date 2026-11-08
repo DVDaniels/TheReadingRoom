@@ -67,44 +67,131 @@ pub struct Mail {
 
 // ---------------------------------------------------------------- connections
 
-fn tls() -> TlsConnector {
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .with_safe_default_protocol_versions()
-        .expect("TLS versions")
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+/// A mail server on this computer: Proton Mail Bridge, which Proton's own app runs on your Mac
+/// (it speaks IMAP and SMTP for Proton, whose servers don't).
+pub fn is_local(host: &str) -> bool {
+    matches!(host.trim().to_lowercase().as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
+fn tls(host: &str) -> TlsConnector {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let builder = rustls::ClientConfig::builder_with_provider(provider.clone()).with_safe_default_protocol_versions().expect("TLS versions");
+    let cfg = if is_local(host) {
+        // Bridge makes its own certificate, which no authority vouches for. It's accepted only from a
+        // server on this same computer; everything else must have a real certificate.
+        builder.dangerous().with_custom_certificate_verifier(Arc::new(LocalBridge(provider))).with_no_client_auth()
+    } else {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        builder.with_root_certificates(roots).with_no_client_auth()
+    };
     TlsConnector::from(Arc::new(cfg))
 }
 
+#[derive(Debug)]
+struct LocalBridge(Arc<rustls::crypto::CryptoProvider>);
+
+impl rustls::client::danger::ServerCertVerifier for LocalBridge {
+    fn verify_server_cert(
+        &self,
+        _end: &rustls::pki_types::CertificateDer<'_>,
+        _rest: &[rustls::pki_types::CertificateDer<'_>],
+        _name: &rustls::pki_types::ServerName<'_>,
+        _ocsp: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
+}
+
 async fn tcp(host: &str, port: u16) -> Result<TcpStream, String> {
-    match tokio::time::timeout(WAIT, TcpStream::connect((host, port))).await {
+    let host_only = host.trim_start_matches('[').trim_end_matches(']');
+    match tokio::time::timeout(WAIT, TcpStream::connect((host_only, port))).await {
         Ok(Ok(s)) => Ok(s),
+        Ok(Err(_)) if is_local(host) => Err(if cfg!(target_os = "ios") {
+            "This mailbox is read through Proton Mail Bridge, which runs on your Mac, so it can only be used there.".into()
+        } else {
+            "Couldn't reach Proton Mail Bridge. Open Bridge and check it's signed in, then try again.".into()
+        }),
         Ok(Err(_)) => Err(format!("Couldn't reach {host}. Check the server name and your connection.")),
         Err(_) => Err(format!("{host} didn't answer. Check the server name and port.")),
     }
 }
 
 async fn secure<S: AsyncRead + AsyncWrite + Unpin>(host: &str, s: S) -> Result<TlsStream<S>, String> {
-    let name = rustls::pki_types::ServerName::try_from(host.to_string()).map_err(|_| format!("“{host}” isn't a server name."))?;
-    match tokio::time::timeout(WAIT, tls().connect(name, s)).await {
+    let bare = host.trim_start_matches('[').trim_end_matches(']').to_string();
+    let name = rustls::pki_types::ServerName::try_from(bare).map_err(|_| format!("“{host}” isn't a server name."))?;
+    match tokio::time::timeout(WAIT, tls(host).connect(name, s)).await {
         Ok(Ok(t)) => Ok(t),
         Ok(Err(e)) => Err(format!("Couldn't make a secure connection to {host} ({e}).")),
         Err(_) => Err(format!("{host} didn't answer.")),
     }
 }
 
+/// IMAP on port 993 is secure from the start; other ports (Bridge's 1143) start plain and switch with STARTTLS.
+async fn imap_stream(a: &Account) -> Result<TlsStream<TcpStream>, String> {
+    let raw = tcp(&a.imap_host, a.imap_port).await?;
+    if a.imap_port == 993 {
+        return secure(&a.imap_host, raw).await;
+    }
+    let mut io = BufReader::new(raw);
+    let hello = read_line(&mut io, &a.imap_host).await?;
+    if !hello.starts_with("* OK") {
+        return Err(format!("{} didn't greet like a mail server.", a.imap_host));
+    }
+    io.get_mut().write_all(b"rr0 STARTTLS\r\n").await.map_err(|e| e.to_string())?;
+    loop {
+        let l = read_line(&mut io, &a.imap_host).await?;
+        if l.starts_with("rr0 ") {
+            if !l.starts_with("rr0 OK") {
+                return Err(format!("{} wouldn't make a secure connection on port {}. Check the port (secure from the start is 993).", a.imap_host, a.imap_port));
+            }
+            break;
+        }
+    }
+    secure(&a.imap_host, io.into_inner()).await
+}
+
+async fn read_line(io: &mut BufReader<TcpStream>, host: &str) -> Result<String, String> {
+    let mut l = String::new();
+    match tokio::time::timeout(WAIT, io.read_line(&mut l)).await {
+        Ok(Ok(n)) if n > 0 => Ok(l),
+        _ => Err(format!("{host} stopped answering.")),
+    }
+}
+
 type Imap = async_imap::Session<TlsStream<TcpStream>>;
 
 async fn imap_login(a: &Account) -> Result<Imap, String> {
-    let s = secure(&a.imap_host, tcp(&a.imap_host, a.imap_port).await?).await?;
-    let mut client = async_imap::Client::new(s);
-    let _greeting = tokio::time::timeout(WAIT, client.read_response())
-        .await
-        .map_err(|_| format!("{} didn't answer.", a.imap_host))?;
+    let implicit = a.imap_port == 993;
+    let mut client = async_imap::Client::new(imap_stream(a).await?);
+    if implicit {
+        let _greeting = tokio::time::timeout(WAIT, client.read_response())
+            .await
+            .map_err(|_| format!("{} didn't answer.", a.imap_host))?;
+    }
     match tokio::time::timeout(WAIT, client.login(&a.address, &a.password)).await {
         Ok(Ok(s)) => Ok(s),
+        Ok(Err((e, _))) if is_local(&a.imap_host) => Err(format!("Bridge didn't accept that address and password. Use the password Bridge shows for your account (not your Proton password). Bridge said: {}", said(&e))),
         Ok(Err((e, _))) => Err(format!("The mail server didn't accept that address and password. Check them (some providers need an app password). The server said: {}", said(&e))),
         Err(_) => Err("The mail server didn't answer the sign-in.".into()),
     }
@@ -113,7 +200,10 @@ async fn imap_login(a: &Account) -> Result<Imap, String> {
 /// What a server said, without the protocol wrapping.
 fn said(e: &async_imap::error::Error) -> String {
     let t = e.to_string();
+    // "no response: code: None, info: Some(\"[AUTHENTICATIONFAILED] Login failed\")" → "Login failed"
+    let t = t.split("info: Some(\"").nth(1).map(|x| x.trim_end_matches("\")").to_string()).unwrap_or(t);
     let t = t.trim_start_matches("No Response: ").trim_start_matches("Bad Response: ");
+    let t = match t.strip_prefix('[') { Some(r) => r.split_once("] ").map(|(_, x)| x).unwrap_or(t), None => t };
     t.chars().take(200).collect()
 }
 
@@ -270,6 +360,9 @@ fn same_provider(mx: &str, imap: &str) -> bool {
 /// If the address's domain sends its mail somewhere other than this mail server, say where
 /// (an address can exist on one server while the domain's mail goes to another).
 pub async fn delivered_elsewhere(client: &reqwest::Client, a: &Account) -> Option<String> {
+    if is_local(&a.imap_host) {
+        return None;
+    }
     let url = format!("https://dns.google/resolve?name={}&type=MX", a.domain());
     let v: serde_json::Value = client.get(url).send().await.ok()?.json().await.ok()?;
     let hosts: Vec<String> = v["Answer"]
@@ -413,6 +506,9 @@ pub async fn send(a: &Account, o: &Outgoing<'_>) -> Result<String, String> {
 
 /// File a sent reply in the mailbox's Sent folder, as Mail does (best effort).
 pub async fn file_sent(a: &Account, msg: &str) {
+    if is_local(&a.imap_host) {
+        return; // Proton puts what Bridge sends in Sent by itself
+    }
     use futures::TryStreamExt;
     let Ok(mut s) = imap_login(a).await else { return };
     let mut sent = None;

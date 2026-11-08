@@ -2302,6 +2302,7 @@
     icloud: { label: 'iCloud Mail', imap: 'imap.mail.me.com', imapPort: 993, smtp: 'smtp.mail.me.com', smtpPort: 587 },
     fastmail: { label: 'Fastmail', imap: 'imap.fastmail.com', imapPort: 993, smtp: 'smtp.fastmail.com', smtpPort: 465 },
     yahoo: { label: 'Yahoo Mail', imap: 'imap.mail.yahoo.com', imapPort: 993, smtp: 'smtp.mail.yahoo.com', smtpPort: 465 },
+    proton: { label: 'Proton Mail (with Bridge, on a Mac)', imap: '127.0.0.1', imapPort: 1143, smtp: '127.0.0.1', smtpPort: 1025 },
     other: { label: 'Another provider', imap: '', imapPort: 993, smtp: '', smtpPort: 465 },
   };
   function mailProviderFor(addr) {
@@ -2310,6 +2311,7 @@
     if (/^(icloud|me|mac)\.com$/.test(d)) return 'icloud';
     if (/^fastmail\.(com|fm)$/.test(d)) return 'fastmail';
     if (/^yahoo\./.test(d)) return 'yahoo';
+    if (/^(proton\.me|protonmail\.(com|ch)|pm\.me)$/.test(d)) return 'proton';
     return null;
   }
   async function loadMailAccount() {
@@ -2317,8 +2319,10 @@
     const n = $('mailSetNote'); if (n) n.textContent = MAIL.account ? `Connected: ${MAIL.account.address}` : 'Read and answer one mailbox of your own in the Email tab';
   }
   // New mail: on start, with Refresh, and when you come back to the app (at most every 2 minutes)
+  // A Proton mailbox comes through Bridge on the Mac; iPhone and iPad have no Bridge to reach
+  const bridgeAway = () => !!MAIL.account && IOS && /^(127\.0\.0\.1|localhost|::1|\[::1\])$/.test(MAIL.account.imap_host);
   async function checkMail(quiet) {
-    if (!MAIL.account || MAIL.checking) return;
+    if (!MAIL.account || MAIL.checking || bridgeAway()) return;
     if (quiet && Date.now() - MAIL.last < 120e3) return;
     MAIL.checking = true; MAIL.last = Date.now();
     if (S.view === 'email') { renderList(); renderHead(); }
@@ -2335,6 +2339,7 @@
       <span>Connect one mailbox and its inbox shows up in this tab, beside your reading. Replies go out from the same address. It works best with an address on your own domain that you use only for this app, like reading@yoursite.com.</span></div>
       <span class="mb-acts"><button class="btn primary" type="button" data-mailbar="setup">Connect your email</button></span></div>`;
     const domain = MAIL.account.address.split('@')[1];
+    if (bridgeAway()) return `<div class="mailbar"><div><span class="mb-lbl">This mailbox is read through Proton Mail Bridge on your Mac, so it can only be used there. On this device, connect a mailbox from another provider in Email settings.</span></div><span class="mb-acts"><button class="btn" type="button" data-mailbar="setup">Email settings</button></span></div>`;
     const problems = [
       MAIL.error && `<span class="mb-err">${esc(MAIL.error)}</span>`,
       MAIL.elsewhere && `<span class="mb-err">Mail for ${esc(domain)} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>`,
@@ -2375,7 +2380,7 @@
       const h = MAIL_HOSTS[k];
       if (k !== 'other') { $('mailImap').value = h.imap; $('mailImapPort').value = h.imapPort; $('mailSmtp').value = h.smtp; $('mailSmtpPort').value = h.smtpPort; }
       else if (!$('mailImap').value) { $('mailImapPort').value = h.imapPort; $('mailSmtpPort').value = h.smtpPort; }
-      $('mailPwNote').textContent = { gmail: 'Gmail needs an app password: in your Google Account, turn on 2-Step Verification, then make one under App passwords.', icloud: 'iCloud needs an app-specific password: make one at account.apple.com under Sign-In and Security.', yahoo: 'Yahoo needs an app password: make one in your Yahoo account’s security settings.', fastmail: 'Fastmail needs an app password: make one under Settings › Privacy & Security.', ionos: 'The mailbox password you set in your IONOS control panel.', other: 'Your mailbox password. Your provider’s help pages list its IMAP and SMTP servers.' }[k] || '';
+      $('mailPwNote').textContent = { gmail: 'Gmail needs an app password: in your Google Account, turn on 2-Step Verification, then make one under App passwords.', icloud: 'iCloud needs an app-specific password: make one at account.apple.com under Sign-In and Security.', yahoo: 'Yahoo needs an app password: make one in your Yahoo account’s security settings.', fastmail: 'Fastmail needs an app password: make one under Settings › Privacy & Security.', ionos: 'The mailbox password you set in your IONOS control panel.', proton: 'Proton works through Proton Mail Bridge on this Mac (a paid Proton plan). Keep Bridge open, choose your account in it, and copy the password it shows under Mailbox details (not your Proton password). If Bridge shows other ports, change them under Mail servers. Proton mail can only be read on a Mac that runs Bridge.', other: 'Your mailbox password. Your provider’s help pages list its IMAP and SMTP servers.' }[k] || '';
     };
     fill(pick);
     if (a) { $('mailImap').value = a.imap_host; $('mailImapPort').value = a.imap_port; $('mailSmtp').value = a.smtp_host; $('mailSmtpPort').value = a.smtp_port; }
