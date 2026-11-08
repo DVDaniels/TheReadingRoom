@@ -336,7 +336,7 @@ mod tests {
         (db::open(&dir.join("t.db"), false).unwrap(), dir)
     }
     fn o(url: &str) -> Outline {
-        Outline { url: url.into(), title: url.trim_start_matches("https://").into(), folder: None }
+        Outline { url: url.into(), title: url.trim_start_matches("https://").into(), folder: None, parent: None }
     }
     const L: &str = "https://club.example/list.opml";
 
