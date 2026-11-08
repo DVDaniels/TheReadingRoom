@@ -2313,8 +2313,8 @@
     MAIL.checking = true; MAIL.last = Date.now();
     if (S.view === 'email') renderList();
     try {
-      const n = await invoke('email_refresh');
-      MAIL.error = '';
+      const r = await invoke('email_refresh'), n = r?.added || 0;
+      MAIL.error = ''; MAIL.inbox = r?.inbox ?? null; MAIL.checkedAt = new Date();
       if (n && !quiet) status(`${n} new ${n === 1 ? 'email' : 'emails'}.`);
     } catch (e) { MAIL.error = msg(e); }
     MAIL.checking = false;
@@ -2325,7 +2325,8 @@
       <span>Connect one mailbox and its inbox shows up in this tab, beside your reading. Replies go out from the same address. It works best with an address on your own domain that you use only for this app, like reading@yoursite.com.</span></div>
       <span class="mb-acts"><button class="btn primary" type="button" data-mailbar="setup">Connect your email</button></span></div>`;
     return `<div class="mailbar"><div><span class="mb-lbl">${MAIL.checking ? 'Checking your inbox…' : 'Your inbox'}</span><span class="nl-mail">${esc(MAIL.account.address)}</span>
-      ${MAIL.error ? `<span class="mb-err">${esc(MAIL.error)}</span>` : ''}</div>
+      ${MAIL.error ? `<span class="mb-err">${esc(MAIL.error)}</span>` : MAIL.checkedAt ? `<span class="mb-lbl">${MAIL.inbox === 0 ? 'The inbox on the server is empty.' : `${MAIL.inbox} ${MAIL.inbox === 1 ? 'email' : 'emails'} in the inbox on the server`} · checked ${MAIL.checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}
+      ${MAIL.elsewhere ? `<span class="mb-err">Mail for ${esc(MAIL.account.address.split('@')[1])} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>` : ''}</div>
       <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Check now</button><button class="btn" type="button" data-mailbar="setup">Settings</button></span></div>`;
   }
   $('list').addEventListener('click', e => {
@@ -2379,7 +2380,8 @@
         imap_host: $('mailImap').value.trim(), imap_port: Number($('mailImapPort').value) || 993, smtp_host: $('mailSmtp').value.trim(), smtp_port: Number($('mailSmtpPort').value) || 465 };
       const go = $('mailGo'); go.disabled = true; go.textContent = 'Signing in…'; note('');
       try {
-        await invoke('email_connect', { account });
+        const res = await invoke('email_connect', { account });
+        MAIL.elsewhere = res?.elsewhere || '';
         await loadMailAccount();
         el.hidden = true;
         await load();

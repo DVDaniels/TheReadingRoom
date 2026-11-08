@@ -105,9 +105,16 @@ async fn imap_login(a: &Account) -> Result<Imap, String> {
         .map_err(|_| format!("{} didn't answer.", a.imap_host))?;
     match tokio::time::timeout(WAIT, client.login(&a.address, &a.password)).await {
         Ok(Ok(s)) => Ok(s),
-        Ok(Err(_)) => Err("The mail server didn't accept that address and password. Check them (some providers need an app password).".into()),
+        Ok(Err((e, _))) => Err(format!("The mail server didn't accept that address and password. Check them (some providers need an app password). The server said: {}", said(&e))),
         Err(_) => Err("The mail server didn't answer the sign-in.".into()),
     }
+}
+
+/// What a server said, without the protocol wrapping.
+fn said(e: &async_imap::error::Error) -> String {
+    let t = e.to_string();
+    let t = t.trim_start_matches("No Response: ").trim_start_matches("Bad Response: ");
+    t.chars().take(200).collect()
 }
 
 /// Sign in and open the inbox, to check an account before saving it.
@@ -121,14 +128,14 @@ pub async fn check(a: &Account) -> Result<(), String> {
 // ---------------------------------------------------------------- reading the inbox
 
 /// The newest emails in the inbox that aren't in `known` yet.
-pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<Vec<Mail>, String> {
+pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<(Vec<Mail>, u32), String> {
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
     let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
     let validity = mb.uid_validity.unwrap_or(0);
     if mb.exists == 0 {
         let _ = s.logout().await;
-        return Ok(vec![]);
+        return Ok((vec![], 0));
     }
     let first = mb.exists.saturating_sub(NEWEST - 1).max(1);
     let heads: Vec<_> = s
@@ -171,7 +178,7 @@ pub async fn fetch(a: &Account, known: &HashSet<String>) -> Result<Vec<Mail>, St
         }
     }
     let _ = s.logout().await;
-    Ok(out)
+    Ok((out, mb.exists))
 }
 
 pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
@@ -234,6 +241,47 @@ pub fn text_to_html(text: &str) -> String {
         .map(|p| format!("<p>{}</p>", p.trim().replace('\n', "<br>")))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+// ---------------------------------------------------------------- where mail is delivered
+
+/// The last two parts of a host name (mx00.ionos.com → ionos.com).
+fn base(host: &str) -> String {
+    let parts: Vec<&str> = host.trim_end_matches('.').split('.').collect();
+    parts[parts.len().saturating_sub(2)..].join(".").to_lowercase()
+}
+
+/// Providers whose incoming mail servers have a different name than their IMAP server.
+fn same_provider(mx: &str, imap: &str) -> bool {
+    let (m, i) = (base(mx), base(imap));
+    if m == i {
+        return true;
+    }
+    let groups: [&[&str]; 5] = [
+        &["gmail.com", "google.com", "googlemail.com"],
+        &["me.com", "icloud.com", "apple.com"],
+        &["fastmail.com", "messagingengine.com"],
+        &["yahoo.com", "yahoodns.net"],
+        &["ionos.com", "ionos.de", "1and1.com", "ui-dns.com"],
+    ];
+    groups.iter().any(|g| g.contains(&m.as_str()) && g.contains(&i.as_str()))
+}
+
+/// If the address's domain sends its mail somewhere other than this mail server, say where
+/// (an address can exist on one server while the domain's mail goes to another).
+pub async fn delivered_elsewhere(client: &reqwest::Client, a: &Account) -> Option<String> {
+    let url = format!("https://dns.google/resolve?name={}&type=MX", a.domain());
+    let v: serde_json::Value = client.get(url).send().await.ok()?.json().await.ok()?;
+    let hosts: Vec<String> = v["Answer"]
+        .as_array()?
+        .iter()
+        .filter_map(|r| r["data"].as_str())
+        .filter_map(|d| d.split_whitespace().last().map(|h| h.trim_end_matches('.').to_string()))
+        .collect();
+    if hosts.is_empty() || hosts.iter().any(|h| same_provider(h, &a.imap_host)) {
+        return None;
+    }
+    Some(hosts[0].clone())
 }
 
 // ---------------------------------------------------------------- sending a reply
@@ -411,6 +459,13 @@ mod tests {
         assert!(m.html.contains("<b>rich</b>"), "{}", m.html);
         assert_eq!(m.summary, "plain");
         assert!(m.link.starts_with("email:uid-1:6"));
+    }
+
+    #[test]
+    fn knows_providers() {
+        assert!(same_provider("mx00.ionos.com", "imap.ionos.com"));
+        assert!(same_provider("aspmx.l.google.com", "imap.gmail.com"));
+        assert!(!same_provider("mail.protonmail.ch", "imap.ionos.com"));
     }
 
     #[test]

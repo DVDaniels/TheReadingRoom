@@ -603,6 +603,7 @@ async fn email_connect(state: State<'_, Shared>, account: email::Account) -> Res
         return Err("Fill in the address, password and both servers.".into());
     }
     email::check(&a).await?;
+    let elsewhere = email::delivered_elsewhere(&state.client, &a).await;
     social::secret_set(EMAIL_KEY, &serde_json::to_value(&a).map_err(err)?)?;
     {
         let conn = state.db.lock().unwrap();
@@ -610,7 +611,9 @@ async fn email_connect(state: State<'_, Shared>, account: email::Account) -> Res
         email_feed(&conn)?;
     }
     changed(state.inner());
-    Ok(a.public())
+    let mut out = a.public();
+    out["elsewhere"] = serde_json::json!(elsewhere);
+    Ok(out)
 }
 
 /// Forget the mailbox on this device (and your others, through iCloud Keychain). Emails already here stay.
@@ -619,10 +622,10 @@ fn email_disconnect() {
     social::secret_delete(EMAIL_KEY);
 }
 
-/// Bring in new email from the inbox. Returns how many arrived.
+/// Bring in new email from the inbox: how many arrived, and how many the inbox holds.
 #[tauri::command]
-async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<usize, String> {
-    let Some(a) = email_account_saved() else { return Ok(0) };
+async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let Some(a) = email_account_saved() else { return Ok(serde_json::json!({ "added": 0, "inbox": null })) };
     let known: std::collections::HashSet<String> = {
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
@@ -630,9 +633,9 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<usize
         let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
         rows.filter_map(Result::ok).collect()
     };
-    let mails = email::fetch(&a, &known).await?;
+    let (mails, inbox) = email::fetch(&a, &known).await?;
     if mails.is_empty() {
-        return Ok(0);
+        return Ok(serde_json::json!({ "added": 0, "inbox": inbox }));
     }
     let now = feeds::now_iso();
     let added = {
@@ -669,7 +672,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<usize
     let _ = app.emit("state-changed", ());
     update_badge(&app);
     changed(state.inner());
-    Ok(added)
+    Ok(serde_json::json!({ "added": added, "inbox": inbox }))
 }
 
 /// Who a reply to this email goes to, and its subject.
