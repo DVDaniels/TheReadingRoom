@@ -912,7 +912,19 @@
           <li><b>YouTube:</b> paste a channel’s address. New videos play right in the app.</li>
           <li><b>Podcasts:</b> paste a show’s Apple Podcasts link or its feed. Episodes play in the app and remember where you stopped.</li>
         </ul>
-        <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
+        <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> in Settings to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
+
+      <section class="g-sec" id="g-newsletters"><h2>Newsletters, out of your inbox</h2>
+        <p>Read newsletters here, beside everything else, instead of in your email. The app makes you a private email address; you sign up for newsletters with it, and each issue arrives as a story.</p>
+        <ol class="g-steps">
+          <li>Press <b>+ Add a feed</b> at the bottom of the sidebar${IOS ? ' (tap Feeds first on iPhone)' : ''}, then <b>Read newsletters here</b>.</li>
+          <li>Under <b>Name this address</b>, type a name, like the newsletter’s name, and press <b>Make an address</b>. A feed with that name joins your feeds.</li>
+          <li>Press <b>Copy address</b>, go to the newsletter’s sign-up page, and paste it in place of your own email.</li>
+          <li>Refresh after a minute. The newsletter’s welcome email arrives as a story. If it asks you to confirm, open it and tap the confirm link.</li>
+        </ol>
+        <p>One address can take many newsletters, and they’ll share one feed. Make one per newsletter to keep them apart. Your addresses are listed under <b>Read newsletters here</b> whenever you need to copy one again. To stop a newsletter, unfollow its feed or use the unsubscribe link in any issue.</p>
+        <p>The addresses come from Kill the Newsletter, a free, open-source service; your own email is never used. Anyone who knows an address can send to it, so use it only for newsletters.</p>
+        <p style="margin-top:12px"><button class="btn primary" type="button" id="guideNewsletters">Make a newsletter address</button></p></section>
 
       <section class="g-sec"><h2>Finding more good writers</h2>
         <p>The best way to find people is through people. Many writers keep a <b>blogroll</b>, a list of other blogs they read. <button class="b-link" data-view="discover">Discover</button> reads the blogrolls of everyone you follow and suggests who they recommend.</p>
@@ -985,15 +997,16 @@
           <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
           <dt>Write back</dt><dd>In any story, press Write back to reply to the writer: by email, in their comments, or on Mastodon or Bluesky, whichever they offer.</dd>
           <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
+          <dt>Settings</dt><dd>At the bottom of the sidebar: importing and exporting feeds, Feed checkup, Muted words, Rules &amp; alerts, Your year, your accounts and sync.</dd>
           <dt>Aa</dt><dd>Change the text size, width and colors of the reading view.</dd>
         </dl></section>
 
       <section class="g-sec"><h2>Keeping it calm</h2>
         <ul class="g-list">
           <li><b>Unread isn’t a to-do list.</b> Skim what interests you and press <b>Mark all read</b> without guilt.</li>
-          <li><b>Mute words</b> you’re tired of seeing, from <button class="b-link" id="guideMutes">Muted words</button> in the sidebar.</li>
+          <li><b>Mute words</b> you’re tired of seeing, from <button class="b-link" id="guideMutes">Muted words</button> in Settings, at the bottom of the sidebar.</li>
           <li><b>Hide a website</b> from your news searches with the ⊘ button on its stories.</li>
-          <li><b>Read on all your devices.</b> Turn on sync at the bottom of the sidebar and your feeds, Read later and highlights follow you through iCloud Drive.</li>
+          <li><b>Read on all your devices.</b> Turn on sync in Settings, at the bottom of the sidebar, and your feeds, Read later and highlights follow you through iCloud Drive.</li>
         </ul></section>
       ${keys}
       <section class="g-sec"><h2>A few words you’ll see</h2>
@@ -2231,6 +2244,14 @@
   }
   $('socialBtn').onclick = openAccounts;
 
+  // ------------------------------------------------------------ Settings
+  // The links that used to fill the bottom of the sidebar live here now. Each keeps its own handler;
+  // choosing one closes Settings and opens that panel.
+  const closeSettings = () => { $('settingsPanel').hidden = true; };
+  $('settingsBtn').onclick = () => { $('settingsPanel').hidden = false; $('settingsDone').focus(); };
+  $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
+  $('settingsPanel').addEventListener('click', e => { if (e.target.closest('button')) closeSettings(); });
+
   // ---- posting a story with your note
   const LIMIT = { bluesky: 300, mastodon: 500 };
 
@@ -3414,6 +3435,7 @@
     const gf = e.target.closest('[data-guide-follow]');
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }
+    if (e.target.id === 'guideNewsletters') { openNewsletters(); return; }
     if (e.target.id === 'welcomeX') { store.set('guideSeen', '1'); hideBanner(); return; }
     if (e.target.closest('[data-goal]')) { editGoal(); return; }
     const az = e.target.closest('[data-ab]');
@@ -3764,7 +3786,7 @@
 
   // keyboard (⌘R, ⌘N, ⇧⌘N, ⌘[ come from the app menu)
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { if (!$('wxPanel').hidden) { $('wxPanel').hidden = true; return; } if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
+    if (e.key === 'Escape') { if (!$('settingsPanel').hidden) { closeSettings(); return; } if (!$('wxPanel').hidden) { $('wxPanel').hidden = true; return; } if (!$('voicePanel').hidden) { $('voicePanel').hidden = true; return; } if (!$('mutePanel').hidden) { $('mutePanel').hidden = true; return; } if (!$('syncPanel').hidden) { closeSync(); return; } if (hidePops()) return; if (S.readerId) { closeReader(); return; } }
     if (!$('syncPanel').hidden) return;
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
     const list = visible().slice(0, S.shown);

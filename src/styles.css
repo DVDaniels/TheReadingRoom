@@ -410,7 +410,7 @@ html.ios { --top: calc(env(safe-area-inset-top) + 12px); -webkit-text-size-adjus
 html.ios body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
 /* An opaque strip under the status bar (clock, battery), so nothing scrolls visibly behind it. */
 html.ios body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 40; pointer-events: none; }
-html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios #exportBtn, html.ios .sep { display: none !important; }
+html.ios .dragbar, html.ios .rail-foot > span:not(.row), html.ios #exportRow, html.ios .sep { display: none !important; }
 html.ios .syncbtn { font-size: 15px; padding: 8px 0; }
 html.ios input, html.ios select, html.ios textarea { font-size: 16px !important; }
 html.ios .icon { width: 40px; height: 40px; }
@@ -726,6 +726,21 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 .guide .b-link { font-weight: 600; }
 .guide a { color: var(--accent); }
 .guide-link { color: var(--accent); font-weight: 600; text-align: left; }
+/* Settings: the sidebar's old footer links, gathered into one sheet */
+.settings-link { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.settings-link svg { width: 14px; height: 14px; flex: none; }
+.settings-link:hover { color: var(--accent); }
+.settings .set-group h3 { margin: 4px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.set-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+.set-list li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.set-list li:first-child { border-top: 0; }
+.set-list li > span { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.set-item { background: none; border: 0; padding: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.set-item:hover { color: var(--accent); }
+.set-item.syncbtn { padding: 0; font-size: 15px; color: var(--ink); }
+html.ios .set-item { font-size: 17px; }
+html.ios .set-list li { padding: 12px 14px; }
+html.ios .set-item.syncbtn { padding: 0; font-size: 17px; }
 .banner[data-kind="welcome"] { justify-content: space-between; font-size: 14px; padding: 12px 14px; }
 @media (max-width: 760px) {
   .g-how { flex-direction: column; }
