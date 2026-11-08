@@ -284,20 +284,19 @@
     $('views').innerHTML =
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
-        { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
-        { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people }]) +
+        { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
+        { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition }]) +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
-        { view: 'talk', label: 'Conversations', count: anySocial() ? newReplies() || '' : '', icon: ICONS.talk }]) +
+        { view: 'talk', label: 'Conversations', count: anySocial() ? newReplies() || '' : '', icon: ICONS.talk },
+        { view: 'jobs', label: 'Help Wanted', count: newJobs() || '', icon: ICONS.jobs }]) +
       '<hr class="nav-gap">' +
       group('library', 'Library', [
+        { view: 'books', label: 'Books', count: '', icon: ICONS.books },
         { view: 'saved', label: 'Read later', count: S.items.filter(i => i.saved).length, icon: ICONS.later },
         { view: 'annotated', label: 'Annotated', count: new Set(S.highlights.map(h => h.item_id)).size, icon: ICONS.notes },
-        { view: 'recent', label: 'Recently read', count: '', icon: ICONS.recent },
-        { view: 'books', label: 'Books', count: '', icon: ICONS.books }]) +
-      '<hr class="nav-gap">' +
-      navButton('jobs', 'Help Wanted', newJobs() || '', { icon: ICONS.jobs });
+        { view: 'recent', label: 'Recently read', count: '', icon: ICONS.recent }]);
 
     // The Feeds heading folds the whole list away like the groups above; the feed or folder you're on stays
     const feedsOpen = !canFold || !foldedGroups.has('feeds');
