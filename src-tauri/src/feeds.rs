@@ -191,16 +191,55 @@ pub const YOUTUBE_HICCUP: &str = "YouTube's feed didn't answer just now. YouTube
 
 /// Fetch a feed, following a website address to the feed it advertises.
 pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
-    let (mut body, mut final_url, ctype) = get(client, url).await?;
+    let page = match get(client, url).await {
+        Ok(p) => p,
+        // Big sites (The Atlantic, many newspapers) turn away apps at their web pages but welcome
+        // readers at their feeds: look where feeds usually live before giving up.
+        Err(e) => return usual_feeds(client, url).await.ok_or(if e.contains("403") || e.contains("401") {
+            "The site doesn't let apps open its pages, and no feed turned up at the usual addresses. Try the feed's own address.".to_string()
+        } else { e }),
+    };
+    let (mut body, mut final_url, ctype) = page;
     if looks_like_html(&body, &ctype) {
-        let page = String::from_utf8_lossy(&body).to_string();
-        let found = discover(&page, &final_url)
-            .ok_or("That page doesn't list an RSS or Atom feed. Try the feed's own address.")?;
-        let (b, u, _) = get(client, &found).await?;
-        body = b;
-        final_url = u;
+        let html = String::from_utf8_lossy(&body).to_string();
+        match discover(&html, &final_url) {
+            Some(found) => {
+                let (b, u, _) = get(client, &found).await?;
+                body = b;
+                final_url = u;
+            }
+            None => {
+                return usual_feeds(client, &final_url)
+                    .await
+                    .ok_or("That page doesn't list an RSS or Atom feed. Try the feed's own address.".to_string())
+            }
+        }
     }
     parse(&body, &final_url)
+}
+
+/// Where sites usually keep their feed, tried in order from the site's front door.
+const USUAL_FEEDS: [&str; 8] = ["/feed/", "/feed/all/", "/rss/", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml", "/feeds/posts/default"];
+
+/// Only for a site's address (its home page or a section), not a page deep inside it or a feed.
+fn feed_candidates(url: &str) -> Vec<String> {
+    let Ok(u) = url::Url::parse(url) else { return vec![] };
+    if !matches!(u.scheme(), "http" | "https") || u.host_str().is_none() { return vec![] }
+    let path = u.path().trim_end_matches('/');
+    if path.split('/').filter(|p| !p.is_empty()).count() > 1 { return vec![] }
+    let root = format!("{}://{}", u.scheme(), u.host_str().unwrap_or_default());
+    USUAL_FEEDS.iter().map(|p| format!("{root}{p}")).collect()
+}
+
+async fn usual_feeds(client: &reqwest::Client, url: &str) -> Option<Fetched> {
+    for c in feed_candidates(url) {
+        let Ok((body, final_url, ctype)) = get(client, &c).await else { continue };
+        if looks_like_html(&body, &ctype) { continue }
+        if let Ok(f) = parse(&body, &final_url) {
+            if !f.items.is_empty() { return Some(f) }
+        }
+    }
+    None
 }
 
 pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
@@ -396,6 +435,14 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usual_feed_places() {
+        let c = super::feed_candidates("https://www.theatlantic.com/");
+        assert!(c.contains(&"https://www.theatlantic.com/feed/all/".to_string()));
+        assert_eq!(super::feed_candidates("https://example.com/2026/11/a-post")[..].len(), 0);
+        assert_eq!(super::feed_candidates("https://example.com/blog")[0], "https://example.com/feed/");
+    }
+
     #[test]
     fn paid_posts() {
         assert!(super::looks_paid("<p>Intro…</p><p>Keep reading with a 7-day free trial</p>"));
