@@ -1,0 +1,44 @@
+name: Windows check
+
+# A test only: does The Reading Room compile for Windows, and what breaks?
+# Runs only when you press "Run workflow". Nothing is uploaded to any store and no release is made;
+# if it builds, the unsigned installer is kept on the run's page (Artifacts) for trying on a PC.
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+
+      - name: Check the Rust code compiles for Windows
+        id: check
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          set +e
+          cargo check --release --message-format short 2>&1 | tee "$RUNNER_TEMP/check.txt"
+          code=${PIPESTATUS[0]}
+          # each error as a note on the run's summary page, in plain sight
+          grep -E '^[^ ].*: error' "$RUNNER_TEMP/check.txt" | head -40 | sed 's/^/::error title=Windows compile::/'
+          n=$(grep -cE ': error' "$RUNNER_TEMP/check.txt")
+          echo "::notice title=Windows check::$n compile errors"
+          exit $code
+
+      - name: Build an unsigned installer
+        shell: bash
+        run: npx tauri build --bundles nsis
+
+      - name: Keep the installer on this run's page
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-Reading-Room-windows-unsigned
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
