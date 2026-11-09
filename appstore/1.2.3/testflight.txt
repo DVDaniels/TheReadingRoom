@@ -14,4 +14,10 @@ You can now put a folder inside another folder (two levels), for example Blogrol
 • Open the outer folder: it should show stories from everything inside it.
 • Check that your folders look the same on your other devices.
 
+POSTS THAT NEED A SUBSCRIPTION
+Stories from sites that usually need a subscription (and newsletter posts for paying members) now show a small amber lock.
+• Look for the lock on posts from sites like the New York Times or a paid Substack.
+• Open one of those feeds and press "I subscribe to this site": the lock goes away for that site.
+• Try "Free to read" next to All and Unread to hide posts that need a subscription.
+
 Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.

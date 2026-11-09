@@ -652,6 +652,12 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 .b-psum { font-size: 13px; line-height: 1.45; color: var(--b-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 @media (max-width: 760px) { .b-pgrid { grid-template-columns: 1fr; } .b-psum { -webkit-line-clamp: 2; } }
 .meta .via { font-size: 11px; color: var(--muted); }
+/* a post behind a paywall: a solid padlock in a small amber tag */
+.meta .paid { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; line-height: 1.3; color: var(--saved);
+  background: color-mix(in srgb, var(--saved) 14%, transparent); padding: 2px 7px 2px 5px; border-radius: 999px; white-space: nowrap; }
+.meta .paid svg { width: 12px; height: 12px; flex: none; }
+.feedbar #subFeedBtn svg { width: 12px; height: 12px; color: var(--saved); }
+.feedbar #subFeedBtn.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .kindpick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .sheet-sub { margin: 14px 0 0; font-size: 15px; }
 

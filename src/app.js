@@ -181,6 +181,38 @@
   // ---- one person, several feeds. Someone's blog, their Mastodon and their Bluesky are the same person when their
   // site says so (rel="me" links, fediverse:creator) or their Bluesky handle is their own domain.
   const hostOfU = u => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+
+  // ---- posts behind a paywall: a lock tag, unless you've said you subscribe to that site
+  // Sites that usually need a subscription. Posts the feed itself marks as paid (Substack, Ghost…) come with it.paid.
+  const PAYWALLED = ['nytimes.com', 'wsj.com', 'washingtonpost.com', 'ft.com', 'economist.com', 'theatlantic.com', 'newyorker.com',
+    'bloomberg.com', 'wired.com', 'theinformation.com', 'businessinsider.com', 'technologyreview.com', 'latimes.com', 'bostonglobe.com',
+    'theathletic.com', 'foreignaffairs.com', 'harpers.org', 'hbr.org', 'barrons.com', 'newscientist.com', 'thetimes.co.uk',
+    'telegraph.co.uk', 'charlotteobserver.com', 'seattletimes.com', 'chicagotribune.com', 'nymag.com', 'vanityfair.com'];
+  const onList = (h, list) => !!h && list.some(d => h === d || h.endsWith('.' + d));
+  const paidHosts = f => [...new Set([hostOfU(f?.site || ''), hostOfU(f?.url || '')].filter(Boolean))];
+  const subscribedTo = hosts => hosts.some(h => onList(h, S.prefs.subscribed || []));
+  /** '' when free to read; otherwise the tag's word */
+  function paywall(it) {
+    if (!it || isEmailItem(it)) return '';
+    const f = feedById(it.feed_id), hosts = [hostOfU(it.link), ...paidHosts(f)].filter(Boolean);
+    if (subscribedTo(hosts)) return '';
+    if (it.paid) return 'Members';
+    return hosts.some(h => onList(h, PAYWALLED)) && !viaNewsLink(it) ? 'Subscribers' : '';
+  }
+  const viaNewsLink = it => hostOfU(it.link) === 'news.google.com';
+  const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="2.5" y="7" width="11" height="8" rx="2" fill="currentColor"/></svg>';
+  const paidTag = it => { const w = paywall(it); return w ? `<span class="paid" title="${w === 'Members' ? 'This post is for paying members' : 'This site usually needs a subscription'}">${LOCK}${w}</span>` : ''; };
+  /** Does this feed's site need a subscription (so the feed bar offers "I subscribe")? */
+  const feedPaywalled = f => paidHosts(f).some(h => onList(h, PAYWALLED)) || S.items.some(i => i.feed_id === f.id && i.paid);
+  const feedSubscribed = f => subscribedTo(paidHosts(f));
+  function toggleSubscribed(f) {
+    const hosts = paidHosts(f), on = feedSubscribed(f);
+    const list = S.prefs.subscribed || [];
+    S.prefs.subscribed = on ? list.filter(d => !hosts.some(h => h === d || h.endsWith('.' + d))) : [...new Set([...list, hosts[0]])];
+    savePrefs();
+    status(on ? `Posts from ${f.title} will show the lock again.` : `No more locks on ${f.title}. Its posts open where you're signed in.`);
+    render();
+  }
   const bareHost = h => h.replace(/^(blog|www|en)\./, '');
   const socialNet = f => /bsky\.app\/profile\//.test(f?.url || '') ? 'bluesky' : isSocialFeed(f) ? 'mastodon' : '';
   const profileOf = f => (f.url || '').replace(/\/rss$/, '').replace(/\.rss$/, '');
@@ -260,6 +292,7 @@
     S.hiddenMuted = 0;
     if (mutesApply()) { const before = list.length; list = list.filter(i => !isMuted(i)); S.hiddenMuted = before - list.length; }
     if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || S.keep.has(i.id));
+    if (S.freeOnly && usesUnreadFilter() && S.view !== 'email') list = list.filter(i => !paywall(i) || S.keep.has(i.id));
     if (S.q) { const q = S.q.toLowerCase(); list = list.filter(i => (i.title + ' ' + i.summary).toLowerCase().includes(q)); }
     if (S.view === 'recent') list = [...list].sort((a, b) => (b.read_at || '').localeCompare(a.read_at || ''));
     else if (usesUnreadFilter()) list = collapseDuplicates(list);
@@ -402,6 +435,8 @@
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
+    $('fFree').setAttribute('aria-pressed', String(!!S.freeOnly));
+    $('fFree').hidden = onMail;
     $('seg').hidden = !usesUnreadFilter();
     $('markAll').hidden = !usesUnreadFilter() || onMail; // in Email, mark read one at a time (or with m)
     $('refresh').disabled = S.refreshing;
@@ -419,6 +454,7 @@
           <option value="person"${(S.prefs.kinds || {})[f.url] === 'person' ? ' selected' : ''}>A person</option>
           <option value="pub"${(S.prefs.kinds || {})[f.url] === 'pub' ? ' selected' : ''}>A publication</option></select></label>
         <button class="btn" id="myFeedBtn">${myFeed()?.id === f.id ? 'Not my site' : 'This is my site'}</button>
+        ${feedPaywalled(f) || feedSubscribed(f) ? `<button class="btn${feedSubscribed(f) ? ' on' : ''}" id="subFeedBtn" aria-pressed="${feedSubscribed(f)}" title="Hides the lock on this site's posts">${feedSubscribed(f) ? '✓ I subscribe' : `${LOCK} I subscribe to this site`}</button>` : ''}
         <button class="btn" id="renameFeed">Rename</button><button class="btn danger" id="removeFeed">Unfollow</button>`;
       $('moveFeed').onchange = e => moveFeed(f.id, e.target.value ? Number(e.target.value) : null);
       $('kindFeed').onchange = e => {
@@ -724,7 +760,7 @@
       out += `<article class="story${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}" data-id="${esc(it.id)}">
         ${isWeb(it.image) ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : isEmailItem(it) ? tileHtml({ url: "mail:" + srcLabel(it), title: srcLabel(it) }) : tileHtml(f)}
         <div class="body">
-          <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}${kindTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
+          <div class="meta"><span class="src">${esc(srcLabel(it))}</span>${viaTag(it)}${kindTag(it)}${paidTag(it)}<time datetime="${esc(it.date)}">${ago(it.date)}</time></div>
           ${alsoLine(it)}
           <button class="title" data-act="open">${esc(headline(it))}</button>
           ${it.summary && !quotes ? `<div class="summary">${esc(it.summary)}</div>` : ''}
@@ -3763,6 +3799,7 @@
     if (e.target.id === 'more') { S.shown += 60; renderList(); return; }
     if (e.target.id === 'removeFeed') return confirmRemove();
     if (e.target.id === 'renameFeed') return startRename();
+    if (e.target.closest('#subFeedBtn')) { const f = feedById(S.view); if (f) toggleSubscribed(f); return; }
     if (e.target.id === 'choosePeople') return openPeople();
     if (e.target.id === 'myFeedBtn') {
       const f = feedById(S.view); if (!f) return;
@@ -3831,6 +3868,8 @@
 
   $('fAll').onclick = () => { S.unreadOnly = false; S.shown = 60; render(); };
   $('fUnread').onclick = () => { S.unreadOnly = true; S.shown = 60; render(); };
+  S.freeOnly = store.get('freeOnly') === '1';
+  $('fFree').onclick = () => { S.freeOnly = !S.freeOnly; store.set('freeOnly', S.freeOnly ? '1' : ''); S.shown = 60; render(); };
   let qt; $('q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.shown = 60; searchOlder(); renderList(); }, 150); });
   $('refresh').onclick = refresh;
 

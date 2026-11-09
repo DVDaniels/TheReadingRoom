@@ -30,6 +30,29 @@ pub struct ParsedItem {
     /// The page a post points to (a toot or skeet sharing a blog post); a full address, or the start of one
     /// when the feed only has the shortened text
     pub shares: String,
+    /// The feed says this post is for paying subscribers or members (Substack, Ghost and others)
+    pub paid: bool,
+}
+
+/// Words feeds use when a post is only for paying subscribers or members. Only the post's own
+/// text is checked; known subscription sites are marked in the app.
+pub fn looks_paid(html: &str) -> bool {
+    let t = html.to_lowercase();
+    const SIGNS: [&str; 12] = [
+        "this post is for paid subscribers",
+        "this post is for paying subscribers",
+        "for paid subscribers only",
+        "this post is for subscribers",
+        "keep reading with a 7-day free trial",
+        "to keep reading this post and get",
+        "become a paid subscriber to read",
+        "upgrade to paid to read",
+        "subscribe to continue reading",
+        "this post is for members",
+        "members-only post",
+        "this content is for paying members",
+    ];
+    SIGNS.iter().any(|s| t.contains(s))
 }
 
 pub fn client() -> reqwest::Client {
@@ -223,6 +246,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
             let audio = story_audio(e);
             let shares = story_shares(&format!("{full} {body}"), &link);
+            let paid = looks_paid(&format!("{full} {body}"));
             let summary = plain(&body, SUMMARY_CHARS);
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
             if title.is_empty() {
@@ -235,7 +259,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary, image, audio, shares }
+            ParsedItem { key, title, link, date, summary, image, audio, shares, paid }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
@@ -365,12 +389,20 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             image: p.image.clone(),
             audio: p.audio.clone(),
             shares: p.shares.clone(),
+            paid: p.paid,
         })
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn paid_posts() {
+        assert!(super::looks_paid("<p>Intro…</p><p>Keep reading with a 7-day free trial</p>"));
+        assert!(super::looks_paid("This post is for paid subscribers"));
+        assert!(!super::looks_paid("<p>A free post about subscribers and members.</p>"));
+    }
+
     use super::*;
 
     #[test]

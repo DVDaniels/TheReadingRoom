@@ -692,6 +692,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
                 image: String::new(),
                 audio: String::new(),
                 shares: String::new(),
+                paid: false,
             })
             .collect();
         let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;

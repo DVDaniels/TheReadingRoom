@@ -77,6 +77,7 @@ pub async fn page_item(client: &reqwest::Client, url: &str, title: &str) -> Pars
         image,
         audio: String::new(),
         shares: String::new(),
+        paid: false,
     }
 }
 
