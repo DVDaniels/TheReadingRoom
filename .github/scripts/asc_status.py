@@ -42,7 +42,7 @@ for g in get(f"/apps/{aid}/betaGroups", limit=50)["data"]:
         continue
     link = a.get("publicLink") if a.get("publicLinkEnabled") else "public link turned off"
     limit = f", limit {a.get('publicLinkLimit')} testers" if a.get("publicLinkLimitEnabled") else ""
-    note(f"TestFlight group {a.get('name')}", f"{link or 'no public link yet'}{limit}")
+    note(f"TestFlight group {a.get('name')}", f"{a.get('name')}: {link or 'no public link yet'}{limit}")
     builds = get(f"/betaGroups/{g['id']}/builds", limit=50)["data"]
     nums = sorted((b["attributes"]["version"] for b in builds), key=lambda v: int(v) if v.isdigit() else 0, reverse=True)[:8]
     note(f"In {a.get('name')}", "builds " + ", ".join(nums))
@@ -52,4 +52,4 @@ for b in get("/builds", **{"filter[app]": aid, "sort": "-uploadedDate", "limit":
     r = get(f"/builds/{b['id']}/betaAppReviewSubmission").get("data") or {}
     plat = "Mac" if int(num) >= 1000 else "iPhone/iPad" if num.isdigit() else ""
     note(f"Tester build {num} ({plat})",
-         f"testers: {(d.get('attributes') or {}).get('externalBuildState')}; beta review: {(r.get('attributes') or {}).get('betaReviewState', 'not submitted')}")
+         f"build {num} ({plat}): testers: {(d.get('attributes') or {}).get('externalBuildState')}; beta review: {(r.get('attributes') or {}).get('betaReviewState', 'not submitted')}")
