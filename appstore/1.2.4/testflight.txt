@@ -1,13 +1,16 @@
 Thanks for testing The Reading Room! New in this build:
 
-FOLLOW FROM A WEBSITE IN ONE CLICK
-Websites can now offer an "Open in The Reading Room" button, and feed:// links open in the app too. Please try:
-• On daviddaniels.com/subscribe (or in the site's footer), press "Open in The Reading Room". The app should come to the front and ask "Follow daviddaniels.com?" Press Follow and check the feed is added.
+FOLLOW A SITE FROM ITS OWN PAGE
+Sites can now offer an "Open in The Reading Room" button, and feed:// links open in the app too. Please try:
+• Go to readingroomapp.com/button, type the address of any blog you like and press "Make my button". Press the green button it shows, then "Open in The Reading Room". The app should come to the front and ask "Follow (that site)?" Press Follow and check the feed is added.
 • Try it with the app closed and with it already open.
 • Press "Not now" and check nothing is added.
-• On iPhone, try the same button in Safari.
+• On iPhone, try the same in Safari.
 • If you have a feed:// link handy, click it: the app should offer to follow that feed.
 
-Everything from 1.2.3 (email, folders inside folders, subscription locks, notes to X) is in this build too.
+THEN OPEN X WITH A COPY
+When you post a note, a new tick box can open X's own post window with your words and the link, ready for you to post.
+
+Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
 
 Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.
