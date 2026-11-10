@@ -2081,8 +2081,6 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
-/// Bring the main window back: after it was closed (it's only hidden), or minimized to the Dock.
-#[cfg(desktop)]
 /// A feed address from a link outside the app, waiting for the window to pick it up:
 /// "Open in The Reading Room" buttons on websites (readingroom://subscribe?url=https://example.com/feed/)
 /// and plain feed:// links. The window asks before following anything.
@@ -2113,6 +2111,8 @@ fn take_open_link(state: tauri::State<PendingLink>) -> Option<String> {
     state.0.lock().ok().and_then(|mut g| g.take())
 }
 
+/// Bring the main window back: after it was closed (it's only hidden), or minimized to the Dock.
+#[cfg(desktop)]
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
