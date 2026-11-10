@@ -790,7 +790,13 @@
   document.addEventListener('error', e => {
     const img = e.target;
     if (img.tagName === 'IMG' && img.closest?.('.cover')) { img.remove(); return; }
-    if (img.tagName === 'IMG' && img.closest?.('.ed-lead')) { img.remove(); return; }
+    if (img.tagName === 'IMG' && img.classList.contains('ed-hero')) { img.closest('.ed-lead')?.classList.add('no-pic'); img.remove(); return; }
+    if (img.tagName === 'IMG' && img.classList.contains('ed-pic')) {
+      const [h, letter] = (img.dataset.tile || '210|•').split('|');
+      const t = Object.assign(document.createElement('span'), { className: img.className.replace('ed-pic', 'ed-pic ed-tile') });
+      t.style.setProperty('--h', h); t.setAttribute('aria-hidden', 'true'); t.innerHTML = `<span>${esc(letter.toUpperCase())}</span>`;
+      img.replaceWith(t); return;
+    }
     if (img.tagName === 'IMG' && img.closest?.('.newpost, .pav')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph' })); return; }
     if (img.tagName === 'IMG' && img.closest?.('.tcols') && img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
@@ -4741,31 +4747,55 @@
     const person = i => isPerson(i.feed_id), score = i => (isWeb(i.image) ? 2 : 0) + Math.min((i.summary || '').length / 200, 2);
     const leadPick = [...list].filter(person).sort((a, b) => score(b) - score(a))[0] || [...list].sort((a, b) => score(b) - score(a))[0];
     used.add(leadPick.id); byFeed.add(leadPick.feed_id);
-    const seconds = take(person, 2), news = take(i => !person(i), 6);
+    // the seconds and the newsroom prefer stories with pictures, so the page isn't a wall of text
+    const withPic = i => isWeb(i.image);
+    const seconds = take(i => person(i) && withPic(i), 2); seconds.push(...take(person, 2 - seconds.length));
+    const news = take(i => !person(i), 6);
     const by = i => esc(srcLabel(i));
     const clip = (s, n) => { s = (s || '').trim(); return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s; };
+    const tileOf = i => tileFor(feedById(i.feed_id) || (srcLabel(i) ? { url: srcLabel(i), title: srcLabel(i) } : null));
+    const hueOf = i => tileOf(i).split('|')[0];
+    // a picture, or the feed's coloured letter tile when there isn't one (a broken picture turns into the tile too)
+    const pic = (i, cls) => {
+      const [h, letter] = tileOf(i).split('|');
+      return isWeb(i.image) ? `<img class="ed-pic ${cls}" src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy" data-tile="${esc(h + '|' + letter)}">`
+        : `<span class="ed-pic ed-tile ${cls}" style="--h:${h}" aria-hidden="true"><span>${esc(letter.toUpperCase())}</span></span>`;
+    };
+    const dot = i => `<i class="ed-dot" style="--h:${hueOf(i)}"></i>`;
     const story = (i, cls, n) => `<article class="${cls}${i.read ? ' read' : ''}" data-ed-open="${esc(i.id)}">
-        ${cls === 'ed-lead' && isWeb(i.image) ? `<img src="${esc(i.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : ''}
-        <p class="ed-by">${by(i)}</p><h2>${esc(headline(i))}</h2>${n ? `<p class="ed-sum">${esc(clip(i.summary, n))}</p>` : ''}</article>`;
+        ${cls === 'ed-lead' ? (isWeb(i.image) ? pic(i, 'ed-hero') : '') : cls === 'ed-second' ? (isWeb(i.image) ? pic(i, 'ed-wide') : '') : cls === 'ed-item' ? pic(i, 'ed-sq') : ''}
+        <div class="ed-txt"><p class="ed-by">${dot(i)}${by(i)}</p><h2>${esc(headline(i))}</h2>${n ? `<p class="ed-sum">${esc(clip(i.summary, n))}</p>` : ''}</div></article>`;
+    // the people in today's paper, as a row of faces (their first letter, in their feed's colour)
+    const folks = [];
+    for (const i of list) if (person(i) && !folks.some(x => x.feed_id === i.feed_id)) folks.push(i);
+    const faces = folks.length > 1 ? `<nav class="ed-faces" aria-label="People in this edition"><span class="ed-faces-k">In this edition</span>
+      ${folks.slice(0, 12).map(i => { const [h, l] = tileOf(i).split('|'); return `<button type="button" class="ed-face" data-ed-open="${esc(i.id)}" title="${by(i)}: ${esc(headline(i))}"><span style="--h:${h}">${esc(l.toUpperCase())}</span><b>${by(i)}</b></button>`; }).join('')}
+      ${folks.length > 12 ? `<span class="ed-more">+${folks.length - 12} more</span>` : ''}</nav>` : '';
+    // In pictures: up to four more stories that came with a photo
+    const shots = take(withPic, 4);
+    const pictures = shots.length >= 2 ? `<section class="ed-pics"><h3 class="ed-kicker">In pictures</h3><div class="ed-pgrid">
+      ${shots.map(i => `<figure class="${i.read ? 'read' : ''}" data-ed-open="${esc(i.id)}">${pic(i, 'ed-shot')}<figcaption><b>${esc(headline(i))}</b><span>${by(i)}</span></figcaption></figure>`).join('')}</div></section>` : '';
+    if (shots.length < 2) shots.forEach(i => used.delete(i.id));
     // the rest, in brief, by folder
     const rest = list.filter(i => !used.has(i.id));
     const groups = new Map();
     for (const i of rest) { const f = feedById(i.feed_id), g = (f && folderById(f.folder_id)?.name) || (person(i) ? 'People' : 'Elsewhere'); groups.set(g, [...(groups.get(g) || []), i]); }
-    const brief = [...groups].sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([g, items]) => `<section class="ed-brief"><h3>${esc(g)}</h3>
-      ${items.slice(0, 5).map(i => `<p data-ed-open="${esc(i.id)}"${i.read ? ' class="read"' : ''}><b>${esc(headline(i))}</b> <span>${by(i)}</span></p>`).join('')}
+    const brief = [...groups].sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([g, items]) => `<section class="ed-brief" style="--h:${hueFor(g)}"><h3><span>${esc(g)}</span><em>${items.length}</em></h3>
+      ${items.slice(0, 5).map(i => `<p data-ed-open="${esc(i.id)}"${i.read ? ' class="read"' : ''}>${dot(i)}<b>${esc(headline(i))}</b> <span>${by(i)}</span></p>`).join('')}
       ${items.length > 5 ? `<p class="ed-more">and ${items.length - 5} more</p>` : ''}</section>`).join('');
     const cur = currentBook(), b = cur && bookOf(cur), jobs = newJobs();
     const boxes = [
-      b ? `<div class="ed-box" data-ed="book"><h4>Your book</h4><p><b>${esc(b.title)}</b> by ${esc(b.author)}</p><p class="ed-more">Pick up where you left off</p></div>` : '',
-      goalOn() ? `<div class="ed-box"><h4>Your reading</h4><p>${streak()} ${streak() === 1 ? 'day' : 'days'} in a row · goal ${goalCfg().mins} minutes a day</p></div>` : '',
-      jobs ? `<div class="ed-box" data-ed="jobs"><h4>Help Wanted</h4><p>${jobs} new ${jobs === 1 ? 'listing' : 'listings'}</p></div>` : '',
+      b ? `<div class="ed-box ed-box-book" data-ed="book"><h4>Your book</h4><p><b>${esc(b.title)}</b> by ${esc(b.author)}</p><p class="ed-more">Pick up where you left off →</p></div>` : '',
+      goalOn() ? `<div class="ed-box ed-box-goal"><h4>Your reading</h4><p class="ed-big">${streak()}</p><p>${streak() === 1 ? 'day' : 'days'} in a row · goal ${goalCfg().mins} minutes a day</p></div>` : '',
+      jobs ? `<div class="ed-box ed-box-jobs" data-ed="jobs"><h4>Help Wanted</h4><p class="ed-big">${jobs}</p><p>new ${jobs === 1 ? 'listing' : 'listings'} →</p></div>` : '',
     ].join('');
-    return `<div class="edition">${head}
+    return `<div class="edition">${head}${faces}
       <div class="ed-front">
-        <div class="ed-main">${story(leadPick, 'ed-lead', 420)}
+        <div class="ed-main">${story(leadPick, `ed-lead${isWeb(leadPick.image) ? '' : ' no-pic'}`, 420)}
           ${seconds.length ? `<div class="ed-seconds">${seconds.map(i => story(i, 'ed-second', 200)).join('')}</div>` : ''}</div>
         ${news.length ? `<aside class="ed-news"><h3>From the newsroom</h3>${news.map(i => story(i, 'ed-item', 0)).join('')}</aside>` : ''}
       </div>
+      ${pictures}
       ${brief || boxes ? `<div class="ed-lower"><div class="ed-briefs"><h3 class="ed-kicker">In brief</h3><div class="ed-bcols">${brief}</div></div>${boxes ? `<aside class="ed-boxes">${boxes}</aside>` : ''}</div>` : ''}
     </div>`;
   }
