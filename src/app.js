@@ -4383,6 +4383,17 @@
   });
   // "Follow site" in the web window: open Add a feed with that page's address, ready to go
   listen('web-follow', e => { const u = String(e.payload || ''); if (!isWeb(u)) return; openAdd(); $('feedUrl').value = u; $('addForm').requestSubmit(); });
+  // "Open in The Reading Room" on a website (readingroom://subscribe?url=…) or a feed:// link: ask, then follow
+  async function followFromLink() {
+    const u = await invoke('take_open_link').catch(() => null);
+    if (!u || !isWeb(u)) return;
+    let host = u; try { host = new URL(u).hostname.replace(/^www\./, ''); } catch {}
+    showBanner(`<span><b>Follow ${esc(host)}?</b> A link asked to add <code>${esc(u)}</code> to your feeds.</span><button class="btn primary" id="linkFollowYes">Follow</button><button class="btn" id="linkFollowNo">Not now</button>`, false, 'confirm');
+    $('linkFollowYes').onclick = () => { hideBanner(); openAdd(); $('feedUrl').value = u; $('addForm').requestSubmit(); };
+    $('linkFollowNo').onclick = hideBanner;
+  }
+  listen('link-follow', followFromLink);
+  followFromLink();
   listen('menu-new-folder', openNewFolder);
   listen('menu-import', importOpml);
   listen('menu-export', exportOpml);

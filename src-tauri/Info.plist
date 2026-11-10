@@ -10,6 +10,19 @@
   <!-- where the Share menu extension and the widgets meet the app (TEAM_ID is filled in by the App Store build) -->
   <key>ReadingRoomKeychainGroup</key>
   <string>TEAM_ID.com.daviddaniels.readingroom.shared</string>
+  <!-- "Open in The Reading Room" buttons on websites (readingroom://subscribe?url=…) and feed:// links -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.daviddaniels.readingroom.subscribe</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>readingroom</string>
+        <string>feed</string>
+      </array>
+    </dict>
+  </array>
   <key>NSHumanReadableCopyright</key>
   <string>© 2026 David Daniels</string>
 </dict>

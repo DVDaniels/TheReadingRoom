@@ -2083,6 +2083,36 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 /// Bring the main window back: after it was closed (it's only hidden), or minimized to the Dock.
 #[cfg(desktop)]
+/// A feed address from a link outside the app, waiting for the window to pick it up:
+/// "Open in The Reading Room" buttons on websites (readingroom://subscribe?url=https://example.com/feed/)
+/// and plain feed:// links. The window asks before following anything.
+#[derive(Default)]
+pub struct PendingLink(Mutex<Option<String>>);
+
+/// The http(s) feed address inside a readingroom:// or feed: link, or None.
+fn feed_from_open_link(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let lower = raw.to_ascii_lowercase();
+    let candidate = if lower.starts_with("readingroom:") {
+        let u = url::Url::parse(raw).ok()?;
+        let found = u.query_pairs().find(|(k, _)| k == "url" || k == "feed").map(|(_, v)| v.into_owned());
+        found?
+    } else if lower.starts_with("feed:") {
+        let rest = raw[5..].trim_start_matches('/');
+        let rl = rest.to_ascii_lowercase();
+        if rl.starts_with("http:") || rl.starts_with("https:") { rest.to_string() } else { format!("https://{rest}") }
+    } else {
+        return None;
+    };
+    let u = url::Url::parse(candidate.trim()).ok()?;
+    if matches!(u.scheme(), "http" | "https") && u.host_str().is_some() { Some(u.to_string()) } else { None }
+}
+
+#[tauri::command]
+fn take_open_link(state: tauri::State<PendingLink>) -> Option<String> {
+    state.0.lock().ok().and_then(|mut g| g.take())
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -2125,6 +2155,7 @@ pub fn run() {
             let handle = app.handle().clone();
             let conn = open_database(&handle)?;
             reopen_sync_folder(&conn);
+            app.manage(PendingLink::default());
             app.manage::<Shared>(Arc::new(AppState {
                 db: Mutex::new(conn),
                 refreshing: AtomicBool::new(false),
@@ -2315,16 +2346,31 @@ pub fn run() {
             list_keep,
             list_pending,
             list_unfollow,
-            save_text
+            save_text,
+            take_open_link
         ])
         .build(tauri::generate_context!())
         .expect("error while starting The Reading Room")
         .run(|app, event| {
+            // readingroom:// and feed:// links (Mac and iPhone): keep the feed for the window, then tell it
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                for u in urls {
+                    if let Some(feed) = feed_from_open_link(u.as_str()) {
+                        if let Some(p) = app.try_state::<PendingLink>() {
+                            if let Ok(mut g) = p.0.lock() { *g = Some(feed); }
+                        }
+                        let _ = app.emit_to("main", "link-follow", ());
+                        #[cfg(target_os = "macos")]
+                        show_main(app);
+                    }
+                }
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 show_main(app);
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             let _ = (app, event);
         });
 }
