@@ -804,6 +804,8 @@ html:not(.ios) .ios-only { display: none !important; }
 .c-net { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .c-net svg { color: var(--accent); }
 .c-net small { color: var(--muted); }
+.n-x { margin-top: 10px; }
+.n-x .x-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--ink); color: var(--bg); font: 700 12px/1 -apple-system, sans-serif; }
 .c-count { margin-left: auto; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
 .c-count.over { color: var(--danger); }
 .t-replies { display: flex; flex-direction: column; }

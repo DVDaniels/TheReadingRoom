@@ -20,4 +20,7 @@ Stories from sites that usually need a subscription (and newsletter posts for pa
 • Open one of those feeds and press "I subscribe to this site": the lock goes away for that site.
 • Try "Free to read" next to All and Unread to hide posts that need a subscription.
 
+NOTES TO X
+When you post a note, tick "Then open X with a copy". After the note posts, X opens with your words and the link to your note; press Post there. It's free and needs no X setup in the app.
+
 Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.

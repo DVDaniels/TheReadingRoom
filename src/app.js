@@ -2601,9 +2601,11 @@
         <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: without a title, its first words are used. It goes on your Notes page and in its feed.</small></span></label>
       ${nets.length ? `<p class="n-also" id="nAlso">Also share a copy that links back to it</p>
       <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}" checked>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
+      <label class="c-net n-x"><input type="checkbox" id="nX"${store.get('noteX') === '1' ? ' checked' : ''}><span class="x-mark" aria-hidden="true">X</span>Then open X with a copy <small>you press Post there</small></label>
       <p class="acct-note" id="nNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Cancel</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
-    const text = $('nText'), boxes = () => [...el.querySelectorAll('.c-net input:checked')].map(x => x.value);
+    const text = $('nText'), boxes = () => [...el.querySelectorAll('.c-net input:checked:not(#nX)')].map(x => x.value);
+    $('nX').onchange = () => store.set('noteX', $('nX').checked ? '1' : '');
     const toSite = () => $('nSite').checked;
     const link = () => it ? it.link : ($('nLink').hidden ? '' : $('nLink').value.trim());
     const count = () => {
@@ -2614,7 +2616,7 @@
       $('nRoom').classList.toggle('over', !toSite() && over);
       $('nAlso').textContent = toSite() ? 'Also share a copy that links back to it' : 'Post only to';
       $('nDraft').hidden = !toSite();
-      $('nPost').disabled = (!toSite() && !picks.length) || (!toSite() && over) || (!text.value.trim() && !photo);
+      $('nPost').disabled = (!toSite() && !picks.length && !$('nX').checked) || (!toSite() && over) || (!text.value.trim() && !photo);
     };
     if (!nets.length) $('nAlso')?.remove();
     const also = $('nAlso'); if (!also) { const p = document.createElement('p'); p.id = 'nAlso'; p.hidden = true; el.querySelector('.n-home').after(p); }
@@ -2654,6 +2656,9 @@
           warned = res.filter(r => !r.error && r.warning).map(r => `${NET[r.network]}: ${r.warning}`);
         }
         if (it) store.set('shared:' + it.id, '1');
+        // X: free, because X's own compose window does the posting and you press Post (no API, no charge)
+        const toX = !draft && $('nX').checked && (home || words || link());
+        if (toX) await openXCopy(words || $('nTitle').value.trim(), home || link());
         const where = [home ? wp.site.replace(/^https?:\/\//, '') : '', ...shared].filter(Boolean);
         if (bad.length) {
           say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}${warned.length ? ' ' + warned.join(' ') : ''}`, true);
@@ -2662,13 +2667,22 @@
         if (warned.length) { say(`Posted to ${where.join(', ')}. ${warned.join(' ')}`, true); $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return; }
         el.hidden = true;
         const hostName = wp.site.replace(/^https?:\/\//, '');
-        status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}` : `Posted to ${shared.join(' and ')}. Replies will show in Conversations.`);
+        const xNote = toX ? ' X is open with your copy: press Post there.' : '';
+        status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}${xNote}` : shared.length ? `Posted to ${shared.join(' and ')}. Replies will show in Conversations.${xNote}` : xNote.trim());
         if (shared.length) setTimeout(() => { loadConversations(true); if (S.view === 'talk') renderList(); }, 4000);
       } catch (err) { say(msg(err), true); $('nPost').disabled = $('nDraft').disabled = false; }
     };
     $('nPost').onclick = () => go(false);
     $('nDraft').onclick = () => go(true);
     text.focus(); count();
+  }
+  /** Open X's compose window with the note's words and its link. A link counts as 23 characters on X. */
+  async function openXCopy(words, url) {
+    const room = 280 - (url ? 24 : 0);
+    const chars = [...words.replace(/\s+/g, ' ').trim()];
+    const t = chars.length > room ? chars.slice(0, room - 1).join('').replace(/\s+\S*$/, '') + '…' : chars.join('');
+    const q = `text=${encodeURIComponent(t)}${url ? `&url=${encodeURIComponent(url)}` : ''}`;
+    try { await invoke('open_share', { url: `https://x.com/intent/post?${q}` }); } catch (e) { status(msg(e), true); }
   }
   function openCompose(it, prefer, all) {
     if (!anySocial()) { openAccounts(); return; }
