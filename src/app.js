@@ -2643,7 +2643,7 @@
       try {
         if (toSite()) {
           say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
-          const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft });
+          const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft, linkImage: it && isWeb(it.image) ? it.image : '', linkSite: it ? (srcLabel(it) || f?.title || '') : '' });
           if (draft) { el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
           home = r.url;
         }

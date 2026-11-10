@@ -1522,7 +1522,7 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
 /// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
 #[tauri::command]
-pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>) -> Result<SiteNote, String> {
     if text.trim().is_empty() && photo.is_empty() {
         return Err("Write something first.".into());
     }
@@ -1559,7 +1559,37 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
         html.push_str(&block);
     } else if link.starts_with("http") && embeddable(&link).is_none() {
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
-        html.push_str(&format!("\n<!-- wp:paragraph {{\"className\":\"note-link\"}} -->\n<p class=\"note-link\">→ <a href=\"{}\">{}</a></p>\n<!-- /wp:paragraph -->", html_escape::encode_double_quoted_attribute(&link), esc_html(&label)));
+        let site = link_site.unwrap_or_default().trim().to_string();
+        let pic_url = link_image.unwrap_or_default().trim().to_string();
+        // the post's own picture, copied to your Media Library (credited to its site), for a card and the featured image
+        let mut pic = (0i64, String::new());
+        if pic_url.starts_with("http") {
+            if let Some((bytes, kind)) = fetch_picture(&pic_url).await {
+                let ext = match kind.as_str() { "image/png" => "png", "image/webp" => "webp", "image/gif" => "gif", _ => "jpg" };
+                let name = format!("note-link-{}.{ext}", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+                let up = wp_auth(client().post(format!("{}/wp-json/wp/v2/media", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"))
+                    .header("Content-Type", kind)
+                    .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
+                    .body(bytes)
+                    .timeout(Duration::from_secs(90));
+                if let Ok(m) = call(up).await {
+                    let id = m["id"].as_i64().unwrap_or(0);
+                    if id > 0 {
+                        let credit = if site.is_empty() { label.clone() } else { site.clone() };
+                        let _ = wp(reqwest::Method::POST, &format!("/wp/v2/media/{id}"), Some(json!({
+                            "caption": format!("Photo: <a href=\"{}\">{}</a>", html_escape::encode_double_quoted_attribute(&link), esc_html(&credit)),
+                            "alt_text": format!("Photo from “{}”", label),
+                        }))).await;
+                    }
+                    pic = (id, st(&m, "source_url"));
+                }
+            }
+        }
+        html.push('\n');
+        html.push_str(&link_card(&link, &label, &site, &pic.1));
+        if media_id == 0 && pic.0 > 0 {
+            media_id = pic.0; // your own photo, if you added one, stays the featured image
+        }
     }
     // a title is optional: without one, the site shows the note's first words
     let title = title.unwrap_or_default().trim().to_string();
@@ -1569,6 +1599,39 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
     }
     let p = wp(reqwest::Method::POST, "/wp/v2/posts", Some(post)).await?;
     Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+}
+
+/// Download a post's picture to put on your site: an image under 10 MB, or nothing.
+async fn fetch_picture(url: &str) -> Option<(Vec<u8>, String)> {
+    let resp = client().get(url).timeout(Duration::from_secs(30)).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let kind = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if !matches!(kind.as_str(), "image/jpeg" | "image/jpg" | "image/png" | "image/webp" | "image/gif") {
+        return None;
+    }
+    let bytes = resp.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > 10_000_000 {
+        return None;
+    }
+    Some((bytes.to_vec(), if kind == "image/jpg" { "image/jpeg".into() } else { kind }))
+}
+
+/// A card for the post a note is about: its picture (if any), title and site, all one link to it. Marked up as
+/// a bookmark (u-bookmark-of h-cite), so sites that take Webmentions can show the note as a share of their post.
+fn link_card(link: &str, title: &str, site: &str, image: &str) -> String {
+    let href = html_escape::encode_double_quoted_attribute(link);
+    let pic = if image.is_empty() {
+        String::new()
+    } else {
+        format!("<img class=\"u-photo\" src=\"{}\" alt=\"\" style=\"display:block;width:100%;height:auto;margin:0;aspect-ratio:auto\">", html_escape::encode_double_quoted_attribute(image))
+    };
+    let from = if site.is_empty() { String::new() } else { format!("<span class=\"p-author h-card\" style=\"display:block;font-size:.85em;opacity:.7;margin-top:.2em\">{}</span>", esc_html(site)) };
+    format!(
+        "<!-- wp:html -->\n<a class=\"note-link note-card u-bookmark-of h-cite\" href=\"{href}\" style=\"display:block;border:1px solid rgba(128,128,128,.35);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit\">{pic}<span style=\"display:block;padding:.75em 1em\"><strong class=\"p-name\">→ {}</strong>{from}</span></a>\n<!-- /wp:html -->",
+        esc_html(title)
+    )
 }
 
 /// Shorten words to fit a network's limit with room for the link home, ending on a word.
