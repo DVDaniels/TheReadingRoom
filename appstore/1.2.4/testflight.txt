@@ -11,6 +11,9 @@ Sites can now offer an "Open in The Reading Room" button, and feed:// links open
 THEN OPEN X WITH A COPY
 When you post a note, a new tick box can open X's own post window with your words and the link, ready for you to post.
 
+NOTES SHOW THE POST'S PICTURE
+A note about a post (Share › Note on your site) now ends with a card: the post's picture, title and site, linking to it. The picture also becomes the note's featured image, unless you add your own photo. Try it on a post with a picture and one without.
+
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
 
 Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.
