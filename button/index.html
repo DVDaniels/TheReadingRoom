@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add a Follow button to your site: The Reading Room</title>
+  <meta name="description" content="Let your readers follow your site in The Reading Room with one tap. Make a button for your blog in a few seconds.">
+  <link rel="canonical" href="https://readingroomapp.com/button/">
+  <link rel="icon" href="../assets/img/icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <style>
+    .maker { max-width: 820px; }
+    .maker .lede { margin-top: 32px; }
+    .maker form { margin-top: 48px; }
+    .maker label { display: block; margin-bottom: 8px; font-size: 15px; font-weight: 500; }
+    .maker .hint { margin-top: 8px; font-size: 15px; }
+    .err { margin-top: 8px; font-size: 15px; color: #B42318; }
+    .result { margin-top: 56px; }
+    .result .rule-h2 { margin-bottom: 20px; }
+    .preview { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+    .preview img { width: 236px; height: 56px; }
+    .snippet { margin-top: 36px; }
+    .snippet h3 { margin-bottom: 4px; font-size: 18px; font-weight: 600; }
+    .snippet p { margin-bottom: 10px; }
+    .snippet textarea { flex: 1; min-width: 0; min-height: 88px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; }
+    .snippet .copy-row { align-items: flex-start; }
+    .how { margin-top: 72px; }
+    .how .rule-h2 { margin-bottom: 16px; }
+    .how h3 { margin-top: 24px; margin-bottom: 4px; font-size: 18px; font-weight: 600; }
+    .how code { font-family: var(--mono); font-size: 0.85em; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../assets/img/icon.png" alt="" width="32" height="32">The Reading Room</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="../">Home</a>
+        <a href="../lists/">Lists</a>
+        <a href="../beta/">Beta</a>
+        <a href="../support/">Support</a>
+      </nav>
+    </header>
+  </div>
+
+  <main class="page wrap">
+    <div class="maker">
+      <h1 class="display">Add a <span class="mark">Follow</span> button.</h1>
+      <p class="lede">Run a blog or a website? Give your readers a button that opens The Reading Room and offers to follow your site, with nothing to copy and paste. It’s free, and it doesn’t track anyone.</p>
+
+      <form id="form" novalidate>
+        <label for="addr">Your site or feed address</label>
+        <div class="copy-row">
+          <input id="addr" type="url" inputmode="url" autocomplete="url" placeholder="example.com or example.com/feed/" required>
+          <button class="button" type="submit">Make my button</button>
+        </div>
+        <p class="hint muted">Your home page works: the app finds your feed. If you have more than one feed, use the one you want people to follow.</p>
+        <p class="err" id="err" hidden>That doesn’t look like a web address. Try something like example.com.</p>
+      </form>
+
+      <section class="result" id="result" hidden>
+        <h2 class="rule-h2">Your button</h2>
+        <div class="preview">
+          <a id="previewLink" href="#"><img src="../assets/img/follow-badge.png" alt="Follow in The Reading Room" width="236" height="56"></a>
+          <span class="muted">Try it: it opens the follow page for your site.</span>
+        </div>
+
+        <div class="snippet">
+          <h3>The button</h3>
+          <p class="muted">Paste this where you want the button. On WordPress, use a <strong>Custom HTML</strong> block or a footer widget.</p>
+          <div class="copy-row"><textarea id="codeBadge" readonly rows="3" aria-label="Button code"></textarea><button class="button" type="button" data-copy="codeBadge">Copy</button></div>
+        </div>
+
+        <div class="snippet">
+          <h3>A text link</h3>
+          <p class="muted">If you’d rather have words than a button, in your own site’s style.</p>
+          <div class="copy-row"><textarea id="codeText" readonly rows="2" aria-label="Text link code"></textarea><button class="button" type="button" data-copy="codeText">Copy</button></div>
+        </div>
+
+        <div class="snippet">
+          <h3>Just the link</h3>
+          <p class="muted">For newsletters and sites that don’t take HTML: add a link or a button in your editor and paste this as its address.</p>
+          <div class="copy-row"><textarea id="codeLink" readonly rows="2" aria-label="Follow link"></textarea><button class="button" type="button" data-copy="codeLink">Copy</button></div>
+        </div>
+      </section>
+
+      <section class="how">
+        <h2 class="rule-h2">How it works</h2>
+        <h3>For your readers</h3>
+        <p class="muted">The button opens a page on readingroomapp.com for your site. With The Reading Room on their Mac, iPhone or iPad, they press <strong>Open in The Reading Room</strong> and the app asks whether to follow you. Nothing is added unless they say yes. Without the app, the page offers it free on the App Store, and gives your address to copy into any other reader. Opening sites from a link needs version 1.2.4 or later, <a href="../beta/">in the beta now</a>.</p>
+        <h3>Your privacy, and theirs</h3>
+        <p class="muted">The follow page has no cookies, no analytics and no ads, and loads nothing from other sites. It’s a plain page on readingroomapp.com, hosted by GitHub Pages, and your site’s address simply travels in the link. There’s nothing to sign up for and no list of who follows whom.</p>
+        <h3>Linking straight to the app</h3>
+        <p class="muted">If your readers already use The Reading Room, you can skip the page and link straight to the app with <code>readingroom://subscribe?url=</code> followed by your feed address. For visitors without the app, that link does nothing, so the button above is the better choice for most sites.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Made by <a href="https://daviddaniels.com">David Daniels</a></span>
+      <nav aria-label="Footer">
+        <a href="../privacy/">Privacy</a>
+        <a href="../support/">Support</a>
+        <a href="https://github.com/DVDaniels/TheReadingRoom">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var BASE = 'https://readingroomapp.com/follow/?url=';
+      var BADGE = 'https://readingroomapp.com/assets/img/follow-badge.png';
+      var $ = function (id) { return document.getElementById(id); };
+      var escAttr = function (s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); };
+
+      function clean(raw) {
+        raw = (raw || '').trim();
+        if (!raw) return null;
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) raw = 'https://' + raw;
+        try {
+          var u = new URL(raw);
+          if ((u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.indexOf('.') > 0) return u.href;
+        } catch (e) {}
+        return null;
+      }
+
+      $('form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var addr = clean($('addr').value);
+        $('err').hidden = !!addr;
+        if (!addr) { $('result').hidden = true; return; }
+        var link = BASE + encodeURIComponent(addr);
+        var href = escAttr(link);
+        $('previewLink').href = link;
+        $('codeBadge').value = '<a href="' + href + '"><img src="' + BADGE + '" alt="Follow in The Reading Room" width="236" height="56"></a>';
+        $('codeText').value = '<a href="' + href + '">Follow in The Reading Room</a>';
+        $('codeLink').value = link;
+        $('result').hidden = false;
+        $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+
+      document.querySelectorAll('[data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var field = $(btn.getAttribute('data-copy'));
+          var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 2000); };
+          if (navigator.clipboard) navigator.clipboard.writeText(field.value).then(done, function () { field.select(); });
+          else { field.select(); document.execCommand('copy'); done(); }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Follow in The Reading Room</title>
+  <meta name="description" content="Follow a site in The Reading Room, the RSS reader for Mac, iPhone and iPad.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="../assets/img/icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <style>
+    .follow { max-width: 640px; margin-inline: auto; text-align: center; }
+    .follow-icon { width: 96px; height: 96px; margin: 0 auto 28px; border-radius: 22px; }
+    .follow h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(40px, 6vw, 64px); line-height: 1.05; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+    .follow .lede { margin: 20px auto 0; }
+    .follow-address { margin-top: 16px; font-family: var(--mono); font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+    .follow-actions { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 36px; }
+    .follow-actions .button { min-height: 56px; padding: 0 28px; font-size: 18px; }
+    .follow-steps { margin-top: 56px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; text-align: left; }
+    .follow-steps h2 { margin-bottom: 8px; font-size: 18px; font-weight: 600; }
+    .follow-steps p + h2 { margin-top: 20px; }
+    .follow-steps .copy-row { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../assets/img/icon.png" alt="" width="32" height="32">The Reading Room</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="../">Home</a>
+        <a href="../lists/">Lists</a>
+        <a href="../beta/">Beta</a>
+        <a href="../support/">Support</a>
+      </nav>
+    </header>
+  </div>
+
+  <main class="page wrap">
+    <div class="follow" id="ok" hidden>
+      <img class="follow-icon" src="../assets/img/icon.png" alt="" width="96" height="96">
+      <h1>Follow <span id="host"></span></h1>
+      <p class="lede muted">Read every new post in The Reading Room, the RSS reader for Mac, iPhone and iPad. No account, no ads, no tracking.</p>
+      <p class="follow-address" id="address"></p>
+
+      <div class="follow-actions">
+        <a class="button" id="open" href="#">Open in The Reading Room</a>
+        <span class="muted">The app asks before it adds anything.</span>
+      </div>
+
+      <div class="follow-steps">
+        <h2>Don’t have the app yet?</h2>
+        <p class="muted">The Reading Room is free. <a href="https://apps.apple.com/us/app/id6828213191">Get it on the App Store</a> for your Mac, iPhone or iPad, then come back to this page and press <strong>Open in The Reading Room</strong>. Opening sites from a link needs version 1.2.4 or later, <a href="../beta/">in the beta now</a>.</p>
+        <h2>Use another reader?</h2>
+        <p class="muted">Copy this address and add it in your reader.</p>
+        <div class="copy-row">
+          <input id="copyField" type="text" readonly aria-label="Site address">
+          <button class="button" id="copyBtn" type="button">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="follow" id="bad" hidden>
+      <img class="follow-icon" src="../assets/img/icon.png" alt="" width="96" height="96">
+      <h1>This link is missing a site</h1>
+      <p class="lede muted">A follow link needs the address of a site or its feed. If you run a site, <a href="../button/">make your own button</a>.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Made by <a href="https://daviddaniels.com">David Daniels</a></span>
+      <nav aria-label="Footer">
+        <a href="../button/">Add a button to your site</a>
+        <a href="../privacy/">Privacy</a>
+        <a href="../support/">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // The address to follow comes from ?url= (or ?feed=). Only http and https addresses with a host are used.
+      var q = new URLSearchParams(location.search);
+      var raw = (q.get('url') || q.get('feed') || '').trim();
+      if (raw && !/^[a-z][a-z0-9+.-]*:/i.test(raw)) raw = 'https://' + raw;
+      var u = null;
+      try { u = new URL(raw); } catch (e) {}
+      if (!u || (u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) {
+        document.getElementById('bad').hidden = false;
+        return;
+      }
+      var addr = u.href;
+      var host = u.hostname.replace(/^www\./, '');
+      document.title = 'Follow ' + host + ' in The Reading Room';
+      document.getElementById('host').textContent = host;
+      document.getElementById('address').textContent = addr;
+      document.getElementById('open').href = 'readingroom://subscribe?url=' + encodeURIComponent(addr);
+      var field = document.getElementById('copyField');
+      field.value = addr;
+      document.getElementById('copyBtn').addEventListener('click', function () {
+        var btn = this;
+        var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 2000); };
+        if (navigator.clipboard) navigator.clipboard.writeText(addr).then(done, function () { field.select(); });
+        else { field.select(); document.execCommand('copy'); done(); }
+      });
+      document.getElementById('ok').hidden = false;
+    })();
+  </script>
+</body>
+</html>
