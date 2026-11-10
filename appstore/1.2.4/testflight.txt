@@ -14,6 +14,9 @@ When you post a note, a new tick box can open X's own post window with your word
 NOTES SHOW THE POST'S PICTURE
 A note about a post (Share › Note on your site) now ends with a card: the post's picture, title and site, linking to it. The picture also becomes the note's featured image, unless you add your own photo. Try it on a post with a picture and one without.
 
+A MORE VISUAL MORNING EDITION
+The Morning Edition has more pictures and colour: a row of the people in today's paper, pictures on more stories, an "In pictures" strip, and colour-coded In brief sections. Open it in light and dark mode, and tell us if anything looks off or a picture doesn't show.
+
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
 
 Anything odd, confusing or broken: tell us at readingroomapp.com/support or reply to the TestFlight email. Screenshots help a lot.
