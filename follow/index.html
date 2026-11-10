@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Follow in The Reading Room</title>
-  <meta name="description" content="Follow a site in The Reading Room, the RSS reader for Mac, iPhone and iPad.">
+  <title>Follow a site</title>
+  <meta name="description" content="Follow a site with RSS: its new posts come to you, in the reader you choose.">
   <meta name="robots" content="noindex">
   <link rel="icon" href="../assets/img/icon.png">
   <link rel="stylesheet" href="../assets/site.css">
@@ -39,19 +39,19 @@
     <div class="follow" id="ok" hidden>
       <img class="follow-icon" src="../assets/img/icon.png" alt="" width="96" height="96">
       <h1>Follow <span id="host"></span></h1>
-      <p class="lede muted">Read every new post in The Reading Room, the RSS reader for Mac, iPhone and iPad. No account, no ads, no tracking.</p>
+      <p class="lede muted">Following a site means its new posts come to you, in a reader app you choose. No account, no algorithm, nothing in between. It’s how the open web has always worked, through a free standard called RSS.</p>
       <p class="follow-address" id="address"></p>
 
       <div class="follow-actions">
         <a class="button" id="open" href="#">Open in The Reading Room</a>
-        <span class="muted">The app asks before it adds anything.</span>
+        <span class="muted">Already have The Reading Room? It asks before it adds anything.</span>
       </div>
 
       <div class="follow-steps">
-        <h2>Don’t have the app yet?</h2>
-        <p class="muted">The Reading Room is free. <a href="https://apps.apple.com/us/app/id6828213191">Get it on the App Store</a> for your Mac, iPhone or iPad, then come back to this page and press <strong>Open in The Reading Room</strong>. Opening sites from a link needs version 1.2.4 or later, <a href="../beta/">in the beta now</a>.</p>
-        <h2>Use another reader?</h2>
-        <p class="muted">Copy this address and add it in your reader.</p>
+        <h2>New to this? Start with a free reader.</h2>
+        <p class="muted">A reader is an app that gathers the sites you follow in one place, newest first. The Reading Room is one, free for Mac, iPhone and iPad: <a href="https://apps.apple.com/us/app/id6828213191">get it on the App Store</a>, then come back to this page and press <strong>Open in The Reading Room</strong>. (Opening sites from a link needs version 1.2.4 or later, <a href="../beta/">in the beta now</a>.) <a href="../support/#new">More about RSS</a>.</p>
+        <h2>Already use a reader?</h2>
+        <p class="muted">Any RSS reader works. Copy this address and add it in yours.</p>
         <div class="copy-row">
           <input id="copyField" type="text" readonly aria-label="Site address">
           <button class="button" id="copyBtn" type="button">Copy</button>
@@ -91,7 +91,7 @@
       }
       var addr = u.href;
       var host = u.hostname.replace(/^www\./, '');
-      document.title = 'Follow ' + host + ' in The Reading Room';
+      document.title = 'Follow ' + host;
       document.getElementById('host').textContent = host;
       document.getElementById('address').textContent = addr;
       document.getElementById('open').href = 'readingroom://subscribe?url=' + encodeURIComponent(addr);
