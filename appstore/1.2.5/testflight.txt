@@ -26,5 +26,6 @@ ALSO IN THIS BETA
 • Reads you: writers with you on their blogroll.
 • Alerts for replies, comments and mentions (switch in the You tab).
 • A clear Back button on a person's page (Esc on the Mac).
+• Fixed: your emails no longer show up on Today or in the Morning Edition. They stay in Email.
 
 Something not right? Send feedback from TestFlight or open an issue at github.com/DVDaniels/TheReadingRoom/issues.

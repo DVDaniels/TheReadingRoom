@@ -653,16 +653,16 @@
       return `<div class="brief-off"><button class="linkish" id="briefShow" type="button">Show today’s briefing</button></div>`;
     }
     const seenStory = new Set();
-    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i) && !isJobItem(i)).filter(i => {
+    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i) && !isJobItem(i) && !isEmailItem(i)).filter(i => {
       const k = storyKey(i);
       if (k.length < 16) return true;
       if (seenStory.has(k)) return false;
       seenStory.add(k); return true;
     });
-    const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i) && !isJobItem(i)).length : 0;
+    const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i) && !isJobItem(i) && !isEmailItem(i)).length : 0;
     // People first: unread posts from people you read in the last few days, one per person (not your own site)
     const mine = myFeed();
-    const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && isPerson(i.feed_id) && i.feed_id !== mine?.id && Date.now() - Date.parse(i.date) < 4 * DAY)
+    const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && i.feed_id !== mine?.id && Date.now() - Date.parse(i.date) < 4 * DAY)
       .sort((a, b) => b.date.localeCompare(a.date));
     const onePer = new Set(), people = peopleAll.filter(i => !onePer.has(i.feed_id) && onePer.add(i.feed_id));
     // The lead: a person's post with a picture from the last three days, otherwise the newest story with a picture
@@ -5827,7 +5827,7 @@
   function editionWindow() {
     const end = new Date(); if (end.getHours() < 6) end.setDate(end.getDate() - 1); end.setHours(6, 0, 0, 0);
     let start = end.getTime() - DAY, stop = end.getTime();
-    const ok = i => !isJobItem(i) && !(mutesApply('all') && isMuted(i)) && !isFolded(i, 'all');
+    const ok = i => !isJobItem(i) && !isEmailItem(i) && !(mutesApply('all') && isMuted(i)) && !isFolded(i, 'all');
     let list = S.items.filter(i => ok(i) && Date.parse(i.date) >= start && Date.parse(i.date) < stop);
     if (list.length < 6) {
       // a thin night (or the app was closed): the latest day of stories instead
