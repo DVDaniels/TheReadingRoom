@@ -2272,6 +2272,8 @@ pub fn run() {
             social::site_comments,
             social::site_like,
             social::social_like,
+            webmention::wm_counts,
+            webmention::wm_mentions,
             social::site_note,
             social::social_share_note,
             social::social_reply,

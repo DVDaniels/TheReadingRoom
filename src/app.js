@@ -2975,6 +2975,7 @@
           <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? '<span class="nb-tag you">You</span>' : ''}<span>replied</span><time>${esc(fmtWhen(i.date))}</time></div>
           ${short ? '' : `<button class="nb-title sm" data-open="${esc(i.id)}">${esc(headline(i))}</button>`}
           ${t ? `<p class="nb-text">${esc(t)}</p>` : ''}
+          ${reactionsHtml(i)}
           <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>${likeBtn(i)}`}</div>
           <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         </div></article>`;
@@ -2988,6 +2989,7 @@
         ${text ? `<p class="nb-text">${esc(text)}</p>` : ''}
         ${pic}
         ${sharesHtml(i, soc)}
+        ${reactionsHtml(i)}
         <div class="nb-acts">
           <button class="linkish" data-open="${esc(i.id)}">${short ? 'Open' : 'Read'}</button>
           ${mine ? (yours.length ? `<button class="linkish" data-talk="tab" data-tab="posts">${yourReplies ? `${yourReplies} ${yourReplies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} on ${[...new Set(yours.map(p => NET[p.network]))].join(' and ')}</button>`
@@ -3092,6 +3094,46 @@
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
     return opener + facesHtml + chips + body + end + connect;
   }
+  // ---- Reactions from other sites: likes, replies and reposts a post has received through webmention.io
+  // (sites that use it; the rest have none to show). Counts cached for six hours.
+  const WM = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem('wmc') || '{}'))); } catch { return new Map(); } })();
+  let wmWant = new Set(), wmBusy = false, wmTimer = 0;
+  function wmNeed(url) { const c = WM.get(url); if (!c || Date.now() - c.at > 6 * 3600e3) wmWant.add(url); return c; }
+  function wmLater() {
+    clearTimeout(wmTimer);
+    wmTimer = setTimeout(async () => {
+      if (wmBusy || !wmWant.size) return;
+      wmBusy = true;
+      const urls = [...wmWant].slice(0, 40); urls.forEach(u => wmWant.delete(u));
+      try {
+        const got = await invoke('wm_counts', { urls });
+        let any = false;
+        for (const c of got) { WM.set(c.url, { at: Date.now(), like: c.like, reply: c.reply, repost: c.repost, mention: c.mention }); any = any || c.like + c.reply + c.repost + c.mention > 0; }
+        // keep the cache small: newest 600
+        const keep = [...WM.entries()].sort((a, b) => b[1].at - a[1].at).slice(0, 600);
+        try { localStorage.setItem('wmc', JSON.stringify(Object.fromEntries(keep))); } catch {}
+        if (any && S.view === 'talk') renderList();
+      } catch {} finally { wmBusy = false; if (wmWant.size) wmLater(); }
+    }, 600);
+  }
+  function reactionsHtml(i) {
+    if (!isWeb(i.link) || isEmailItem(i) || isSocialFeed(feedById(i.feed_id))) return '';
+    const c = wmNeed(i.link); wmLater();
+    if (!c || !(c.like + c.reply + c.repost + c.mention)) return '';
+    const bits = [c.like && `${HEART}${c.like}`, c.reply && `${NB_TALK}${c.reply}`, c.repost && `${NB_SHARE}${c.repost}`, c.mention && `<span class="wm-m">@</span>${c.mention}`].filter(Boolean);
+    const open = SOC.wmOpen === i.id, list = SOC.wmList?.get(i.link);
+    return `<div class="nb-react"><button class="nb-react-b" data-talk="wmopen" data-id="${esc(i.id)}" aria-expanded="${open}" title="Reactions from other sites">${bits.join('<span class="sep"></span>')}</button>
+      ${open ? (list === undefined ? '<p class="note">Looking at who reacted…</p>' : list.err ? `<p class="note err">${esc(list.err)}</p>` : wmListHtml(list)) : ''}</div>`;
+  }
+  function wmListHtml(list) {
+    const likes = list.filter(r => r.kind === 'like' || r.kind === 'repost'), talk = list.filter(r => r.kind === 'reply' || r.kind === 'mention');
+    const face = r => `<span class="nb-av sm" style="--h:${hueFor(r.name || r.url)}">${esc((r.name || '?')[0].toUpperCase())}${isWeb(r.photo) ? `<img class="nb-face-img" src="${esc(r.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>`;
+    return `<div class="wm-list">
+      ${likes.length ? `<div class="wm-faces">${likes.slice(0, 16).map(r => `<button class="wm-face" data-talk="open" data-url="${esc(r.url)}" title="${esc(r.name || '')} ${r.kind === 'like' ? 'liked' : 'reposted'} it">${face(r)}</button>`).join('')}<span class="wm-who">${esc(likes.slice(0, 2).map(r => r.name).filter(Boolean).join(', '))}${likes.length > 2 ? ` and ${likes.length - 2} more` : ''}</span></div>` : ''}
+      ${talk.slice(0, 6).map(r => `<button class="wm-r" data-talk="open" data-url="${esc(r.url)}">${face(r)}<span><b>${esc(r.name || hostOfU(r.url))}</b> ${r.kind === 'reply' ? 'replied' : 'mentioned it'}${r.date ? ` · ${esc(fmtWhen(r.date))}` : ''}${r.text ? `<small>${esc(r.text.length > 220 ? r.text.slice(0, 210) + '…' : r.text)}</small>` : ''}</span></button>`).join('')}
+    </div>`;
+  }
+
   // ---- Like: on a blog post, a like from your own site (your Likes page, then a Webmention to theirs);
   // on Mastodon or Bluesky, that network's own like. Both remembered (synced) so the heart stays filled.
   const HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-9-9a4.6 4.6 0 0 1 8-4.3L12 8l1-1.3A4.6 4.6 0 0 1 21 11c-2 4.6-9 9-9 9z"/></svg>';
@@ -3639,6 +3681,13 @@
     if (k === 'nbrbox') { const it = item(b.dataset.id); if (it) nbReplyBox(b, it); return; }
     if (k === 'nblike') { const it = item(b.dataset.id); if (it) likePost(b, it); return; }
     if (k === 'notelike') { likeNote(b); return; }
+    if (k === 'wmopen') {
+      const it = item(b.dataset.id); if (!it) return;
+      if (SOC.wmOpen === it.id) { SOC.wmOpen = null; renderList(); return; }
+      SOC.wmOpen = it.id; SOC.wmList = SOC.wmList || new Map(); renderList();
+      if (!SOC.wmList.has(it.link)) invoke('wm_mentions', { url: it.link }).then(l => { SOC.wmList.set(it.link, l); }).catch(e => { SOC.wmList.set(it.link, { err: msg(e) }); }).finally(() => { if (S.view === 'talk') renderList(); });
+      return;
+    }
     if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
     if (k === 'whole') { const n = (SOC.conv?.replies || []).find(x => x.id === b.dataset.id); if (n) { SOC.whole.delete(convKey(n)); loadWhole(n); renderList(); } }
     if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
