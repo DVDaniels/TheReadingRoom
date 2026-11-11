@@ -462,6 +462,25 @@ async fn masto(method: reqwest::Method, path: &str, query: &[(&str, String)], bo
     })
 }
 
+/// One page of a Mastodon list, and the max_id for the next page (from the Link header), if there's more.
+async fn masto_page(path: &str, query: &[(&str, String)]) -> Result<(Value, Option<String>), String> {
+    let m = masto_saved()?;
+    let resp = client().get(format!("https://{}{path}", st(&m, "instance"))).query(query).bearer_auth(st(&m, "token"))
+        .timeout(Duration::from_secs(25)).send().await.map_err(|_| "Couldn't reach your Mastodon server.".to_string())?;
+    if !resp.status().is_success() { return Err(format!("Mastodon answered {}", resp.status().as_u16())); }
+    let next = resp.headers().get("link").and_then(|v| v.to_str().ok()).and_then(next_max_id);
+    let v = resp.json::<Value>().await.unwrap_or(Value::Null);
+    Ok((v, next))
+}
+
+/// The max_id in a Link header's rel="next" address.
+fn next_max_id(link: &str) -> Option<String> {
+    link.split(',').find(|p| p.contains("rel=\"next\""))
+        .and_then(|p| p.split(['<', '>']).nth(1))
+        .and_then(|u| url::Url::parse(u).ok())
+        .and_then(|u| u.query_pairs().find(|(k, _)| k == "max_id").map(|(_, v)| v.to_string()))
+}
+
 fn masto_person(a: &Value) -> Person {
     let acct = st(a, "acct");
     Person {
@@ -1201,7 +1220,7 @@ pub async fn social_following_blogs() -> Vec<FollowedBlog> {
     if secret_get("bluesky").is_some() {
         if let Ok(s) = bsky_session(false).await {
             let mut cursor = String::new();
-            for _ in 0..3 {
+            for _ in 0..10 {
                 let mut q = vec![("actor", s.did.clone()), ("limit", "100".to_string())];
                 if !cursor.is_empty() { q.push(("cursor", cursor.clone())); }
                 let Ok(v) = bsky(true, "app.bsky.graph.getFollows", &q, None).await else { break };
@@ -1216,11 +1235,17 @@ pub async fn social_following_blogs() -> Vec<FollowedBlog> {
     }
     if masto_saved().is_ok() {
         if let Ok(me) = masto(reqwest::Method::GET, "/api/v1/accounts/verify_credentials", &[], None).await {
-            if let Ok(v) = masto(reqwest::Method::GET, &format!("/api/v1/accounts/{}/following", st(&me, "id")), &[("limit", "80".into())], None).await {
+            let path = format!("/api/v1/accounts/{}/following", st(&me, "id"));
+            let mut max_id: Option<String> = None;
+            for _ in 0..13 {
+                let mut q = vec![("limit", "80".to_string())];
+                if let Some(m) = &max_id { q.push(("max_id", m.clone())); }
+                let Ok((v, next)) = masto_page(&path, &q).await else { break };
                 for a in v.as_array().cloned().unwrap_or_default() {
                     let blog = masto_blog(&a);
                     if !blog.is_empty() { out.push(FollowedBlog { network: "mastodon".into(), person: masto_person(&a), blog }); }
                 }
+                match next { Some(n) if Some(&n) != max_id.as_ref() => max_id = Some(n), _ => break }
             }
         }
     }
@@ -1429,6 +1454,104 @@ pub struct SiteComments {
     /// Comments waiting for you to approve them, and where to do that
     pub waiting: usize,
     pub admin: String,
+}
+
+/// A comment left on someone else's post, read from their site.
+#[derive(Serialize, Debug, Default, Clone, PartialEq)]
+pub struct PostComment {
+    pub id: String,
+    pub parent: String,
+    pub name: String,
+    pub url: String,
+    pub avatar: String,
+    pub text: String,
+    pub date: String,
+}
+
+#[derive(Serialize, Debug, Default)]
+pub struct PostComments {
+    pub comments: Vec<PostComment>,
+    /// Where to leave a comment on their site
+    pub page: String,
+    /// The site doesn't show its comments to apps (or has none we could find)
+    pub found: bool,
+}
+
+/// The post's WordPress API address (WordPress puts it in every post's head), or its comments feed.
+fn comment_sources(html: &str, base: &url::Url) -> (Option<String>, Option<String>) {
+    static LINK: OnceLock<regex::Regex> = OnceLock::new();
+    let re = LINK.get_or_init(|| regex::Regex::new(r#"(?is)<link\b[^>]*>"#).unwrap());
+    let attr = |tag: &str, name: &str| -> String {
+        let r = regex::Regex::new(&format!(r#"(?is)\b{name}\s*=\s*["']([^"']*)["']"#)).unwrap();
+        r.captures(tag).map(|c| html_escape::decode_html_entities(&c[1]).to_string()).unwrap_or_default()
+    };
+    let (mut api, mut feed) = (None, None);
+    for m in re.find_iter(html) {
+        let t = m.as_str();
+        if !attr(t, "rel").split_whitespace().any(|r| r.eq_ignore_ascii_case("alternate")) { continue }
+        let (kind, href) = (attr(t, "type").to_lowercase(), attr(t, "href"));
+        let Ok(u) = base.join(&href) else { continue };
+        if kind == "application/json" && u.path().contains("/wp/v2/posts/") && api.is_none() { api = Some(u.to_string()); }
+        if kind.contains("rss") || kind.contains("atom") {
+            let title = attr(t, "title").to_lowercase();
+            if (title.contains("comment") || u.path().contains("/comments/feed") || u.path().ends_with(&format!("{}feed/", base.path()))) && feed.is_none() && u.path() != "/comments/feed/" {
+                feed = Some(u.to_string());
+            }
+        }
+    }
+    (api, feed)
+}
+
+/// Comments people left on a post: through WordPress's own API when the site has it, or its comments feed.
+#[tauri::command]
+pub async fn post_comments(url: String) -> Result<PostComments, String> {
+    let base = url::Url::parse(&url).map_err(|_| "That post has no web address.".to_string())?;
+    let mut out = PostComments { page: format!("{}#respond", url.split('#').next().unwrap_or(&url)), ..Default::default() };
+    let Ok(Ok((body, final_url, _))) = tokio::time::timeout(Duration::from_secs(15), crate::feeds::get(client(), &url)).await else {
+        return Err("Couldn't reach their site.".into());
+    };
+    let page_base = url::Url::parse(&final_url).unwrap_or(base);
+    let (api, feed) = comment_sources(&String::from_utf8_lossy(&body), &page_base);
+    if let Some(api) = api {
+        if let Some(id) = api.rsplit('/').find(|s| !s.is_empty()).and_then(|s| s.split('?').next()).filter(|s| s.chars().all(|c| c.is_ascii_digit())) {
+            let root = api.split("/wp/v2/").next().unwrap_or("").to_string();
+            let q = format!("{root}/wp/v2/comments?post={id}&per_page=100&order=asc&_fields=id,parent,author_name,author_url,author_avatar_urls,date_gmt,content,type");
+            if let Ok(v) = call(client().get(&q)).await {
+                if let Some(list) = v.as_array() {
+                    out.found = true;
+                    for c in list {
+                        let avatar = ["96", "48", "24"].iter().map(|k| st(&c["author_avatar_urls"], k)).find(|u| !u.is_empty()).unwrap_or_default();
+                        out.comments.push(PostComment {
+                            id: c["id"].to_string(), parent: c["parent"].as_i64().filter(|p| *p > 0).map(|p| p.to_string()).unwrap_or_default(),
+                            name: st(c, "author_name"), url: st(c, "author_url"), avatar,
+                            text: html_text(&st(&c["content"], "rendered")).trim().to_string(),
+                            date: format!("{}Z", st(c, "date_gmt").trim_end_matches('Z')),
+                        });
+                    }
+                    return Ok(out);
+                }
+            }
+        }
+    }
+    if let Some(feed) = feed {
+        if let Ok(Ok((body, final_url, _))) = tokio::time::timeout(Duration::from_secs(15), crate::feeds::get(client(), &feed)).await {
+            if let Ok(f) = feed_rs::parser::Builder::new().base_uri(Some(&final_url)).build().parse(&body[..]) {
+                out.found = true;
+                let mut list: Vec<PostComment> = f.entries.iter().map(|e| PostComment {
+                    id: e.id.clone(),
+                    parent: String::new(),
+                    name: e.authors.first().map(|a| a.name.clone()).or_else(|| e.title.as_ref().map(|t| t.content.trim_start_matches("By: ").to_string())).unwrap_or_default(),
+                    url: e.authors.first().and_then(|a| a.uri.clone()).unwrap_or_default(),
+                    avatar: String::new(),
+                    text: html_text(&e.content.as_ref().and_then(|c| c.body.clone()).or_else(|| e.summary.as_ref().map(|s| s.content.clone())).unwrap_or_default()).trim().to_string(),
+                    date: e.published.or(e.updated).map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string()).unwrap_or_default(),
+                }).collect();
+                list.sort_by(|a, b| a.date.cmp(&b.date));
+                out.comments = list;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// What one writer likes: the posts their site marks as liked or bookmarked (h-entry u-like-of / u-bookmark-of),
@@ -1820,8 +1943,9 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
 /// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
 #[tauri::command]
-pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>) -> Result<SiteNote, String> {
-    if text.trim().is_empty() && photo.is_empty() {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>) -> Result<SiteNote, String> {
+    let repost = repost.unwrap_or(false) && link.starts_with("http");
+    if text.trim().is_empty() && photo.is_empty() && !repost {
         return Err("Write something first.".into());
     }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
@@ -1884,7 +2008,7 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
             }
         }
         html.push('\n');
-        html.push_str(&link_card(&link, &label, &site, &pic.1));
+        html.push_str(&link_card(&link, &label, &site, &pic.1, repost));
         if media_id == 0 && pic.0 > 0 {
             media_id = pic.0; // your own photo, if you added one, stays the featured image
         }
@@ -1918,8 +2042,10 @@ async fn fetch_picture(url: &str) -> Option<(Vec<u8>, String)> {
 
 /// A card for the post a note is about: its picture (if any), title and site, all one link to it. Marked up as
 /// a bookmark (u-bookmark-of h-cite), so sites that take Webmentions can show the note as a share of their post.
-fn link_card(link: &str, title: &str, site: &str, image: &str) -> String {
+/// A repost is the same card marked u-repost-of, with a "Reposted" line, so the post's site can show it as one.
+fn link_card(link: &str, title: &str, site: &str, image: &str, repost: bool) -> String {
     let href = html_escape::encode_double_quoted_attribute(link);
+    let (kind, lead) = if repost { ("u-repost-of", "<span style=\"display:block;font-size:.8em;opacity:.7;margin-bottom:.2em\">↻ Reposted</span>") } else { ("u-bookmark-of", "") };
     let pic = if image.is_empty() {
         String::new()
     } else {
@@ -1927,7 +2053,7 @@ fn link_card(link: &str, title: &str, site: &str, image: &str) -> String {
     };
     let from = if site.is_empty() { String::new() } else { format!("<span class=\"p-author h-card\" style=\"display:block;font-size:.85em;opacity:.7;margin-top:.2em\">{}</span>", esc_html(site)) };
     format!(
-        "<!-- wp:html -->\n<a class=\"note-link note-card u-bookmark-of h-cite\" href=\"{href}\" style=\"display:block;border:1px solid rgba(128,128,128,.35);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit\">{pic}<span style=\"display:block;padding:.75em 1em\"><strong class=\"p-name\">→ {}</strong>{from}</span></a>\n<!-- /wp:html -->",
+        "<!-- wp:html -->\n<a class=\"note-link note-card {kind} h-cite\" href=\"{href}\" style=\"display:block;border:1px solid rgba(128,128,128,.35);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit\">{pic}<span style=\"display:block;padding:.75em 1em\">{lead}<strong class=\"p-name\">→ {}</strong>{from}</span></a>\n<!-- /wp:html -->",
         esc_html(title)
     )
 }
@@ -2131,6 +2257,32 @@ mod likes_tests {
 
 #[cfg(test)]
 mod their_likes_tests {
+    #[test]
+    fn finds_a_posts_comments() {
+        let base = url::Url::parse("https://b.blog/2026/11/hello/").unwrap();
+        let html = r#"<head><link rel="alternate" type="application/rss+xml" title="B &raquo; Feed" href="https://b.blog/feed/">
+            <link rel="alternate" type="application/rss+xml" title="B &raquo; Comments Feed" href="https://b.blog/comments/feed/">
+            <link rel="alternate" type="application/rss+xml" title="B &raquo; Hello Comments Feed" href="https://b.blog/2026/11/hello/feed/">
+            <link rel="alternate" title="JSON" type="application/json" href="https://b.blog/wp-json/wp/v2/posts/412"></head>"#;
+        let (api, feed) = super::comment_sources(html, &base);
+        assert_eq!(api.as_deref(), Some("https://b.blog/wp-json/wp/v2/posts/412"));
+        assert_eq!(feed.as_deref(), Some("https://b.blog/2026/11/hello/feed/"));
+    }
+
+    #[test]
+    fn mastodon_next_page() {
+        let l = r#"<https://m.s/api/v1/accounts/1/following?limit=80&max_id=7731>; rel="next", <https://m.s/api/v1/accounts/1/following?limit=80&since_id=9>; rel="prev""#;
+        assert_eq!(super::next_max_id(l).as_deref(), Some("7731"));
+        assert_eq!(super::next_max_id(r#"<https://m.s/x?since_id=9>; rel="prev""#), None);
+    }
+
+    #[test]
+    fn repost_card_is_marked_as_a_repost() {
+        let c = super::link_card("https://b.blog/p/", "A post", "B", "", true);
+        assert!(c.contains("u-repost-of h-cite") && c.contains("Reposted"));
+        assert!(super::link_card("https://b.blog/p/", "A post", "B", "", false).contains("u-bookmark-of"));
+    }
+
     #[test]
     fn quotes_in_notes() {
         let h = super::note_html("> They said this.\n> And this.\n\nMy answer.");

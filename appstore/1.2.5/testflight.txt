@@ -1,33 +1,30 @@
-Thanks for testing The Reading Room! New in this build: more ways to keep up with the people you read in Conversations.
+Thanks for testing The Reading Room! New in this build: more ways to find, follow and talk with the people you read in Conversations.
 
-CLOSE FRIENDS
-• Open someone's page (tap their face or name) and press Close friend. Their new posts now sit at the top of the Neighborhood in a Close friends box, and their face comes first in the row of faces.
-• You get an alert when a close friend posts. The switch for it is under the Close friend button.
-• Press Close friend again to stop pinning them. Check it stays the same on your other devices.
+BRING YOUR PEOPLE OVER
+• With Mastodon or Bluesky connected, the Neighborhood offers the blogs of the people you follow there. Try Follow all, or Choose to pick.
 
-LIKED BY
-• Some writers keep a Likes or Bookmarks page on their own site. The app reads those now, so a post can say "Liked by (name)". Give it a minute the first time.
-• Further down the Neighborhood, "Liked by the people you read" shows posts they liked from blogs you don't follow yet. Try Follow.
+THEIR BLOGROLL
+• On someone's page (tap their face or name), Their blogroll lists every site they recommend, with Follow, or Follow all.
 
-QUOTE IN A REPLY
-• Select a few words in a post (in the reader or on a card in the Neighborhood). A "Quote in a reply" button appears at the bottom. Press it: the reply box opens with the words quoted.
-• Post it on your site and check the quote shows as a quote, with your words under it.
+REPOST
+• Repost next to Like puts the post on your site as a short note with its picture card. Add a few words if you like. Check it on your site, and that the button turns into Reposted.
 
-NEW FILTERS
-• At the top of the Neighborhood: Photos (a grid of pictures), Long reads, and One from each (just the newest post from each person). On iPhone the row scrolls sideways.
+COMMENTS
+• Tap "12 comments" on a post to read the comments right in the app, replies tucked under the comment they answer. Join in on their site opens their comment form.
 
-READS YOU
-• A "Reads you" tag shows on posts by writers who have you on their blogroll, and their page says so too. It uses Discover's last look at everyone's blogrolls, so open Discover first if you don't see it.
+GROUPS
+• On someone's page, press Groups to put them in a group of your own, like Photographers. Your groups show as chips at the top of the Neighborhood. Rename or delete from the bar that appears. Check groups reach your other devices.
 
-COMMENT COUNTS
-• Posts show "12 comments" when the blog's feed says how many there are. Tap it to read them on their site. Older posts get a count at the next refresh.
+TOPICS
+• Posts show the topics their writers gave them. Tap one to see everyone's posts on it, or Mute this topic. The Topics chip lists this fortnight's topics. Tags appear on new posts after a refresh.
 
-ALERTS FOR REPLIES
-• With your site, Mastodon or Bluesky connected, you get an alert when someone replies, comments, mentions your blog or links to you. The first time, nothing old is announced, only what's new after that.
-• The switch is at the top of the You tab (Alerts: on / off).
-
-ALSO FIXED
-• A person's page has a clear Back button now. It takes you back to where you were, at the same spot. On the Mac, Esc works too.
-• The row of faces at the top of the Neighborhood no longer disappears when you come back with nothing new.
+ALSO IN THIS BETA
+• Close friends: pin someone's new posts to the top of the Neighborhood, with an alert when they post.
+• Liked by: posts the people you read liked on their own sites.
+• Quote in a reply: select words in a post, then Quote in a reply.
+• Filters: Photos, Long reads, One from each.
+• Reads you: writers with you on their blogroll.
+• Alerts for replies, comments and mentions (switch in the You tab).
+• A clear Back button on a person's page (Esc on the Mac).
 
 Something not right? Send feedback from TestFlight or open an issue at github.com/DVDaniels/TheReadingRoom/issues.

@@ -696,6 +696,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
                 paid: false,
                 links: String::new(),
                 comments: -1,
+            tags: String::new(),
             })
             .collect();
         let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
@@ -1844,6 +1845,14 @@ async fn smallweb_feed(state: State<'_, Shared>) -> Result<Vec<topics::SmallPost
     topics::smallweb(&state.client).await.map(|p| p.into_iter().take(30).collect())
 }
 
+/// Everyone on one writer's blogroll, for their page in Conversations.
+#[tauri::command]
+async fn person_blogroll(state: State<'_, Shared>, site: String) -> Result<Vec<discover::Entry>, String> {
+    tokio::time::timeout(std::time::Duration::from_secs(45), discover::blogroll(&state.client, &site))
+        .await
+        .map_err(|_| "Their site took too long to answer.".to_string())
+}
+
 #[tauri::command]
 async fn discover_scan(app: AppHandle, state: State<'_, Shared>) -> Result<Option<discover::Report>, String> {
     if state.discovering.swap(true, Ordering::SeqCst) {
@@ -2272,6 +2281,8 @@ pub fn run() {
             social::site_avatar,
             social::site_comments,
             social::people_likes,
+            social::post_comments,
+            person_blogroll,
             social::site_like,
             social::social_like,
             webmention::wm_counts,

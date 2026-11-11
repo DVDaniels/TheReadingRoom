@@ -37,6 +37,8 @@ pub struct ParsedItem {
     pub links: String,
     /// How many comments the post has, when the feed says (slash:comments, thr:total); -1 when it doesn't
     pub comments: i64,
+    /// The post's own topics (RSS/Atom categories, JSON Feed tags), tab-separated, up to 8
+    pub tags: String,
 }
 
 /// Comment counts feeds give for each post (WordPress's slash:comments, Atom's thr:total or thr:count),
@@ -346,10 +348,26 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
             let comments = [&raw_link, &link, &e.id].iter().find_map(|k| counts.get(k.as_str()).copied()).unwrap_or(-1);
-            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments }
+            let tags = story_tags(e.categories.iter().map(|c| c.label.clone().unwrap_or_else(|| c.term.clone())));
+            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments, tags }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
+}
+
+/// A post's own topics, tidied: at most 8, each once (any case), no "Uncategorized" or catch-alls, tab-separated.
+pub fn story_tags(raw: impl Iterator<Item = String>) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+    for t in raw {
+        let t = plain(&t, 60).replace(['\t', '\n'], " ").trim().trim_start_matches('#').trim().to_string();
+        let k = t.to_lowercase();
+        if t.is_empty() || t.chars().count() > 40 || t.starts_with("http") { continue }
+        if ["uncategorized", "uncategorised", "general", "blog", "posts", "post", "misc", "other", "notes", "note", "articles", "article", "news"].contains(&k.as_str()) { continue }
+        if seen.insert(k) { out.push(t) }
+        if out.len() == 8 { break }
+    }
+    out.join("\t")
 }
 
 /// The outside page a post links to: the first link that isn't a mention, a hashtag, or the post's own site.
@@ -524,6 +542,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             paid: p.paid,
             links: p.links.clone(),
             comments: p.comments,
+            tags: p.tags.clone(),
         })
         .collect()
 }
@@ -559,6 +578,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn reads_post_topics() {
+        let rss = br#"<rss version="2.0"><channel><title>B</title><link>https://b.blog/</link>
+            <item><title>One</title><link>https://b.blog/one/</link><category>Photography</category><category>Uncategorized</category><category><![CDATA[Travel &amp; Food]]></category><category>photography</category></item>
+            <item><title>Two</title><link>https://b.blog/two/</link></item></channel></rss>"#;
+        let f = super::parse(rss, "https://b.blog/feed").unwrap();
+        assert_eq!(f.items[0].tags, "Photography\tTravel & Food");
+        assert_eq!(f.items[1].tags, "");
+    }
 
     #[test]
     fn finds_the_pages_a_post_links_to() {

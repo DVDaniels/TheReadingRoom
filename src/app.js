@@ -3003,7 +3003,8 @@
           ${t ? `<p class="nb-text">${esc(t)}</p>` : ''}
           ${likedByHtml(i)}
           ${reactionsHtml(i)}
-          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>${likeBtn(i)}`}${commentsBtn(i)}</div>
+          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>${likeBtn(i)}${repostBtn(i)}`}${commentsBtn(i)}</div>
+          ${cmtsHtml(i)}
           <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         </div></article>`;
     }
@@ -3015,6 +3016,7 @@
         ${short ? '' : `<button class="nb-title" data-open="${esc(i.id)}">${esc(headline(i))}</button>`}
         ${text ? `<p class="nb-text">${esc(text)}</p>` : ''}
         ${pic}
+        ${topicsHtml(i)}
         ${sharesHtml(i, soc)}
         ${likedByHtml(i)}
         ${reactionsHtml(i)}
@@ -3024,12 +3026,14 @@
               : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
             : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>
           ${likeBtn(i)}
+          ${repostBtn(i)}
           ${SOC.moreOpen === i.id ? `<button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
           <button class="linkish" data-talk="nbsave" data-id="${esc(i.id)}">${i.saved ? 'Saved ✓' : 'Read later'}</button>
           <button class="linkish" data-talk="open" data-url="${esc(i.link)}">Open their site</button>`
             : `<button class="linkish nb-dots" data-talk="nbdots" data-id="${esc(i.id)}" aria-label="More: Share, Read later, Open their site" title="More">⋯</button>`}`}
           ${commentsBtn(i)}
         </div>
+        ${cmtsHtml(i)}
         <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         ${answered}
       </div></article>`;
@@ -3079,6 +3083,193 @@
     S.prefs.friends = on ? [...new Set([...list, k])] : list.filter(x => x !== k);
     savePrefs(); PV++; renderList();
     status(on ? `${f.title} is a close friend. Their new posts sit at the top of the Neighborhood${S.prefs.friendAlerts === false ? '' : ', and you get an alert when they post'}.` : `${f.title} is no longer pinned.`);
+  }
+  // ---- Groups: your own circles of people (Photographers, Tech…), as chips in the Neighborhood. Kept like close
+  // friends, by each person's blog feed address (synced).
+  const groupsOf = () => S.prefs.groups || [];
+  const inGroup = (g, f) => !!f && (g.people || []).includes(friendKey(f));
+  const groupIds = g => new Set(S.feeds.filter(f => inGroup(g, f)).map(f => (feedById(personId(f.id)) || f).id));
+  function saveGroups(list) { S.prefs.groups = list; savePrefs(); PV++; }
+  function groupMenu(f) {
+    const paint = () => {
+      const el = sheet('groupPanel', `<h2>Groups for ${esc(f.title)}</h2>
+        <p>Read one circle of people at a time. Groups show up as chips at the top of the Neighborhood.</p>
+        <div class="gp-list">${groupsOf().map(g => `<label class="gp-row"><input type="checkbox" data-g="${esc(g.id)}"${inGroup(g, f) ? ' checked' : ''}><span>${esc(g.name)}</span><small>${groupIds(g).size} ${groupIds(g).size === 1 ? 'person' : 'people'}</small></label>`).join('') || '<p class="note">No groups yet. Make your first one below.</p>'}</div>
+        <form class="gp-new"><input id="gpName" maxlength="30" placeholder="New group, like Photographers" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+        <div class="row sheet-foot"><button class="btn primary" type="button" id="gpDone">Done</button></div>`, `Groups for ${f.title}`);
+      el.querySelectorAll('[data-g]').forEach(c => c.onchange = () => {
+        const k = friendKey(f);
+        saveGroups(groupsOf().map(g => g.id !== c.dataset.g ? g : { ...g, people: c.checked ? [...new Set([...(g.people || []), k])] : (g.people || []).filter(x => x !== k) }));
+        renderList(); paint();
+      });
+      el.querySelector('.gp-new').onsubmit = e => {
+        e.preventDefault(); const name = $('gpName').value.trim(); if (!name) return;
+        if (groupsOf().some(g => g.name.toLowerCase() === name.toLowerCase())) { status(`There’s already a group called ${name}.`); return; }
+        saveGroups([...groupsOf(), { id: 'g' + Date.now().toString(36), name, people: [friendKey(f)] }]);
+        renderList(); paint(); status(`${f.title} is in ${name}.`);
+      };
+      $('gpDone').onclick = () => { el.hidden = true; };
+    };
+    paint();
+  }
+  function groupEdit(g) {
+    const el = sheet('groupPanel', `<h2>${esc(g.name)}</h2>
+      <form class="gp-new" id="gpRename"><input id="gpName" maxlength="30" value="${esc(g.name)}" autocomplete="off"><button class="btn" type="submit">Rename</button></form>
+      <p>${groupIds(g).size} ${groupIds(g).size === 1 ? 'person' : 'people'}. Add or take people out from their page (tap a face, then Groups).</p>
+      <div class="row sheet-foot"><button class="btn danger" type="button" id="gpDel">Delete group</button><button class="btn primary" type="button" id="gpDone">Done</button></div>`, g.name);
+    $('gpRename').onsubmit = e => { e.preventDefault(); const name = $('gpName').value.trim(); if (!name) return; saveGroups(groupsOf().map(x => x.id === g.id ? { ...x, name } : x)); el.hidden = true; renderList(); };
+    $('gpDel').onclick = () => { saveGroups(groupsOf().filter(x => x.id !== g.id)); if (SOC.nbGroup === g.id) SOC.nbGroup = ''; el.hidden = true; renderList(); status(`${g.name} is gone. The people in it are still in your feeds.`); };
+    $('gpDone').onclick = () => { el.hidden = true; };
+  }
+
+  // ---- Topics: the categories writers give their own posts. Tap one to read everyone on it; mute the ones you don't want.
+  const tagsOf = i => (i && i.tags ? i.tags.split('\t').filter(Boolean) : []);
+  const mutedTopics = () => new Set((S.prefs.mutedTopics || []).map(t => t.toLowerCase()));
+  const topicMuted = i => { const m = mutedTopics(); return m.size > 0 && tagsOf(i).some(t => m.has(t.toLowerCase())); };
+  const hasTopic = (i, t) => tagsOf(i).some(x => x.toLowerCase() === t);
+  function topicsHtml(i) {
+    const tags = tagsOf(i).slice(0, 3); if (!tags.length) return '';
+    return `<div class="nb-topics">${tags.map(t => `<button class="nb-topic" data-talk="topic" data-t="${esc(t.toLowerCase())}" title="Everyone’s posts about ${esc(t)}">#${esc(t)}</button>`).join('')}</div>`;
+  }
+  // The topics of the last two weeks, by how many people wrote about them
+  function topicCloud(posts) {
+    const by = new Map();
+    for (const i of posts) for (const t of tagsOf(i)) {
+      const k = t.toLowerCase(), e = by.get(k) || { k, label: t, posts: 0, people: new Set() };
+      e.posts++; e.people.add(nbWho(i)?.id); by.set(k, e);
+    }
+    return [...by.values()].sort((a, b) => b.people.size - a.people.size || b.posts - a.posts);
+  }
+  function setTopicMute(t, on) {
+    const list = (S.prefs.mutedTopics || []).filter(x => x.toLowerCase() !== t);
+    S.prefs.mutedTopics = on ? [...list, t] : list; savePrefs(); PV++;
+    if (on && SOC.nbTopic === t) SOC.nbTopic = '';
+    renderList(); status(on ? `Posts about #${t} are hidden from the Neighborhood.` : `#${t} is back.`);
+  }
+
+  // ---- Comments on someone's post, read from their site (WordPress's own API, or the post's comments feed)
+  const CM = new Map();
+  function cmtsHtml(i) {
+    if (SOC.cmOpen !== i.id) return '';
+    const r = CM.get(i.link), page = (i.link || '').replace(/#.*$/, '') + '#respond';
+    if (!r) return `<div class="nb-cmts"><p class="note">Reading the comments…</p></div>`;
+    if (r.err || !r.found) return `<div class="nb-cmts"><p class="note">${r.err ? esc(r.err) : 'Their site doesn’t share its comments with apps.'} <button class="linkish" data-talk="open" data-url="${esc(page.replace('#respond', '#comments'))}">Read them on their site</button></p></div>`;
+    const kids = new Map(), top = [];
+    for (const c of r.comments) { if (c.parent && r.comments.some(x => x.id === c.parent)) { if (!kids.has(c.parent)) kids.set(c.parent, []); kids.get(c.parent).push(c); } else top.push(c); }
+    const one = (c, deep) => {
+      const face = isWeb(c.avatar) ? `<span class="nb-av sm"><img class="nb-face-img" src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>`
+        : `<span class="nb-av sm" style="--h:${hueFor(c.name || '?')}">${esc((c.name || '?')[0].toUpperCase())}</span>`;
+      const t = c.text.length > 700 ? c.text.slice(0, 680).replace(/\s+\S*$/, '') + '…' : c.text;
+      return `<div class="nb-cmt${deep ? ' deep' : ''}">${face}<div><div class="nb-cmt-by">${isWeb(c.url) ? `<button class="linkish" data-talk="open" data-url="${esc(c.url)}">${esc(c.name || 'Someone')}</button>` : `<b>${esc(c.name || 'Someone')}</b>`}<time>${esc(c.date ? fmtWhen(c.date) : '')}</time></div><p>${esc(t)}</p></div></div>`
+        + (deep < 3 ? (kids.get(c.id) || []).map(k => one(k, deep + 1)).join('') : '');
+    };
+    return `<div class="nb-cmts">${r.comments.length ? top.map(c => one(c, 0)).join('') : '<p class="note">No comments yet.</p>'}
+      <p class="nb-cmt-foot"><button class="linkish" data-talk="open" data-url="${esc(r.page || page)}">Join in on their site</button></p></div>`;
+  }
+  function toggleComments(it) {
+    if (SOC.cmOpen === it.id) { SOC.cmOpen = null; renderList(); paintReaderTalk(); return; }
+    SOC.cmOpen = it.id; renderList(); paintReaderTalk();
+    const c = CM.get(it.link);
+    if (c && !c.err && Date.now() - c.at < 10 * 60e3) return;
+    invoke('post_comments', { url: it.link }).then(r => CM.set(it.link, { ...r, at: Date.now() })).catch(e => CM.set(it.link, { err: msg(e), at: Date.now() }))
+      .finally(() => { if (S.view === 'talk') renderList(); paintReaderTalk(); });
+  }
+
+  // ---- Repost: put someone's post on your own site as a short "reposted" note with its picture card. Their site is
+  // told (the Webmention plugin sends it), so it can show the repost. Kept by the post's address (synced).
+  const repostOf = it => (S.prefs.reposts || {})[normU(it.link)];
+  const repostBtn = it => !SOC.accounts.wordpress || !isWeb(it.link) ? '' : repostOf(it)
+    ? `<button class="linkish nb-rp on" data-talk="open" data-url="${esc(repostOf(it).url)}" title="See your repost">Reposted ✓</button>`
+    : `<button class="linkish nb-rp" data-talk="repost" data-id="${esc(it.id)}">Repost</button>`;
+  function openRepost(it) {
+    const f = nbWho(it), host = SOC.accounts.wordpress.site.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const el = sheet('repostPanel', `<h2>Repost to ${esc(host)}</h2>
+      <div class="rp-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<span><small>↻ Reposted</small><b>${esc(headline(it))}</b><small>${esc(f?.title || hostOfU(it.link))}</small></span></div>
+      <textarea id="rpText" rows="3" placeholder="Add a few words (optional)"></textarea>
+      <p class="note">It goes on your site as a note with this card, in Notes. ${esc(f?.title || 'Their site')} is told, and sites that show reposts will list yours.</p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="rpNo">Cancel</button><button class="btn primary" type="button" id="rpYes">Repost</button></div>`, 'Repost');
+    $('rpText').focus();
+    $('rpNo').onclick = () => { el.hidden = true; };
+    $('rpYes').onclick = async () => {
+      const btn = $('rpYes'); btn.disabled = true; btn.textContent = 'Reposting…';
+      try {
+        const r = await invoke('site_note', { title: '', text: $('rpText').value.trim(), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '', repost: true });
+        S.prefs.reposts = { ...(S.prefs.reposts || {}), [normU(it.link)]: { url: r.url, at: new Date().toISOString() } }; savePrefs();
+        el.hidden = true; renderList(); paintReaderTalk();
+        status(`Reposted on ${host}. ${f?.title || 'Their site'} is told if it listens for that.`);
+      } catch (e) { btn.disabled = false; btn.textContent = 'Repost'; status(msg(e), true); }
+    };
+  }
+
+  // ---- Follow many at once (bring your people over, a whole blogroll): a few at a time, people marked as people
+  async function followMany(urls, btn, asPeople) {
+    const todo = [...new Set(urls)]; let done = 0, ok = 0; const failed = [], ids = [];
+    const label = btn?.textContent;
+    const one = async u => {
+      try {
+        const r = await invoke('add_feed', { url: u, title: null, folderId: null });
+        ok++; ids.push(r.id); (SOC.added = SOC.added || new Map()).set(bareHost(hostOfU(u)), r.id);
+      } catch (e) { failed.push(hostOfU(u)); (SOC.blogErr = SOC.blogErr || new Map()).set(bareHost(hostOfU(u)), msg(e)); }
+      done++; if (btn) btn.textContent = `Following ${done} of ${todo.length}…`;
+    };
+    if (btn) btn.disabled = true;
+    const queue = [...todo];
+    await Promise.all([0, 1, 2].map(async () => { while (queue.length) await one(queue.shift()); }));
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    await load();
+    // they're people: mark them so, so their posts gather in the Neighborhood
+    if (asPeople && ids.length) { const k = { ...(S.prefs.kinds || {}) }; for (const id of ids) { const f = feedById(id); if (f) k[f.url] = 'person'; } S.prefs.kinds = k; savePrefs(); PV++; }
+    renderList();
+    status(`Following ${ok} new ${ok === 1 ? 'site' : 'sites'}.${failed.length ? ` ${failed.length} didn’t have a feed we could find (${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}).` : ''}`);
+  }
+
+  // ---- Bring your people over: the people you follow on Mastodon and Bluesky who keep a blog you don't read here yet
+  function bringList() {
+    const have = new Set(S.feeds.flatMap(f => [hostOfU(f.site), hostOfU(f.url)].filter(Boolean).map(bareHost)));
+    const hid = hiddenIn('b');
+    return (SOC.theirBlogs || []).filter(b => { const k = bareHost(hostOfU(b.blog)); return !have.has(k) && !hid.has(k); });
+  }
+  const socFace = (p, cls = 'nb-av md') => isWeb(p.avatar) ? `<span class="${cls}"><img class="nb-face-img" src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((p.name || '?')[0].toUpperCase())}</span>`
+    : `<span class="${cls}" style="--h:${hueFor(p.handle || p.name || '?')}">${esc((p.name || '?')[0].toUpperCase())}</span>`;
+  function nbBringHtml() {
+    if (!anySocial() || store.get('nbBrought') === '1') return '';
+    const list = bringList(); if (!list.length) return '';
+    const nets = [...new Set(list.map(b => NET[b.network]))].join(' and ');
+    const open = SOC.bringOpen, shown = open ? list : [];
+    return `<section class="nb-bring">
+      <button class="nb-x" data-talk="nbbrought" aria-label="Close" title="Close">×</button>
+      <div class="nb-stack">${list.slice(0, 7).map(b => socFace(b.person)).join('')}</div>
+      <h3>Bring your people over</h3>
+      <p>${list.length === 1 ? 'Someone you follow' : `${list.length} people you follow`} on ${esc(nets)} ${list.length === 1 ? 'keeps a blog' : 'keep blogs'} you don’t read here yet. Follow ${list.length === 1 ? 'it' : 'them'} and their posts join your Neighborhood.</p>
+      <div class="row"><button class="btn primary" data-talk="bringall">Follow ${list.length === 1 ? 'it' : `all ${list.length}`}</button><button class="btn" data-talk="bringopen">${open ? 'Hide the list' : 'Choose'}</button></div>
+      ${shown.length ? `<div class="nb-bring-list">${shown.map(b => { const k = bareHost(hostOfU(b.blog)); return `<div class="nb-writer">${socFace(b.person, 'nb-av sm')}<span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(b.blog)}">${esc(b.person.name || b.person.handle)}</button><small>${esc(hostOfU(b.blog))} · ${ICON_NET[b.network] || ''} ${esc(b.person.handle)}</small>${SOC.blogErr?.has(k) ? `<small class="fol-err">${esc(SOC.blogErr.get(k))}</small>` : ''}</span>
+        <span class="nb-w-acts"><button class="fbtn p" data-talk="blog" data-url="${esc(b.blog)}">Follow</button>${xBtn('b', k, `Don’t suggest ${hostOfU(b.blog)}`)}</span></div>`; }).join('')}</div>` : ''}
+    </section>`;
+  }
+
+  // ---- Their blogroll, read live from their site (once a day), with everyone on it
+  const ROLLS = (() => { try { return JSON.parse(localStorage.getItem('rolls') || '{}'); } catch { return {}; } })();
+  const rollBusy = new Set();
+  function loadRoll(site) {
+    const c = ROLLS[site]; if ((c && Date.now() - c.at < DAY) || rollBusy.has(site)) return c;
+    rollBusy.add(site);
+    invoke('person_blogroll', { site }).then(list => { ROLLS[site] = { at: Date.now(), list }; })
+      .catch(() => { ROLLS[site] = { at: Date.now() - DAY + 3600e3, list: [], err: true }; })
+      .finally(() => { rollBusy.delete(site); try { localStorage.setItem('rolls', JSON.stringify(ROLLS)); } catch {} if (SOC.person) renderList(); });
+    return c;
+  }
+  function rollHtml(f) {
+    const site = isWeb(f.site) ? f.site : 'https://' + bareHost(hostOfU(f.url)) + '/';
+    const c = loadRoll(site);
+    if (!c) return `<p class="note">Looking for their blogroll…</p>`;
+    if (!c.list.length) return '';
+    const followed = e => followsDomain(bareHost(hostOfU(e.url))) || SOC.added?.has(bareHost(hostOfU(e.url)));
+    const not = c.list.filter(e => !followed(e)), have = c.list.length - not.length;
+    const show = SOC.rollAll === f.id ? not : not.slice(0, 8);
+    return `<p class="pp-sub">${c.list.length} ${c.list.length === 1 ? 'site' : 'sites'} ${esc(f.title)} recommends${have ? `. You follow ${have === c.list.length ? 'all of them' : have}` : ''}.</p>
+      ${not.length > 1 ? `<button class="btn pp-rollall" data-talk="rollall" data-feed="${esc(f.id)}">Follow all ${not.length}</button>` : ''}
+      ${show.map(e => { const h = bareHost(hostOfU(e.url)), err = SOC.blogErr?.get(h); return `<div class="nb-writer">${nbFace({ url: e.url, title: e.title || h }, 'nb-av sm')}<span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(e.url)}">${esc(e.title || h)}</button><small>${esc(h)}</small>${err ? `<small class="fol-err">${esc(err)}</small>` : ''}</span><span class="nb-w-acts"><button class="fbtn p" data-talk="site" data-url="${esc(e.feed || e.url)}">Follow</button></span></div>`; }).join('')}
+      ${not.length > 8 ? `<button class="linkish more-r" data-talk="rollmore" data-feed="${esc(f.id)}">${SOC.rollAll === f.id ? 'Show fewer' : `Show all ${not.length}`}</button>` : ''}`;
   }
   const NB_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>';
 
@@ -3143,7 +3334,7 @@
   const READS_YOU = '<span class="nb-tag reads" title="You’re on their blogroll">Reads you</span>';
 
   // ---- Comment counts, when the post's feed gives one
-  const commentsBtn = i => i.comments > 0 ? `<button class="linkish nb-count" data-talk="open" data-url="${esc(i.link.replace(/#.*$/, '') + '#comments')}" title="Read the comments on their site">${i.comments} ${i.comments === 1 ? 'comment' : 'comments'}</button>` : '';
+  const commentsBtn = i => i.comments > 0 && isWeb(i.link) ? `<button class="linkish nb-count" data-talk="cmts" data-id="${esc(i.id)}" aria-expanded="${SOC.cmOpen === i.id}" title="Read the comments">${i.comments} ${i.comments === 1 ? 'comment' : 'comments'}</button>` : '';
 
   // ---- Quote reply: select words in a post, then Quote (or Reply) starts your reply with them
   let QUOTE = null;
@@ -3228,7 +3419,7 @@
     const x = nbIndex(), soc = nbSocial(), since = Date.now() - NB_DAYS * DAY, mine = myFeed();
     loadTheirLikes(); needReport();
     // Blog posts (yours too) and their short posts on Mastodon and Bluesky
-    const posts = S.items.filter(i => inScope(i, 'people') && !isMuted(i) && !isFolded(i, 'people') && Date.parse(i.date) > since);
+    const posts = S.items.filter(i => inScope(i, 'people') && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i) && Date.parse(i.date) > since);
     if (mine && !isPerson(mine.id)) posts.push(...S.items.filter(i => i.feed_id === mine.id && Date.parse(i.date) > since));
     // Replies gather under the post they answer, as one thread, placed where its newest reply falls
     const threads = new Map(), inThread = new Set();
@@ -3246,6 +3437,12 @@
     const talky = e => e.t || (e.i && (x.answers.has(e.i.id) || x.toMe.has(e.i.id) || x.mentions.has(e.i.id) || soc.shares.has(e.i.id)));
     const who = SOC.nbWho && feedById(SOC.nbWho);
     let list = who ? all.filter(e => e.who.includes(who.id)) : all;
+    // A group of yours, or one topic
+    const grp = SOC.nbGroup && groupsOf().find(g => g.id === SOC.nbGroup);
+    if (grp) { const ids = groupIds(grp); list = list.filter(e => e.who.some(id => ids.has(id))); }
+    const topic = SOC.nbTopic || '';
+    const itemsOf = e => e.t ? [e.t.root, ...e.t.replies] : e.i ? [e.i] : [];
+    if (topic) list = list.filter(e => itemsOf(e).some(i => hasTopic(i, topic)));
     if (SOC.nbOnly === 'talk') list = list.filter(talky);
     if (SOC.nbOnly === 'short') list = list.filter(e => e.s || (e.i && isShort(e.i)));
     const picOf = e => (e.s ? e.s.n.image : e.i ? e.i.image : e.t ? e.t.root.image : '') || '';
@@ -3255,7 +3452,7 @@
     if (SOC.nbOnly === 'each') { const had = new Set(); list = list.filter(e => { const k = e.s ? e.s.f.id : e.t ? nbWho(e.t.replies[e.t.replies.length - 1])?.id : nbWho(e.i)?.id; if (!k || had.has(k)) return false; had.add(k); return true; }); }
     // Close friends: their newest posts (unread, or from the last two days) sit at the top
     const fids = friendIds();
-    const pinned = !who && !SOC.nbOnly && fids.size ? list.filter(e => e.who.some(id => fids.has(id)) && (Date.now() - Date.parse(e.date) < 2 * DAY || (e.i && !e.i.read) || (e.t && e.t.replies.some(r => !r.read)))).slice(0, 5) : [];
+    const pinned = !who && !SOC.nbOnly && !grp && !topic && fids.size ? list.filter(e => e.who.some(id => fids.has(id)) && (Date.now() - Date.parse(e.date) < 2 * DAY || (e.i && !e.i.read) || (e.t && e.t.replies.some(r => !r.read)))).slice(0, 5) : [];
     if (pinned.length) list = list.filter(e => !pinned.includes(e));
     const shown = list.slice(0, SOC.nbShown || 30);
     // Where you left off
@@ -3273,8 +3470,19 @@
     const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted lately">${faceList.slice(0, 16).map(({ f, unread }) =>
       `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>` : '';
     const talks = all.filter(talky).length;
-    const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`;
+    const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each'], ['topics', 'Topics']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`
+      + (groupsOf().length ? `<span class="nb-break"></span><div class="nb-seg nb-groups" role="group" aria-label="Groups"><button data-talk="nbgroup" data-g="" aria-pressed="${!grp}">All people</button>${groupsOf().map(g => `<button data-talk="nbgroup" data-g="${esc(g.id)}" aria-pressed="${grp?.id === g.id}">${esc(g.name)}</button>`).join('')}</div>` : '');
     const opener = nbOpener(posts, soc, x, facesHtml, chips);
+    const tlabel = topic && (topicCloud(posts).find(c => c.k === topic)?.label || topic);
+    const bars = (grp ? `<div class="nb-bar"><span><b>${esc(grp.name)}</b> · ${groupIds(grp).size} ${groupIds(grp).size === 1 ? 'person' : 'people'}</span><button class="linkish" data-talk="grpedit" data-g="${esc(grp.id)}">Rename or delete</button><button class="nb-x sm" data-talk="nbgroup" data-g="" aria-label="Show everyone" title="Show everyone">×</button></div>` : '')
+      + (topic ? `<div class="nb-bar"><span>Posts about <b>#${esc(tlabel)}</b></span><button class="linkish" data-talk="topicmute" data-t="${esc(topic)}">Mute this topic</button><button class="nb-x sm" data-talk="topic" data-t="" aria-label="All topics" title="All topics">×</button></div>` : '');
+    if (SOC.nbOnly === 'topics' && !topic) {
+      const cloud = topicCloud(list.flatMap(itemsOf)), muted = [...mutedTopics()];
+      return intro + opener + `<section class="nb-tcloud"><h3 class="nb-sub">Topics of the last two weeks</h3>
+        ${cloud.length ? `<div class="nb-topics big">${cloud.slice(0, 60).map(c => `<button class="nb-topic" data-talk="topic" data-t="${esc(c.k)}">#${esc(c.label)}<small>${c.people.size > 1 ? `${c.people.size} people` : `${c.posts} ${c.posts === 1 ? 'post' : 'posts'}`}</small></button>`).join('')}</div>`
+          : '<p class="note">No topics yet. Many blogs tag their posts; those tags show up here after the next refresh.</p>'}
+        ${muted.length ? `<h3 class="nb-sub">Muted topics</h3><div class="nb-topics">${muted.map(t => `<button class="nb-topic muted" data-talk="topicunmute" data-t="${esc(t)}" title="Show #${esc(t)} again">#${esc(t)} ×</button>`).join('')}</div>` : ''}</section>`;
+    }
     const writers = nbWriters(3);
     let body = '', lined = false;
     const fresh = shown.filter(e => Date.parse(e.date) > SOC.nbVisit).length;
@@ -3298,7 +3506,7 @@
     });
     const end = shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : SOC.nbOnly === 'photos' ? 'No pictures in the last two weeks.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
-    return intro + opener + nbHintHtml() + friendsHtml + body + end;
+    return intro + nbBringHtml() + opener + bars + nbHintHtml() + friendsHtml + body + end;
   }
   // ---- Reactions from other sites: likes, replies and reposts a post has received through webmention.io
   // (sites that use it; the rest have none to show). Counts cached for six hours.
@@ -3487,6 +3695,7 @@
       <div class="pp-acts">
         ${latest && !isMine ? `<button class="btn primary" data-talk="nbreply" data-id="${esc(latest.id)}" aria-haspopup="menu">Write back</button>` : ''}
         <button class="btn" data-view="${f.id}">All their posts</button>
+        ${isMine ? '' : `<button class="btn" data-talk="groups" data-feed="${esc(f.id)}" aria-haspopup="dialog">Groups${groupsOf().filter(g => inGroup(g, f)).length ? ` · ${groupsOf().filter(g => inGroup(g, f)).map(g => esc(g.name)).join(', ')}` : ''}</button>`}
         ${isMine ? '' : `<button class="btn pp-friend${isFriend(f) ? ' on' : ''}" data-talk="friend" data-feed="${esc(f.id)}" aria-pressed="${isFriend(f)}" title="${isFriend(f) ? 'Stop pinning their posts' : 'Pin their new posts to the top of the Neighborhood'}">${NB_STAR}Close friend</button>`}
         ${isMine ? '' : followButtons(f)}
       </div>
@@ -3495,7 +3704,7 @@
       ${sec('Emails from them', mails.length ? mails.map(i => `<button class="nb-pair" data-open="${esc(i.id)}">${ICON_MAIL}<span><b>${esc(i.title)}</b><small>${esc(fmtWhen(i.date))}</small></span></button>`).join('') : '')}
       ${sec('Recent', stream.slice(0, shownN).map(e => e.i ? nbCard(e.i, x, soc) : nbNote(e.s)).join('') + (stream.length > shownN ? `<button class="btn nb-more" data-talk="ppmore">Show more</button>` : '') || '<p class="note">Nothing from them yet. New posts show up after the next refresh.</p>')}
       ${sec('They link to', linksTo.length ? `<p class="pp-sub">Blogs ${esc(f.title)} links to that you don’t follow yet.</p>${linksTo.map(writerRow).join('')}` : '')}
-      ${sec('On their blogroll', roll.length ? `<p class="pp-sub">Sites ${esc(f.title)} recommends that you don’t follow yet.</p>${roll.map(s => `<div class="nb-writer">${nbFace({ url: s.domain, title: s.title || s.domain }, 'nb-av sm')}<span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(s.site)}">${esc(s.title || s.domain)}</button><small>${esc(s.domain)}${s.rolls.length > 1 ? ` · also on ${s.rolls.length - 1} other blogroll${s.rolls.length > 2 ? 's' : ''}` : ''}</small>${s.posts?.[0] ? `<small class="nb-w-path">${esc(s.posts[0].title)}</small>` : ''}</span>${SOC.added?.has(bareHost(s.domain)) ? `<button class="fbtn done-open" data-view="${SOC.added.get(bareHost(s.domain))}">✓ Following · Open</button>` : `<span class="nb-w-acts"><button class="fbtn p" data-talk="site" data-url="${esc(s.feed || s.site)}">Follow</button></span>`}</div>`).join('')}` : hasRoll ? '<p class="note">Everyone on their blogroll is already in your feeds.</p>' : '')}
+      ${sec('Their blogroll', rollHtml(f))}
     </div>`;
   }
 
@@ -3965,6 +4174,20 @@
       if (S.prefs[key]) invoke('notify', { title: 'Alerts are on', body: key === 'youAlerts' ? 'Replies, comments and mentions show up like this.' : 'New posts from close friends show up like this.', id: 'alerts-' + key }).catch(() => {});
       return; }
     if (k === 'nblike') { const it = item(b.dataset.id); if (it) likePost(b, it); return; }
+    if (k === 'cmts') { const it = item(b.dataset.id); if (it) toggleComments(it); return; }
+    if (k === 'repost') { const it = item(b.dataset.id); if (it) openRepost(it); return; }
+    if (k === 'groups') { const f = feedById(b.dataset.feed); if (f) groupMenu(f); return; }
+    if (k === 'nbgroup') { SOC.nbGroup = b.dataset.g; SOC.nbShown = 30; renderList(); return; }
+    if (k === 'grpedit') { const g = groupsOf().find(x => x.id === b.dataset.g); if (g) groupEdit(g); return; }
+    if (k === 'topic') { SOC.nbTopic = b.dataset.t; SOC.nbShown = 30; SOC.person = null; SOC.nbWho = ''; if (b.dataset.t && SOC.nbOnly === 'topics') SOC.nbOnly = ''; SOC.tab = 'blogs'; if (S.view !== 'talk') selectView('talk'); else renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'topicmute') { setTopicMute(b.dataset.t, true); return; }
+    if (k === 'topicunmute') { setTopicMute(b.dataset.t, false); return; }
+    if (k === 'nbbrought') { store.set('nbBrought', '1'); renderList(); status('You’ll still find them under Following › Their blogs.'); return; }
+    if (k === 'bringopen') { SOC.bringOpen = !SOC.bringOpen; renderList(); return; }
+    if (k === 'bringall') { followMany(bringList().map(x => x.blog), b, true); return; }
+    if (k === 'rollmore') { SOC.rollAll = SOC.rollAll === b.dataset.feed ? null : b.dataset.feed; renderList(); return; }
+    if (k === 'rollall') { const f = feedById(b.dataset.feed); if (!f) return; const site = isWeb(f.site) ? f.site : 'https://' + bareHost(hostOfU(f.url)) + '/';
+      const not = (ROLLS[site]?.list || []).filter(e => !followsDomain(bareHost(hostOfU(e.url)))); followMany(not.map(e => e.feed || e.url), b, false); return; }
     if (k === 'notelike') { likeNote(b); return; }
     if (k === 'wmopen') {
       const it = item(b.dataset.id); if (!it) return;
@@ -4200,7 +4423,7 @@
     if (reacts) parts.push(reacts);
     if (!parts.length && !like) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
-    el.innerHTML = `${parts.length ? '<h2>The conversation</h2>' : ''}${parts.join('')}${like ? `<div class="nb-acts r-talk-acts">${like}<button class="linkish" data-talk="nbrbox" data-id="${esc(it.id)}">Reply</button>${cm}</div><div class="n-box" data-box="nb:${esc(it.id)}"></div>` : ''}`;
+    el.innerHTML = `${parts.length || SOC.cmOpen === it.id ? '<h2>The conversation</h2>' : ''}${parts.join('')}${like ? `<div class="nb-acts r-talk-acts">${like}<button class="linkish" data-talk="nbrbox" data-id="${esc(it.id)}">Reply</button>${repostBtn(it)}${cm}</div>${cmtsHtml(it)}<div class="n-box" data-box="nb:${esc(it.id)}"></div>` : ''}`;
   }
 
   async function loadArticle(it, refetch = false) {

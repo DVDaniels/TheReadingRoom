@@ -161,10 +161,11 @@ pub fn outside_links(html: &str, own: &str) -> Vec<(String, String)> {
 }
 
 /// One entry from a blogroll: the site or feed address and its name.
-struct Entry {
-    url: String,
-    feed: Option<String>,
-    title: String,
+#[derive(Serialize, Debug, Clone)]
+pub struct Entry {
+    pub url: String,
+    pub feed: Option<String>,
+    pub title: String,
 }
 
 struct Scan {
@@ -216,7 +217,24 @@ async fn scan_one(client: &reqwest::Client, src: &Source) -> Scan {
         }
     }
 
-    // Blogroll: advertised OPML, the well-known file, then a blogroll page
+    scan.roll = read_blogroll(client, &origin, &own).await;
+    scan
+}
+
+/// Someone's blogroll, for their page in Conversations: everyone on it, followed or not.
+pub async fn blogroll(client: &reqwest::Client, site: &str) -> Vec<Entry> {
+    let Ok(home) = url::Url::parse(site) else { return Vec::new() };
+    let Ok(origin) = home.join("/") else { return Vec::new() };
+    let own = domain_of(origin.as_str()).unwrap_or_default();
+    let mut roll = read_blogroll(client, &origin, &own).await;
+    let mut seen = std::collections::HashSet::new();
+    roll.retain(|e| domain_of(&e.url).is_some_and(|d| d != own && !skipped(&d) && seen.insert(d)));
+    roll
+}
+
+/// A site's blogroll: an advertised OPML, the well-known file, then a blogroll page.
+async fn read_blogroll(client: &reqwest::Client, origin: &url::Url, own: &str) -> Vec<Entry> {
+    let own = own.to_string();
     let mut opml_urls = Vec::new();
     let mut pages = Vec::new();
     if let Some((page, final_url, true)) = text(client, origin.as_str()).await {
@@ -233,8 +251,7 @@ async fn scan_one(client: &reqwest::Client, src: &Source) -> Scan {
         if let Some((t, _, false)) = text(client, u).await {
             let entries = opml_entries(&t);
             if !entries.is_empty() {
-                scan.roll = entries;
-                return scan;
+                return entries;
             }
         }
     }
@@ -258,12 +275,11 @@ async fn scan_one(client: &reqwest::Client, src: &Source) -> Scan {
                 .map(|(url, title)| Entry { url, feed: None, title })
                 .collect();
             if entries.len() >= 3 {
-                scan.roll = entries;
-                return scan;
+                return entries;
             }
         }
     }
-    scan
+    Vec::new()
 }
 
 struct Candidate {
