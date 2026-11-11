@@ -1,6 +1,6 @@
 [package]
 name = "reading-room"
-version = "1.2.4"
+version = "1.2.5"
 description = "The Reading Room — a private RSS reader"
 authors = ["David Daniels"]
 edition = "2021"

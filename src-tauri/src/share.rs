@@ -79,6 +79,7 @@ pub async fn page_item(client: &reqwest::Client, url: &str, title: &str) -> Pars
         shares: String::new(),
         paid: false,
         links: String::new(),
+        comments: -1,
     }
 }
 

@@ -35,6 +35,48 @@ pub struct ParsedItem {
     /// Every outside page the post links to (space-separated, up to 25): how the app spots one blog
     /// answering another, and posts that link to your own site
     pub links: String,
+    /// How many comments the post has, when the feed says (slash:comments, thr:total); -1 when it doesn't
+    pub comments: i64,
+}
+
+/// Comment counts feeds give for each post (WordPress's slash:comments, Atom's thr:total or thr:count),
+/// keyed by the post's link and its guid or id as they appear in the feed.
+pub fn comment_counts(body: &str) -> std::collections::HashMap<String, i64> {
+    use regex::Regex;
+    static ENTRY: OnceLock<Regex> = OnceLock::new();
+    static COUNT: OnceLock<Regex> = OnceLock::new();
+    static RSS_LINK: OnceLock<Regex> = OnceLock::new();
+    static ATOM_LINK: OnceLock<Regex> = OnceLock::new();
+    static ID: OnceLock<Regex> = OnceLock::new();
+    static REL: OnceLock<Regex> = OnceLock::new();
+    static HREF: OnceLock<Regex> = OnceLock::new();
+    let rel_re = REL.get_or_init(|| Regex::new(r#"(?i)\brel\s*=\s*["']([^"']*)["']"#).unwrap());
+    let href_re = HREF.get_or_init(|| Regex::new(r#"(?i)\bhref\s*=\s*["']([^"']+)["']"#).unwrap());
+    let entry = ENTRY.get_or_init(|| Regex::new(r"(?is)<(item|entry)\b.*?</(item|entry)>").unwrap());
+    let count = COUNT.get_or_init(|| Regex::new(r#"(?is)<[a-z0-9]+:(?:comments|total)>\s*(\d+)\s*<|\b[a-z0-9]+:count\s*=\s*["'](\d+)["']"#).unwrap());
+    let rss_link = RSS_LINK.get_or_init(|| Regex::new(r"(?is)<link>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)").unwrap());
+    let atom_link = ATOM_LINK.get_or_init(|| Regex::new(r"(?is)<link\b[^>]*>").unwrap());
+    let id = ID.get_or_init(|| Regex::new(r"(?is)<(?:guid|id)\b[^>]*>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)").unwrap());
+    let mut out = std::collections::HashMap::new();
+    if !body.contains(":comments>") && !body.contains(":total>") && !body.contains(":count=") { return out }
+    for m in entry.find_iter(body) {
+        let e = m.as_str();
+        let Some(c) = count.captures(e) else { continue };
+        let n: i64 = c.get(1).or(c.get(2)).and_then(|x| x.as_str().parse().ok()).unwrap_or(-1);
+        if n < 0 { continue }
+        let mut keys: Vec<String> = Vec::new();
+        if let Some(l) = rss_link.captures(e) { keys.push(l[1].to_string()); }
+        for t in atom_link.find_iter(e) {
+            let t = t.as_str();
+            let rel = rel_re.captures(t).map(|c| c[1].to_ascii_lowercase());
+            if rel.as_deref().map_or(true, |r| r == "alternate") {
+                if let Some(h) = href_re.captures(t) { keys.push(html_escape::decode_html_entities(&h[1]).to_string()); }
+            }
+        }
+        if let Some(g) = id.captures(e) { keys.push(g[1].to_string()); }
+        for k in keys { out.entry(k).or_insert(n); }
+    }
+    out
 }
 
 /// Words feeds use when a post is only for paying subscribers or members. Only the post's own
@@ -263,6 +305,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
 
     let base_url = url::Url::parse(base).ok();
     let now = now_iso();
+    let counts = comment_counts(&String::from_utf8_lossy(body));
     let items = feed
         .entries
         .iter()
@@ -275,8 +318,8 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .map(|l| l.href.clone())
                 .unwrap_or_default();
             let link = match (&base_url, raw_link.is_empty()) {
-                (Some(b), false) => b.join(&raw_link).map(|u| u.to_string()).unwrap_or(raw_link),
-                _ => raw_link,
+                (Some(b), false) => b.join(&raw_link).map(|u| u.to_string()).unwrap_or(raw_link.clone()),
+                _ => raw_link.clone(),
             };
             let body = e
                 .summary
@@ -302,7 +345,8 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links }
+            let comments = [&raw_link, &link, &e.id].iter().find_map(|k| counts.get(k.as_str()).copied()).unwrap_or(-1);
+            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
@@ -479,6 +523,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             shares: p.shares.clone(),
             paid: p.paid,
             links: p.links.clone(),
+            comments: p.comments,
         })
         .collect()
 }
@@ -491,6 +536,19 @@ mod tests {
         assert!(c.contains(&"https://www.theatlantic.com/feed/all/".to_string()));
         assert_eq!(super::feed_candidates("https://example.com/2026/11/a-post")[..].len(), 0);
         assert_eq!(super::feed_candidates("https://example.com/blog")[0], "https://example.com/feed/");
+    }
+
+    #[test]
+    fn comment_counts_from_feeds() {
+        let rss = br#"<?xml version="1.0"?><rss version="2.0" xmlns:slash="http://purl.org/rss/1.0/modules/slash/"><channel><title>B</title><link>https://b.blog/</link>
+            <item><title>One</title><link>https://b.blog/one/</link><guid>https://b.blog/?p=1</guid><comments>https://b.blog/one/#comments</comments><slash:comments>12</slash:comments></item>
+            <item><title>Two</title><link>https://b.blog/two/</link></item></channel></rss>"#;
+        let f = super::parse(rss, "https://b.blog/feed/").unwrap();
+        assert_eq!(f.items[0].comments, 12);
+        assert_eq!(f.items[1].comments, -1);
+        let atom = br#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:thr="http://purl.org/syndication/thread/1.0"><title>A</title>
+            <entry><title>X</title><id>tag:a,1</id><link rel="alternate" href="https://a.blog/x"/><link rel="replies" href="https://a.blog/x#c" thr:count="3"/><updated>2026-11-01T00:00:00Z</updated></entry></feed>"#;
+        assert_eq!(super::parse(atom, "https://a.blog/feed").unwrap().items[0].comments, 3);
     }
 
     #[test]

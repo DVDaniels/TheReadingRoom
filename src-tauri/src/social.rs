@@ -1431,6 +1431,71 @@ pub struct SiteComments {
     pub admin: String,
 }
 
+/// What one writer likes: the posts their site marks as liked or bookmarked (h-entry u-like-of / u-bookmark-of),
+/// on a Likes or Bookmarks page of their own site.
+#[derive(Serialize, Clone, Debug)]
+pub struct TheirLikes {
+    pub site: String,
+    pub page: String,
+    pub links: Vec<String>,
+}
+
+const LIKE_PAGES: &[&str] = &["/likes/", "/liked-posts/", "/liked/", "/bookmarks/"];
+
+/// The addresses a page marks as liked or bookmarked, in page order, up to 200.
+fn liked_links(html: &str, base: &url::Url) -> Vec<String> {
+    static A: OnceLock<regex::Regex> = OnceLock::new();
+    static CLS: OnceLock<regex::Regex> = OnceLock::new();
+    static HREF: OnceLock<regex::Regex> = OnceLock::new();
+    let a = A.get_or_init(|| regex::Regex::new(r#"(?is)<a\b[^>]*>"#).unwrap());
+    let cls = CLS.get_or_init(|| regex::Regex::new(r#"(?is)\bclass\s*=\s*["']([^"']*)["']"#).unwrap());
+    let href = HREF.get_or_init(|| regex::Regex::new(r#"(?is)\bhref\s*=\s*["']([^"']+)["']"#).unwrap());
+    let mut out: Vec<String> = Vec::new();
+    for tag in a.find_iter(html) {
+        let t = tag.as_str();
+        let Some(c) = cls.captures(t) else { continue };
+        if !c[1].split_whitespace().any(|k| k == "u-like-of" || k == "u-bookmark-of") { continue }
+        let Some(h) = href.captures(t) else { continue };
+        let h = html_escape::decode_html_entities(&h[1]).to_string();
+        let Ok(u) = base.join(&h) else { continue };
+        if !matches!(u.scheme(), "http" | "https") || u.host_str() == base.host_str() { continue }
+        let s = u.to_string();
+        if !out.contains(&s) { out.push(s); }
+        if out.len() >= 200 { break }
+    }
+    out
+}
+
+/// For each site, the posts it says it liked, read from its Likes (or Bookmarks) page. Sites without one are left out.
+#[tauri::command]
+pub async fn people_likes(sites: Vec<String>) -> Vec<TheirLikes> {
+    use futures::stream::{self, StreamExt};
+    let c = client().clone();
+    stream::iter(sites.into_iter().take(80).map(|site| {
+        let c = c.clone();
+        async move {
+            let base = url::Url::parse(&site).ok()?.join("/").ok()?;
+            for p in LIKE_PAGES {
+                let Ok(page) = base.join(p) else { continue };
+                let got = tokio::time::timeout(Duration::from_secs(12), crate::feeds::get(&c, page.as_str())).await;
+                let Ok(Ok((body, final_url, _))) = got else { continue };
+                let html = String::from_utf8_lossy(&body);
+                if !html.contains("u-like-of") && !html.contains("u-bookmark-of") { continue }
+                let fin = url::Url::parse(&final_url).unwrap_or(page.clone());
+                let links = liked_links(&html, &fin);
+                if !links.is_empty() {
+                    return Some(TheirLikes { site, page: final_url, links });
+                }
+            }
+            None
+        }
+    }))
+    .buffer_unordered(6)
+    .filter_map(|x| async { x })
+    .collect()
+    .await
+}
+
 /// The newest comments and Webmentions on your own WordPress site (not your own), with the post each is on,
 /// and how many are waiting for approval.
 #[tauri::command]
@@ -1689,6 +1754,12 @@ fn note_html(text: &str) -> String {
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
         .flat_map(|p| {
+            // lines starting with ">" are a quote from the post you're answering
+            if p.lines().all(|l| l.trim_start().starts_with('>')) {
+                let q: Vec<&str> = p.lines().map(|l| l.trim_start().trim_start_matches('>').trim_start()).collect();
+                let inner = para(&q.join("\n"), re);
+                return vec![format!("<!-- wp:quote -->\n<blockquote class=\"wp-block-quote\">{inner}</blockquote>\n<!-- /wp:quote -->")];
+            }
             // a line that's only a playable address becomes a player; the lines around it stay words
             let mut parts: Vec<String> = Vec::new();
             let mut words: Vec<&str> = Vec::new();
@@ -2055,5 +2126,24 @@ mod likes_tests {
         assert_eq!(again.matches("a.blog/x").count(), 1);
         let gone = super::likes_update(&again, "https://a.blog/x", "", "", false, now);
         assert!(!gone.contains("a.blog/x") && gone.contains("b.blog/y") && gone.ends_with("</ul>\n<!-- /wp:html -->"));
+    }
+}
+
+#[cfg(test)]
+mod their_likes_tests {
+    #[test]
+    fn quotes_in_notes() {
+        let h = super::note_html("> They said this.\n> And this.\n\nMy answer.");
+        assert!(h.starts_with("<!-- wp:quote -->\n<blockquote class=\"wp-block-quote\"><!-- wp:paragraph -->\n<p>They said this.<br>\nAnd this.</p>"));
+        assert!(h.contains("<p>My answer.</p>"));
+        assert!(!super::note_html("a > b").contains("blockquote"));
+    }
+    #[test]
+    fn reads_likes_and_bookmarks() {
+        let base = url::Url::parse("https://ann.blog/likes/").unwrap();
+        let html = r#"<li class="h-entry">Liked <a class="u-like-of" href="https://bob.blog/post">P</a></li>
+            <a href="https://ann.blog/x" class="u-like-of">own</a> <a class="p-name u-bookmark-of h-cite" href="https://cat.blog/a?x=1&amp;y=2">B</a>
+            <a class="u-url" href="https://dan.blog/">not a like</a> <a class="u-like-of" href="https://bob.blog/post">again</a>"#;
+        assert_eq!(super::liked_links(html, &base), vec!["https://bob.blog/post", "https://cat.blog/a?x=1&y=2"]);
     }
 }

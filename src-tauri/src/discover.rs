@@ -56,6 +56,15 @@ pub struct Report {
     pub sites: usize,
     pub rolls_found: Vec<String>,
     pub suggestions: Vec<Suggestion>,
+    /// Sites you already follow (your own too) and which followed sites' blogrolls list them
+    #[serde(default)]
+    pub listed: Vec<Listed>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Listed {
+    pub domain: String,
+    pub by: Vec<String>,
 }
 
 pub struct Source {
@@ -335,6 +344,13 @@ pub async fn run(
         }
     }
 
+    let mut listed: Vec<Listed> = cands
+        .values()
+        .filter(|c| followed.contains(&c.domain) && !c.rolls.is_empty())
+        .map(|c| Listed { domain: c.domain.clone(), by: c.rolls.clone() })
+        .collect();
+    listed.sort_by(|a, b| a.domain.cmp(&b.domain));
+
     let mut list: Vec<Candidate> = cands
         .into_values()
         .filter(|c| !followed.contains(&c.domain) && !hidden.contains(&c.domain))
@@ -393,7 +409,7 @@ pub async fn run(
         .take(24)
         .collect();
 
-    Report { at: feeds::now_iso(), sites: total, rolls_found, suggestions }
+    Report { at: feeds::now_iso(), sites: total, rolls_found, suggestions, listed }
 }
 
 #[cfg(test)]

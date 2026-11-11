@@ -1,0 +1,29 @@
+Thanks for testing The Reading Room! New in this build: more ways to keep up with the people you read in Conversations.
+
+CLOSE FRIENDS
+• Open someone's page (tap their face or name) and press Close friend. Their new posts now sit at the top of the Neighborhood in a Close friends box, and their face comes first in the row of faces.
+• You get an alert when a close friend posts. The switch for it is under the Close friend button.
+• Press Close friend again to stop pinning them. Check it stays the same on your other devices.
+
+LIKED BY
+• Some writers keep a Likes or Bookmarks page on their own site. The app reads those now, so a post can say "Liked by (name)". Give it a minute the first time.
+• Further down the Neighborhood, "Liked by the people you read" shows posts they liked from blogs you don't follow yet. Try Follow.
+
+QUOTE IN A REPLY
+• Select a few words in a post (in the reader or on a card in the Neighborhood). A "Quote in a reply" button appears at the bottom. Press it: the reply box opens with the words quoted.
+• Post it on your site and check the quote shows as a quote, with your words under it.
+
+NEW FILTERS
+• At the top of the Neighborhood: Photos (a grid of pictures), Long reads, and One from each (just the newest post from each person). On iPhone the row scrolls sideways.
+
+READS YOU
+• A "Reads you" tag shows on posts by writers who have you on their blogroll, and their page says so too. It uses Discover's last look at everyone's blogrolls, so open Discover first if you don't see it.
+
+COMMENT COUNTS
+• Posts show "12 comments" when the blog's feed says how many there are. Tap it to read them on their site. Older posts get a count at the next refresh.
+
+ALERTS FOR REPLIES
+• With your site, Mastodon or Bluesky connected, you get an alert when someone replies, comments, mentions your blog or links to you. The first time, nothing old is announced, only what's new after that.
+• The switch is at the top of the You tab (Alerts: on / off).
+
+Something not right? Send feedback from TestFlight or open an issue at github.com/DVDaniels/TheReadingRoom/issues.

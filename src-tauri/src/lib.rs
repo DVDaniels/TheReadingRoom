@@ -695,6 +695,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
                 shares: String::new(),
                 paid: false,
                 links: String::new(),
+                comments: -1,
             })
             .collect();
         let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
@@ -2270,6 +2271,7 @@ pub fn run() {
             social::site_connect,
             social::site_avatar,
             social::site_comments,
+            social::people_likes,
             social::site_like,
             social::social_like,
             webmention::wm_counts,

@@ -67,6 +67,8 @@ pub struct Item {
     pub paid: bool,
     /// The outside pages it links to (space-separated)
     pub links: String,
+    /// Comments the post has, when its feed says; -1 when it doesn't
+    pub comments: i64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -95,6 +97,7 @@ pub struct NewItem {
     pub shares: String,
     pub paid: bool,
     pub links: String,
+    pub comments: i64,
 }
 
 fn has_column(conn: &Connection, table: &str, col: &str) -> rusqlite::Result<bool> {
@@ -180,6 +183,10 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     // Version 1.0.1: whether we've looked for a story's picture on its web page
     // Version 1.2.3: the feed says a post is for paying subscribers
     // Version 1.2.4: the outside pages a post links to (blog-to-blog conversations)
+    // Version 1.2.5: comment counts from feeds
+    if !has_column(&conn, "items", "comments")? {
+        conn.execute("ALTER TABLE items ADD COLUMN comments INTEGER DEFAULT -1", [])?;
+    }
     if !has_column(&conn, "items", "links")? {
         conn.execute("ALTER TABLE items ADD COLUMN links TEXT DEFAULT ''", [])?;
     }
@@ -456,7 +463,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
         "COALESCE(links, '')"
     };
     let mut st = conn.prepare(&format!(
-        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), {links}
+        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), {links}, COALESCE(comments, -1)
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
@@ -479,6 +486,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
             byline: r.get(12)?,
             paid: r.get::<_, i64>(13)? != 0,
             links: r.get(14)?,
+            comments: r.get(15)?,
         })
     })?;
     rows.collect()
@@ -567,11 +575,14 @@ pub fn store_fetch(
             }
             // a post can go free later (or behind the paywall), so follow what the feed says now
             tx.execute("UPDATE items SET paid=?1 WHERE id=?2", params![it.paid as i64, id])?;
+            if it.comments >= 0 {
+                tx.execute("UPDATE items SET comments=?1 WHERE id=?2", params![it.comments, id])?;
+            }
             continue;
         }
         tx.execute(
-            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at, audio, shares, paid, links) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now, it.audio, it.shares, it.paid as i64, it.links],
+            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at, audio, shares, paid, links, comments) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now, it.audio, it.shares, it.paid as i64, it.links, it.comments],
         )?;
         added += 1;
     }
@@ -685,7 +696,7 @@ mod tests {
         set_feed_folder(&c, 1, Some(f)).unwrap();
         assert_eq!(feeds(&c).unwrap()[0].folder_id, Some(f));
         let feed = feed(&c, 1).unwrap().unwrap();
-        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into(), audio: String::new(), shares: String::new(), paid: false, links: String::new() };
+        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into(), audio: String::new(), shares: String::new(), paid: false, links: String::new(), comments: -1 };
         store_fetch(&mut c, &feed, "A", "", &[it], "2026-10-28T01:00:00Z").unwrap();
         mark(&mut c, &["x".into()], Some(true), None, "2026-10-28T02:00:00Z").unwrap();
         let i = &items(&c, 10).unwrap()[0];
