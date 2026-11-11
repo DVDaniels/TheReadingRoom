@@ -3508,6 +3508,7 @@
     // Blogs you read that link to you come first: those are the replies that live on people's own sites
     const x = nbIndex(), fromBlogs = S.items.filter(i => x.toMe.has(i.id)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
     const blogs = fromBlogs.length ? `<h3 class="nb-sub">From blogs you read</h3>${fromBlogs.map(i => nbCard(i, x)).join('')}<h3 class="nb-sub">On Mastodon and Bluesky</h3>` : '';
+    if (!anySocial()) return blogs || `<p class="note">No blogs you read have linked to ${esc(d)} lately.</p>`;
     const m = SOC.mentions;
     if (!m) return blogs + '<p class="note">Looking for people linking to your site…</p>';
     if (!m.length) return blogs + `<p class="note">Nobody has linked to ${esc(d)} there lately${SOC.accounts.mastodon && !SOC.accounts.bluesky ? ' (Mastodon’s search only finds some posts)' : ''}.</p>`;

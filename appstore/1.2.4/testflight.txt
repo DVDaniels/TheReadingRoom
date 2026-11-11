@@ -20,21 +20,32 @@ The Morning Edition has more pictures and colour: a row of the people in today's
 PRINTING WORKS ON MAC
 Print on the Morning Edition used to say "This application does not support printing." Press Print and check the print window opens, the preview looks like the front page, and it prints or saves as a PDF.
 
-CONVERSATIONS BETWEEN BLOGS (NEW: THE NEIGHBORHOOD)
-Conversations now opens on a new Neighborhood tab: the posts of the people you read, like a social feed, with no account needed. Please try:
-• Open Conversations. Check the row of faces at the top, and tap one to see just that person's posts. Tap it again to see everyone.
-• Try the Everything, Conversations and Short posts buttons.
-• On a card, try Write back, Share and Read later.
-• When one blog you read links to another blog's post, the card says "Replying to …" and the other post lists the answers. These fill in as your feeds refresh, so give it a refresh or two.
-• If you've marked your own site ("This is my site"), posts that link to it show "Links to you".
-• With Mastodon or Bluesky connected: short posts there by writers you read show up in the stream under their face, and blog posts show who shared them ("Shared by … on Bluesky").
-• Your own posts show too, marked You, with the replies they got.
-• "Writers your writers link to": blogs that several people you read link to. Try Follow on one, and × to stop suggesting it.
-• A line marks where you left off last time.
-• The Neighborhood is now one column, with real faces: Bluesky or Mastodon pictures, or the blog's own icon. Faces fill in after the app has checked each writer's site, so give it a minute the first time.
+CONVERSATIONS: A SOCIAL FEED MADE OF BLOGS
+Conversations now has three tabs: Neighborhood, Following and You. No account is needed for the Neighborhood. Please try:
+
+The Neighborhood
+• The posts of the people you read, like a social feed, with their faces (their Bluesky or Mastodon picture, or their blog's icon; these fill in after the app checks each site, so give it a minute the first time).
 • "Since you were here" at the top sums up what's new. Tap a conversation in it to open the post.
-• When writers reply to each other, the replies show under the original post as a thread.
+• When writers reply to each other, the replies show under the original post as a thread. These fill in as your feeds refresh, so give it a refresh or two.
+• With Mastodon or Bluesky connected: short posts there by writers you read show up under their face, and blog posts show who shared them.
+• "Writers your writers link to": blogs that several people you read link to. Try Follow, and × to stop suggesting one.
 • Scroll to the end: it should say you're caught up.
+
+A page for each person
+• Tap a face or a name. You should see their posts, who they talk with, emails from them, blogs they link to, and their blogroll. "Their page" on a person's feed opens it too.
+
+Like and reply
+• With your WordPress site connected, Like on a blog post puts it on a Likes page on your site (made the first time; it asks first) and tells their site. Like again to take it back.
+• Like works on Bluesky and Mastodon posts too. On Mastodon you may be asked to disconnect and connect again once.
+• Reply opens a box right in the card: post a reply on your site, or email them.
+• Some posts show likes and replies from other sites (♥ 8 · 2 replies). Tap to see who.
+
+You
+• Replies on Mastodon and Bluesky, comments and Webmentions on your own site, blogs linking to you, and emails from people you read, in one list. The buttons above it show just one kind.
+
+Reading a post from Conversations
+• It now takes the whole window, with ← Conversations to go back to the same place.
+• Under the post: answers from blogs you read, who shared it, likes from other sites, and Like / Reply.
 
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
 
