@@ -98,6 +98,7 @@ pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, Strin
             audio: String::new(),
             shares: String::new(),
             paid: false,
+            links: String::new(),
         }],
     })
 }
@@ -172,7 +173,7 @@ mod tests {
         let conn = crate::db::open(std::path::Path::new(":memory:"), false).unwrap();
         let mk = |text: &str| Fetched { url: "watch:https://a.b/".into(), title: "A".into(), site: "https://a.b/".into(), items: vec![ParsedItem {
             key: String::new(), title: String::new(), link: "https://a.b/".into(), date: "2026-01-01T00:00:00Z".into(), summary: text.into(),
-            image: String::new(), audio: String::new(), shares: String::new(), paid: false }] };
+            image: String::new(), audio: String::new(), shares: String::new(), paid: false, links: String::new() }] };
         let mut f = mk("one\ntwo");
         finalize(&conn, "A", &mut f);
         assert!(f.items[0].title.starts_with("Watching"));

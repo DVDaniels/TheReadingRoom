@@ -32,6 +32,9 @@ pub struct ParsedItem {
     pub shares: String,
     /// The feed says this post is for paying subscribers or members (Substack, Ghost and others)
     pub paid: bool,
+    /// Every outside page the post links to (space-separated, up to 25): how the app spots one blog
+    /// answering another, and posts that link to your own site
+    pub links: String,
 }
 
 /// Words feeds use when a post is only for paying subscribers or members. Only the post's own
@@ -285,6 +288,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
             let audio = story_audio(e);
             let shares = story_shares(&format!("{full} {body}"), &link);
+            let links = story_links(&format!("{full} {body}"), &link);
             let paid = looks_paid(&format!("{full} {body}"));
             let summary = plain(&body, SUMMARY_CHARS);
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
@@ -298,7 +302,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 .unwrap_or_else(|| now.clone());
             // feed-rs makes up an id when a feed has none; prefer the link in that case.
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
-            ParsedItem { key, title, link, date, summary, image, audio, shares, paid }
+            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
@@ -336,6 +340,51 @@ pub fn story_shares(html: &str, own_link: &str) -> String {
         }
     }
     String::new()
+}
+
+/// Every outside page a post links to, in order, once each (up to 25), space-separated. Links to the post's own
+/// site, social networks, tag pages and feeds are left out, so what's left is who the writer is talking about.
+pub fn story_links(html: &str, own_link: &str) -> String {
+    static A: OnceLock<Regex> = OnceLock::new();
+    static HREF: OnceLock<Regex> = OnceLock::new();
+    let host_of = |u: &url::Url| u.host_str().unwrap_or("").trim_start_matches("www.").to_lowercase();
+    let own_host = url::Url::parse(own_link).ok().map(|u| host_of(&u)).unwrap_or_default();
+    let skip = ["bsky.app", "twitter.com", "x.com", "t.co", "facebook.com", "instagram.com", "threads.net", "linkedin.com",
+        "youtube.com", "youtu.be", "tiktok.com", "patreon.com", "ko-fi.com", "buymeacoffee.com", "paypal.com", "amazon.com",
+        "feedburner.com", "gravatar.com", "wordpress.com", "creativecommons.org"];
+    let mut out: Vec<String> = Vec::new();
+    for c in A.get_or_init(|| Regex::new(r#"(?is)<a\b([^>]*)>"#).unwrap()).captures_iter(html) {
+        let attrs = &c[1];
+        let low = attrs.to_ascii_lowercase();
+        if low.contains("mention") || low.contains("hashtag") || low.contains("rel=\"tag") {
+            continue;
+        }
+        let Some(h) = HREF.get_or_init(|| Regex::new(r#"(?i)href\s*=\s*["']([^"']+)["']"#).unwrap())
+            .captures(attrs).map(|m| html_escape::decode_html_entities(&m[1]).to_string()) else { continue };
+        let Ok(mut u) = url::Url::parse(&h) else { continue };
+        if !matches!(u.scheme(), "http" | "https") {
+            continue;
+        }
+        let host = host_of(&u);
+        let path = u.path().to_lowercase();
+        if host.is_empty() || host == own_host || host.ends_with(".social") || host.contains("mastodon")
+            || skip.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
+            || path.starts_with("/tag/") || path.starts_with("/tags/") || path.starts_with("/hashtag/") || path.ends_with("/feed/")
+            || path.ends_with(".xml") || path.ends_with(".rss") || path.ends_with(".jpg") || path.ends_with(".png") || path.ends_with(".gif")
+            || path.ends_with(".webp") || path.ends_with(".jpeg") {
+            continue;
+        }
+        u.set_fragment(None);
+        // tracking tails (utm_…) don't change which page it is
+        let keep: Vec<(String, String)> = u.query_pairs().filter(|(k, _)| !k.starts_with("utm_")).map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        if keep.is_empty() { u.set_query(None); } else { u.query_pairs_mut().clear().extend_pairs(keep); }
+        let s = u.to_string();
+        if !out.contains(&s) {
+            out.push(s);
+            if out.len() >= 25 { break; }
+        }
+    }
+    out.join(" ")
 }
 
 /// A podcast episode's audio: an enclosure that's audio, or ends like an audio file.
@@ -429,6 +478,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             audio: p.audio.clone(),
             shares: p.shares.clone(),
             paid: p.paid,
+            links: p.links.clone(),
         })
         .collect()
 }
@@ -451,6 +501,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn finds_the_pages_a_post_links_to() {
+        let html = r#"<p>Replying to <a href="https://tracydurnell.com/2026/11/09/sunset/?utm_source=rss#more">Tracy</a>,
+            see <a href="https://me.example/older/">my older post</a>, <a href="https://bsky.app/profile/x">x</a>,
+            <a class="hashtag" href="https://a.b/tags/x">#x</a> and <a href='https://kottke.org/26/11/thing'>Jason</a>
+            (<a href="https://tracydurnell.com/2026/11/09/sunset/">again</a>).</p>"#;
+        assert_eq!(super::story_links(html, "https://me.example/new/"),
+            "https://tracydurnell.com/2026/11/09/sunset/ https://kottke.org/26/11/thing");
+    }
 
     #[test]
     fn finds_what_a_post_shares() {
