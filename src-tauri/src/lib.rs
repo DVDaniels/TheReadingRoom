@@ -2268,6 +2268,7 @@ pub fn run() {
             social::social_whole,
             social::site_connect,
             social::site_avatar,
+            social::site_comments,
             social::site_note,
             social::social_share_note,
             social::social_reply,

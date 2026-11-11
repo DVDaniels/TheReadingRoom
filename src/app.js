@@ -339,7 +339,7 @@
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
-        { view: 'talk', label: 'Conversations', count: anySocial() ? newReplies() || '' : '', icon: ICONS.talk },
+        { view: 'talk', label: 'Conversations', count: newYou() || '', icon: ICONS.talk },
         { view: 'jobs', label: 'Help Wanted', count: newJobs() || '', icon: ICONS.jobs }]) +
       '<hr class="nav-gap">' +
       group('library', 'Library', [
@@ -478,9 +478,9 @@
       const n = S.feeds.filter(f => kindOf(f) === 'person').length;
       bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
-    } else if (S.view === 'talk' && anySocial()) {
+    } else if (S.view === 'talk' && (anySocial() || SOC.accounts.wordpress)) {
       bar.hidden = false;
-      bar.innerHTML = `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button><button class="btn" data-talk="tab" data-tab="${SOC.tab || 'blogs'}" id="talkRefresh">Check again</button>`;
+      bar.innerHTML = `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button><button class="btn" id="talkRefresh">Check again</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'books') {
       bar.hidden = true;
@@ -3169,8 +3169,57 @@
     </section>`;
   }
 
+  // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
+  // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
+  const YOU_CHIPS = [['', 'Everything'], ['replies', 'Replies'], ['comments', 'Comments'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  const newComments = () => (SOC.comments?.comments || []).filter(c => Date.parse(c.date) > socialSeen()).length;
+  const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;
+  function commentHtml(c) {
+    const wm = c.kind !== 'comment';
+    const what = wm ? (c.kind === 'like' ? 'liked' : c.kind === 'repost' ? 'reposted' : 'mentioned') : 'commented on';
+    const face = isWeb(c.avatar) ? `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>`
+      : `<span class="nb-av md" style="--h:${hueFor(c.name)}">${esc((c.name || '?')[0].toUpperCase())}</span>`;
+    return `<article class="yu-ev${Date.parse(c.date) > socialSeen() ? ' new' : ''}">${face}<div class="nb-main">
+      <div class="nb-by"><b>${esc(c.name || 'Someone')}</b><span>${what}${c.post_title ? ` “${esc(c.post_title)}”` : ' your post'}${wm ? ' · Webmention' : ''}</span><time>${esc(fmtWhen(c.date))}</time></div>
+      ${c.text && !(wm && c.kind !== 'comment' && c.text.length < 3) ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
+      <div class="nb-acts"><button class="linkish" data-talk="open" data-url="${esc(c.link)}">${wm ? 'Open' : 'Reply on your site'}</button>${isWeb(c.url) ? `<button class="linkish" data-talk="open" data-url="${esc(c.url)}">${esc(hostOfU(c.url))}</button>` : ''}</div>
+    </div></article>`;
+  }
+  function youHtml() {
+    const chip = SOC.youChip || '';
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'comments' || SOC.accounts.wordpress).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+      .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}</div>`;
+    const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
+    if (chip === 'replies') return chips + repliesHtml();
+    if (chip === 'posts') return chips + postsHtml();
+    if (chip === 'mentions') return chips + blogHtml();
+    if (chip === 'comments') return chips + waiting + (SOC.comments ? (SOC.comments.comments.length ? SOC.comments.comments.map(commentHtml).join('') : '<p class="note">No comments or Webmentions on your site yet.</p>') : '<p class="note">Looking at your site’s comments…</p>');
+    // Everything, newest first
+    const x = nbIndex(), soc = nbSocial(), mine = myFeed(), host = mine ? bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)) : '';
+    const ev = [];
+    for (const n of SOC.conv?.replies || []) ev.push({ date: n.created_at, html: `<div class="yu-ev${Date.parse(n.created_at) > socialSeen() ? ' new' : ''}">${noteHtml(n)}</div>` });
+    for (const n of SOC.mentions || []) ev.push({ date: n.created_at, html: `<div class="yu-ev${Date.parse(n.created_at) > socialSeen() ? ' new' : ''}">${noteHtml(n)}</div>` });
+    // a Webmention from a blog you read is the same news as its post linking to you: keep the post
+    const linking = S.items.filter(i => x.toMe.has(i.id));
+    const dupe = c => c.kind !== 'comment' && linking.some(i => bareHost(hostOfU(i.link)) === bareHost(hostOfU(c.url)) && Math.abs(Date.parse(i.date) - Date.parse(c.date)) < 3 * DAY);
+    for (const c of SOC.comments?.comments || []) if (!dupe(c)) ev.push({ date: c.date, html: commentHtml(c) });
+    for (const i of linking) ev.push({ date: i.date, html: nbCard(i, x, soc) });
+    // emails from the people you read (their address on their own site's domain)
+    const people = new Map();
+    for (const f of S.feeds) if (kindOf(f) === 'person' && !isEmailFeed(f)) { const h = bareHost(hostOfU(isWeb(f.site) ? f.site : f.url)); if (h && h !== host) people.set(h, feedById(personId(f.id)) || f); }
+    for (const i of S.items.filter(i => isEmailItem(i) && i.links.startsWith('mailto:'))) {
+      const f = people.get(bareHost(i.links.split('@')[1] || ''));
+      if (f) ev.push({ date: i.date, html: `<article class="yu-ev${i.read ? '' : ' new'}">${nbFace(f, 'nb-av md')}<div class="nb-main"><div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f.id)}">${esc(f.title)}</button><span>emailed you</span><time>${esc(fmtWhen(i.date))}</time></div><button class="nb-title sm" data-open="${esc(i.id)}">${esc(i.title)}</button><div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button></div></div></article>` });
+    }
+    ev.sort((a, b) => b.date.localeCompare(a.date));
+    const loading = (anySocial() && !SOC.conv) || (SOC.accounts.wordpress && !SOC.comments);
+    const empty = loading ? '<p class="note">Checking for replies, comments and mentions…</p>'
+      : `<p class="nb-end">Nothing yet.<small>${anySocial() || SOC.accounts.wordpress ? 'Replies, comments, Webmentions and links to your site show up here.' : 'Connect your site or a Mastodon or Bluesky account (Settings › Connections) to see replies here. Blogs linking to you show up either way.'}</small></p>`;
+    return chips + waiting + (ev.length ? ev.slice(0, 50).map(e => e.html).join('') : empty);
+  }
+
   // Tabs: what people share, replies to you, your posts, and people linking to your blog
-  const TALK_TABS = [['blogs', 'Neighborhood'], ['shared', 'From people you follow'], ['replies', 'Replies'], ['posts', 'Your posts'], ['blog', 'About your blog']];
+  const TALK_TABS = [['blogs', 'Neighborhood'], ['shared', 'Following'], ['you', 'You']];
   const WEEK_MS = 7 * DAY;
   const myDomain = () => {
     const f = myFeed(); if (!f) return '';
@@ -3178,6 +3227,7 @@
     return (isWeb(f.site) && h(f.site)) || h(f.url);
   };
   async function loadTalk() {
+    if (SOC.accounts.wordpress) invoke('site_comments').then(c => { SOC.comments = c; if (S.view === 'talk') { renderList(); renderRail(); } }).catch(() => { SOC.comments = { comments: [], waiting: 0 }; });
     if (!anySocial()) return;
     const tasks = [
       loadConversations(true),
@@ -3270,7 +3320,7 @@
       if (k !== n.network + ':' + top) SOC.whole.delete(k);
     } catch (e) { SOC.whole.set(k, { err: msg(e) }); }
     // don't redraw under a reply you're typing; it shows on the next redraw
-    if (S.view === 'talk' && SOC.tab === 'replies' && !document.querySelector('.n-form')) renderList();
+    if (S.view === 'talk' && SOC.tab === 'you' && !document.querySelector('.n-form')) renderList();
   }
   let wholeBusy = false;
   async function loadWholes() {
@@ -3387,17 +3437,17 @@
     return out;
   }
   function talkHtml() {
-    // The Neighborhood is one calm column; without Mastodon or Bluesky it's the whole page
     const who = SOC.person && feedById(SOC.person);
-    if (!anySocial()) return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
-    const tab = SOC.tab || 'blogs';
-    const counts = { replies: newReplies(), blog: (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length };
-    const tabs = `<div class="ttabs" role="tablist">${TALK_TABS.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>`;
+    // Three tabs: the Neighborhood, Following (Mastodon and Bluesky), and You (what comes your way)
+    const tabsOn = TALK_TABS.filter(([k]) => k !== 'shared' || anySocial());
+    let tab = SOC.tab || 'blogs';
+    if (!tabsOn.some(([k]) => k === tab)) tab = 'blogs';
+    const counts = { you: newYou() };
+    const tabs = `<div class="ttabs" role="tablist">${tabsOn.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>`;
     if (tab === 'blogs') return `<div class="nb-col">${tabs}${who ? personHtml(who) : neighborhoodHtml()}</div>`;
-    const body = tab === 'replies' ? repliesHtml() : tab === 'posts' ? postsHtml() : tab === 'blog' ? blogHtml() : sharedHtml();
-    const titles = { shared: ['Shared by people you follow', 'Only the posts that share something to read. No doom-scrolling.'], replies: ['Replies and mentions', ''], posts: ['Your posts', 'Open one to read and answer the replies.'], blog: ['About your blog', `People linking to ${esc(myDomain() || 'your site')}.`] };
-    return `${profilesHtml()}${tabs}
-      <div class="tcols"><div class="tmain"><h2 class="sec-t">${titles[tab][0]}</h2>${titles[tab][1] ? `<p class="sec-s">${titles[tab][1]}</p>` : ''}${body}</div>
+    if (tab === 'you') return `<div class="nb-col">${tabs}${profilesHtml()}${youHtml()}</div>`;
+    return `${tabs}
+      <div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
         <aside class="tside">${sideHtml()}</aside></div>`;
   }
   async function toggleThread(net, id) {
@@ -3479,7 +3529,7 @@
   }, true);
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
-    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.whole.clear(); loadTalk(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; } SOC.person = b.dataset.feed; SOC.personShown = 15; SOC.tab = 'blogs'; renderList(); $('main').scrollTo({ top: 0 }); return; }
@@ -3497,7 +3547,15 @@
     if (k === 'reply') replyBox(b);
     if (k === 'cancel') b.closest('.n-box').innerHTML = '';
     if (k === 'more') moreMenu(b);
-    if (k === 'tab') { SOC.person = null; SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
+    if (k === 'tab') {
+      SOC.person = null;
+      const old = { replies: 'replies', posts: 'posts', blog: 'mentions' }[b.dataset.tab];
+      SOC.tab = old !== undefined ? 'you' : b.dataset.tab;
+      if (old !== undefined) SOC.youChip = old; else if (b.dataset.chip !== undefined) SOC.youChip = b.dataset.chip;
+      renderList(); $('main').scrollTo({ top: 0 });
+      if (SOC.tab === 'you') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000);
+    }
+    if (k === 'youchip') { SOC.youChip = b.dataset.k; renderList(); return; }
     if (k === 'newpost') { if (SOC.accounts.wordpress) openNote(null); else openCompose(null); }
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
     if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }

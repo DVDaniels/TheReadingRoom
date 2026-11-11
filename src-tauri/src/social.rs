@@ -1410,6 +1410,70 @@ async fn wp(method: reqwest::Method, path: &str, body: Option<Value>) -> Result<
     wp_call(&st(&s, "site"), &st(&s, "user"), &st(&s, "password"), method, path, body).await
 }
 
+#[derive(Serialize, Default)]
+pub struct SiteComment {
+    pub id: i64,
+    pub kind: String,
+    pub name: String,
+    pub url: String,
+    pub avatar: String,
+    pub text: String,
+    pub date: String,
+    pub link: String,
+    pub post_title: String,
+}
+
+#[derive(Serialize, Default)]
+pub struct SiteComments {
+    pub comments: Vec<SiteComment>,
+    /// Comments waiting for you to approve them, and where to do that
+    pub waiting: usize,
+    pub admin: String,
+}
+
+/// The newest comments and Webmentions on your own WordPress site (not your own), with the post each is on,
+/// and how many are waiting for approval.
+#[tauri::command]
+pub async fn site_comments() -> Result<SiteComments, String> {
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let me = wp(reqwest::Method::GET, "/wp/v2/users/me", None).await.ok().map(|m| m["id"].as_i64().unwrap_or(0)).unwrap_or(0);
+    let list = wp(reqwest::Method::GET, "/wp/v2/comments?per_page=40&orderby=date&order=desc", None).await?;
+    let mut out = SiteComments { admin: format!("{}/wp-admin/edit-comments.php?comment_status=moderated", st(&s, "site")), ..Default::default() };
+    let mut posts: Vec<i64> = Vec::new();
+    for c in list.as_array().cloned().unwrap_or_default() {
+        if me != 0 && c["author"].as_i64() == Some(me) { continue; }
+        let post = c["post"].as_i64().unwrap_or(0);
+        if post != 0 && !posts.contains(&post) { posts.push(post); }
+        let avatars = &c["author_avatar_urls"];
+        out.comments.push(SiteComment {
+            id: c["id"].as_i64().unwrap_or(0),
+            kind: Some(st(&c, "type")).filter(|t| !t.is_empty()).unwrap_or_else(|| "comment".into()),
+            name: st(&c, "author_name"),
+            url: st(&c, "author_url"),
+            avatar: ["96", "48", "24"].iter().map(|k| st(avatars, k)).find(|u| !u.is_empty()).unwrap_or_default(),
+            text: crate::feeds::plain(&st(&c, "content.rendered"), 600),
+            date: { let d = st(&c, "date_gmt"); if d.is_empty() { d } else { format!("{d}Z") } },
+            link: st(&c, "link"),
+            post_title: post.to_string(),
+        });
+    }
+    // The posts' titles, in one call
+    if !posts.is_empty() {
+        let ids = posts.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",");
+        if let Ok(v) = wp(reqwest::Method::GET, &format!("/wp/v2/posts?include={ids}&per_page=100&_fields=id,title"), None).await {
+            for p in v.as_array().cloned().unwrap_or_default() {
+                let (id, title) = (p["id"].as_i64().unwrap_or(0).to_string(), crate::feeds::plain(&st(&p, "title.rendered"), 200));
+                for c in out.comments.iter_mut().filter(|c| c.post_title == id) { c.post_title = title.clone(); }
+            }
+        }
+        for c in out.comments.iter_mut().filter(|c| c.post_title.parse::<i64>().is_ok()) { c.post_title.clear(); }
+    }
+    if let Ok(v) = wp(reqwest::Method::GET, "/wp/v2/comments?status=hold&per_page=50&context=edit&_fields=id", None).await {
+        out.waiting = v.as_array().map(|a| a.len()).unwrap_or(0);
+    }
+    Ok(out)
+}
+
 /// Your picture from your WordPress profile (WordPress uses Gravatar), larger than WordPress's own 96 px.
 /// "d=404" so a missing Gravatar fails to load (and the app falls back) instead of showing the grey silhouette.
 #[tauri::command]
