@@ -31,6 +31,9 @@ Conversations now opens on a new Neighborhood tab: the posts of the people you r
 • Your own posts show too, marked You, with the replies they got.
 • "Writers your writers link to": blogs that several people you read link to. Try Follow on one, and × to stop suggesting it.
 • A line marks where you left off last time.
+• The Neighborhood is now one column, with real faces: Bluesky or Mastodon pictures, or the blog's own icon. Faces fill in after the app has checked each writer's site, so give it a minute the first time.
+• "Since you were here" at the top sums up what's new. Tap a conversation in it to open the post.
+• When writers reply to each other, the replies show under the original post as a thread.
 • Scroll to the end: it should say you're caught up.
 
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.

@@ -1064,6 +1064,40 @@ fn masto_blog(a: &Value) -> String {
 pub struct SiteAccounts {
     site: String,
     links: Vec<crate::reply::Link>,
+    /// The site's own icon (its apple-touch-icon or the largest icon it lists), for the writer's face
+    icon: String,
+}
+
+/// The best picture a site gives for itself: an apple-touch-icon, else the largest rel="icon" (SVG counts as
+/// large), else /favicon.ico is left to the app to skip (too small to use as a face).
+pub fn site_icon(html: &str, base: &url::Url) -> String {
+    static LINK: OnceLock<regex::Regex> = OnceLock::new();
+    static ATTR: OnceLock<regex::Regex> = OnceLock::new();
+    let attr = |tag: &str, name: &str| -> String {
+        ATTR.get_or_init(|| regex::Regex::new(r#"(?is)([a-z-]+)\s*=\s*("([^"]*)"|'([^']*)')"#).unwrap())
+            .captures_iter(tag)
+            .find(|c| c[1].eq_ignore_ascii_case(name))
+            .map(|c| c.get(3).or(c.get(4)).map(|m| m.as_str().to_string()).unwrap_or_default())
+            .unwrap_or_default()
+    };
+    let head = &html[..html.len().min(200_000)];
+    let mut best: Option<(i64, String)> = None;
+    for m in LINK.get_or_init(|| regex::Regex::new(r#"(?is)<link\b[^>]*>"#).unwrap()).find_iter(head) {
+        let tag = m.as_str();
+        let rel = attr(tag, "rel").to_lowercase();
+        let href = html_escape::decode_html_entities(&attr(tag, "href")).to_string();
+        if href.is_empty() || href.starts_with("data:") { continue; }
+        let size = attr(tag, "sizes").split(|c: char| c == 'x' || c == 'X').next().and_then(|n| n.trim().parse::<i64>().ok()).unwrap_or(0);
+        let score = if rel.contains("apple-touch-icon") { 1000 + size.max(180) }
+            else if rel.split_whitespace().any(|r| r == "icon") { if href.to_lowercase().ends_with(".svg") { 900 } else { size } }
+            else { continue };
+        // tiny favicons look like smudges at face size
+        if score < 64 { continue; }
+        if let Ok(u) = base.join(&href) {
+            if matches!(u.scheme(), "http" | "https") && best.as_ref().map_or(true, |(b, _)| score > *b) { best = Some((score, u.to_string())); }
+        }
+    }
+    best.map(|(_, u)| u).unwrap_or_default()
 }
 
 /// The Mastodon and Bluesky accounts people list on their own sites (rel="me" links, fediverse:creator),
@@ -1074,13 +1108,16 @@ pub async fn site_accounts(sites: Vec<String>) -> Vec<SiteAccounts> {
     stream::iter(sites.into_iter().take(200))
         .map(|site| async move {
             let mut o = crate::reply::Options::default();
+            let mut icon = String::new();
             if let Ok(page) = url::Url::parse(&site) {
                 if let Ok(Ok((body, final_url, _))) = tokio::time::timeout(Duration::from_secs(12), crate::feeds::get(client(), &site)).await {
                     let base = url::Url::parse(&final_url).unwrap_or(page);
-                    crate::reply::scan(&String::from_utf8_lossy(&body), &base, &mut o);
+                    let html = String::from_utf8_lossy(&body);
+                    crate::reply::scan(&html, &base, &mut o);
+                    icon = site_icon(&html, &base);
                 }
             }
-            SiteAccounts { site, links: o.social }
+            SiteAccounts { site, links: o.social, icon }
         })
         .buffer_unordered(6)
         .collect()
@@ -1818,3 +1855,15 @@ mod embed_tests {
     }
 }
 
+#[cfg(test)]
+mod icon_tests {
+    #[test]
+    fn picks_the_biggest_site_icon() {
+        let base = url::Url::parse("https://ex.blog/").unwrap();
+        let html = r#"<head><link rel="icon" href="/fav-32.png" sizes="32x32"><link rel="icon" href="/fav-192.png" sizes="192x192">
+            <link rel='apple-touch-icon' href='https://cdn.ex.blog/touch.png'></head>"#;
+        assert_eq!(super::site_icon(html, &base), "https://cdn.ex.blog/touch.png");
+        assert_eq!(super::site_icon(r#"<link rel="icon" href="/fav-192.png" sizes="192x192">"#, &base), "https://ex.blog/fav-192.png");
+        assert_eq!(super::site_icon(r#"<link rel="shortcut icon" href="/favicon.ico">"#, &base), "");
+    }
+}
