@@ -13,7 +13,7 @@ pub const DEFAULT_FEEDS: &[(&str, &str)] = &[
     ("Smashing Magazine", "https://www.smashingmagazine.com/feed/"),
     ("Chris Coyier", "https://chriscoyier.net/feed/"),
     ("Jim Nielsen", "https://blog.jim-nielsen.com/feed.xml"),
-    ("DavidDaniels.com", "https://daviddaniels.com/feed/"),
+    ("David Daniels", "https://daviddaniels.com/feed/"),
     ("New York Post", "https://nypost.com/feed/"),
     // Help Wanted: job boards that still publish feeds (kept apart from your reading)
     ("We Work Remotely", "https://weworkremotely.com/remote-jobs.rss"),

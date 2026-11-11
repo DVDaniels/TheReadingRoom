@@ -17,7 +17,7 @@ struct Snapshot: Codable {
     let goal: Int?
 
     static let sample = Snapshot(unread: 12, stories: [
-        Story(t: "Most of the internet isn’t human anymore", f: "DavidDaniels.com", p: true),
+        Story(t: "Most of the internet isn’t human anymore", f: "David Daniels", p: true),
         Story(t: "Why I still write HTML by hand", f: "handmade.website", p: true),
         Story(t: "The indie web is having a moment again", f: "The Verge", p: false),
     ], streak: 6, books: 3, goal: 15)

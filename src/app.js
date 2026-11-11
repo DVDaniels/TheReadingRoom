@@ -968,7 +968,7 @@
     ['manuelmoreale.com', 'Manuel Moreale', 'Home of People and Blogs, a weekly interview with someone who writes online.'],
     ['tracydurnell.com', 'Tracy Durnell', 'Weeknotes and a “mind garden” of ideas, books and making.'],
     ['rknight.me', 'Robb Knight', 'Small tools and notes for the independent web.'],
-    ['daviddaniels.com', 'David Daniels', 'Personal essays since 2001, from the person who made this app.'],
+    ['daviddaniels.com', 'David Daniels', 'Personal essays since 2001.'],
   ];
   const followsDomain = d => S.feeds.some(f => [f.url, f.site].some(u => (u || '').replace(/^https?:\/\/(www\.)?/, '').startsWith(d)));
   // The guide's contents: one link per section, built from its headings, and a way back up from each section
@@ -1078,7 +1078,7 @@
           <li>Follow your own site here with <b>+ Add a feed</b>, open it and choose <b>This is my site</b>.</li>
           <li>Connect Mastodon or Bluesky in <button class="b-link" data-view="talk">Conversations</button>. When you post something new, it offers to share it there for you, with a link back home, and the replies show up in the app.</li>
         </ol>
-        <p style="margin-top:12px">Keep private things private: a site is public, so leave out your home address, phone number and anything you wouldn’t put on a postcard. For more on why personal sites matter, read <a href="https://daviddaniels.com/">daviddaniels.com</a> and the <a href="https://indieweb.org/POSSE">IndieWeb’s page on POSSE</a>.</p></section>
+        <p style="margin-top:12px">Keep private things private: a site is public, so leave out your home address, phone number and anything you wouldn’t put on a postcard. For more on why personal sites matter, read <a href="https://readingroomapp.com/#why">why The Reading Room exists</a> and the <a href="https://indieweb.org/POSSE">IndieWeb’s page on POSSE</a>.</p></section>
 
       <section class="g-sec" id="g-habits"><h2>What indie bloggers do</h2>
         <p>Personal sites have a culture of small, friendly habits. None are required, but they’re a good way to start writing, and they’re why personal sites feel so human.</p>
