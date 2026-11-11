@@ -1,0 +1,22 @@
+The Reading Room is an RSS, Atom and JSON Feed reader. It needs no account: open it and it starts with sample feeds that refresh automatically.
+
+Mac: Window > The Reading Room (Cmd-1) or the Dock icon brings the main window back.
+
+Optional features and what they contact (nothing goes to the developer):
+- Conversations (sidebar), Neighborhood tab: works with no account. It shows posts from the feeds the user already follows, arranged as a social feed, and finds links between those posts. To show writers' pictures it reads each followed site's own home page for its icon and its Mastodon/Bluesky links.
+- Conversations, Following tab: only after the user connects their own Mastodon account (OAuth on their own server) or Bluesky account (an app password). Shows posts and replies from people they follow and lets them reply. Accounts can be hidden, blocked, or reported as spam (to Bluesky or the user's Mastodon server).
+- Notes: only if the user connects their own WordPress site with an Application Password. Posts go to that site, then optional copies to Mastodon/Bluesky. A note about a post copies that post's picture to the user's own WordPress site. "Then open X with a copy" opens X's public compose page (x.com/intent/post) with the text filled in; nothing is posted unless the user presses Post there. The app has no X API access.
+- Like (Conversations): without a site connected, a like is kept privately in the app. With the user's WordPress site connected, the liked post is added to a Likes page on that site and a standard Webmention is sent from the device to the liked post's site. Likes on Mastodon/Bluesky go to the user's own account there.
+- You tab: reads comments on the user's own WordPress site through its REST API.
+- Reactions: like and reply counts for a blog post are looked up at webmention.io, a public service many blogs use (the post's address is sent).
+- Email (sidebar, optional): the user connects one mailbox of their own (IONOS, Gmail, iCloud Mail, Fastmail, Yahoo, other IMAP/SMTP; on the Mac also Proton Mail Bridge on 127.0.0.1). The app talks straight to that mail server over IMAP and SMTP to show the newest 100 emails, send replies and new emails, and move deleted emails to the mailbox's Trash. The sign-in is kept in the device's Keychain. When connecting, it asks Google's public DNS (dns.google) which provider receives mail for the address's domain, to warn about a mismatch. Nothing passes through the developer.
+- Open in The Reading Room links: the app registers the readingroom:// and feed:// URL schemes. Opening one shows "Follow example.com?" with Follow and Not now; nothing is added without Follow. Try: readingroom://subscribe?url=https://daringfireball.net/feeds/main
+- Books: standardebooks.org; audiobooks: LibriVox/archive.org. Help Wanted: public job-board RSS feeds and Google News RSS. Discover: Google News RSS and Marginalia Search. Weather: Open-Meteo, only if the user types a town.
+- Write back: opens the writer's own reply links (email, comments, Mastodon or Bluesky).
+- Newsletters (Add a feed > Read newsletters here): only when the user asks for an address. Made by Kill the Newsletter (kill-the-newsletter.com), which turns emails to it into a feed.
+- Rules & alerts: local notifications only. Watch a page: downloads only the page chosen. Translate: Google Translate in the app's web window.
+- Share extension and widgets: data passes through a shared keychain item on the device only.
+
+Sync between devices is optional and uses a folder in the user's own iCloud Drive.
+
+No login is needed to review the app. Conversations opens on the Neighborhood, which works without any account; the first visit suggests a few writers to follow. Email, Mastodon, Bluesky and WordPress are optional connections to the user's own accounts.

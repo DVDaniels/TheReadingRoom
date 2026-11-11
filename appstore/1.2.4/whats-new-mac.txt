@@ -1,0 +1,13 @@
+• Email, for writing to the people you read. Before social media, people with websites found each other by email. Connect one address of your own and Write back sends your note right from the app; their answer lands beside their posts. Works with IONOS, Gmail, iCloud Mail, Fastmail, Yahoo and most providers, and with Proton Mail through Proton Mail Bridge.
+• Conversations is now a social feed made of blogs. The Neighborhood shows the posts of the people you read with their faces, no account needed. When writers answer each other on their blogs, the replies gather under the original post.
+• A page for each person: their posts, who they talk with, the blogs they link to and their blogroll.
+• Like and reply right in the post. With your WordPress site connected, Like adds the post to a Likes page on your site and lets the writer know.
+• You: replies, comments on your site and blogs linking to you, in one list.
+• Writers your writers link to: find more people worth reading.
+• A more visual Morning Edition, and printing it now works.
+• Folders inside folders.
+• A small lock on posts that need a subscription, and Free to read to hide them.
+• Follow a site from its own page: Open in The Reading Room buttons and feed:// links open the app.
+• Notes show the post's picture, and can open X with a copy for you to post.
+• Following big sites like The Atlantic works better.
+• Light, sepia or dark for the whole app, a tidier sidebar and Settings in one place.

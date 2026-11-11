@@ -1,0 +1,1 @@
+rss,feed reader,blogs,indie web,email,newsletters,mastodon,bluesky,read later,opml,news,ebooks

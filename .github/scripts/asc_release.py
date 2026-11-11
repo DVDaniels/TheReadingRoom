@@ -106,7 +106,7 @@ def prepare(platform, version_string, build_no):
     # What's New is only allowed once an earlier version has been on the App Store
     released = any(state(x) in DONE for x in versions(platform) if x["id"] != v["id"])
     attrs = {
-        "whatsNew": text(version_string, "whats-new.txt") if released else None,
+        "whatsNew": text(version_string, f"whats-new-{kind}.txt", f"appstore/{version_string}/whats-new.txt") if released else None,
         "description": text(version_string, f"description-{kind}.txt"),
         "promotionalText": text(version_string, "promo.txt"),
         "keywords": text(version_string, "keywords.txt"),
