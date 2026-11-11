@@ -404,6 +404,8 @@
     document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition') && !S.readerId));
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
+    // a post opened from Conversations takes the whole window; Back returns to the stream where you were
+    document.body.classList.toggle('talk-reading', S.view === 'talk' && !!S.readerId);
   }
   function renderHead() {
     $('viewTitle').innerHTML = S.view === 'today'
@@ -3113,6 +3115,7 @@
         const keep = [...WM.entries()].sort((a, b) => b[1].at - a[1].at).slice(0, 600);
         try { localStorage.setItem('wmc', JSON.stringify(Object.fromEntries(keep))); } catch {}
         if (any && S.view === 'talk') renderList();
+        if (any) paintReaderTalk();
       } catch {} finally { wmBusy = false; if (wmWant.size) wmLater(); }
     }, 600);
   }
@@ -3159,14 +3162,14 @@
     b.disabled = true;
     const key = normU(it.link), likes = { ...(S.prefs.likes || {}) };
     if (on) likes[key] = new Date().toISOString(); else delete likes[key];
-    S.prefs.likes = likes; savePrefs(); renderList();
+    S.prefs.likes = likes; savePrefs(); renderList(); paintReaderTalk();
     try {
       const r = await invoke('site_like', { url: it.link, title: headline(it), author: f?.title || '', on });
       status(on ? (r.told ? `Liked. ${f?.title || 'Their site'} was told, and it’s on your Likes page.` : r.error ? `Liked on your Likes page, but telling their site didn’t work: ${r.error}` : `Liked on your Likes page. ${f?.title || 'Their site'} doesn’t take Webmentions, so they won’t see it there.`)
         : 'Your like is taken back.');
     } catch (e) {
       const back = { ...(S.prefs.likes || {}) }; if (on) delete back[key]; else back[key] = new Date().toISOString();
-      S.prefs.likes = back; savePrefs(); renderList(); status(msg(e), true);
+      S.prefs.likes = back; savePrefs(); renderList(); paintReaderTalk(); status(msg(e), true);
     }
   }
   async function likeNote(b) {
@@ -3181,7 +3184,8 @@
   // ---- Reply right in the card: post a reply on your own site (their site is told), or email them
   async function nbReplyBox(b, it, keep) {
     document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
-    const box = document.querySelector(`.n-box[data-box="nb:${CSS.escape(it.id)}"]`); if (!box) return;
+    const sel = `.n-box[data-box="nb:${CSS.escape(it.id)}"]`;
+    const box = b?.closest('.r-talk, .nb-main')?.querySelector(sel) || document.querySelector(sel); if (!box) return;
     const f = nbWho(it), wp = SOC.accounts.wordpress, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, '');
     box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Write back to ${esc(f?.title || 'them')}…"></textarea>
       <div class="row">
@@ -3683,9 +3687,9 @@
     if (k === 'notelike') { likeNote(b); return; }
     if (k === 'wmopen') {
       const it = item(b.dataset.id); if (!it) return;
-      if (SOC.wmOpen === it.id) { SOC.wmOpen = null; renderList(); return; }
-      SOC.wmOpen = it.id; SOC.wmList = SOC.wmList || new Map(); renderList();
-      if (!SOC.wmList.has(it.link)) invoke('wm_mentions', { url: it.link }).then(l => { SOC.wmList.set(it.link, l); }).catch(e => { SOC.wmList.set(it.link, { err: msg(e) }); }).finally(() => { if (S.view === 'talk') renderList(); });
+      if (SOC.wmOpen === it.id) { SOC.wmOpen = null; renderList(); paintReaderTalk(); return; }
+      SOC.wmOpen = it.id; SOC.wmList = SOC.wmList || new Map(); renderList(); paintReaderTalk();
+      if (!SOC.wmList.has(it.link)) invoke('wm_mentions', { url: it.link }).then(l => { SOC.wmList.set(it.link, l); }).catch(e => { SOC.wmList.set(it.link, { err: msg(e) }); }).finally(() => { if (S.view === 'talk') renderList(); paintReaderTalk(); });
       return;
     }
     if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
@@ -3851,6 +3855,7 @@
   function openReader(id) {
     const it = item(id); if (!it) return;
     if (!S.readerId && !isSplit()) listScroll = $('main').scrollTop;
+    if (!S.readerId && S.view === 'talk') talkScroll = [$('main').scrollTop, $('listView').scrollTop];
     S.readerId = S.selId = id; S.keep.add(id);
     hidePops();
     $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true; syncWide();
@@ -3872,7 +3877,9 @@
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide();
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
+    if (S.view === 'talk' && talkScroll) { const [m, l] = talkScroll; requestAnimationFrame(() => { $('main').scrollTop = m; $('listView').scrollTop = l; }); talkScroll = null; }
   }
+  let talkScroll = null;
 
   function renderReaderChrome() {
     const it = item(S.readerId); if (!it) return closeReader();
@@ -3894,9 +3901,30 @@
     renderNotes();
   }
 
+  // ---- Under a post in the reader: the blogs you read that answered it, what it answers, who shared it,
+  // reactions from other sites, and a Like from your own site
+  function paintReaderTalk() {
+    const el = $('rTalk'), it = item(S.readerId);
+    if (!el) return;
+    if (!it || isEmailItem(it) || !isWeb(it.link)) { el.hidden = true; el.innerHTML = ''; return; }
+    const x = nbIndex(), soc = nbSocial(), ans = x.answers.get(it.id) || [], to = x.replyTo.get(it.id), m = !to && x.mentions.get(it.id);
+    const parts = [];
+    if (to) parts.push(`<button class="nb-to" data-open="${esc(to.id)}">${NB_TALK}<span>This answers <b>${nbName(to)}</b>: ${esc(headline(to))}</span></button>`);
+    else if (m) parts.push(`<button class="nb-to" data-talk="open" data-url="${esc(m.url)}">${NB_TALK}<span>Mentions <b>${nbFeedName(m.f)}</b>’s blog</span></button>`);
+    if (ans.length) parts.push(`<div class="nb-ans"><span class="nb-ans-k">${ans.length === 1 ? 'An answer' : `${ans.length} answers`} from blogs you read</span>
+      ${ans.map(a => `<button class="nb-ans-r" data-open="${esc(a.id)}">${nbFace(nbWho(a), 'nb-av sm')}<span><b>${nbName(a)}</b> ${esc(headline(a))} <time>${esc(fmtWhen(a.date))}</time></span></button>`).join('')}</div>`);
+    const shared = sharesHtml(it, soc), reacts = reactionsHtml(it), like = likeBtn(it);
+    if (shared) parts.push(shared);
+    if (reacts) parts.push(reacts);
+    if (!parts.length && !like) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = `${parts.length ? '<h2>The conversation</h2>' : ''}${parts.join('')}${like ? `<div class="nb-acts r-talk-acts">${like}<button class="linkish" data-talk="nbrbox" data-id="${esc(it.id)}">Reply</button></div><div class="n-box" data-box="nb:${esc(it.id)}"></div>` : ''}`;
+  }
+
   async function loadArticle(it, refetch = false) {
     articleFor = it.id;
     paintMedia(it);
+    paintReaderTalk();
     const only = feedOnlyBody(it);
     if (only) {
       articleHtml = only; paintArticle();
