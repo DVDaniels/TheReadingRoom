@@ -448,13 +448,20 @@ pub fn rename_feed(conn: &Connection, id: i64, title: &str) -> rusqlite::Result<
 // ---------------------------------------------------------------- stories
 
 pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
-    let mut st = conn.prepare(
-        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), COALESCE(links, '')
+    // An email's "links" is its sender's address (mailto:…), so the app can match emails to the people you read
+    let mail: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='email_meta'", [], |r| r.get(0))?;
+    let links = if mail > 0 {
+        "COALESCE(NULLIF(links, ''), (SELECT 'mailto:' || m.from_addr FROM email_meta m WHERE m.link = items.link AND m.from_addr <> ''), '')"
+    } else {
+        "COALESCE(links, '')"
+    };
+    let mut st = conn.prepare(&format!(
+        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), {links}
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
-         ORDER BY date DESC",
-    )?;
+         ORDER BY date DESC"
+    ))?;
     let rows = st.query_map([limit], |r| {
         Ok(Item {
             id: r.get(0)?,

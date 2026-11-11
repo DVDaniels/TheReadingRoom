@@ -449,6 +449,7 @@
       bar.hidden = false;
       bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
         ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+        ${kindOf(f) === 'person' ? `<button class="btn" data-view="talk" data-person-page="${personId(f.id)}">Their page</button>` : ''}
         ${anySocial() ? followButtons(f) : ''}
         <label class="kindpick">This feed is <select id="kindFeed" aria-label="This feed is">
           <option value=""${(S.prefs.kinds || {})[f.url] ? '' : ' selected'}>${autoKind(f) === 'person' ? 'A person (automatic)' : 'A publication (automatic)'}</option>
@@ -875,7 +876,7 @@
 
   function selectView(v) {
     S.view = /^\d+$/.test(v) ? Number(v) : v;
-    if (S.view === 'talk') SOC.nbVisit = undefined;
+    if (S.view === 'talk') { SOC.nbVisit = undefined; if (!SOC.keepPerson) SOC.person = null; SOC.keepPerson = false; }
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
     if (isPhone()) setScreen('list');
     if (S.view === 'discover') openDiscover();
@@ -3016,7 +3017,7 @@
     const by = names.length > 2 ? `${esc(names[0])}, ${esc(names[1])} and ${names.length - 2} more` : names.map(esc).join(' and ');
     const path = w.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
     return `<div class="nb-writer">${nbFace({ url: w.host, title: w.host }, 'nb-av sm')}
-      <span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(w.url)}">${esc(w.host)}</button><small>Linked by ${by}${w.by.size < 2 ? ` (${w.links} times)` : ''}</small><small class="nb-w-path">${esc(path.length > 60 ? path.slice(0, 58) + '…' : path)}</small></span>
+      <span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(w.url)}">${esc(w.host)}</button><small>${w.by.size < 2 ? `Linked ${w.links === 1 ? 'once' : `${w.links} times`} by ${by}` : `Linked by ${by}`}</small><small class="nb-w-path">${esc(path.length > 60 ? path.slice(0, 58) + '…' : path)}</small></span>
       ${SOC.added?.has(w.host) ? `<button class="fbtn done-open" data-view="${SOC.added.get(w.host)}">✓ Following · Open</button>`
         : `<span class="nb-w-acts"><button class="fbtn p" data-talk="site" data-url="${esc('https://' + w.host + '/')}">Follow</button>${xBtn('w', w.host, `Don’t suggest ${w.host}`)}</span>`}${SOC.blogErr?.has(w.host) ? `<small class="fol-err">${esc(SOC.blogErr.get(w.host))}</small>` : ''}</div>`;
   }
@@ -3078,6 +3079,69 @@
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
     return opener + facesHtml + chips + body + end + connect;
   }
+  // ---- A page for each person: their posts and short posts, how you know them, who they talk with and read.
+  function personHtml(f) {
+    const x = nbIndex(), soc = nbSocial(), pid = f.id;
+    const mineIds = new Set(S.feeds.filter(g => personId(g.id) === pid || g.id === pid).map(g => g.id));
+    const theirs = S.items.filter(i => mineIds.has(i.feed_id) && !isEmailItem(i) && !isFolded(i, 'people')).sort((a, b) => b.date.localeCompare(a.date));
+    const notes = soc.notes.filter(s => s.f.id === pid);
+    const host = bareHost(hostOfU(isWeb(f.site) ? f.site : f.url));
+    const accts = (SOC.readers || []).filter(r => r.feedId === pid);
+    const plinks = (PL[siteOf(f)]?.links || []).filter(l => !accts.some(r => NET[r.network] === l.label));
+    // How often they post, and how much of it you've read
+    const month = theirs.filter(i => Date.now() - Date.parse(i.date) < 30 * DAY).length;
+    const read = theirs.filter(i => i.read).length;
+    const pace = month >= 8 ? `About ${Math.round(month / 4.3)} posts a week` : month ? `${month} ${month === 1 ? 'post' : 'posts'} in the last month` : theirs.length ? `Last post ${fmtWhen(theirs[0].date)}` : 'No posts yet';
+    // Who they talk with: replies and mentions both ways
+    const talk = new Map();
+    const bump = (other, n = 1) => { if (!other || other.id === pid) return; const t = talk.get(other.id) || { f: other, n: 0 }; t.n += n; talk.set(other.id, t); };
+    for (const i of theirs) { const to = x.replyTo.get(i.id); if (to) bump(nbWho(to)); const m = x.mentions.get(i.id); if (m) bump(m.f); }
+    for (const i of S.items) {
+      if (mineIds.has(i.feed_id)) continue;
+      const to = x.replyTo.get(i.id), m = x.mentions.get(i.id);
+      if ((to && mineIds.has(to.feed_id)) || (m && m.f.id === pid)) bump(nbWho(i));
+    }
+    const talks = [...talk.values()].sort((a, b) => b.n - a.n).slice(0, 8);
+    const toYou = theirs.filter(i => x.toMe.has(i.id));
+    // Emails from them (their address on their own site's domain)
+    const mails = S.items.filter(i => isEmailItem(i) && i.links.startsWith('mailto:') && bareHost(i.links.split('@')[1] || '') === host).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+    // Blogs they link to that you don't follow, and their blogroll (from Discover's scan)
+    const followed = new Set(S.feeds.flatMap(g => [hostOfU(g.site), hostOfU(g.url)].filter(Boolean).map(bareHost)));
+    const out = new Map();
+    for (const i of theirs) for (const l of (i.links || '').split(' ')) {
+      const h = bareHost(hostOfU(l));
+      if (!h || followed.has(h) || nbBig(h) || h === host || /\.(social|bsky)/.test(h)) continue;
+      const w = out.get(h) || { host: h, by: new Set([pid]), links: 0, url: l, date: i.date }; w.links++; out.set(h, w);
+    }
+    const linksTo = [...out.values()].sort((a, b) => b.links - a.links).slice(0, 5);
+    if (!D.report && !SOC.discLoading) { SOC.discLoading = true; invoke('discover_get').then(r => { D.report = r.report; if (SOC.person) renderList(); }).catch(() => {}); }
+    const roll = (D.report?.suggestions || []).filter(s => s.rolls.includes(f.title)).slice(0, 6);
+    const hasRoll = (D.report?.rolls_found || []).includes(f.title);
+    const shownN = SOC.personShown || 15;
+    const stream = [...theirs.map(i => ({ i, date: i.date })), ...notes.map(s => ({ s, date: s.n.created_at }))].sort((a, b) => b.date.localeCompare(a.date));
+    const latest = theirs.find(i => !isSocialFeed(feedById(i.feed_id))) || theirs[0];
+    const sec = (title, body) => body ? `<section class="pp-sec"><h3>${title}</h3>${body}</section>` : '';
+    const isMine = myFeed()?.id === pid;
+    return `<div class="pp">
+      <button class="linkish pp-back" data-talk="nbback">‹ Neighborhood</button>
+      <header class="pp-head">${nbFace(f, 'nb-av xl')}
+        <div class="pp-who"><h2>${esc(f.title)}</h2>
+          <div class="pp-where"><button class="linkish" data-talk="open" data-url="${esc(isWeb(f.site) ? f.site : 'https://' + host + '/')}">${esc(host)}</button>${accts.map(r => `<button class="linkish" data-talk="open" data-url="${esc(r.person.url || r.url)}">${ICON_NET[r.network] || ''} ${esc(r.person.handle)}</button>`).join('')}${plinks.map(l => `<button class="linkish" data-talk="open" data-url="${esc(l.url)}">${esc(l.label)}</button>`).join('')}</div>
+          <p class="pp-pace">${esc(pace)}${theirs.length ? ` · you’ve read ${read} of ${theirs.length}` : ''}${toYou.length ? ` · linked to you ${toYou.length === 1 ? 'once' : toYou.length + ' times'}` : ''}</p>
+        </div></header>
+      <div class="pp-acts">
+        ${latest && !isMine ? `<button class="btn primary" data-talk="nbreply" data-id="${esc(latest.id)}" aria-haspopup="menu">Write back</button>` : ''}
+        <button class="btn" data-view="${f.id}">All their posts</button>
+        ${isMine ? '' : followButtons(f)}
+      </div>
+      ${sec('Talks with', talks.length ? `<div class="pp-faces">${talks.map(t => `<button class="pp-face" data-talk="nbwho" data-feed="${esc(t.f.id)}">${nbFace(t.f, 'nb-av md')}<span><b>${esc(t.f.title)}</b><small>${t.n} ${t.n === 1 ? 'reply or mention' : 'replies and mentions'}</small></span></button>`).join('')}</div>` : '')}
+      ${sec('Emails from them', mails.length ? mails.map(i => `<button class="nb-pair" data-open="${esc(i.id)}">${ICON_MAIL}<span><b>${esc(i.title)}</b><small>${esc(fmtWhen(i.date))}</small></span></button>`).join('') : '')}
+      ${sec('Recent', stream.slice(0, shownN).map(e => e.i ? nbCard(e.i, x, soc) : nbNote(e.s)).join('') + (stream.length > shownN ? `<button class="btn nb-more" data-talk="ppmore">Show more</button>` : '') || '<p class="note">Nothing from them yet. New posts show up after the next refresh.</p>')}
+      ${sec('They link to', linksTo.length ? `<p class="pp-sub">Blogs ${esc(f.title)} links to that you don’t follow yet.</p>${linksTo.map(writerRow).join('')}` : '')}
+      ${sec('On their blogroll', roll.length ? `<p class="pp-sub">Sites ${esc(f.title)} recommends that you don’t follow yet.</p>${roll.map(s => `<div class="nb-writer">${nbFace({ url: s.domain, title: s.title || s.domain }, 'nb-av sm')}<span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(s.site)}">${esc(s.title || s.domain)}</button><small>${esc(s.domain)}${s.rolls.length > 1 ? ` · also on ${s.rolls.length - 1} other blogroll${s.rolls.length > 2 ? 's' : ''}` : ''}</small>${s.posts?.[0] ? `<small class="nb-w-path">${esc(s.posts[0].title)}</small>` : ''}</span>${SOC.added?.has(bareHost(s.domain)) ? `<button class="fbtn done-open" data-view="${SOC.added.get(bareHost(s.domain))}">✓ Following · Open</button>` : `<span class="nb-w-acts"><button class="fbtn p" data-talk="site" data-url="${esc(s.feed || s.site)}">Follow</button></span>`}</div>`).join('')}` : hasRoll ? '<p class="note">Everyone on their blogroll is already in your feeds.</p>' : '')}
+    </div>`;
+  }
+
   // "Since you were here": what's new, in a sentence, before you scroll
   function nbOpener(posts, soc, x) {
     const first = !SOC.nbVisit, cut = first ? Date.now() - 7 * DAY : SOC.nbVisit, mine = myFeed();
@@ -3324,11 +3388,12 @@
   }
   function talkHtml() {
     // The Neighborhood is one calm column; without Mastodon or Bluesky it's the whole page
-    if (!anySocial()) return `<div class="nb-col">${neighborhoodHtml()}</div>`;
+    const who = SOC.person && feedById(SOC.person);
+    if (!anySocial()) return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
     const tab = SOC.tab || 'blogs';
     const counts = { replies: newReplies(), blog: (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length };
     const tabs = `<div class="ttabs" role="tablist">${TALK_TABS.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>`;
-    if (tab === 'blogs') return `<div class="nb-col">${tabs}${neighborhoodHtml()}</div>`;
+    if (tab === 'blogs') return `<div class="nb-col">${tabs}${who ? personHtml(who) : neighborhoodHtml()}</div>`;
     const body = tab === 'replies' ? repliesHtml() : tab === 'posts' ? postsHtml() : tab === 'blog' ? blogHtml() : sharedHtml();
     const titles = { shared: ['Shared by people you follow', 'Only the posts that share something to read. No doom-scrolling.'], replies: ['Replies and mentions', ''], posts: ['Your posts', 'Open one to read and answer the replies.'], blog: ['About your blog', `People linking to ${esc(myDomain() || 'your site')}.`] };
     return `${profilesHtml()}${tabs}
@@ -3407,12 +3472,19 @@
       $('repSend').onclick = () => { el.hidden = true; done($('repText').value.trim() || 'Reported from The Reading Room'); };
     });
   }
+  // "Their page" on a person's feed: open Conversations on that person (runs before the view switch)
+  document.addEventListener('click', e => {
+    const pp = e.target.closest?.('[data-person-page]');
+    if (pp) { SOC.person = pp.dataset.personPage; SOC.personShown = 15; SOC.tab = 'blogs'; SOC.keepPerson = true; }
+  }, true);
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
     if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.whole.clear(); loadTalk(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
-    if (k === 'nbwho') { SOC.nbWho = SOC.nbWho === b.dataset.feed ? '' : b.dataset.feed; SOC.nbShown = 30; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; } SOC.person = b.dataset.feed; SOC.personShown = 15; SOC.tab = 'blogs'; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'nbback') { SOC.person = null; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'ppmore') { SOC.personShown = (SOC.personShown || 15) + 15; renderList(); return; }
     if (k === 'nbonly') { SOC.nbOnly = b.dataset.k; SOC.nbShown = 30; renderList(); return; }
     if (k === 'nbmore') { SOC.nbShown = (SOC.nbShown || 30) + 30; renderList(); return; }
     if (k === 'nbsave') { const it = item(b.dataset.id); if (it) { mark(it.id, { saved: !it.saved }); status(it.saved ? 'Removed from Read later.' : 'Saved to Read later.'); } return; }
@@ -3425,7 +3497,7 @@
     if (k === 'reply') replyBox(b);
     if (k === 'cancel') b.closest('.n-box').innerHTML = '';
     if (k === 'more') moreMenu(b);
-    if (k === 'tab') { SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
+    if (k === 'tab') { SOC.person = null; SOC.tab = b.dataset.tab; renderList(); $('main').scrollTo({ top: 0 }); if (b.dataset.tab === 'replies' || b.dataset.tab === 'blog') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); }
     if (k === 'newpost') { if (SOC.accounts.wordpress) openNote(null); else openCompose(null); }
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
     if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }

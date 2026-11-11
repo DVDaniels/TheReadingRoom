@@ -1059,7 +1059,31 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 .nb-reply .nb-text { font-size: 14px; color: var(--muted); }
 .nb-reply .nb-acts { margin-top: 6px; }
 .nb-connect { margin-top: 14px; }
+/* a page for each person */
+.pp-back { font-size: 13px; margin: 2px 0 10px; display: inline-block; }
+.pp-head { display: flex; gap: 18px; align-items: center; }
+.nb-av.xl { width: 84px; height: 84px; font-size: 36px; box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--line); }
+.pp-who { min-width: 0; }
+.pp-who h2 { margin: 0; font-family: var(--font-read); font-size: 30px; font-weight: 600; line-height: 1.1; }
+.pp-where { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
+.pp-where .linkish { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.pp-where svg { width: 12px; height: 12px; }
+.pp-pace { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.pp-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
+.pp-sec { margin-top: 22px; }
+.pp-sec > h3 { font: 700 11px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.pp-sec > h3 + .nb-post, .pp-sec > h3 + .nb-thread { border-top: 0; }
+.pp-sub { margin: 0 0 4px; font-size: 12.5px; color: var(--muted); }
+.pp-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.pp-face { all: unset; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.pp-face:hover { border-color: var(--accent); }
+.pp-face b { display: block; font-size: 13.5px; }
+.pp-face small { color: var(--muted); font-size: 12px; }
+.pp-sec .nb-pair { border-top: 1px solid var(--line); }
+.pp-sec > h3 + .nb-pair { border-top: 0; }
+.pp-sec .nb-pair svg { width: 16px; height: 16px; color: var(--accent); flex: none; margin-top: 2px; }
 @media (max-width: 760px) {
+  .pp-head { gap: 14px; } .nb-av.xl { width: 64px; height: 64px; font-size: 28px; } .pp-who h2 { font-size: 24px; }
   .nb-replies { margin-left: 12px; padding-left: 16px; }
   .nb-reply::before { left: -16px; width: 12px; }
   .nb-open-h { font-size: 18px; }
