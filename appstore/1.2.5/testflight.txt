@@ -26,4 +26,8 @@ ALERTS FOR REPLIES
 • With your site, Mastodon or Bluesky connected, you get an alert when someone replies, comments, mentions your blog or links to you. The first time, nothing old is announced, only what's new after that.
 • The switch is at the top of the You tab (Alerts: on / off).
 
+ALSO FIXED
+• A person's page has a clear Back button now. It takes you back to where you were, at the same spot. On the Mac, Esc works too.
+• The row of faces at the top of the Neighborhood no longer disappears when you come back with nothing new.
+
 Something not right? Send feedback from TestFlight or open an issue at github.com/DVDaniels/TheReadingRoom/issues.
