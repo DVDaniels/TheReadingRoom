@@ -28,7 +28,7 @@ The Neighborhood
 • "Since you were here" at the top sums up what's new. Tap a conversation in it to open the post.
 • When writers reply to each other, the replies show under the original post as a thread. These fill in as your feeds refresh, so give it a refresh or two.
 • With Mastodon or Bluesky connected: short posts there by writers you read show up under their face, and blog posts show who shared them.
-• "Writers your writers link to": blogs that several people you read link to. Try Follow, and × to stop suggesting one.
+• "Writers your writers link to": blogs that several people you read link to. Try Follow, and the x to stop suggesting one.
 • Scroll to the end: it should say you're caught up.
 
 A page for each person
@@ -38,13 +38,13 @@ Like and reply
 • With your WordPress site connected, Like on a blog post puts it on a Likes page on your site (made the first time; it asks first) and tells their site. Like again to take it back.
 • Like works on Bluesky and Mastodon posts too. On Mastodon you may be asked to disconnect and connect again once.
 • Reply opens a box right in the card: post a reply on your site, or email them.
-• Some posts show likes and replies from other sites (♥ 8 · 2 replies). Tap to see who.
+• Some posts show likes and replies from other sites (for example "8 likes, 2 replies"). Tap to see who.
 
 You
 • Replies on Mastodon and Bluesky, comments and Webmentions on your own site, blogs linking to you, and emails from people you read, in one list. The buttons above it show just one kind.
 
 Reading a post from Conversations
-• It now takes the whole window, with ← Conversations to go back to the same place.
+• It now takes the whole window, with the Conversations button to go back to the same place.
 • Under the post: answers from blogs you read, who shared it, likes from other sites, and Like / Reply.
 
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
