@@ -181,6 +181,7 @@ kbd { display: inline-block; min-width: 44px; padding: 2px 8px; background: var(
 .beta-new { margin-top: 56px; }
 .beta-new ul { margin: 12px 0; padding-left: 1.2em; }
 .beta-new li { margin: 10px 0; line-height: 1.55; }
+.beta-new h3 { margin-top: 28px; font-size: 18px; font-weight: 600; }
 .beta-note { margin: 4px 0 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; }
 .beta-note h3 { margin-top: 0; }
 .beta-note ul { margin: 8px 0 0; padding-left: 1.2em; }
