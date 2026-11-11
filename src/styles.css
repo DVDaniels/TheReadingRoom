@@ -1121,7 +1121,40 @@ div.yu-ev { display: block; padding: 4px 0; }
 .wm-r { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.4; }
 .wm-r small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 .wm-r:hover b { color: var(--accent); }
+/* Conversations' title row: title, tabs and actions on one pinned line */
+body.talk-view .head { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+body.talk-view .head .sub, body.talk-view .head .tools { display: none; }
+body.talk-view .head h1 { margin: 0; }
+.talk-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.talk-head .ttabs { margin: 0; flex: 1; }
+.talk-head .th-acts { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+body.talk-view #feedBar { display: none; }
+.nb-col { max-width: 760px; }
+/* the opener: what's new, who posted, and what to show */
+.nb-open-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nb-open-top .nb-open-k { margin-right: auto; }
+.nb-seg { display: inline-flex; background: var(--surface); border-radius: 999px; padding: 2px; }
+.nb-seg button { all: unset; cursor: pointer; font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--muted); }
+.nb-seg button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 600; }
+.nb-min { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--accent); font-weight: 700; background: var(--surface); }
+.nb-open .nb-faces { margin: 10px 0 0; padding-bottom: 2px; }
+.nb-open .nb-fav { box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 3px var(--line); }
+.nb-open .nb-face.new .nb-fav { box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 4px var(--accent); }
+.nb-open.small { padding: 10px 16px; }
+.nb-open-h.sm { font-size: 16px; margin-top: 4px; }
+.nb-open + .nb-post, .nb-open + .nb-thread, .nb-open + .nb-seen { margin-top: 4px; }
 @media (max-width: 760px) {
+  /* phones: New note and refresh beside the title, the three tabs on their own line */
+  body.talk-view .head { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  body.talk-view .head .titleblock { grid-row: 1; grid-column: 1; }
+  .talk-head { display: contents; }
+  .talk-head .th-acts { grid-row: 1; grid-column: 2; align-self: center; }
+  .talk-head .ttabs { grid-row: 2; grid-column: 1 / -1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 4px; }
+  .talk-head .ttabs::-webkit-scrollbar { display: none; }
+  .talk-head .ttabs button { flex: none; padding: 6px 12px; font-size: 14px; }
+  .talk-head .th-acts .btn.primary { padding: 7px 12px; }
+  .nb-open-top .nb-open-k { flex-basis: 100%; }
+  .nb-seg button { padding: 3px 8px; }
   .pp-head { gap: 14px; } .nb-av.xl { width: 64px; height: 64px; font-size: 28px; } .pp-who h2 { font-size: 24px; }
   .nb-replies { margin-left: 12px; padding-left: 16px; }
   .nb-reply::before { left: -16px; width: 12px; }

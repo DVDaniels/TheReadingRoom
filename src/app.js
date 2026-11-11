@@ -406,7 +406,26 @@
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
     document.body.classList.toggle('talk-reading', S.view === 'talk' && !!S.readerId);
+    document.body.classList.toggle('talk-view', S.view === 'talk');
   }
+  // Conversations' title row: the tabs, New note and a refresh icon, pinned as you scroll
+  function talkTabsInfo() {
+    const tabsOn = TALK_TABS.filter(([k]) => k !== 'shared' || anySocial());
+    let tab = SOC.tab || 'blogs';
+    if (!tabsOn.some(([k]) => k === tab)) tab = 'blogs';
+    return { tabsOn, tab };
+  }
+  function paintTalkHead() {
+    const el = $('talkHead'); if (!el) return;
+    el.hidden = S.view !== 'talk';
+    if (el.hidden) { el.innerHTML = ''; return; }
+    const { tabsOn, tab } = talkTabsInfo(), counts = { you: newYou() };
+    const checked = SOC.checkedAt ? (ago(SOC.checkedAt) === 'now' ? 'Checked just now' : `Checked ${ago(SOC.checkedAt)} ago`) : '';
+    el.innerHTML = `<div class="ttabs" role="tablist">${tabsOn.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k && !SOC.person}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>
+      <div class="th-acts">${anySocial() || SOC.accounts.wordpress ? `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button>` : ''}
+        <button class="btn icon-only" id="talkRefresh" type="button" title="Check again${checked ? ' · ' + checked : ''}" aria-label="Check again"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></div>`;
+  }
+
   function renderHead() {
     $('viewTitle').innerHTML = S.view === 'today'
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
@@ -435,6 +454,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
@@ -480,9 +500,8 @@
       const n = S.feeds.filter(f => kindOf(f) === 'person').length;
       bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
-    } else if (S.view === 'talk' && (anySocial() || SOC.accounts.wordpress)) {
-      bar.hidden = false;
-      bar.innerHTML = `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button><button class="btn" id="talkRefresh">Check again</button>`;
+    } else if (S.view === 'talk') {
+      bar.hidden = true; // tabs and actions live in the pinned title row (talkHead)
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'books') {
       bar.hidden = true;
@@ -3068,7 +3087,6 @@
     const shown = list.slice(0, SOC.nbShown || 30);
     // Where you left off
     if (SOC.nbVisit === undefined) { SOC.nbVisit = Number(store.get('nbSeen') || 0); store.set('nbSeen', String(Date.now())); }
-    const opener = who || SOC.nbOnly ? '' : nbOpener(posts, soc, x);
     // Faces: who's posted in the last few days (not you)
     const faces = new Map();
     for (const e of all) {
@@ -3080,8 +3098,8 @@
     const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted lately">${[...faces.values()].slice(0, 16).map(({ f, unread }) =>
       `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>` : '';
     const talks = all.filter(talky).length;
-    const chips = `<div class="nb-chips">${who ? `<button class="nb-chip on" data-talk="nbwho" data-feed="">${esc(who.title)} ×</button>` : ''}
-      ${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Short posts']].map(([k, l]) => `<button class="nb-chip" data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`;
+    const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Short posts']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`;
+    const opener = nbOpener(posts, soc, x, facesHtml, chips);
     const writers = nbWriters(3);
     let body = '', lined = false;
     const fresh = shown.filter(e => Date.parse(e.date) > SOC.nbVisit).length;
@@ -3094,7 +3112,7 @@
     const connect = anySocial() ? '' : `<aside class="nb-wbox nb-connect"><h3>Mastodon and Bluesky too</h3><p>Connect an account to see the short posts of the writers you read there, who shares their posts, and to answer replies here.</p><button class="btn" id="talkConnect">Connect an account</button></aside>`;
     const end = shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
-    return opener + facesHtml + chips + body + end + connect;
+    return opener + body + end + connect;
   }
   // ---- Reactions from other sites: likes, replies and reposts a post has received through webmention.io
   // (sites that use it; the rest have none to show). Counts cached for six hours.
@@ -3285,7 +3303,7 @@
   }
 
   // "Since you were here": what's new, in a sentence, before you scroll
-  function nbOpener(posts, soc, x) {
+  function nbOpener(posts, soc, x, facesHtml = '', chips = '') {
     const first = !SOC.nbVisit, cut = first ? Date.now() - 7 * DAY : SOC.nbVisit, mine = myFeed();
     const fresh = posts.filter(i => Date.parse(i.date) > cut && i.feed_id !== mine?.id);
     const notes = soc.notes.filter(s => Date.parse(s.n.created_at) > cut);
@@ -3301,15 +3319,20 @@
       else if (m) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> mentioned <b>${nbFeedName(m.f)}</b></button>`);
     }
     const yours = (SOC.conv?.posts || []).reduce((s, p) => s + (p.replies || 0), 0);
-    const stack = [...ppl.values()].slice(0, 5).map(f => nbFace(f, 'nb-av sm')).join('');
     const head = n ? `${n} new ${n === 1 ? 'post' : 'posts'} from ${ppl.size} ${ppl.size === 1 ? 'person' : 'people'}` : 'Nothing new yet';
-    return `<section class="nb-open">
-      <div class="nb-open-k">${first ? 'This week' : 'Since you were here'}</div>
-      <div class="nb-open-h">${stack ? `<span class="nb-stack">${stack}</span>` : ''}<span>${head}${!n && !first ? '. Here’s the last two weeks.' : ''}</span></div>
+    // One line when there's nothing new, or when you've folded it away
+    const small = (!n && !events.length) || store.get('nbMin') === '1';
+    const k = `<div class="nb-open-top"><span class="nb-open-k">${first ? 'This week' : 'Since you were here'}</span>${chips}
+      ${n || events.length ? `<button class="nb-min" data-talk="nbmin" title="${small ? 'Show more' : 'Fold away'}" aria-label="${small ? 'Show more' : 'Fold away'}">${small ? '+' : '–'}</button>` : ''}</div>`;
+    if (small) return `<section class="nb-open small">${k}<div class="nb-open-h sm"><span>${head}${events.length ? ` · ${events.length} conversation${events.length === 1 ? '' : 's'}` : ''}</span></div></section>`;
+    return `<section class="nb-open">${k}
+      <div class="nb-open-h"><span>${head}${!n && !first ? '. Here’s the last two weeks.' : ''}</span></div>
+      ${facesHtml}
       ${events.length ? `<div class="nb-evs">${events.slice(0, 3).join('')}${events.length > 3 ? `<button class="nb-ev more" data-talk="nbonly" data-k="talk">${events.length - 3} more conversations</button>` : ''}</div>` : ''}
       ${yours ? `<button class="nb-ev mine" data-talk="tab" data-tab="posts">Your posts have ${yours} ${yours === 1 ? 'reply' : 'replies'} on Mastodon and Bluesky</button>` : ''}
     </section>`;
   }
+
 
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
@@ -3369,6 +3392,7 @@
     return (isWeb(f.site) && h(f.site)) || h(f.url);
   };
   async function loadTalk() {
+    SOC.checkedAt = new Date().toISOString();
     if (SOC.accounts.wordpress) invoke('site_comments').then(c => { SOC.comments = c; if (S.view === 'talk') { renderList(); renderRail(); } }).catch(() => { SOC.comments = { comments: [], waiting: 0 }; });
     if (!anySocial()) return;
     const tasks = [
@@ -3581,16 +3605,12 @@
   }
   function talkHtml() {
     const who = SOC.person && feedById(SOC.person);
-    // Three tabs: the Neighborhood, Following (Mastodon and Bluesky), and You (what comes your way)
-    const tabsOn = TALK_TABS.filter(([k]) => k !== 'shared' || anySocial());
-    let tab = SOC.tab || 'blogs';
-    if (!tabsOn.some(([k]) => k === tab)) tab = 'blogs';
-    const counts = { you: newYou() };
-    const tabs = `<div class="ttabs" role="tablist">${tabsOn.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>`;
-    if (tab === 'blogs') return `<div class="nb-col">${tabs}${who ? personHtml(who) : neighborhoodHtml()}</div>`;
-    if (tab === 'you') return `<div class="nb-col">${tabs}${profilesHtml()}${youHtml()}</div>`;
-    return `${tabs}
-      <div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
+    paintTalkHead();
+    // Three tabs (in the title row): the Neighborhood, Following (Mastodon and Bluesky), and You
+    const { tab } = talkTabsInfo();
+    if (tab === 'blogs') return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
+    if (tab === 'you') return `<div class="nb-col">${profilesHtml()}${youHtml()}</div>`;
+    return `<div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
         <aside class="tside">${sideHtml()}</aside></div>`;
   }
   async function toggleThread(net, id) {
@@ -3679,6 +3699,7 @@
     if (k === 'nbback') { SOC.person = null; renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'ppmore') { SOC.personShown = (SOC.personShown || 15) + 15; renderList(); return; }
     if (k === 'nbonly') { SOC.nbOnly = b.dataset.k; SOC.nbShown = 30; renderList(); return; }
+    if (k === 'nbmin') { store.set('nbMin', store.get('nbMin') === '1' ? '0' : '1'); renderList(); return; }
     if (k === 'nbmore') { SOC.nbShown = (SOC.nbShown || 30) + 30; renderList(); return; }
     if (k === 'nbsave') { const it = item(b.dataset.id); if (it) { mark(it.id, { saved: !it.saved }); status(it.saved ? 'Removed from Read later.' : 'Saved to Read later.'); } return; }
     if (k === 'nbshare') { const it = item(b.dataset.id); if (it) openShareMenu(b, it); return; }
