@@ -1209,7 +1209,8 @@ pub async fn social_follow(network: String, person: String) -> Result<(), String
     }
 }
 
-/// Posts from people you follow that share something to read (your own left out).
+/// Posts from people you follow (your own and replies left out). The ones sharing something to read fill
+/// "From people you follow"; the Neighborhood also shows the plain posts of the writers you read.
 #[tauri::command]
 pub async fn social_shared() -> Conversations {
     let mut c = Conversations::default();
@@ -1219,7 +1220,7 @@ pub async fn social_shared() -> Conversations {
                 Ok(v) => {
                     for x in v["feed"].as_array().cloned().unwrap_or_default() {
                         let mut n = bsky_note(&x["post"], "shared");
-                        if n.link.is_empty() || n.author.id == s.did || !st(&x, "reply.parent.uri").is_empty() {
+                        if n.author.id == s.did || !st(&x, "reply.parent.uri").is_empty() {
                             continue;
                         }
                         if st(&x, "reason.$type").ends_with("reasonRepost") {
@@ -1236,13 +1237,29 @@ pub async fn social_shared() -> Conversations {
     }
     if let Ok(m) = masto_saved() {
         let me = st(&m, "id");
-        match masto(reqwest::Method::GET, "/api/v1/timelines/home", &[("limit", "40".into())], None).await {
+        // Mastodon gives 40 at a time; two pages keep it level with Bluesky's 100
+        let mut page: Vec<Value> = Vec::new();
+        let mut failed = None;
+        for _ in 0..2 {
+            let mut q = vec![("limit", "40".to_string())];
+            if let Some(last) = page.last() { q.push(("max_id", st(last, "id"))); }
+            match masto(reqwest::Method::GET, "/api/v1/timelines/home", &q, None).await {
+                Ok(v) => {
+                    let got = v.as_array().cloned().unwrap_or_default();
+                    let more = got.len() == 40;
+                    page.extend(got);
+                    if !more { break; }
+                }
+                Err(e) => { if page.is_empty() { failed = Some(e); } break; }
+            }
+        }
+        match failed.map_or(Ok(Value::Array(page)), Err) {
             Ok(v) => {
                 for x in v.as_array().cloned().unwrap_or_default() {
                     let boosted = x.get("reblog").is_some_and(|r| r.is_object());
                     let inner = if boosted { &x["reblog"] } else { &x };
                     let mut n = masto_note(inner, "shared");
-                    if n.link.is_empty() || n.author.id == me || !st(inner, "in_reply_to_id").is_empty() || st(&x, "account.id") == me {
+                    if n.author.id == me || !st(inner, "in_reply_to_id").is_empty() || st(&x, "account.id") == me {
                         continue;
                     }
                     if boosted {

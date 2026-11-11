@@ -27,6 +27,10 @@ Conversations now opens on a new Neighborhood tab: the posts of the people you r
 • On a card, try Write back, Share and Read later.
 • When one blog you read links to another blog's post, the card says "Replying to …" and the other post lists the answers. These fill in as your feeds refresh, so give it a refresh or two.
 • If you've marked your own site ("This is my site"), posts that link to it show "Links to you".
+• With Mastodon or Bluesky connected: short posts there by writers you read show up in the stream under their face, and blog posts show who shared them ("Shared by … on Bluesky").
+• Your own posts show too, marked You, with the replies they got.
+• "Writers your writers link to": blogs that several people you read link to. Try Follow on one, and × to stop suggesting it.
+• A line marks where you left off last time.
 • Scroll to the end: it should say you're caught up.
 
 Everything from 1.2.3 (email, folders inside folders, subscription locks) is in this build too.
