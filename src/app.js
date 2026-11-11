@@ -906,8 +906,11 @@
   }
 
   function selectView(v) {
+    const was = S.view;
     S.view = /^\d+$/.test(v) ? Number(v) : v;
-    if (S.view === 'talk') { SOC.nbVisit = undefined; if (!SOC.keepPerson) SOC.person = null; SOC.keepPerson = false; }
+    if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
+    // Back within half an hour is the same visit: "Since you were here" and the faces stay as they were
+    if (S.view === 'talk' && was !== 'talk') { if (!SOC.nbLeft || Date.now() - SOC.nbLeft > 30 * 60e3) SOC.nbVisit = undefined; if (!SOC.keepPerson) SOC.person = null; SOC.keepPerson = false; }
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
     if (isPhone()) setScreen('list');
     if (S.view === 'discover') openDiscover();
@@ -3475,7 +3478,7 @@
     const sec = (title, body) => body ? `<section class="pp-sec"><h3>${title}</h3>${body}</section>` : '';
     const isMine = myFeed()?.id === pid;
     return `<div class="pp">
-      <button class="linkish pp-back" data-talk="nbback">‹ Neighborhood</button>
+      <button class="btn pp-back" data-talk="nbback" title="Back (Esc)">‹ Back to ${esc(backLabel())}</button>
       <header class="pp-head">${nbFace(f, 'nb-av xl')}
         <div class="pp-who"><h2>${esc(f.title)}</h2>
           <div class="pp-where"><button class="linkish" data-talk="open" data-url="${esc(isWeb(f.site) ? f.site : 'https://' + host + '/')}">${esc(host)}</button>${accts.map(r => `<button class="linkish" data-talk="open" data-url="${esc(r.person.url || r.url)}">${ICON_NET[r.network] || ''} ${esc(r.person.handle)}</button>`).join('')}${plinks.map(l => `<button class="linkish" data-talk="open" data-url="${esc(l.url)}">${esc(l.label)}</button>`).join('')}</div>
@@ -3554,7 +3557,7 @@
     const small = (!n && !events.length) || store.get('nbMin') === '1';
     const k = `<div class="nb-open-top"><span class="nb-open-k">${first ? 'This week' : 'Since you were here'}</span>${chips}
       ${n || events.length ? `<button class="nb-min" data-talk="nbmin" title="${small ? 'Show more' : 'Fold away'}" aria-label="${small ? 'Show more' : 'Fold away'}">${small ? '+' : '–'}</button>` : ''}</div>`;
-    if (small) return `<section class="nb-open small">${k}<div class="nb-open-h sm"><span>${head}${events.length ? ` · ${events.length} conversation${events.length === 1 ? '' : 's'}` : ''}</span></div></section>`;
+    if (small) return `<section class="nb-open small">${k}<div class="nb-open-h sm"><span>${head}${events.length ? ` · ${events.length} conversation${events.length === 1 ? '' : 's'}` : ''}</span></div>${store.get('nbMin') === '1' ? '' : facesHtml}</section>`;
     return `<section class="nb-open">${k}
       <div class="nb-open-h"><span>${head}${!n && !first ? '. Here’s the last two weeks.' : ''}</span></div>
       ${facesHtml}
@@ -3921,18 +3924,30 @@
       $('repSend').onclick = () => { el.hidden = true; done($('repText').value.trim() || 'Reported from The Reading Room'); };
     });
   }
+  // Back from a person's page to where you were: the feed you opened it from, or the same place in Conversations
+  function personBack() {
+    const from = SOC.personFrom || {}; SOC.personFrom = null; SOC.person = null;
+    if (from.view !== undefined && from.view !== 'talk') { selectView(String(from.view)); return; }
+    if (from.tab) SOC.tab = from.tab; if (from.chip !== undefined) SOC.youChip = from.chip;
+    renderList(); renderRail();
+    requestAnimationFrame(() => $('main').scrollTo({ top: from.top || 0 }));
+  }
+  const backLabel = () => { const f = SOC.personFrom || {}; return f.view !== undefined && f.view !== 'talk' ? (f.title || 'your feeds') : f.tab === 'you' ? 'You' : f.tab === 'shared' ? 'Following' : 'Neighborhood'; };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.view === 'talk' && SOC.person && !document.querySelector('dialog[open], .n-box textarea:focus')) personBack(); });
   // "Their page" on a person's feed: open Conversations on that person (runs before the view switch)
   document.addEventListener('click', e => {
     const pp = e.target.closest?.('[data-person-page]');
-    if (pp) { SOC.person = pp.dataset.personPage; SOC.personShown = 15; SOC.tab = 'blogs'; SOC.keepPerson = true; }
+    if (pp) { SOC.personFrom = { view: S.view, title: feedById(S.view)?.title || '' }; SOC.person = pp.dataset.personPage; SOC.personShown = 15; SOC.tab = 'blogs'; SOC.keepPerson = true; }
   }, true);
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
     if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
-    if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; } SOC.person = b.dataset.feed; SOC.personShown = 15; SOC.tab = 'blogs'; renderList(); $('main').scrollTo({ top: 0 }); return; }
-    if (k === 'nbback') { SOC.person = null; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; }
+      if (!SOC.person) SOC.personFrom = { tab: SOC.tab, chip: SOC.youChip, top: $('main').scrollTop };
+      SOC.person = b.dataset.feed; SOC.personShown = 15; SOC.tab = 'blogs'; renderList(); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'nbback') { personBack(); return; }
     if (k === 'ppmore') { SOC.personShown = (SOC.personShown || 15) + 15; renderList(); return; }
     if (k === 'nbonly') { SOC.nbOnly = b.dataset.k; SOC.nbShown = 30; renderList(); return; }
     if (k === 'nbwelcomed') { store.set('nbWelcomed', '1'); renderList(); return; }

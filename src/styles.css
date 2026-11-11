@@ -1064,7 +1064,7 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 .nb-reply .nb-acts { margin-top: 6px; }
 .nb-connect { margin-top: 14px; }
 /* a page for each person */
-.pp-back { font-size: 13px; margin: 2px 0 10px; display: inline-block; }
+.pp-back { margin: 2px 0 14px; display: inline-flex; align-items: center; gap: 4px; }
 .pp-head { display: flex; gap: 18px; align-items: center; }
 .nb-av.xl { width: 84px; height: 84px; font-size: 36px; box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--line); }
 .pp-who { min-width: 0; }
