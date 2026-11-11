@@ -1410,6 +1410,21 @@ async fn wp(method: reqwest::Method, path: &str, body: Option<Value>) -> Result<
     wp_call(&st(&s, "site"), &st(&s, "user"), &st(&s, "password"), method, path, body).await
 }
 
+/// Your picture from your WordPress profile (WordPress uses Gravatar), larger than WordPress's own 96 px.
+/// "d=404" so a missing Gravatar fails to load (and the app falls back) instead of showing the grey silhouette.
+#[tauri::command]
+pub async fn site_avatar() -> String {
+    let Ok(me) = wp(reqwest::Method::GET, "/wp/v2/users/me", None).await else { return String::new() };
+    let urls = &me["avatar_urls"];
+    let best = ["96", "48", "24"].iter().map(|k| st(urls, k)).find(|u| !u.is_empty()).unwrap_or_default();
+    let Ok(mut u) = url::Url::parse(&best) else { return String::new() };
+    if u.host_str().is_some_and(|h| h.ends_with("gravatar.com")) {
+        let keep: Vec<(String, String)> = u.query_pairs().filter(|(k, _)| k != "s" && k != "d").map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        u.query_pairs_mut().clear().extend_pairs(keep).append_pair("s", "256").append_pair("d", "404");
+    }
+    u.to_string()
+}
+
 /// Connect your WordPress site with an Application Password (made in your WordPress profile).
 #[tauri::command]
 pub async fn site_connect(site: String, user: String, password: String) -> Result<Accounts, String> {

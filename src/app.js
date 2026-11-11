@@ -2894,9 +2894,21 @@
   const nbFeedName = f => esc(f?.title || '');
   const nbName = i => esc(nbWho(i)?.title || srcLabel(i) || hostOfU(i.link));
   // A writer's face: their Bluesky or Mastodon picture, else their site's own icon, else their coloured letter
+  // Your own picture: Bluesky/Mastodon profile, then your WordPress profile picture (Gravatar), then your site icon.
+  // Fetched once when first needed (Conversations may open before its own loading has run).
+  let myPics = null;
+  function myPicture() {
+    if (!myPics) {
+      myPics = { social: '', wp: '' };
+      const redraw = () => { PV++; if (S.view === 'talk') renderList(); };
+      if (anySocial()) (SOC.profiles ? Promise.resolve(SOC.profiles) : invoke('social_profiles')).then(p => { SOC.profiles = SOC.profiles || p; myPics.social = (p || []).find(x => isWeb(x.avatar))?.avatar || ''; if (myPics.social) redraw(); }).catch(() => {});
+      if (SOC.accounts.wordpress) invoke('site_avatar').then(u => { myPics.wp = isWeb(u) ? u : ''; if (myPics.wp) redraw(); }).catch(() => {});
+    }
+    return (SOC.profiles || []).find(p => isWeb(p.avatar))?.avatar || myPics.social || myPics.wp || '';
+  }
   function avatarOf(f) {
     if (!f || !f.id) return '';
-    if (myFeed()?.id === f.id) return (SOC.profiles || []).find(p => isWeb(p.avatar))?.avatar || PL[siteOf(f)]?.icon || '';
+    if (myFeed()?.id === f.id) return myPicture() || PL[siteOf(f)]?.icon || '';
     const r = (SOC.readers || []).find(r => r.feedId === personId(f.id) && isWeb(r.person.avatar));
     return r?.person.avatar || PL[siteOf(f)]?.icon || '';
   }
