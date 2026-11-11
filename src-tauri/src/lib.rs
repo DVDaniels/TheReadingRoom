@@ -16,6 +16,7 @@ mod topics;
 mod watch;
 mod share;
 mod email;
+mod webmention;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -2269,6 +2270,8 @@ pub fn run() {
             social::site_connect,
             social::site_avatar,
             social::site_comments,
+            social::site_like,
+            social::social_like,
             social::site_note,
             social::social_share_note,
             social::social_reply,

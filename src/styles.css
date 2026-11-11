@@ -1090,6 +1090,17 @@ div.yu-ev { display: block; padding: 4px 0; }
 .yu-ev .nb-by span { color: var(--muted); }
 .nb-ev.wait { display: block; margin: 4px 0 10px; padding: 9px 14px; border-radius: 12px; background: color-mix(in srgb, var(--saved) 14%, transparent); color: var(--ink); font-weight: 600; }
 .nb-col .pstrip { margin-bottom: 12px; }
+/* Like and reply in the card */
+.nb-like { display: inline-flex; align-items: center; gap: 4px; }
+.nb-like svg { width: 14px; height: 14px; }
+.nb-like.on { color: #c2410c; font-weight: 600; }
+.nb-like.on svg { fill: currentColor; }
+.nb-rbox { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.nb-rbox textarea { width: 100%; box-sizing: border-box; border: 0; background: none; resize: vertical; font: 15px/1.5 var(--font-ui); color: var(--ink); outline: none; }
+.nb-rbox .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.nb-rbox .nb-rb-mail:empty { display: none; }
+.nb-rbox .note { margin: 8px 0 0; }
+.nb-rb-done { margin: 8px 0 0; font-size: 13px; color: var(--accent); font-weight: 600; }
 @media (max-width: 760px) {
   .pp-head { gap: 14px; } .nb-av.xl { width: 64px; height: 64px; font-size: 28px; } .pp-who h2 { font-size: 24px; }
   .nb-replies { margin-left: 12px; padding-left: 16px; }

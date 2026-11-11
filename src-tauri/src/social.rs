@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 
 const SERVICE: &str = "com.daviddaniels.readingroom";
 const OOB: &str = "urn:ietf:wg:oauth:2.0:oob";
-const MASTO_SCOPES: &str = "read write:statuses write:media write:follows write:mutes write:blocks write:reports";
+const MASTO_SCOPES: &str = "read write:statuses write:media write:follows write:mutes write:blocks write:reports write:favourites";
 /// Bluesky's own moderation service, which receives reports
 const BSKY_MODERATION: &str = "did:plc:ar7c4by46qjdydhdevvrndac#atproto_labeler";
 
@@ -1474,6 +1474,100 @@ pub async fn site_comments() -> Result<SiteComments, String> {
     Ok(out)
 }
 
+#[derive(Serialize, Default)]
+pub struct Liked {
+    /// Your Likes page
+    pub page: String,
+    /// The post's site was told (it takes Webmentions)
+    pub told: bool,
+    /// Why it couldn't be told, if it tried and failed
+    pub error: String,
+}
+
+const LIKES_START: &str = "<ul class=\"h-feed rr-likes\">";
+
+/// Your Likes page: a page on your site listing the posts you liked, each marked up as a like (h-entry u-like-of),
+/// so sites that take Webmentions can show your like. Made the first time; "likes" unless you already have a
+/// page by that name that isn't this one.
+async fn likes_page(create: bool) -> Result<Option<(i64, String, String)>, String> {
+    for slug in ["likes", "liked-posts"] {
+        let v = wp(reqwest::Method::GET, &format!("/wp/v2/pages?slug={slug}&context=edit&status=publish,draft,private"), None).await?;
+        if let Some(p) = v.as_array().and_then(|a| a.first()) {
+            let raw = st(p, "content.raw");
+            if raw.contains(LIKES_START) {
+                return Ok(Some((p["id"].as_i64().unwrap_or(0), st(p, "link"), raw)));
+            }
+            continue; // your own page by that name: leave it alone
+        }
+        if !create { return Ok(None); }
+        let content = format!("<!-- wp:paragraph -->\n<p>Posts from other blogs that I liked.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n{LIKES_START}\n</ul>\n<!-- /wp:html -->");
+        let p = wp(reqwest::Method::POST, "/wp/v2/pages", Some(json!({ "title": "Likes", "slug": slug, "status": "publish", "content": content }))).await?;
+        return Ok(Some((p["id"].as_i64().unwrap_or(0), st(&p, "link"), content)));
+    }
+    Err("Couldn't find a free name for your Likes page.".into())
+}
+
+/// The Likes page's content with this post's entry taken out, and put back at the top when liking (newest 300 kept).
+fn likes_update(raw: &str, target: &str, title: &str, author: &str, on: bool, now: chrono::DateTime<chrono::Utc>) -> String {
+    static LI: OnceLock<regex::Regex> = OnceLock::new();
+    let href = format!("href=\"{}\"", html_escape::encode_double_quoted_attribute(target));
+    let Some((head, tail)) = raw.split_once(LIKES_START) else { return raw.to_string() };
+    let (list, rest) = tail.split_once("</ul>").unwrap_or((tail, ""));
+    let mut entries: Vec<String> = LI.get_or_init(|| regex::Regex::new(r#"(?s)<li class="h-entry".*?</li>"#).unwrap())
+        .find_iter(list).map(|m| m.as_str().to_string()).filter(|e| !e.contains(&href)).collect();
+    if on {
+        entries.insert(0, format!(
+            "<li class=\"h-entry\">Liked <a class=\"u-like-of\" href=\"{}\">{}</a>{} · <time class=\"dt-published\" datetime=\"{}\">{}</time></li>",
+            html_escape::encode_double_quoted_attribute(target), esc_html(if title.trim().is_empty() { target } else { title.trim() }),
+            if author.trim().is_empty() { String::new() } else { format!(" by {}", esc_html(author.trim())) },
+            now.format("%Y-%m-%dT%H:%M:%SZ"), now.format("%B %-d, %Y")));
+    }
+    entries.truncate(300);
+    let items: String = entries.iter().map(|e| format!("\n{e}")).collect();
+    format!("{head}{LIKES_START}{items}\n</ul>{rest}")
+}
+
+/// Like (or un-like) a post: add it to your Likes page on your site, then tell the post's site with a Webmention.
+#[tauri::command]
+pub async fn site_like(url: String, title: String, author: String, on: bool) -> Result<Liked, String> {
+    let target = url::Url::parse(&url).map_err(|_| "That post has no web address.".to_string())?.to_string();
+    let Some((id, link, raw)) = likes_page(on).await? else { return Ok(Liked::default()) };
+    let body = likes_update(&raw, &target, &title, &author, on, chrono::Utc::now());
+    wp(reqwest::Method::POST, &format!("/wp/v2/pages/{id}"), Some(json!({ "content": body, "status": "publish" }))).await?;
+    // tell their site (an un-like is told too: their site sees the link is gone and takes the like down)
+    let mut out = Liked { page: link.clone(), ..Default::default() };
+    match crate::webmention::send(client(), &link, &target).await {
+        Ok(t) => out.told = t,
+        Err(e) => out.error = e,
+    }
+    Ok(out)
+}
+
+/// Like or un-like a post on Bluesky or Mastodon. On Bluesky, liking returns the like's own address,
+/// which un-liking needs.
+#[tauri::command]
+pub async fn social_like(network: String, id: String, cid: String, on: bool, like_uri: Option<String>) -> Result<String, String> {
+    if network == "bluesky" {
+        let s = bsky_session(false).await?;
+        if on {
+            let record = json!({ "$type": "app.bsky.feed.like", "subject": { "uri": id, "cid": cid }, "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
+            let v = bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.feed.like", "record": record }))).await?;
+            return Ok(st(&v, "uri"));
+        }
+        let uri = like_uri.unwrap_or_default();
+        let rkey = uri.rsplit('/').next().unwrap_or("").to_string();
+        if rkey.is_empty() { return Err("Couldn't find that like to take back.".into()); }
+        bsky(false, "com.atproto.repo.deleteRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.feed.like", "rkey": rkey }))).await?;
+        return Ok(String::new());
+    }
+    let path = format!("/api/v1/statuses/{id}/{}", if on { "favourite" } else { "unfavourite" });
+    masto(reqwest::Method::POST, &path, &[], Some(json!({}))).await.map(|_| String::new()).map_err(|e| {
+        if e.contains("403") || e.to_lowercase().contains("scope") {
+            "Favoriting needs a newer permission. Disconnect Mastodon and connect it again, then try once more.".into()
+        } else { e }
+    })
+}
+
 /// Your picture from your WordPress profile (WordPress uses Gravatar), larger than WordPress's own 96 px.
 /// "d=404" so a missing Gravatar fails to load (and the app falls back) instead of showing the grey silhouette.
 #[tauri::command]
@@ -1944,5 +2038,22 @@ mod icon_tests {
         assert_eq!(super::site_icon(html, &base), "https://cdn.ex.blog/touch.png");
         assert_eq!(super::site_icon(r#"<link rel="icon" href="/fav-192.png" sizes="192x192">"#, &base), "https://ex.blog/fav-192.png");
         assert_eq!(super::site_icon(r#"<link rel="shortcut icon" href="/favicon.ico">"#, &base), "");
+    }
+}
+
+#[cfg(test)]
+mod likes_tests {
+    #[test]
+    fn likes_page_entries() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-10T12:00:00Z").unwrap().with_timezone(&chrono::Utc);
+        let raw = format!("<p>Intro</p>\n<!-- wp:html -->\n{}\n</ul>\n<!-- /wp:html -->", super::LIKES_START);
+        let one = super::likes_update(&raw, "https://a.blog/x", "A & B", "Ann", true, now);
+        assert!(one.contains(r#"<a class="u-like-of" href="https://a.blog/x">A &amp; B</a> by Ann"#));
+        let two = super::likes_update(&one, "https://b.blog/y", "Y", "", true, now);
+        assert!(two.find("b.blog/y").unwrap() < two.find("a.blog/x").unwrap());
+        let again = super::likes_update(&two, "https://a.blog/x", "A & B", "Ann", true, now);
+        assert_eq!(again.matches("a.blog/x").count(), 1);
+        let gone = super::likes_update(&again, "https://a.blog/x", "", "", false, now);
+        assert!(!gone.contains("a.blog/x") && gone.contains("b.blog/y") && gone.ends_with("</ul>\n<!-- /wp:html -->"));
     }
 }

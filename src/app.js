@@ -732,7 +732,16 @@
     syncHome();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); buildGuideToc(); store.set('guideSeen', '1'); return; }
-    if (S.view === 'talk') { $('list').innerHTML = talkHtml(); return; }
+    if (S.view === 'talk') {
+      // background redraws (pictures, accounts, new replies) must not wipe a reply you're writing
+      const nform = document.querySelector('#list .n-form textarea');
+      if (nform && nform.value.trim()) return;
+      const open = document.querySelector('#list .nb-rbox textarea');
+      const keep = open && { id: open.closest('.n-box').dataset.box.slice(3), text: open.value, focus: document.activeElement === open, at: open.selectionStart };
+      $('list').innerHTML = talkHtml();
+      if (keep) { const it = item(keep.id); if (it) nbReplyBox(null, it, keep); }
+      return;
+    }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
@@ -2966,7 +2975,8 @@
           <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? '<span class="nb-tag you">You</span>' : ''}<span>replied</span><time>${esc(fmtWhen(i.date))}</time></div>
           ${short ? '' : `<button class="nb-title sm" data-open="${esc(i.id)}">${esc(headline(i))}</button>`}
           ${t ? `<p class="nb-text">${esc(t)}</p>` : ''}
-          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbreply" data-id="${esc(i.id)}" aria-haspopup="menu">Write back</button>`}</div>
+          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>${likeBtn(i)}`}</div>
+          <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         </div></article>`;
     }
     return `<article class="nb-post${i.read || mine ? '' : ' unread'}${short ? ' short' : ''}${mine ? ' mine' : ''}" data-id="${esc(i.id)}">
@@ -2982,10 +2992,12 @@
           <button class="linkish" data-open="${esc(i.id)}">${short ? 'Open' : 'Read'}</button>
           ${mine ? (yours.length ? `<button class="linkish" data-talk="tab" data-tab="posts">${yourReplies ? `${yourReplies} ${yourReplies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} on ${[...new Set(yours.map(p => NET[p.network]))].join(' and ')}</button>`
               : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
-            : `<button class="linkish" data-talk="nbreply" data-id="${esc(i.id)}" aria-haspopup="menu">Write back</button>
+            : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>
+          ${likeBtn(i)}
           <button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
           <button class="linkish" data-talk="nbsave" data-id="${esc(i.id)}">${i.saved ? 'Saved ✓' : 'Read later'}</button>`}
         </div>
+        <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         ${answered}
       </div></article>`;
   }
@@ -3001,6 +3013,7 @@
         ${card}${pic}
         <div class="nb-acts">
           <button class="linkish" data-talk="reply" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" data-root="${esc(n.root_id || '')}" data-rootcid="${esc(n.root_cid || '')}" data-handle="${esc(n.author.handle)}">Reply</button>
+          ${noteLikeBtn(n)}
           <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button>
           ${n.replies ? `<span class="nb-count">${n.replies} ${n.replies === 1 ? 'reply' : 'replies'}</span>` : ''}${n.likes ? `<span class="nb-count">${n.likes} ${n.network === 'mastodon' ? 'favorites' : 'likes'}</span>` : ''}
         </div>
@@ -3079,6 +3092,89 @@
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
     return opener + facesHtml + chips + body + end + connect;
   }
+  // ---- Like: on a blog post, a like from your own site (your Likes page, then a Webmention to theirs);
+  // on Mastodon or Bluesky, that network's own like. Both remembered (synced) so the heart stays filled.
+  const HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-9-9a4.6 4.6 0 0 1 8-4.3L12 8l1-1.3A4.6 4.6 0 0 1 21 11c-2 4.6-9 9-9 9z"/></svg>';
+  const likedAt = it => (S.prefs.likes || {})[normU(it.link)];
+  const likeBtn = it => SOC.accounts.wordpress && isWeb(it.link) && !isSocialFeed(feedById(it.feed_id))
+    ? `<button class="linkish nb-like${likedAt(it) ? ' on' : ''}" data-talk="nblike" data-id="${esc(it.id)}" aria-pressed="${!!likedAt(it)}" title="${likedAt(it) ? 'Take back your like' : 'Like it from your site'}">${HEART}${likedAt(it) ? 'Liked' : 'Like'}</button>` : '';
+  const noteLiked = n => (S.prefs.socialLikes || {})[n.network + ':' + n.id];
+  const noteLikeBtn = n => SOC.accounts[n.network] ? `<button class="linkish nb-like${noteLiked(n) ? ' on' : ''}" data-talk="notelike" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" aria-pressed="${!!noteLiked(n)}">${HEART}${noteLiked(n) ? (n.network === 'mastodon' ? 'Favorited' : 'Liked') : (n.network === 'mastodon' ? 'Favorite' : 'Like')}</button>` : '';
+  async function likePost(b, it) {
+    const on = !likedAt(it), f = nbWho(it), host = SOC.accounts.wordpress?.site?.replace(/^https?:\/\//, '') || 'your site';
+    if (on && !store.get('likeExplained')) {
+      const ok = await new Promise(done => {
+        const el = sheet('likePanel', `<h2>Like it from your site</h2>
+          <p>Your likes go on a <b>Likes</b> page on ${esc(host)}, made the first time you like something. Each one links to the post, and the post’s site is told (a Webmention), so if it shows likes, yours appears there.</p>
+          <p class="note">Taking a like back removes it from your page and tells their site again.</p>
+          <div class="row sheet-foot"><button class="btn" type="button" id="likeNo">Not now</button><button class="btn primary" type="button" id="likeYes">Like it</button></div>`, 'Like it from your site');
+        $('likeNo').onclick = () => { el.hidden = true; done(false); };
+        $('likeYes').onclick = () => { el.hidden = true; done(true); };
+      });
+      if (!ok) return;
+      store.set('likeExplained', '1');
+    }
+    b.disabled = true;
+    const key = normU(it.link), likes = { ...(S.prefs.likes || {}) };
+    if (on) likes[key] = new Date().toISOString(); else delete likes[key];
+    S.prefs.likes = likes; savePrefs(); renderList();
+    try {
+      const r = await invoke('site_like', { url: it.link, title: headline(it), author: f?.title || '', on });
+      status(on ? (r.told ? `Liked. ${f?.title || 'Their site'} was told, and it’s on your Likes page.` : r.error ? `Liked on your Likes page, but telling their site didn’t work: ${r.error}` : `Liked on your Likes page. ${f?.title || 'Their site'} doesn’t take Webmentions, so they won’t see it there.`)
+        : 'Your like is taken back.');
+    } catch (e) {
+      const back = { ...(S.prefs.likes || {}) }; if (on) delete back[key]; else back[key] = new Date().toISOString();
+      S.prefs.likes = back; savePrefs(); renderList(); status(msg(e), true);
+    }
+  }
+  async function likeNote(b) {
+    const k = b.dataset.net + ':' + b.dataset.id, was = (S.prefs.socialLikes || {})[k], on = !was;
+    const set = v => { const m = { ...(S.prefs.socialLikes || {}) }; if (v) m[k] = v; else delete m[k]; S.prefs.socialLikes = m; savePrefs(); renderList(); };
+    set(on ? 'pending' : '');
+    try {
+      const uri = await invoke('social_like', { network: b.dataset.net, id: b.dataset.id, cid: b.dataset.cid, on, likeUri: was && was !== 'pending' && was !== '1' ? was : null });
+      set(on ? (uri || '1') : '');
+    } catch (e) { set(was || ''); status(msg(e), true); }
+  }
+  // ---- Reply right in the card: post a reply on your own site (their site is told), or email them
+  async function nbReplyBox(b, it, keep) {
+    document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
+    const box = document.querySelector(`.n-box[data-box="nb:${CSS.escape(it.id)}"]`); if (!box) return;
+    const f = nbWho(it), wp = SOC.accounts.wordpress, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Write back to ${esc(f?.title || 'them')}…"></textarea>
+      <div class="row">
+        ${wp ? `<button class="btn primary" type="button" data-rb="site">Post on ${esc(host)}</button>` : ''}
+        <span class="nb-rb-mail"></span>
+        <button class="btn" type="button" data-rb="more" aria-haspopup="menu">More ways</button>
+        <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
+      </div>
+      <p class="note">${wp ? `A reply on your site links to their post, so ${esc(f?.title || 'their site')} is told if it takes Webmentions.` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
+    const ta = box.querySelector('textarea');
+    if (keep) { ta.value = keep.text; if (keep.focus) { ta.focus(); ta.setSelectionRange(keep.at, keep.at); } } else ta.focus();
+    // email, if they list an address and you have a mailbox here
+    invoke('reply_options', { itemId: it.id }).then(o => {
+      const addr = plainAddress(o?.email?.address || '');
+      if (!addr || !MAIL.account || !box.isConnected) return;
+      box.querySelector('.nb-rb-mail').innerHTML = `<button class="btn" type="button" data-rb="mail" data-to="${esc(addr)}">Email ${esc(f?.title?.split(' ')[0] || 'them')}</button>`;
+    }).catch(() => {});
+    box.querySelector('form').onclick = async e => {
+      const k = e.target.closest('[data-rb]')?.dataset.rb; if (!k) return;
+      const text = ta.value.trim();
+      if (k === 'cancel') { box.innerHTML = ''; return; }
+      if (k === 'more') { openReply(e.target, it); return; }
+      if (k === 'mail') { box.innerHTML = ''; openMailCompose({ to: e.target.dataset.to, toName: f?.title || '', subject: `Re: ${headline(it)}`, body: `${text}\n\n—\nIn reply to “${headline(it)}”\n${it.link}` }); return; }
+      if (k === 'site') {
+        if (!text) { ta.focus(); status('Write a few words first.'); return; }
+        const btn = e.target; btn.disabled = true; btn.textContent = 'Posting…';
+        try {
+          const r = await invoke('site_note', { title: '', text, link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
+          box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
+          status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if it takes Webmentions.`);
+        } catch (err) { btn.disabled = false; btn.textContent = `Post on ${host}`; status(msg(err), true); }
+      }
+    };
+  }
+
   // ---- A page for each person: their posts and short posts, how you know them, who they talk with and read.
   function personHtml(f) {
     const x = nbIndex(), soc = nbSocial(), pid = f.id;
@@ -3540,6 +3636,9 @@
     if (k === 'nbsave') { const it = item(b.dataset.id); if (it) { mark(it.id, { saved: !it.saved }); status(it.saved ? 'Removed from Read later.' : 'Saved to Read later.'); } return; }
     if (k === 'nbshare') { const it = item(b.dataset.id); if (it) openShareMenu(b, it); return; }
     if (k === 'nbreply') { const it = item(b.dataset.id); if (it) openReply(b, it); return; }
+    if (k === 'nbrbox') { const it = item(b.dataset.id); if (it) nbReplyBox(b, it); return; }
+    if (k === 'nblike') { const it = item(b.dataset.id); if (it) likePost(b, it); return; }
+    if (k === 'notelike') { likeNote(b); return; }
     if (k === 'thread') toggleThread(b.dataset.net, b.dataset.id);
     if (k === 'whole') { const n = (SOC.conv?.replies || []).find(x => x.id === b.dataset.id); if (n) { SOC.whole.delete(convKey(n)); loadWhole(n); renderList(); } }
     if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
