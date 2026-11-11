@@ -24,6 +24,7 @@ CONVERSATIONS: A SOCIAL FEED MADE OF BLOGS
 Conversations now has three tabs: Neighborhood, Following and You. No account is needed for the Neighborhood. Please try:
 
 The Neighborhood
+• New to it? The first visit explains the page in two lines, and suggests a few people to follow if you have fewer than five.
 • The posts of the people you read, like a social feed, with their faces (their Bluesky or Mastodon picture, or their blog's icon; these fill in after the app checks each site, so give it a minute the first time).
 • "Since you were here" at the top sums up what's new. Tap a conversation in it to open the post.
 • When writers reply to each other, the replies show under the original post as a thread. These fill in as your feeds refresh, so give it a refresh or two.
@@ -35,7 +36,7 @@ A page for each person
 • Tap a face or a name. You should see their posts, who they talk with, emails from them, blogs they link to, and their blogroll. "Their page" on a person's feed opens it too.
 
 Like and reply
-• With your WordPress site connected, Like on a blog post puts it on a Likes page on your site (made the first time; it asks first) and tells their site. Like again to take it back.
+• Like works for everyone: without a site connected it's a like only you see. With your WordPress site connected, Like on a blog post puts it on a Likes page on your site (made the first time; it asks first) and tells their site. Like again to take it back.
 • Like works on Bluesky and Mastodon posts too. On Mastodon you may be asked to disconnect and connect again once.
 • Reply opens a box right in the card: post a reply on your site, or email them.
 • Some posts show likes and replies from other sites (for example "8 likes, 2 replies"). Tap to see who.

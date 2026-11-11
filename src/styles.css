@@ -1143,6 +1143,28 @@ body.talk-view #feedBar { display: none; }
 .nb-open.small { padding: 10px 16px; }
 .nb-open-h.sm { font-size: 16px; margin-top: 4px; }
 .nb-open + .nb-post, .nb-open + .nb-thread, .nb-open + .nb-seen { margin-top: 4px; }
+/* first run: welcome, starter writers, one hint */
+.nb-welcome { position: relative; margin: 4px 0 14px; padding: 18px 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.nb-welcome h3 { margin: 0 0 6px; font-family: var(--font-read); font-size: 22px; font-weight: 600; }
+.nb-welcome p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.5; color: var(--ink); max-width: 56ch; }
+.nb-welcome .btn { margin-top: 4px; }
+.nb-x { all: unset; cursor: pointer; position: absolute; top: 10px; right: 12px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); font-size: 18px; }
+.nb-x:hover { background: var(--bg); color: var(--ink); }
+.nb-x.sm { position: static; flex: none; width: 20px; height: 20px; font-size: 15px; margin-left: auto; display: grid; }
+.nb-post + .nb-starters, .nb-thread + .nb-starters { margin-top: 8px; }
+.nb-starters { margin: 0 0 14px; padding: 16px 18px; border-radius: 16px; background: var(--accent-soft); }
+.nb-starters h3 { margin: 0 0 2px; font-size: 16px; }
+.nb-starters > p { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.nb-starter { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid color-mix(in srgb, var(--accent) 15%, transparent); }
+.nb-starter:first-of-type { border-top: 0; }
+.nb-st-who { flex: 1; min-width: 0; }
+.nb-st-who b { display: block; font-size: 14.5px; }
+.nb-st-who small { color: var(--muted); font-size: 12.5px; line-height: 1.35; display: block; }
+.nb-st-more { margin: 10px 0 0 !important; font-size: 13px; }
+.nb-st-more .linkish { font-size: 13px; }
+.nb-hint { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); }
+.nb-hint .linkish { font-size: 13px; font-weight: 600; }
+.nb-dots { font-size: 18px !important; line-height: 1; padding: 0 4px; letter-spacing: 1px; }
 @media (max-width: 760px) {
   /* phones: New note and refresh beside the title, the three tabs on their own line */
   body.talk-view .head { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }

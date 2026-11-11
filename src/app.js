@@ -498,7 +498,7 @@
     } else if (S.view === 'people') {
       bar.hidden = false;
       const n = S.feeds.filter(f => kindOf(f) === 'person').length;
-      bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
+      bar.innerHTML = `<button class="btn" id="choosePeople">Choose who’s here</button><button class="btn" data-view="talk">See them as a conversation →</button><span class="note">${n} of ${S.feeds.length} feeds count as people</span>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'talk') {
       bar.hidden = true; // tabs and actions live in the pinned title row (talkHead)
@@ -3017,8 +3017,10 @@
               : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
             : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>
           ${likeBtn(i)}
-          <button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
-          <button class="linkish" data-talk="nbsave" data-id="${esc(i.id)}">${i.saved ? 'Saved ✓' : 'Read later'}</button>`}
+          ${SOC.moreOpen === i.id ? `<button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
+          <button class="linkish" data-talk="nbsave" data-id="${esc(i.id)}">${i.saved ? 'Saved ✓' : 'Read later'}</button>
+          <button class="linkish" data-talk="open" data-url="${esc(i.link)}">Open their site</button>`
+            : `<button class="linkish nb-dots" data-talk="nbdots" data-id="${esc(i.id)}" aria-label="More: Share, Read later, Open their site" title="More">⋯</button>`}`}
         </div>
         <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         ${answered}
@@ -3060,8 +3062,11 @@
   // The top of the root post a reply chain goes back to (a reply to a reply goes back to the first post)
   function nbRoot(i, x) { let r = i, k = 0; while (x.replyTo.has(r.id) && k++ < 4) r = x.replyTo.get(r.id); return r; }
   function neighborhoodHtml() {
-    const people = S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f));
-    if (!people.length) return `<div class="empty"><strong>Your neighborhood is empty</strong><span>Open a feed and set “This feed is” to A person, or find writers in Discover. Their posts gather here, with the conversations between them.</span><button class="btn primary" data-view="discover">Discover</button></div>`;
+    const people = S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f) && myFeed()?.id !== f.id);
+    // nobody yet: the suggestions are the page; a few people: suggestions after their first posts
+    const intro = nbWelcomeHtml() + (!people.length ? nbStartersHtml(0) : '');
+    const more = people.length && people.length < 5 ? nbStartersHtml(people.length) : '';
+    if (!people.length) return intro || `<div class="empty"><strong>No one here yet</strong><span>Follow a few people who write, and their posts gather here with the conversations between them.</span><button class="btn primary" data-view="discover">Find writers in Discover</button></div>`;
     const x = nbIndex(), soc = nbSocial(), since = Date.now() - NB_DAYS * DAY, mine = myFeed();
     // Blog posts (yours too) and their short posts on Mastodon and Bluesky
     const posts = S.items.filter(i => inScope(i, 'people') && !isMuted(i) && !isFolded(i, 'people') && Date.parse(i.date) > since);
@@ -3098,7 +3103,7 @@
     const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted lately">${[...faces.values()].slice(0, 16).map(({ f, unread }) =>
       `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>` : '';
     const talks = all.filter(talky).length;
-    const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Short posts']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`;
+    const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`;
     const opener = nbOpener(posts, soc, x, facesHtml, chips);
     const writers = nbWriters(3);
     let body = '', lined = false;
@@ -3107,12 +3112,12 @@
       if (!lined && SOC.nbVisit && fresh && fresh < shown.length && Date.parse(e.date) <= SOC.nbVisit) { body += `<div class="nb-seen"><span>Seen before</span></div>`; lined = true; }
       body += e.t ? `<section class="nb-thread">${nbCard(e.t.root, x, soc, 'root')}<div class="nb-replies">${e.t.replies.map(r => nbCard(r, x, soc, 'reply')).join('')}</div></section>`
         : e.i ? nbCard(e.i, x, soc) : nbNote(e.s);
+      if (more && k === Math.min(2, shown.length - 1)) body += more;
       if (k === Math.min(4, shown.length - 1) && writers.length && !who) body += `<aside class="nb-wbox"><h3>Writers your writers link to</h3><p>Blogs the people you read keep linking to. Follow one to grow your neighborhood.</p>${writers.map(writerRow).join('')}</aside>`;
     });
-    const connect = anySocial() ? '' : `<aside class="nb-wbox nb-connect"><h3>Mastodon and Bluesky too</h3><p>Connect an account to see the short posts of the writers you read there, who shares their posts, and to answer replies here.</p><button class="btn" id="talkConnect">Connect an account</button></aside>`;
     const end = shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
-    return opener + body + end + connect;
+    return intro + opener + nbHintHtml() + body + end;
   }
   // ---- Reactions from other sites: likes, replies and reposts a post has received through webmention.io
   // (sites that use it; the rest have none to show). Counts cached for six hours.
@@ -3159,16 +3164,25 @@
   // on Mastodon or Bluesky, that network's own like. Both remembered (synced) so the heart stays filled.
   const HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-9-9a4.6 4.6 0 0 1 8-4.3L12 8l1-1.3A4.6 4.6 0 0 1 21 11c-2 4.6-9 9-9 9z"/></svg>';
   const likedAt = it => (S.prefs.likes || {})[normU(it.link)];
-  const likeBtn = it => SOC.accounts.wordpress && isWeb(it.link) && !isSocialFeed(feedById(it.feed_id))
-    ? `<button class="linkish nb-like${likedAt(it) ? ' on' : ''}" data-talk="nblike" data-id="${esc(it.id)}" aria-pressed="${!!likedAt(it)}" title="${likedAt(it) ? 'Take back your like' : 'Like it from your site'}">${HEART}${likedAt(it) ? 'Liked' : 'Like'}</button>` : '';
+  const likeBtn = it => isWeb(it.link) && !isSocialFeed(feedById(it.feed_id))
+    ? `<button class="linkish nb-like${likedAt(it) ? ' on' : ''}" data-talk="nblike" data-id="${esc(it.id)}" aria-pressed="${!!likedAt(it)}" title="${likedAt(it) ? 'Take back your like' : SOC.accounts.wordpress ? 'Like it from your site' : 'Like it'}">${HEART}${likedAt(it) ? 'Liked' : 'Like'}</button>` : '';
   const noteLiked = n => (S.prefs.socialLikes || {})[n.network + ':' + n.id];
   const noteLikeBtn = n => SOC.accounts[n.network] ? `<button class="linkish nb-like${noteLiked(n) ? ' on' : ''}" data-talk="notelike" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" aria-pressed="${!!noteLiked(n)}">${HEART}${noteLiked(n) ? (n.network === 'mastodon' ? 'Favorited' : 'Liked') : (n.network === 'mastodon' ? 'Favorite' : 'Like')}</button>` : '';
   async function likePost(b, it) {
     const on = !likedAt(it), f = nbWho(it), host = SOC.accounts.wordpress?.site?.replace(/^https?:\/\//, '') || 'your site';
+    // Without a site connected, a like stays in the app (synced): a way to keep what you loved
+    if (!SOC.accounts.wordpress) {
+      const likes = { ...(S.prefs.likes || {}) }, key = normU(it.link);
+      if (on) likes[key] = new Date().toISOString(); else delete likes[key];
+      S.prefs.likes = likes; savePrefs(); renderList(); paintReaderTalk();
+      if (on && !store.get('likeLocalTold')) { store.set('likeLocalTold', '1'); status('Liked. Only you see this one. Connect your site in Settings › Connections and your likes can tell the writer, too.'); }
+      else status(on ? 'Liked.' : 'Like taken back.');
+      return;
+    }
     if (on && !store.get('likeExplained')) {
       const ok = await new Promise(done => {
         const el = sheet('likePanel', `<h2>Like it from your site</h2>
-          <p>Your likes go on a <b>Likes</b> page on ${esc(host)}, made the first time you like something. Each one links to the post, and the post’s site is told (a Webmention), so if it shows likes, yours appears there.</p>
+          <p>Your likes go on a <b>Likes</b> page on ${esc(host)}, made the first time you like something. Each one links to the post, and the post’s site is told, so if it shows likes, yours appears there.</p>
           <p class="note">Taking a like back removes it from your page and tells their site again.</p>
           <div class="row sheet-foot"><button class="btn" type="button" id="likeNo">Not now</button><button class="btn primary" type="button" id="likeYes">Like it</button></div>`, 'Like it from your site');
         $('likeNo').onclick = () => { el.hidden = true; done(false); };
@@ -3183,7 +3197,7 @@
     S.prefs.likes = likes; savePrefs(); renderList(); paintReaderTalk();
     try {
       const r = await invoke('site_like', { url: it.link, title: headline(it), author: f?.title || '', on });
-      status(on ? (r.told ? `Liked. ${f?.title || 'Their site'} was told, and it’s on your Likes page.` : r.error ? `Liked on your Likes page, but telling their site didn’t work: ${r.error}` : `Liked on your Likes page. ${f?.title || 'Their site'} doesn’t take Webmentions, so they won’t see it there.`)
+      status(on ? (r.told ? `Liked. ${f?.title || 'Their site'} was told, and it’s on your Likes page.` : r.error ? `Liked on your Likes page, but telling their site didn’t work: ${r.error}` : `Liked on your Likes page. ${f?.title || 'Their site'} doesn’t listen for likes from other sites, so they won’t see it there.`)
         : 'Your like is taken back.');
     } catch (e) {
       const back = { ...(S.prefs.likes || {}) }; if (on) delete back[key]; else back[key] = new Date().toISOString();
@@ -3212,7 +3226,7 @@
         <button class="btn" type="button" data-rb="more" aria-haspopup="menu">More ways</button>
         <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
       </div>
-      <p class="note">${wp ? `A reply on your site links to their post, so ${esc(f?.title || 'their site')} is told if it takes Webmentions.` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
+      <p class="note">${wp ? `A reply on your site links to their post, and ${esc(f?.title || 'their site')} is told if their site listens for that.` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
     const ta = box.querySelector('textarea');
     if (keep) { ta.value = keep.text; if (keep.focus) { ta.focus(); ta.setSelectionRange(keep.at, keep.at); } } else ta.focus();
     // email, if they list an address and you have a mailbox here
@@ -3233,7 +3247,7 @@
         try {
           const r = await invoke('site_note', { title: '', text, link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
           box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
-          status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if it takes Webmentions.`);
+          status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if their site listens for that.`);
         } catch (err) { btn.disabled = false; btn.textContent = `Post on ${host}`; status(msg(err), true); }
       }
     };
@@ -3302,6 +3316,42 @@
     </div>`;
   }
 
+  // ---- First run: what this page is, a few writers to start with, and what a connection would add
+  // A few personal blogs to start a neighborhood (the same people the guide suggests)
+  const NB_STARTERS = () => STARTERS.filter(([d]) => !/daviddaniels\.com/.test(d));
+  function nbWelcomeHtml() {
+    if (store.get('nbWelcomed') === '1') return '';
+    return `<section class="nb-welcome">
+      <button class="nb-x" data-talk="nbwelcomed" aria-label="Close" title="Close">×</button>
+      <h3>Your neighborhood</h3>
+      <p>These are the people you read, newest first. When one of them writes about another, it shows up here as a conversation.</p>
+      <p>Reply by email or from your own site, like what you love, and tap a face to see everything from that person.</p>
+      <button class="btn" data-talk="nbwelcomed">Got it</button>
+    </section>`;
+  }
+  function nbStartersHtml(n) {
+    const list = NB_STARTERS().filter(([d]) => !followsDomain(d));
+    if (!list.length) return '';
+    return `<section class="nb-starters">
+      <h3>${n ? 'Add a few more people' : 'Start with a few people who write'}</h3>
+      <p>${n ? 'The Neighborhood comes alive with five or more. Here are some to try:' : 'Follow two or three and their posts show up here. You can unfollow any time.'}</p>
+      ${list.map(([d, name, about]) => `<div class="nb-starter"><span class="nb-av md" style="--h:${hueFor('https://' + d + '/')}">${esc(name[0])}</span>
+        <span class="nb-st-who"><b>${esc(name)}</b><small>${esc(about)}</small></span>
+        <button class="btn primary" data-guide-follow="${esc(d)}">Follow</button></div>`).join('')}
+      <p class="nb-st-more"><button class="linkish" data-view="discover">Find more writers in Discover</button> · <button class="linkish" data-talk="open" data-url="https://readingroomapp.com/lists/">Written by People, a list to follow</button></p>
+    </section>`;
+  }
+  // One quiet line on what a connection adds, until you connect or close it
+  function nbHintHtml() {
+    if (store.get('nbHinted') === '1') return '';
+    const site = !!SOC.accounts.wordpress, social = anySocial();
+    if (site && social) return '';
+    const what = !site && !social ? 'Connect your site to like and reply from it, or Mastodon or Bluesky to see the short posts of the people you read.'
+      : !site ? 'Connect your site to like and reply from it, so the writer hears about it.'
+      : 'Connect Mastodon or Bluesky to see the short posts of the people you read there.';
+    return `<p class="nb-hint"><span>${what} <button class="linkish" id="talkConnect">Connect</button></span><button class="nb-x sm" data-talk="nbhinted" aria-label="Don’t show this again" title="Don’t show this again">×</button></p>`;
+  }
+
   // "Since you were here": what's new, in a sentence, before you scroll
   function nbOpener(posts, soc, x, facesHtml = '', chips = '') {
     const first = !SOC.nbVisit, cut = first ? Date.now() - 7 * DAY : SOC.nbVisit, mine = myFeed();
@@ -3345,7 +3395,7 @@
     const face = isWeb(c.avatar) ? `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>`
       : `<span class="nb-av md" style="--h:${hueFor(c.name)}">${esc((c.name || '?')[0].toUpperCase())}</span>`;
     return `<article class="yu-ev${Date.parse(c.date) > socialSeen() ? ' new' : ''}">${face}<div class="nb-main">
-      <div class="nb-by"><b>${esc(c.name || 'Someone')}</b><span>${what}${c.post_title ? ` “${esc(c.post_title)}”` : ' your post'}${wm ? ' · Webmention' : ''}</span><time>${esc(fmtWhen(c.date))}</time></div>
+      <div class="nb-by"><b>${esc(c.name || 'Someone')}</b><span>${what}${c.post_title ? ` “${esc(c.post_title)}”` : ' your post'}${wm ? ' · from their site' : ''}</span><time>${esc(fmtWhen(c.date))}</time></div>
       ${c.text && !(wm && c.kind !== 'comment' && c.text.length < 3) ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
       <div class="nb-acts"><button class="linkish" data-talk="open" data-url="${esc(c.link)}">${wm ? 'Open' : 'Reply on your site'}</button>${isWeb(c.url) ? `<button class="linkish" data-talk="open" data-url="${esc(c.url)}">${esc(hostOfU(c.url))}</button>` : ''}</div>
     </div></article>`;
@@ -3379,7 +3429,7 @@
     ev.sort((a, b) => b.date.localeCompare(a.date));
     const loading = (anySocial() && !SOC.conv) || (SOC.accounts.wordpress && !SOC.comments);
     const empty = loading ? '<p class="note">Checking for replies, comments and mentions…</p>'
-      : `<p class="nb-end">Nothing yet.<small>${anySocial() || SOC.accounts.wordpress ? 'Replies, comments, Webmentions and links to your site show up here.' : 'Connect your site or a Mastodon or Bluesky account (Settings › Connections) to see replies here. Blogs linking to you show up either way.'}</small></p>`;
+      : `<p class="nb-end">Nothing yet.<small>${anySocial() || SOC.accounts.wordpress ? 'Replies, comments and links to your site show up here.' : 'Connect your site or a Mastodon or Bluesky account (Settings › Connections) to see replies here. Blogs linking to you show up either way.'}</small></p>`;
     return chips + waiting + (ev.length ? ev.slice(0, 50).map(e => e.html).join('') : empty);
   }
 
@@ -3699,6 +3749,9 @@
     if (k === 'nbback') { SOC.person = null; renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'ppmore') { SOC.personShown = (SOC.personShown || 15) + 15; renderList(); return; }
     if (k === 'nbonly') { SOC.nbOnly = b.dataset.k; SOC.nbShown = 30; renderList(); return; }
+    if (k === 'nbwelcomed') { store.set('nbWelcomed', '1'); renderList(); return; }
+    if (k === 'nbhinted') { store.set('nbHinted', '1'); renderList(); return; }
+    if (k === 'nbdots') { SOC.moreOpen = b.dataset.id; renderList(); return; }
     if (k === 'nbmin') { store.set('nbMin', store.get('nbMin') === '1' ? '0' : '1'); renderList(); return; }
     if (k === 'nbmore') { SOC.nbShown = (SOC.nbShown || 30) + 30; renderList(); return; }
     if (k === 'nbsave') { const it = item(b.dataset.id); if (it) { mark(it.id, { saved: !it.saved }); status(it.saved ? 'Removed from Read later.' : 'Saved to Read later.'); } return; }
