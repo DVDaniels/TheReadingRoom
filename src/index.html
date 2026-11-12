@@ -56,6 +56,7 @@
         <div class="titleblock">
           <h1 id="viewTitle">All stories</h1>
           <div class="sub" id="viewSub">Loading…</div>
+          <button class="linkish hide-view" id="hideViewBtn" type="button" hidden>Hide from sidebar</button>
         </div>
         <div class="talk-head" id="talkHead" hidden></div>
         <div class="clock" id="clock" aria-label="Current time and date">
@@ -190,7 +191,9 @@
       <div class="set-theme">
         <div class="seg" id="setThemeSeg" role="group" aria-label="Appearance"><button type="button" data-theme="auto">System</button><button type="button" data-theme="light">Light</button><button type="button" data-theme="sepia">Sepia</button><button type="button" data-theme="dark">Dark</button></div>
         <span>System follows your device’s light or dark setting. The same choice is in the reader’s Aa menu. Each device keeps its own.</span>
-      </div></section>
+      </div>
+      <div class="set-show"><h4>Show in the sidebar</h4><div id="setShow"></div>
+        <span>Turn off the parts you don’t use. Nothing is deleted, and you can turn them back on here. This syncs to your other devices.</span></div></section>
     <section class="set-group"><h3>Your feeds</h3>
       <ul class="set-list">
         <li><button class="set-item" id="importBtn" type="button">Import OPML</button><span>Bring your feeds over from another reader</span></li>

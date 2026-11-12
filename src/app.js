@@ -313,6 +313,27 @@
   const feedButton = f => navButton(f.id, f.title, unreadIn(f.id), { fav: f, err: f.status === 'error', title: f.status === 'error' ? f.error : f.url });
 
   let lastBadge = -1;
+  // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
+  const OPTIONAL_VIEWS = [['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+    ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
+  const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
+  function showView(v, on) {
+    const h = hiddenViews(); if (on) h.delete(v); else h.add(v);
+    S.prefs.hiddenViews = [...h]; savePrefs();
+    const name = OPTIONAL_VIEWS.find(x => x[0] === v)?.[1] || v;
+    if (!on && S.view === v) selectView('today');
+    renderRail(); renderHead(); paintShowSettings();
+    status(on ? `${name} is back in the sidebar.` : `${name} is hidden. Bring it back in Settings › Appearance.`);
+  }
+  function paintShowSettings() {
+    const el = $('setShow'); if (!el) return;
+    const h = hiddenViews();
+    el.innerHTML = OPTIONAL_VIEWS.map(([v, label, what]) => `<label class="set-switch"><span><b>${label}</b><small>${what}</small></span><input type="checkbox" role="switch" data-show="${v}"${h.has(v) ? '' : ' checked'}></label>`).join('');
+  }
+  $('setShow')?.addEventListener('change', e => { const c = e.target.closest('[data-show]'); if (c) showView(c.dataset.show, c.checked); });
+  $('hideViewBtn')?.addEventListener('click', () => showView(S.view, false));
+
+  let loadedOnce = false;
   function renderRail() {
     // The Dock icon shows the same number as Today
     const todayN = unreadIn('today');
@@ -321,7 +342,9 @@
     // group's total, and the view you're on stays visible even when its group is folded.
     // Folding is off in the icon-only sidebar and the narrow chip strip, which show every view.
     const canFold = !document.body.classList.contains('rail-slim') && !(phoneSize.matches && !document.documentElement.classList.contains('ios'));
-    const group = (id, name, items) => {
+    const hid = hiddenViews();
+    const group = (id, name, all) => {
+      const items = all.filter(it => !hid.has(it.view) || String(S.view) === it.view);
       const open = !canFold || !foldedGroups.has(id);
       const total = items.reduce((n, it) => n + (Number(it.count) || 0), 0);
       const shown = open ? items : items.filter(it => String(S.view) === it.view);
@@ -453,6 +476,7 @@
     document.body.classList.toggle('mail-view', onMail);
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
+    { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
     $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
@@ -884,6 +908,8 @@
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
       const valid = ['today', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
+      if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
+      loadedOnce = true;
       render(); welcome(); processNew();
     } catch (e) { status(msg(e), true); }
   }
@@ -2392,7 +2418,7 @@
   // The links that used to fill the bottom of the sidebar live here now. Each keeps its own handler;
   // choosing one closes Settings and opens that panel.
   const closeSettings = () => { $('settingsPanel').hidden = true; };
-  $('settingsBtn').onclick = () => { $('settingsPanel').hidden = false; $('settingsDone').focus(); };
+  $('settingsBtn').onclick = () => { paintShowSettings(); $('settingsPanel').hidden = false; $('settingsDone').focus(); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
   $('settingsDone').onclick = e => { e.stopPropagation(); closeSettings(); };
   $('settingsPanel').addEventListener('click', e => {

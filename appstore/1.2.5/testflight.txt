@@ -30,6 +30,9 @@ MENTIONS
 MARK ALL AS READ
 • Conversations in the sidebar now shows how many new posts and replies are waiting. Mark all as read sits at the bottom of the Neighborhood.
 
+CHOOSE WHAT'S IN THE SIDEBAR
+• Settings, Appearance, Show in the sidebar: switch off Morning Edition, Email, Help Wanted or Books if you don't use them. Each of those pages also has Hide from sidebar under its title. Nothing is deleted, and the choice syncs.
+
 ALSO IN THIS BETA
 • Close friends: pin someone's new posts to the top of the Neighborhood, with an alert when they post.
 • Liked by: posts the people you read liked on their own sites.
