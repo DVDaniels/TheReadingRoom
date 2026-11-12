@@ -2990,13 +2990,19 @@
   // then a copy from a Mastodon/Bluesky feed; ties go to the first posted. The kept card says where else it went.
   const noteKey = n => 'n:' + n.network + ':' + n.id;
   const crossText = t => (t || '').replace(/https?:\/\/\S+/g, ' ').replace(/(^|\s)[@#][\w.@-]+/g, ' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  // Mostly the same words, in any order: each network has its own @handles ("@unbreaking.org" on Bluesky is
+  // "Unbreaking" on Mastodon), and one may cut the post short. Short posts must match word for word.
   function sameWords(a, b) {
     if (a.length < 12 || b.length < 12) return false;
-    const n = Math.min(a.length, b.length);
-    if (n < 40) return a === b; // short posts must match word for word
-    const k = Math.min(n, 120) - 8; // long ones: one network may cut it short with "…" and a link
-    return a.slice(0, k) === b.slice(0, k);
+    const A = new Set(a.split(' ')), B = new Set(b.split(' '));
+    const small = A.size <= B.size ? A : B, big = small === A ? B : A;
+    if (small.size < 6) return a === b;
+    let hit = 0; for (const w of small) if (big.has(w)) hit++;
+    return hit / small.size >= 0.75;
   }
+  // The same outside page linked from both copies (its address, cut short or not)
+  const crossLink = u => normU(u).replace(/(…|\.\.\.)$/, '');
+  const sameLink = (a, b) => a.some(x => x.length > 12 && b.some(y => y.length > 12 && (x === y || x.startsWith(y) || y.startsWith(x))));
   let CROSS = {}, ALSO = new Map();
   function crossPosts(notes, since) {
     if (CROSS.items === S.items && CROSS.feeds === S.feeds && CROSS.shared === SOC.shared && CROSS.readers === SOC.readers && CROSS.pv === PV) return CROSS;
@@ -3005,16 +3011,16 @@
       if (Date.parse(i.date) <= since || !isShort(i)) continue;
       const f = feedById(i.feed_id); if (!f || isEmailItem(i)) continue;
       const net = socialNet(f);
-      add({ key: 'i:' + i.id, who: nbWho(i)?.id, src: net || 'blog', rank: net ? 2 : 0, at: Date.parse(i.date), url: i.link, text: crossText(i.summary || i.title) });
+      add({ key: 'i:' + i.id, who: nbWho(i)?.id, src: net || 'blog', rank: net ? 2 : 0, at: Date.parse(i.date), url: i.link, out: (i.links || '').split(' ').filter(Boolean).map(crossLink), text: crossText(i.summary || i.title) });
     }
-    for (const { n, f } of notes) add({ key: noteKey(n), who: f.id, src: n.network, rank: 1, at: Date.parse(n.created_at), url: n.url, text: crossText(n.text) });
+    for (const { n, f } of notes) add({ key: noteKey(n), who: f.id, src: n.network, rank: 1, at: Date.parse(n.created_at), url: n.url, out: [n.link, ...((n.text || '').match(/https?:\/\/\S+/g) || [])].filter(Boolean).map(crossLink), text: crossText(n.text) });
     const hidden = new Set(), also = new Map();
     for (const list of byWho.values()) {
       if (list.length < 2) continue;
       list.sort((a, b) => a.rank - b.rank || a.at - b.at);
       const kept = [];
       for (const e of list) {
-        const k = kept.find(x => x.src !== e.src && !x.srcs.has(e.src) && Math.abs(x.at - e.at) < 36 * 3600e3 && sameWords(x.text, e.text));
+        const k = kept.find(x => x.src !== e.src && !x.srcs.has(e.src) && Math.abs(x.at - e.at) < 36 * 3600e3 && (sameWords(x.text, e.text) || sameLink(x.out, e.out)));
         if (!k) { kept.push({ ...e, srcs: new Set([e.src]) }); continue; }
         hidden.add(e.key); k.srcs.add(e.src);
         if (!also.has(k.key)) also.set(k.key, []);
