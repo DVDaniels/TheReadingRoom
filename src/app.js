@@ -2982,8 +2982,51 @@
       const f = whose(n);
       if (f && Date.parse(n.created_at) > since && !byLink.has(normU(n.url))) notes.push({ n, f });
     }
-    return { shares, notes };
+    const cross = crossPosts(notes, since);
+    return { shares, notes: notes.filter(s => !cross.hidden.has(noteKey(s.n))), hidden: cross.hidden };
   }
+  // ---- Cross-posts: the same words posted to Mastodon and Bluesky (or a short note on the blog copied to both) show
+  // once. The copy kept is the blog's own if there is one, then the Mastodon/Bluesky post (Like and Reply work there),
+  // then a copy from a Mastodon/Bluesky feed; ties go to the first posted. The kept card says where else it went.
+  const noteKey = n => 'n:' + n.network + ':' + n.id;
+  const crossText = t => (t || '').replace(/https?:\/\/\S+/g, ' ').replace(/(^|\s)[@#][\w.@-]+/g, ' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  function sameWords(a, b) {
+    if (a.length < 12 || b.length < 12) return false;
+    const n = Math.min(a.length, b.length);
+    if (n < 40) return a === b; // short posts must match word for word
+    const k = Math.min(n, 120) - 8; // long ones: one network may cut it short with "…" and a link
+    return a.slice(0, k) === b.slice(0, k);
+  }
+  let CROSS = {}, ALSO = new Map();
+  function crossPosts(notes, since) {
+    if (CROSS.items === S.items && CROSS.feeds === S.feeds && CROSS.shared === SOC.shared && CROSS.readers === SOC.readers && CROSS.pv === PV) return CROSS;
+    const byWho = new Map(), add = e => { if (!e.who || e.text.length < 12) return; if (!byWho.has(e.who)) byWho.set(e.who, []); byWho.get(e.who).push(e); };
+    for (const i of S.items) {
+      if (Date.parse(i.date) <= since || !isShort(i)) continue;
+      const f = feedById(i.feed_id); if (!f || isEmailItem(i)) continue;
+      const net = socialNet(f);
+      add({ key: 'i:' + i.id, who: nbWho(i)?.id, src: net || 'blog', rank: net ? 2 : 0, at: Date.parse(i.date), url: i.link, text: crossText(i.summary || i.title) });
+    }
+    for (const { n, f } of notes) add({ key: noteKey(n), who: f.id, src: n.network, rank: 1, at: Date.parse(n.created_at), url: n.url, text: crossText(n.text) });
+    const hidden = new Set(), also = new Map();
+    for (const list of byWho.values()) {
+      if (list.length < 2) continue;
+      list.sort((a, b) => a.rank - b.rank || a.at - b.at);
+      const kept = [];
+      for (const e of list) {
+        const k = kept.find(x => x.src !== e.src && !x.srcs.has(e.src) && Math.abs(x.at - e.at) < 36 * 3600e3 && sameWords(x.text, e.text));
+        if (!k) { kept.push({ ...e, srcs: new Set([e.src]) }); continue; }
+        hidden.add(e.key); k.srcs.add(e.src);
+        if (!also.has(k.key)) also.set(k.key, []);
+        also.get(k.key).push({ net: e.src, url: e.url });
+      }
+    }
+    ALSO = also;
+    CROSS = { items: S.items, feeds: S.feeds, shared: SOC.shared, readers: SOC.readers, pv: PV, hidden, also };
+    return CROSS;
+  }
+  // "Also on Bluesky" under a card that was posted in more than one place
+  const alsoHtml = key => (ALSO.get(key) || []).map(a => `<button class="linkish" data-talk="open" data-url="${esc(a.url)}">Also on ${a.net === 'blog' ? 'their blog' : NET[a.net] || a.net}</button>`).join('');
   function sharesHtml(i, soc) {
     const people = new Map();
     for (const n of soc.shares.get(i.id) || []) if (!people.has(n.author.handle)) people.set(n.author.handle, { name: n.author.name, url: n.url, net: n.network });
@@ -3044,7 +3087,7 @@
           ${SOC.moreOpen === i.id ? `<button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
           <button class="linkish" data-talk="nbsave" data-id="${esc(i.id)}">${i.saved ? 'Saved ✓' : 'Read later'}</button>
           <button class="linkish" data-talk="open" data-url="${esc(i.link)}">Open their site</button>`
-            : `<button class="linkish nb-dots" data-talk="nbdots" data-id="${esc(i.id)}" aria-label="More: Share, Read later, Open their site" title="More">⋯</button>`}`}
+            : `${alsoHtml('i:' + i.id)}<button class="linkish nb-dots" data-talk="nbdots" data-id="${esc(i.id)}" aria-label="More: Share, Read later, Open their site" title="More">⋯</button>`}`}
           ${commentsBtn(i)}
         </div>
         ${cmtsHtml(i)}
@@ -3065,7 +3108,7 @@
         <div class="nb-acts">
           <button class="linkish" data-talk="reply" data-net="${n.network}" data-id="${esc(n.id)}" data-cid="${esc(n.cid)}" data-root="${esc(n.root_id || '')}" data-rootcid="${esc(n.root_cid || '')}" data-handle="${esc(n.author.handle)}">Reply</button>
           ${noteLikeBtn(n)}
-          <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button>
+          <button class="linkish" data-talk="open" data-url="${esc(n.url)}">Open on ${NET[n.network]}</button>${alsoHtml(noteKey(n))}
           ${n.replies ? `<span class="nb-count">${n.replies} ${n.replies === 1 ? 'reply' : 'replies'}</span>` : ''}${n.likes ? `<span class="nb-count">${n.likes} ${n.network === 'mastodon' ? 'favorites' : 'likes'}</span>` : ''}
         </div>
         <div class="n-box" data-box="${esc(n.id)}"></div>
@@ -3201,7 +3244,8 @@
   // ---- Unread in the Neighborhood (for the count on Conversations) and Mark all as read
   function nbUnread() {
     const since = Date.now() - NB_DAYS * DAY;
-    return S.items.filter(i => !i.read && Date.parse(i.date) > since && inScope(i, 'people') && !isOwn(i.feed_id) && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i));
+    const hid = nbSocial().hidden;
+    return S.items.filter(i => !i.read && Date.parse(i.date) > since && inScope(i, 'people') && !isOwn(i.feed_id) && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i) && !hid.has('i:' + i.id));
   }
 
   // ---- Groups: your own circles of people (Photographers, Tech…), as chips in the Neighborhood. Kept like close
@@ -3539,7 +3583,7 @@
     const x = nbIndex(), soc = nbSocial(), since = Date.now() - NB_DAYS * DAY, mine = myFeed();
     loadTheirLikes(); needReport();
     // Blog posts (yours too) and their short posts on Mastodon and Bluesky
-    const posts = S.items.filter(i => inScope(i, 'people') && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i) && Date.parse(i.date) > since);
+    const posts = S.items.filter(i => inScope(i, 'people') && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i) && Date.parse(i.date) > since && !soc.hidden.has('i:' + i.id));
     if (mine && !isPerson(mine.id)) posts.push(...S.items.filter(i => i.feed_id === mine.id && Date.parse(i.date) > since));
     // Replies gather under the post they answer, as one thread, placed where its newest reply falls
     const threads = new Map(), inThread = new Set();
@@ -3775,7 +3819,7 @@
   function personHtml(f) {
     const x = nbIndex(), soc = nbSocial(), pid = f.id;
     const mineIds = new Set(S.feeds.filter(g => personId(g.id) === pid || g.id === pid).map(g => g.id));
-    const theirs = S.items.filter(i => mineIds.has(i.feed_id) && !isEmailItem(i) && !isFolded(i, 'people')).sort((a, b) => b.date.localeCompare(a.date));
+    const theirs = S.items.filter(i => mineIds.has(i.feed_id) && !isEmailItem(i) && !isFolded(i, 'people') && !soc.hidden.has('i:' + i.id)).sort((a, b) => b.date.localeCompare(a.date));
     const notes = soc.notes.filter(s => s.f.id === pid);
     const host = bareHost(hostOfU(isWeb(f.site) ? f.site : f.url));
     const accts = (SOC.readers || []).filter(r => r.feedId === pid);
@@ -4004,6 +4048,8 @@
   }
   const normLink = u => (u || '').replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
   const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+  // (by their name: the handles differ from one network to the other)
+  const samePerson = n => (n.author.name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '') || n.author.handle;
   function sharedHtml() {
     const c = SOC.shared;
     if (!c) return '<p class="note">Looking at what the people you follow are sharing…</p>';
@@ -4017,7 +4063,9 @@
     if (!groups.size) return out + '<p class="note">Nobody you follow has shared a link lately. As they do, the stories collect here.</p>';
     out += [...groups.values()].slice(0, 40).map(g => {
       const n = g.find(x => x.text && x.text.replace(/https?:\/\/\S+/g, '').trim()) || g[0];
-      const people = [...new Map(g.map(x => [x.author.handle, x])).values()];
+      // the same person on Mastodon and Bluesky counts once: by the writer you read, else by their name
+      const people = [...new Map(g.map(x => [samePerson(x), x])).values()];
+      const nets = [...new Set(g.map(x => x.network))];
       const who = people[0], more = people.length - 1;
       const comment = (n.text || '').replace(/https?:\/\/\S+/g, '').trim();
       const site = hostOf(n.link);
@@ -4028,7 +4076,7 @@
         : `<div class="thumb tile" style="--h:${hueFor(site)}"><span>${esc((site[0] || '•').toUpperCase())}</span></div>`;
       return `<article class="shared">${thumb}<div class="sh-body">
         <div class="sby">${isWeb(who.author.avatar) ? `<img class="av" src="${esc(who.author.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(who.author.handle)} 45% 42%)">${esc((who.author.name || '?')[0])}</span>`}
-          <b>${esc(who.author.name)}</b>${more ? ` and <b>${more} other${more > 1 ? 's' : ''}</b>` : ''} ${who.via ? `(via ${esc(who.via)})` : 'shared'} · ${esc(fmtWhen(who.created_at))} <span class="n-net">${ICON_NET[who.network]}</span></div>
+          <b>${esc(who.author.name)}</b>${more ? ` and <b>${more} other${more > 1 ? 's' : ''}</b>` : ''} ${who.via ? `(via ${esc(who.via)})` : 'shared'} · ${esc(fmtWhen(who.created_at))} <span class="n-net">${nets.map(k => ICON_NET[k] || '').join(' ')}</span></div>
         <span class="site">${esc(site)}</span>
         <button class="sh-title" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(n.link)}"`}>${esc(n.link_title || site)}</button>
         ${n.link_description && !comment ? `<p class="sh-desc">${esc(n.link_description)}</p>` : ''}
