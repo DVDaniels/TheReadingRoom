@@ -3633,11 +3633,11 @@
       if (Date.now() - Date.parse(e.date) > 3 * DAY) continue;
       const items = e.t ? [e.t.root, ...e.t.replies] : e.i ? [e.i] : [];
       const fs = e.s ? [{ f: e.s.f, unread: true }] : items.filter(i => Date.now() - Date.parse(i.date) < 3 * DAY).map(i => ({ f: nbWho(i), unread: !i.read }));
-      for (const { f, unread } of fs) if (f && !isOwn(f.id) && !faces.has(f.id)) faces.set(f.id, { f, unread });
+      for (const { f, unread } of fs) { if (!f || isOwn(f.id)) continue; const had = faces.get(f.id); if (!had) faces.set(f.id, { f, unread }); else if (unread) had.unread = true; } // ring = anything unread
     }
     const faceList = [...faces.values()].sort( // close friends first
       (a, b) => fids.has(b.f.id) - fids.has(a.f.id));
-    const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted lately">${faceList.slice(0, 16).map(({ f, unread }) =>
+    const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted in the last three days (a ring means something unread)">${faceList.slice(0, 16).map(({ f, unread }) =>
       `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>` : '';
     const talks = all.filter(talky).length;
     const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each'], ['topics', 'Topics']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`
