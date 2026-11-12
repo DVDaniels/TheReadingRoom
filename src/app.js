@@ -594,6 +594,19 @@
     const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
     return S.feeds.find(f => host(f.site) === h || host(f.url) === h) || null;
   }
+  // Every feed from your own site counts as you (your blog, your Notes feed, a category feed): not just the one
+  // picked as "my site". Same host, or one a subdomain of the other (notes.example.com).
+  let ownCache = { k: '', ids: new Set() };
+  function ownIds() {
+    const mine = myFeed(), k = `${S.feeds.length}|${mine?.id}|${SOC.accounts.wordpress?.site || ''}`;
+    if (ownCache.k === k) return ownCache.ids;
+    const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+    const homes = new Set([mine && (hostOf(mine.site) || hostOf(mine.url)), hostOf(SOC.accounts.wordpress?.site || '')].filter(Boolean));
+    const same = h => !!h && [...homes].some(m => h === m || h.endsWith('.' + m) || m.endsWith('.' + h));
+    const ids = new Set(homes.size ? S.feeds.filter(f => f.id === mine?.id || same(hostOf(f.site)) || same(hostOf(f.url))).map(f => f.id) : []);
+    ownCache = { k, ids }; return ids;
+  }
+  const isOwn = id => id != null && ownIds().has(Number(id));
   function greeting() {
     const h = new Date().getHours();
     const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -662,7 +675,7 @@
     const fresh = lastVisit ? S.items.filter(i => new Date(i.date).getTime() > lastVisit && !isMuted(i) && !isJobItem(i) && !isEmailItem(i)).length : 0;
     // People first: unread posts from people you read in the last few days, one per person (not your own site)
     const mine = myFeed();
-    const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && i.feed_id !== mine?.id && Date.now() - Date.parse(i.date) < 4 * DAY)
+    const peopleAll = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY)
       .sort((a, b) => b.date.localeCompare(a.date));
     const onePer = new Set(), people = peopleAll.filter(i => !onePer.has(i.feed_id) && onePer.add(i.feed_id));
     // The lead: a person's post with a picture from the last three days, otherwise the newest story with a picture
@@ -2901,7 +2914,7 @@
           if (!answers.has(o.id)) answers.set(o.id, []);
           if (!answers.get(o.id).includes(i)) answers.get(o.id).push(i);
         } else if (!o && personHost.has(h) && personHost.get(h).id !== from && !mentions.has(i.id)) mentions.set(i.id, { f: personHost.get(h), url: l });
-        if (myHost && (!mine || i.feed_id !== mine.id) && h === myHost) toMe.add(i.id);
+        if (myHost && !isOwn(i.feed_id) && h === myHost) toMe.add(i.id);
         // Writers your writers link to: blogs you don't follow yet
         if (person && h && !o && !followed.has(h) && !nbBig(h) && h !== myHost && !/\.(social|bsky)/.test(h)) {
           if (!out.has(h)) out.set(h, { host: h, by: new Set(), links: 0, url: l, date: i.date });
@@ -2944,7 +2957,7 @@
   }
   function avatarOf(f) {
     if (!f || !f.id) return '';
-    if (myFeed()?.id === f.id) return myPicture() || PL[siteOf(f)]?.icon || '';
+    if (isOwn(f.id)) return myPicture() || PL[siteOf(f)]?.icon || '';
     const r = (SOC.readers || []).find(r => r.feedId === personId(f.id) && isWeb(r.person.avatar));
     return r?.person.avatar || PL[siteOf(f)]?.icon || '';
   }
@@ -2981,7 +2994,7 @@
   }
   function nbCard(i, x, soc, mode = '') {
     const f = nbWho(i), to = x.replyTo.get(i.id), ans = x.answers.get(i.id) || [], short = isShort(i), mention = !to && x.mentions.get(i.id);
-    const mine = myFeed()?.id === i.feed_id;
+    const mine = isOwn(i.feed_id);
     const sum = (i.summary || '').trim();
     const text = short ? sum : sum.length > 260 ? sum.slice(0, 250).replace(/\s+\S*$/, '') + '…' : sum;
     const pic = isWeb(i.image) ? `<button class="nb-picb" data-open="${esc(i.id)}" aria-label="Open the post"><img class="nb-pic" src="${esc(i.image)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>` : '';
@@ -3279,7 +3292,7 @@
   const peopleFeeds = () => S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f));
   function loadTheirLikes(force) {
     if (tlBusy || (!force && TL && Date.now() - TL.at < 12 * 3600e3)) return;
-    const sites = [...new Set(peopleFeeds().filter(f => myFeed()?.id !== f.id).map(f => { try { return new URL(isWeb(f.site) ? f.site : f.url).origin + '/'; } catch { return ''; } }).filter(Boolean))];
+    const sites = [...new Set(peopleFeeds().filter(f => !isOwn(f.id)).map(f => { try { return new URL(isWeb(f.site) ? f.site : f.url).origin + '/'; } catch { return ''; } }).filter(Boolean))];
     if (!sites.length) return;
     tlBusy = true;
     invoke('people_likes', { sites }).then(list => {
@@ -3330,7 +3343,7 @@
   // ---- Who has you on their blogroll (from Discover's last look at everyone's blogrolls)
   function needReport() { if (!D.report && !SOC.discLoading) { SOC.discLoading = true; invoke('discover_get').then(r => { D.report = r.report; PV++; if (S.view === 'talk') renderList(); }).catch(() => {}); } }
   const rollsYou = () => { const d = myDomain(); return new Set(((D.report?.listed || []).find(l => l.domain === d)?.by) || []); };
-  const readsYou = f => !!f && myFeed()?.id !== f.id && rollsYou().has(f.title);
+  const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   const READS_YOU = '<span class="nb-tag reads" title="You’re on their blogroll">Reads you</span>';
 
   // ---- Comment counts, when the post's feed gives one
@@ -3344,7 +3357,7 @@
     let id = '';
     if (text.length >= 3 && node) id = node.closest?.('#rBody, #rTitle') ? S.readerId : node.closest?.('.nb-post[data-id]')?.dataset.id || '';
     const it = id && item(id);
-    if (it && isWeb(it.link) && !isEmailItem(it) && myFeed()?.id !== it.feed_id) QUOTE = { id, text: text.length > 600 ? text.slice(0, 590).replace(/\s+\S*$/, '') + '…' : text, at: Date.now() };
+    if (it && isWeb(it.link) && !isEmailItem(it) && !isOwn(it.feed_id)) QUOTE = { id, text: text.length > 600 ? text.slice(0, 590).replace(/\s+\S*$/, '') + '…' : text, at: Date.now() };
     else if (text.length < 3 && QUOTE && Date.now() - QUOTE.at > 1500) QUOTE = null;
     paintQuoteBtn();
   });
@@ -3411,7 +3424,7 @@
   const clipT = (s, n) => { s = (s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s; };
   const alertsBtn = (k, on, label) => `<button class="nb-alerts${on ? ' on' : ''}" data-talk="alerts" data-k="${k}" aria-pressed="${on}" title="${on ? 'Turn these alerts off' : 'Turn these alerts on'}">${label}: ${on ? 'on' : 'off'}</button>`;
   function neighborhoodHtml() {
-    const people = S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f) && myFeed()?.id !== f.id);
+    const people = S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f) && !isOwn(f.id));
     // nobody yet: the suggestions are the page; a few people: suggestions after their first posts
     const intro = nbWelcomeHtml() + (!people.length ? nbStartersHtml(0) : '');
     const more = people.length && people.length < 5 ? nbStartersHtml(people.length) : '';
@@ -3463,7 +3476,7 @@
       if (Date.now() - Date.parse(e.date) > 3 * DAY) continue;
       const items = e.t ? [e.t.root, ...e.t.replies] : e.i ? [e.i] : [];
       const fs = e.s ? [{ f: e.s.f, unread: true }] : items.filter(i => Date.now() - Date.parse(i.date) < 3 * DAY).map(i => ({ f: nbWho(i), unread: !i.read }));
-      for (const { f, unread } of fs) if (f && f.id !== mine?.id && !faces.has(f.id)) faces.set(f.id, { f, unread });
+      for (const { f, unread } of fs) if (f && !isOwn(f.id) && !faces.has(f.id)) faces.set(f.id, { f, unread });
     }
     const faceList = [...faces.values()].sort( // close friends first
       (a, b) => fids.has(b.f.id) - fids.has(a.f.id));
@@ -3684,7 +3697,7 @@
     const stream = [...theirs.map(i => ({ i, date: i.date })), ...notes.map(s => ({ s, date: s.n.created_at }))].sort((a, b) => b.date.localeCompare(a.date));
     const latest = theirs.find(i => !isSocialFeed(feedById(i.feed_id))) || theirs[0];
     const sec = (title, body) => body ? `<section class="pp-sec"><h3>${title}</h3>${body}</section>` : '';
-    const isMine = myFeed()?.id === pid;
+    const isMine = isOwn(pid);
     return `<div class="pp">
       <button class="btn pp-back" data-talk="nbback" title="Back (Esc)">‹ Back to ${esc(backLabel())}</button>
       <header class="pp-head">${nbFace(f, 'nb-av xl')}
@@ -3747,7 +3760,7 @@
   // "Since you were here": what's new, in a sentence, before you scroll
   function nbOpener(posts, soc, x, facesHtml = '', chips = '') {
     const first = !SOC.nbVisit, cut = first ? Date.now() - 7 * DAY : SOC.nbVisit, mine = myFeed();
-    const fresh = posts.filter(i => Date.parse(i.date) > cut && i.feed_id !== mine?.id);
+    const fresh = posts.filter(i => Date.parse(i.date) > cut && !isOwn(i.feed_id));
     const notes = soc.notes.filter(s => Date.parse(s.n.created_at) > cut);
     const ppl = new Map();
     for (const i of fresh) { const f = nbWho(i); if (f) ppl.set(f.id, f); }
@@ -3757,7 +3770,7 @@
     for (const i of fresh) {
       const to = x.replyTo.get(i.id), m = x.mentions.get(i.id);
       if (x.toMe.has(i.id)) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> linked to you</button>`);
-      else if (to) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> replied to <b>${to.feed_id === mine?.id ? 'you' : nbName(to)}</b></button>`);
+      else if (to) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> replied to <b>${isOwn(to.feed_id) ? 'you' : nbName(to)}</b></button>`);
       else if (m) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> mentioned <b>${nbFeedName(m.f)}</b></button>`);
     }
     const yours = (SOC.conv?.posts || []).reduce((s, p) => s + (p.replies || 0), 0);
