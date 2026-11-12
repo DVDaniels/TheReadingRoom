@@ -244,12 +244,12 @@
     if (scanningSites) return;
     const weekAgo = Date.now() - 7 * DAY;
     const sites = [...new Set(S.feeds.filter(f => !isSocialFeed(f) && !isNewsSearch(f) && kindOf(f) === 'person').map(siteOf).filter(Boolean))]
-      .filter(site => !(PL[site]?.at > weekAgo && 'icon' in PL[site])); // (icon: looked for since 1.2.4)
+      .filter(site => !(PL[site]?.at > weekAgo && 'about' in PL[site])); // (icon: looked for since 1.2.4; about: since 1.2.5)
     if (!sites.length) return;
     scanningSites = true;
     try {
       const res = await invoke('site_accounts', { sites });
-      for (const r of res) PL[r.site] = { at: Date.now(), links: r.links, icon: r.icon || '' };
+      for (const r of res) PL[r.site] = { at: Date.now(), links: r.links, icon: r.icon || '', about: r.about || '' };
       store.set('plinks', JSON.stringify(PL));
       buildPersons(); render();
       if (S.view === 'talk') loadReaders(true);
@@ -3830,6 +3830,8 @@
     const host = bareHost(hostOfU(isWeb(f.site) ? f.site : f.url));
     const accts = (SOC.readers || []).filter(r => r.feedId === pid);
     const plinks = (PL[siteOf(f)]?.links || []).filter(l => !accts.some(r => NET[r.network] === l.label));
+    // How they describe themselves: on their own site first, else their Mastodon or Bluesky bio
+    const about = PL[siteOf(f)]?.about || accts.map(r => r.person.bio).find(Boolean) || '';
     // How often they post, and how much of it you've read
     const month = theirs.filter(i => Date.now() - Date.parse(i.date) < 30 * DAY).length;
     const read = theirs.filter(i => i.read).length;
@@ -3868,6 +3870,7 @@
       <button class="btn pp-back" data-talk="nbback" title="Back (Esc)">‹ Back to ${esc(backLabel())}</button>
       <header class="pp-head">${nbFace(f, 'nb-av xl')}
         <div class="pp-who"><h2>${esc(f.title)}</h2>
+          ${about ? `<p class="pp-about">${esc(about)}</p>` : ''}
           <div class="pp-where"><button class="linkish" data-talk="open" data-url="${esc(isWeb(f.site) ? f.site : 'https://' + host + '/')}">${esc(host)}</button>${accts.map(r => `<button class="linkish" data-talk="open" data-url="${esc(r.person.url || r.url)}">${ICON_NET[r.network] || ''} ${esc(r.person.handle)}</button>`).join('')}${plinks.map(l => `<button class="linkish" data-talk="open" data-url="${esc(l.url)}">${esc(l.label)}</button>`).join('')}</div>
           <p class="pp-pace">${esc(pace)}${theirs.length ? ` · you’ve read ${read} of ${theirs.length}` : ''}${toYou.length ? ` · linked to you ${toYou.length === 1 ? 'once' : toYou.length + ' times'}` : ''}${readsYou(f) ? ' · you’re on their blogroll' : ''}</p>
         </div></header>

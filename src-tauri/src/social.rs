@@ -228,6 +228,9 @@ pub struct Person {
     pub name: String,
     pub avatar: String,
     pub url: String,
+    /// What they say about themselves on their profile (for their page in Conversations)
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub bio: String,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -358,6 +361,7 @@ fn bsky_person(a: &Value) -> Person {
         avatar: st(a, "avatar"),
         url: format!("https://bsky.app/profile/{handle}"),
         handle: format!("@{handle}"),
+        bio: clip_about(&st(a, "description")),
     }
 }
 
@@ -489,6 +493,7 @@ fn masto_person(a: &Value) -> Person {
         avatar: st(a, "avatar_static"),
         url: st(a, "url"),
         handle: format!("@{acct}"),
+        bio: clip_about(&html_text(&st(a, "note"))),
     }
 }
 
@@ -1085,6 +1090,39 @@ pub struct SiteAccounts {
     links: Vec<crate::reply::Link>,
     /// The site's own icon (its apple-touch-icon or the largest icon it lists), for the writer's face
     icon: String,
+    /// How the site describes its writer: their h-card note, else the page's description
+    about: String,
+}
+
+/// One tidy paragraph, at most about 300 characters, cut at a word.
+pub fn clip_about(t: &str) -> String {
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() <= 300 { return t; }
+    let cut: String = t.chars().take(300).collect();
+    format!("{}…", cut.rsplit_once(' ').map(|(a, _)| a).unwrap_or(&cut).trim_end_matches(|c: char| c == ',' || c == ';' || c == ':'))
+}
+
+/// How a personal site describes the person: the bio in their h-card (p-note) if they have one, else the page's
+/// own description. Leaves out the stock lines blogging tools fill in.
+pub fn site_about(html: &str) -> String {
+    let head = &html[..html.len().min(400_000)];
+    static NOTE: OnceLock<regex::Regex> = OnceLock::new();
+    let mut note = String::new();
+    if let Some(c) = NOTE.get_or_init(|| regex::Regex::new(r#"(?is)<([a-z0-9]+)\b[^>]*\bclass\s*=\s*["'][^"']*\bp-note\b[^"']*["'][^>]*>"#).unwrap()).captures(head) {
+        let tag = c[1].to_lowercase();
+        let rest = &head[c.get(0).unwrap().end()..];
+        let end = rest.to_lowercase().find(&format!("</{tag}>")).unwrap_or(rest.len().min(2000));
+        note = html_text(&rest[..end.min(4000)]);
+    }
+    let picked = [note, crate::share::meta(head, &["description", "og:description"])]
+        .into_iter()
+        .map(|t| clip_about(&t))
+        .find(|t| {
+            let l = t.to_lowercase();
+            t.chars().count() >= 12 && !l.contains("just another wordpress") && !l.contains("lorem ipsum") && !l.starts_with("welcome to my")
+        })
+        .unwrap_or_default();
+    picked
 }
 
 /// The best picture a site gives for itself: an apple-touch-icon, else the largest rel="icon" (SVG counts as
@@ -1127,16 +1165,17 @@ pub async fn site_accounts(sites: Vec<String>) -> Vec<SiteAccounts> {
     stream::iter(sites.into_iter().take(200))
         .map(|site| async move {
             let mut o = crate::reply::Options::default();
-            let mut icon = String::new();
+            let (mut icon, mut about) = (String::new(), String::new());
             if let Ok(page) = url::Url::parse(&site) {
                 if let Ok(Ok((body, final_url, _))) = tokio::time::timeout(Duration::from_secs(12), crate::feeds::get(client(), &site)).await {
                     let base = url::Url::parse(&final_url).unwrap_or(page);
                     let html = String::from_utf8_lossy(&body);
                     crate::reply::scan(&html, &base, &mut o);
                     icon = site_icon(&html, &base);
+                    about = site_about(&html);
                 }
             }
-            SiteAccounts { site, links: o.social, icon }
+            SiteAccounts { site, links: o.social, icon, about }
         })
         .buffer_unordered(6)
         .collect()
@@ -1375,6 +1414,17 @@ pub async fn social_blog_mentions(domain: String) -> Vec<Note> {
 #[cfg(test)]
 mod more_tests {
     use super::own_site;
+
+    #[test]
+    fn finds_how_a_site_describes_its_writer() {
+        use super::site_about;
+        let hcard = r#"<head><meta name="description" content="My blog"></head><div class="h-card"><p class="p-note">I make <b>websites</b> and   write about the web.</p></div>"#;
+        assert_eq!(site_about(hcard), "I make websites and write about the web.");
+        let meta = r#"<head><meta content="Sophie is a developer in London who writes about the web." name="description"></head>"#;
+        assert_eq!(site_about(meta), "Sophie is a developer in London who writes about the web.");
+        assert_eq!(site_about(r#"<meta name="description" content="Just another WordPress site">"#), "");
+        assert!(super::clip_about(&"word ".repeat(100)).ends_with("word…"));
+    }
 
     #[test]
     fn finds_a_persons_own_site_not_their_socials() {

@@ -28,7 +28,7 @@ pub struct Shared {
     pub title: String,
 }
 
-fn meta(html: &str, names: &[&str]) -> String {
+pub(crate) fn meta(html: &str, names: &[&str]) -> String {
     for n in names {
         for pat in [
             format!(r#"(?is)<meta[^>]+(?:property|name)\s*=\s*["']{n}["'][^>]*content\s*=\s*["']([^"']+)["']"#),
