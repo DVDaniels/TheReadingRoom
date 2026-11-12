@@ -1940,3 +1940,19 @@ button.nb-count:hover { color: var(--accent); text-decoration: underline; }
 .nb-bar .nb-x.sm { margin-left: 0; }
 .nb-break { flex-basis: 100%; height: 0; }
 .nb-bring-list .nb-w-who small svg { width: 12px; height: 12px; vertical-align: -2px; }
+/* replies: drafts, mentions, your replies, mark all read */
+.nb-draft { color: var(--saved); font-weight: 400; }
+.nb-rbox { position: relative; }
+.mn-pop { position: absolute; left: 0; right: 0; top: 86px; z-index: 30; max-width: 360px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 4px; }
+.mn-row { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 8px; border-radius: 8px; }
+.mn-row span { display: flex; flex-direction: column; min-width: 0; }
+.mn-row b { font-size: 13.5px; font-weight: 600; }
+.mn-row small { font-size: 11.5px; color: var(--muted); }
+.mn-row.on, .mn-row:hover { background: var(--accent-soft); }
+.yu-ev.mr { grid-template-columns: minmax(0, 1fr); }
+.mr-to { display: block; margin: 4px 0 6px; font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.mr-ans { all: unset; cursor: pointer; display: flex; align-items: center; gap: 9px; margin: 4px 0; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); font-size: 13.5px; }
+.mr-ans b { color: var(--accent); }
+.mr-ans time { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.mr-wait { margin: 2px 0; font-size: 12.5px; color: var(--muted); }
+.nb-readall { display: block; margin: 18px auto 0; }

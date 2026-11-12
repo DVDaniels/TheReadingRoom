@@ -339,7 +339,7 @@
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
-        { view: 'talk', label: 'Conversations', count: newYou() || '', icon: ICONS.talk },
+        { view: 'talk', label: 'Conversations', count: (newYou() + newAnswers() + nbUnread().length) || '', icon: ICONS.talk },
         { view: 'jobs', label: 'Help Wanted', count: newJobs() || '', icon: ICONS.jobs }]) +
       '<hr class="nav-gap">' +
       group('library', 'Library', [
@@ -2998,7 +2998,8 @@
     const sum = (i.summary || '').trim();
     const text = short ? sum : sum.length > 260 ? sum.slice(0, 250).replace(/\s+\S*$/, '') + '…' : sum;
     const pic = isWeb(i.image) ? `<button class="nb-picb" data-open="${esc(i.id)}" aria-label="Open the post"><img class="nb-pic" src="${esc(i.image)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>` : '';
-    const reply = mode === 'reply' ? '' : to ? `<button class="nb-to" data-open="${esc(to.id)}">${NB_TALK}<span>Replying to <b>${nbName(to)}</b>: ${esc(headline(to))}</span></button>`
+    const myR = mode !== 'reply' && answerOf(i);
+    const reply = mode === 'reply' ? '' : myR ? `<button class="nb-to" data-talk="open" data-url="${esc(myR.url)}">${NB_TALK}<span>Answers <b>your reply</b> to ${esc(myR.title)}</span></button>` : to ? `<button class="nb-to" data-open="${esc(to.id)}">${NB_TALK}<span>Replying to <b>${nbName(to)}</b>: ${esc(headline(to))}</span></button>`
       : mention ? `<button class="nb-to" data-talk="open" data-url="${esc(mention.url)}">${NB_TALK}<span>Mentions <b>${nbFeedName(mention.f)}</b>’s blog</span></button>` : '';
     const answered = ans.length && !mode ? `<div class="nb-ans"><span class="nb-ans-k">${ans.length === 1 ? 'An answer' : `${ans.length} answers`} from blogs you read</span>
         ${ans.slice(0, 4).map(a => `<button class="nb-ans-r" data-open="${esc(a.id)}">${nbFace(nbWho(a), 'nb-av sm')}<span><b>${nbName(a)}</b> ${esc(headline(a))} <time>${esc(fmtWhen(a.date))}</time></span></button>`).join('')}</div>` : '';
@@ -3016,7 +3017,7 @@
           ${t ? `<p class="nb-text">${esc(t)}</p>` : ''}
           ${likedByHtml(i)}
           ${reactionsHtml(i)}
-          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>${likeBtn(i)}${repostBtn(i)}`}${commentsBtn(i)}</div>
+          <div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button>${mine ? '' : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">${replyLbl(i.id)}</button>${likeBtn(i)}${repostBtn(i)}`}${commentsBtn(i)}</div>
           ${cmtsHtml(i)}
           <div class="n-box" data-box="nb:${esc(i.id)}"></div>
         </div></article>`;
@@ -3037,7 +3038,7 @@
           <button class="linkish" data-open="${esc(i.id)}">${short ? 'Open' : 'Read'}</button>
           ${mine ? (yours.length ? `<button class="linkish" data-talk="tab" data-tab="posts">${yourReplies ? `${yourReplies} ${yourReplies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} on ${[...new Set(yours.map(p => NET[p.network]))].join(' and ')}</button>`
               : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
-            : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">Reply</button>
+            : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">${replyLbl(i.id)}</button>
           ${likeBtn(i)}
           ${repostBtn(i)}
           ${SOC.moreOpen === i.id ? `<button class="linkish" data-talk="nbshare" data-id="${esc(i.id)}" aria-haspopup="menu">Share</button>
@@ -3097,6 +3098,112 @@
     savePrefs(); PV++; renderList();
     status(on ? `${f.title} is a close friend. Their new posts sit at the top of the Neighborhood${S.prefs.friendAlerts === false ? '' : ', and you get an alert when they post'}.` : `${f.title} is no longer pinned.`);
   }
+  // ---- Reply drafts: what you've started writing stays (per post, on this device) until you send or cancel it
+  const DRAFTS = (() => { try { return JSON.parse(localStorage.getItem('replyDrafts') || '{}'); } catch { return {}; } })();
+  function setDraft(key, text) {
+    if (text && text.trim()) DRAFTS[key] = { text, at: Date.now() }; else delete DRAFTS[key];
+    for (const [k, v] of Object.entries(DRAFTS)) if (Date.now() - v.at > 30 * DAY) delete DRAFTS[k];
+    try { localStorage.setItem('replyDrafts', JSON.stringify(DRAFTS)); } catch {}
+  }
+  const hasDraft = key => !!DRAFTS[key];
+  const replyLbl = id => hasDraft('nb:' + id) ? 'Reply <span class="nb-draft">· draft</span>' : 'Reply';
+
+  // ---- Mentions: type @ and a name in a reply from your site. The name becomes a link to their site, so the
+  // Webmention plugin tells them they were mentioned.
+  function mentionPicker(ta) {
+    const pop = document.createElement('div'); pop.className = 'mn-pop'; pop.hidden = true; ta.after(pop);
+    let hits = [], sel = 0, at = -1;
+    const people = () => S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f) && !isOwn(f.id) && personId(f.id) === f.id);
+    const close = () => { pop.hidden = true; hits = []; at = -1; };
+    const paint = () => {
+      pop.innerHTML = hits.map((f, k) => `<button type="button" class="mn-row${k === sel ? ' on' : ''}" data-k="${k}">${nbFace(f, 'nb-av sm')}<span><b>${esc(f.title)}</b><small>${esc(hostOfU(isWeb(f.site) ? f.site : f.url))}</small></span></button>`).join('');
+      pop.hidden = !hits.length;
+    };
+    const pick = f => {
+      const name = f.title.replace(/[\[\]]/g, '');
+      const v = ta.value, end = ta.selectionStart;
+      ta.value = v.slice(0, at) + '@' + name + ' ' + v.slice(end);
+      const pos = at + name.length + 2; ta.setSelectionRange(pos, pos); ta.focus();
+      (ta._mentions = ta._mentions || new Map()).set(name, isWeb(f.site) ? f.site : 'https://' + bareHost(hostOfU(f.url)) + '/');
+      close(); ta.dispatchEvent(new Event('input'));
+    };
+    ta.addEventListener('input', () => {
+      const v = ta.value.slice(0, ta.selectionStart), m = /(^|\s)@([^\s@]{0,30})$/.exec(v);
+      if (!m) { close(); return; }
+      at = v.length - m[2].length - 1;
+      const q = m[2].toLowerCase();
+      hits = people().filter(f => !q || f.title.toLowerCase().split(/\s+/).some(w => w.startsWith(q)) || f.title.toLowerCase().startsWith(q) || hostOfU(f.site || f.url).startsWith(q)).slice(0, 6);
+      sel = 0; paint();
+    });
+    ta.addEventListener('keydown', e => {
+      if (pop.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length; paint(); }
+      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(hits[sel]); }
+      else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    });
+    pop.addEventListener('mousedown', e => { const r = e.target.closest('[data-k]'); if (r) { e.preventDefault(); pick(hits[Number(r.dataset.k)]); } });
+    ta.addEventListener('blur', () => setTimeout(close, 150));
+  }
+  // Before posting: each @Name you picked becomes [Name](their site)
+  // (also after a draft comes back: any @Name of someone you read, longest names first)
+  function withMentions(ta) {
+    let t = ta.value;
+    const known = new Map(ta._mentions || []);
+    for (const f of S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f) && !isSocialFeed(f) && !isOwn(f.id))) {
+      const name = f.title.replace(/[\[\]]/g, '');
+      if (!known.has(name)) known.set(name, isWeb(f.site) ? f.site : 'https://' + bareHost(hostOfU(f.url)) + '/');
+    }
+    for (const [name, url] of [...known].sort((x, y) => y[0].length - x[0].length)) t = t.split('@' + name).join(`[${name}](${url})`);
+    return t;
+  }
+
+  // ---- Your conversations: the replies you've posted from your site, and whether they answered. Kept in prefs
+  // (synced): the post you answered, your reply's address. An answer is a newer post of theirs that links to your
+  // reply (or, failing that, to your site after you replied).
+  const myReplies = () => S.prefs.myReplies || [];
+  function rememberReply(it, url) {
+    const f = nbWho(it);
+    const r = { to: it.link, title: headline(it), who: f ? friendKey(f) : '', name: f?.title || srcLabel(it) || '', url, at: new Date().toISOString() };
+    S.prefs.myReplies = [r, ...myReplies().filter(x => x.url !== url)].slice(0, 150); savePrefs();
+  }
+  function answersTo(r) {
+    const mine = ownIds(), myHost = bareHost(hostOfU(SOC.accounts.wordpress?.site || myFeed()?.site || ''));
+    const theirs = S.feeds.filter(f => friendKey(f) === r.who || (r.who && f.url === r.who)).map(f => f.id);
+    const ids = new Set(S.feeds.filter(f => theirs.includes(f.id) || theirs.includes(personId(f.id))).map(f => f.id));
+    const u = normU(r.url);
+    return S.items.filter(i => !mine.has(i.feed_id) && Date.parse(i.date) > Date.parse(r.at) - 60e3 && (
+      (i.links || '').split(' ').some(l => normU(l) === u) ||
+      (ids.has(i.feed_id) && myHost && (i.links || '').split(' ').some(l => bareHost(hostOfU(l)) === myHost))))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+  // Which of your replies a post answers (built once per redraw)
+  let ansIdx = { k: -1, m: new Map() };
+  function answerOf(i) {
+    const k = PV + ':' + S.items.length + ':' + myReplies().length;
+    if (ansIdx.k !== k) { const m = new Map(); for (const r of myReplies()) for (const a of answersTo(r)) if (!m.has(a.id)) m.set(a.id, r); ansIdx = { k, m }; }
+    return ansIdx.m.get(i.id);
+  }
+  const newAnswers = () => myReplies().reduce((n, r) => n + answersTo(r).filter(i => !i.read).length, 0);
+  function myRepliesHtml() {
+    const list = myReplies();
+    if (!list.length) return `<p class="note">Replies you post from your site show up here, with a note when the other person writes back on their blog.</p>`;
+    return list.slice(0, SOC.myRepShown || 20).map(r => {
+      const ans = answersTo(r);
+      return `<article class="yu-ev mr${ans.some(i => !i.read) ? ' new' : ''}">
+        <div class="nb-main"><div class="nb-by"><b>You</b><span>replied to ${esc(r.name || hostOfU(r.to))}</span><time>${esc(fmtWhen(r.at))}</time></div>
+        <button class="linkish mr-to" data-talk="open" data-url="${esc(r.to)}">${esc(r.title || r.to)}</button>
+        ${ans.length ? ans.map(i => `<button class="mr-ans" data-open="${esc(i.id)}">${nbFace(nbWho(i), 'nb-av sm')}<span><b>${nbName(i)} answered</b> ${esc(headline(i))} <time>${esc(fmtWhen(i.date))}</time></span></button>`).join('')
+          : '<p class="mr-wait">No answer yet</p>'}
+        <div class="nb-acts"><button class="linkish" data-talk="open" data-url="${esc(r.url)}">Your reply</button></div></div></article>`;
+    }).join('') + (list.length > (SOC.myRepShown || 20) ? `<button class="btn nb-more" data-talk="myrepmore">Show more</button>` : '');
+  }
+
+  // ---- Unread in the Neighborhood (for the count on Conversations) and Mark all as read
+  function nbUnread() {
+    const since = Date.now() - NB_DAYS * DAY;
+    return S.items.filter(i => !i.read && Date.parse(i.date) > since && inScope(i, 'people') && !isOwn(i.feed_id) && !isMuted(i) && !isFolded(i, 'people') && !topicMuted(i));
+  }
+
   // ---- Groups: your own circles of people (Photographers, Tech…), as chips in the Neighborhood. Kept like close
   // friends, by each person's blog feed address (synced).
   const groupsOf = () => S.prefs.groups || [];
@@ -3517,8 +3624,11 @@
       if (k === Math.min(4, shown.length - 1) && writers.length && !who) body += `<aside class="nb-wbox"><h3>Writers your writers link to</h3><p>Blogs the people you read keep linking to. Follow one to grow your neighborhood.</p>${writers.map(writerRow).join('')}</aside>`;
       if (k === Math.min(9, shown.length - 1) && elsewhere) body += elsewhere;
     });
-    const end = shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
-      : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : SOC.nbOnly === 'photos' ? 'No pictures in the last two weeks.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`;
+    const unreadHere = list.flatMap(e => e.t ? [e.t.root, ...e.t.replies] : e.i ? [e.i] : []).filter(i => !i.read && !isOwn(i.feed_id));
+    SOC.nbUnreadIds = unreadHere.map(i => i.id);
+    const readAll = unreadHere.length > 1 ? `<button class="btn nb-readall" data-talk="nbreadall">Mark all ${unreadHere.length} as read</button>` : '';
+    const end = readAll + (shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
+      : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : SOC.nbOnly === 'photos' ? 'No pictures in the last two weeks.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`);
     return intro + nbBringHtml() + opener + bars + nbHintHtml() + friendsHtml + body + end;
   }
   // ---- Reactions from other sites: likes, replies and reposts a post has received through webmention.io
@@ -3629,8 +3739,13 @@
         <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
       </div>
       <p class="note">${wp ? `A reply on your site links to their post, and ${esc(f?.title || 'their site')} is told if their site listens for that.` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
-    const ta = box.querySelector('textarea');
-    if (keep) { ta.value = keep.text; if (keep.focus) { ta.focus(); ta.setSelectionRange(keep.at, keep.at); } } else ta.focus();
+    const ta = box.querySelector('textarea'), dkey = box.dataset.box;
+    const draft = DRAFTS[dkey]?.text || '';
+    if (keep) { ta.value = keep.text; if (keep.focus) { ta.focus(); ta.setSelectionRange(keep.at, keep.at); } }
+    else { ta.value = draft; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    if (keep && draft && !keep.text.includes(draft.trim())) { ta.value = draft.trimEnd() + '\n\n' + keep.text; }
+    ta.addEventListener('input', () => setDraft(dkey, ta.value));
+    if (wp) mentionPicker(ta);
     // email, if they list an address and you have a mailbox here
     invoke('reply_options', { itemId: it.id }).then(o => {
       const addr = plainAddress(o?.email?.address || '');
@@ -3640,14 +3755,15 @@
     box.querySelector('form').onclick = async e => {
       const k = e.target.closest('[data-rb]')?.dataset.rb; if (!k) return;
       const text = ta.value.trim();
-      if (k === 'cancel') { box.innerHTML = ''; return; }
+      if (k === 'cancel') { setDraft(dkey, ''); box.innerHTML = ''; renderList(); paintReaderTalk(); return; }
       if (k === 'more') { openReply(e.target, it); return; }
       if (k === 'mail') { box.innerHTML = ''; openMailCompose({ to: e.target.dataset.to, toName: f?.title || '', subject: `Re: ${headline(it)}`, body: `${text}\n\n—\nIn reply to “${headline(it)}”\n${it.link}` }); return; }
       if (k === 'site') {
         if (!text) { ta.focus(); status('Write a few words first.'); return; }
         const btn = e.target; btn.disabled = true; btn.textContent = 'Posting…';
         try {
-          const r = await invoke('site_note', { title: '', text, link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
+          const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
+          setDraft(dkey, ''); if (r.url) rememberReply(it, r.url);
           box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
           status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if their site listens for that.`);
         } catch (err) { btn.disabled = false; btn.textContent = `Post on ${host}`; status(msg(err), true); }
@@ -3766,9 +3882,11 @@
     for (const i of fresh) { const f = nbWho(i); if (f) ppl.set(f.id, f); }
     for (const s of notes) ppl.set(s.f.id, s.f);
     const n = fresh.length + notes.length;
-    const events = [];
+    const events = [], answered = new Set();
+    for (const r of myReplies()) for (const i of answersTo(r)) if (Date.parse(i.date) > cut && !answered.has(i.id)) { answered.add(i.id); events.push(`<button class="nb-ev mine" data-open="${esc(i.id)}"><b>${nbName(i)}</b> answered your reply</button>`); }
     for (const i of fresh) {
       const to = x.replyTo.get(i.id), m = x.mentions.get(i.id);
+      if (answered.has(i.id)) continue;
       if (x.toMe.has(i.id)) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> linked to you</button>`);
       else if (to) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> replied to <b>${isOwn(to.feed_id) ? 'you' : nbName(to)}</b></button>`);
       else if (m) events.push(`<button class="nb-ev" data-open="${esc(i.id)}"><b>${nbName(i)}</b> mentioned <b>${nbFeedName(m.f)}</b></button>`);
@@ -3791,7 +3909,7 @@
 
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
-  const YOU_CHIPS = [['', 'Everything'], ['replies', 'Replies'], ['comments', 'Comments'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
   const newComments = () => (SOC.comments?.comments || []).filter(c => Date.parse(c.date) > socialSeen()).length;
   const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;
   function commentHtml(c) {
@@ -3807,9 +3925,10 @@
   }
   function youHtml() {
     const chip = SOC.youChip || '';
-    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'comments' || SOC.accounts.wordpress).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.wordpress).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
       .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
+    if (chip === 'myreplies') return chips + myRepliesHtml();
     if (chip === 'replies') return chips + repliesHtml();
     if (chip === 'posts') return chips + postsHtml();
     if (chip === 'mentions') return chips + blogHtml();
@@ -3818,6 +3937,7 @@
     const x = nbIndex(), soc = nbSocial(), mine = myFeed(), host = mine ? bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)) : '';
     const ev = [];
     for (const n of SOC.conv?.replies || []) ev.push({ date: n.created_at, html: `<div class="yu-ev${Date.parse(n.created_at) > socialSeen() ? ' new' : ''}">${noteHtml(n)}</div>` });
+    for (const r of myReplies()) for (const i of answersTo(r)) ev.push({ date: i.date, html: `<article class="yu-ev${i.read ? '' : ' new'}">${nbFace(nbWho(i), 'nb-av md')}<div class="nb-main"><div class="nb-by"><b>${nbName(i)}</b><span>answered your reply to “${esc(r.title)}”</span><time>${esc(fmtWhen(i.date))}</time></div><button class="nb-title sm" data-open="${esc(i.id)}">${esc(headline(i))}</button><div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button><button class="linkish" data-talk="open" data-url="${esc(r.url)}">Your reply</button></div></div></article>` });
     for (const n of SOC.mentions || []) ev.push({ date: n.created_at, html: `<div class="yu-ev${Date.parse(n.created_at) > socialSeen() ? ' new' : ''}">${noteHtml(n)}</div>` });
     // a Webmention from a blog you read is the same news as its post linking to you: keep the post
     const linking = S.items.filter(i => x.toMe.has(i.id));
@@ -4086,12 +4206,15 @@
     const box = [...document.querySelectorAll('.n-box')].find(x => x.dataset.box === b.dataset.id); if (!box) return;
     const net = b.dataset.net, start = net === 'mastodon' && b.dataset.handle ? `${b.dataset.handle} ` : '';
     box.innerHTML = `<form class="n-form"><textarea rows="3" maxlength="${LIMIT[net]}">${esc(start)}</textarea><div class="row"><button class="btn" type="button" data-talk="cancel">Cancel</button><button class="btn primary" type="submit">Reply on ${NET[net]}</button></div></form>`;
-    const ta = box.querySelector('textarea'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    const ta = box.querySelector('textarea'), dkey = box.dataset.box;
+    if (DRAFTS[dkey]) ta.value = DRAFTS[dkey].text;
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    ta.addEventListener('input', () => setDraft(dkey, ta.value === start ? '' : ta.value));
     box.querySelector('form').onsubmit = async e => {
       e.preventDefault(); const btn = box.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Sending…';
       try {
         await invoke('social_reply', { network: net, text: ta.value, parentId: b.dataset.id, parentCid: b.dataset.cid || '', rootId: b.dataset.root || '', rootCid: b.dataset.rootcid || '' });
-        status('Reply sent.'); box.innerHTML = '';
+        status('Reply sent.'); setDraft(dkey, ''); box.innerHTML = '';
         const conv = b.closest('[data-conv]')?.dataset.conv;
         if (conv) { const n = SOC.whole.get(conv)?.[0]; SOC.whole.delete(conv); if (n) { await loadWhole(n); } }
         const root = b.dataset.root || b.dataset.id; if (SOC.open.has(root)) { SOC.threads.delete(root); SOC.open.delete(root); toggleThread(net, root); }
@@ -4187,6 +4310,8 @@
       if (S.prefs[key]) invoke('notify', { title: 'Alerts are on', body: key === 'youAlerts' ? 'Replies, comments and mentions show up like this.' : 'New posts from close friends show up like this.', id: 'alerts-' + key }).catch(() => {});
       return; }
     if (k === 'nblike') { const it = item(b.dataset.id); if (it) likePost(b, it); return; }
+    if (k === 'nbreadall') { const ids = SOC.nbUnreadIds || []; if (ids.length) { mark(ids, { read: true }); status(`Marked ${ids.length} as read.`); } return; }
+    if (k === 'myrepmore') { SOC.myRepShown = (SOC.myRepShown || 20) + 20; renderList(); return; }
     if (k === 'cmts') { const it = item(b.dataset.id); if (it) toggleComments(it); return; }
     if (k === 'repost') { const it = item(b.dataset.id); if (it) openRepost(it); return; }
     if (k === 'groups') { const f = feedById(b.dataset.feed); if (f) groupMenu(f); return; }
@@ -4214,7 +4339,7 @@
     if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
     if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
     if (k === 'reply') replyBox(b);
-    if (k === 'cancel') b.closest('.n-box').innerHTML = '';
+    if (k === 'cancel') { const nb = b.closest('.n-box'); setDraft(nb.dataset.box, ''); nb.innerHTML = ''; }
     if (k === 'more') moreMenu(b);
     if (k === 'tab') {
       SOC.person = null;
@@ -4436,7 +4561,7 @@
     if (reacts) parts.push(reacts);
     if (!parts.length && !like) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
-    el.innerHTML = `${parts.length || SOC.cmOpen === it.id ? '<h2>The conversation</h2>' : ''}${parts.join('')}${like ? `<div class="nb-acts r-talk-acts">${like}<button class="linkish" data-talk="nbrbox" data-id="${esc(it.id)}">Reply</button>${repostBtn(it)}${cm}</div>${cmtsHtml(it)}<div class="n-box" data-box="nb:${esc(it.id)}"></div>` : ''}`;
+    el.innerHTML = `${parts.length || SOC.cmOpen === it.id ? '<h2>The conversation</h2>' : ''}${parts.join('')}${like ? `<div class="nb-acts r-talk-acts">${like}<button class="linkish" data-talk="nbrbox" data-id="${esc(it.id)}">${replyLbl(it.id)}</button>${repostBtn(it)}${cm}</div>${cmtsHtml(it)}<div class="n-box" data-box="nb:${esc(it.id)}"></div>` : ''}`;
   }
 
   async function loadArticle(it, refetch = false) {

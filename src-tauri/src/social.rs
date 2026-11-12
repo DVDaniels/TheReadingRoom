@@ -1908,20 +1908,33 @@ fn note_html(text: &str) -> String {
 }
 
 fn para(p: &str, re: &regex::Regex) -> String {
-    {
-        {
-            let mut out = String::new();
-            let mut last = 0;
-            for m in re.find_iter(p) {
-                out.push_str(&esc_html(&p[last..m.start()]));
-                let u = html_escape::encode_double_quoted_attribute(m.as_str());
-                out.push_str(&format!("<a href=\"{u}\">{}</a>", esc_html(m.as_str())));
-                last = m.end();
-            }
-            out.push_str(&esc_html(&p[last..]));
-            format!("<!-- wp:paragraph -->\n<p>{}</p>\n<!-- /wp:paragraph -->", out.trim().replace('\n', "<br>\n"))
+    // [words](https://…) is a link with its own words: how a reply mentions someone (their name, linking to
+    // their site, so the Webmention plugin tells them). Bare web addresses become links too.
+    static MD: OnceLock<regex::Regex> = OnceLock::new();
+    let md = MD.get_or_init(|| regex::Regex::new(r#"\[([^\]\n]{1,80})\]\((https?://[^\s<>"()]+)\)"#).unwrap());
+    let bare = |t: &str| -> String {
+        let mut out = String::new();
+        let mut last = 0;
+        for m in re.find_iter(t) {
+            out.push_str(&esc_html(&t[last..m.start()]));
+            let u = html_escape::encode_double_quoted_attribute(m.as_str());
+            out.push_str(&format!("<a href=\"{u}\">{}</a>", esc_html(m.as_str())));
+            last = m.end();
         }
+        out.push_str(&esc_html(&t[last..]));
+        out
+    };
+    let mut out = String::new();
+    let mut last = 0;
+    for c in md.captures_iter(p) {
+        let m = c.get(0).unwrap();
+        out.push_str(&bare(&p[last..m.start()]));
+        let u = html_escape::encode_double_quoted_attribute(&c[2]);
+        out.push_str(&format!("<a class=\"u-mention\" href=\"{u}\">{}</a>", esc_html(&c[1])));
+        last = m.end();
     }
+    out.push_str(&bare(&p[last..]));
+    format!("<!-- wp:paragraph -->\n<p>{}</p>\n<!-- /wp:paragraph -->", out.trim().replace('\n', "<br>\n"))
 }
 
 /// The Notes category's id, made the first time.
@@ -2257,6 +2270,14 @@ mod likes_tests {
 
 #[cfg(test)]
 mod their_likes_tests {
+    #[test]
+    fn mentions_become_links() {
+        let h = super::note_html("Thanks [Jo Hart](https://johart.blog/) and see https://a.b/c too.");
+        assert!(h.contains(r#"<a class="u-mention" href="https://johart.blog/">Jo Hart</a>"#), "{h}");
+        assert!(h.contains(r#"<a href="https://a.b/c">https://a.b/c</a>"#), "{h}");
+        assert!(!h.contains("[Jo"));
+    }
+
     #[test]
     fn finds_a_posts_comments() {
         let base = url::Url::parse("https://b.blog/2026/11/hello/").unwrap();
