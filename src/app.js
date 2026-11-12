@@ -3435,11 +3435,11 @@
     if (!c.list.length) return '';
     const followed = e => followsDomain(bareHost(hostOfU(e.url))) || SOC.added?.has(bareHost(hostOfU(e.url)));
     const not = c.list.filter(e => !followed(e)), have = c.list.length - not.length;
-    const show = SOC.rollAll === f.id ? not : not.slice(0, 8);
+    const show = SOC.rollAll === String(f.id) ? not : not.slice(0, 8);
     return `<p class="pp-sub">${c.list.length} ${c.list.length === 1 ? 'site' : 'sites'} ${esc(f.title)} recommends${have ? `. You follow ${have === c.list.length ? 'all of them' : have}` : ''}.</p>
       ${not.length > 1 ? `<button class="btn pp-rollall" data-talk="rollall" data-feed="${esc(f.id)}">Follow all ${not.length}</button>` : ''}
       ${show.map(e => { const h = bareHost(hostOfU(e.url)), err = SOC.blogErr?.get(h); return `<div class="nb-writer">${nbFace({ url: e.url, title: e.title || h }, 'nb-av sm')}<span class="nb-w-who"><button class="linkish nb-w-host" data-talk="open" data-url="${esc(e.url)}">${esc(e.title || h)}</button><small>${esc(h)}</small>${err ? `<small class="fol-err">${esc(err)}</small>` : ''}</span><span class="nb-w-acts"><button class="fbtn p" data-talk="site" data-url="${esc(e.feed || e.url)}">Follow</button></span></div>`; }).join('')}
-      ${not.length > 8 ? `<button class="linkish more-r" data-talk="rollmore" data-feed="${esc(f.id)}">${SOC.rollAll === f.id ? 'Show fewer' : `Show all ${not.length}`}</button>` : ''}`;
+      ${not.length > 8 ? `<button class="linkish more-r" data-talk="rollmore" data-feed="${esc(f.id)}">${SOC.rollAll === String(f.id) ? 'Show fewer' : `Show all ${not.length}`}</button>` : ''}`;
   }
   const NB_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>';
 
