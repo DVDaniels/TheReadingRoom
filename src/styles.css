@@ -955,6 +955,8 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 #g-posse { scroll-margin-top: 170px; }
 
 /* ---------------------------------------------------------------- Conversations › Neighborhood: blogs as a stream */
+.nb-faces-key { display: flex; align-items: center; gap: 7px; margin: -6px 2px 4px; font-size: 12px; color: var(--muted); }
+.nb-faces-key i { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--accent); }
 .nb-faces { display: flex; gap: 4px 10px; overflow-x: auto; padding: 4px 2px 12px; margin: 6px 0 4px; scrollbar-width: none; }
 .nb-faces::-webkit-scrollbar { display: none; }
 .nb-face { flex: none; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 62px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink); }

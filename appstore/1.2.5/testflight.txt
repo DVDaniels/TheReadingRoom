@@ -41,7 +41,7 @@ ALSO IN THIS BETA
 • Fixed: your emails no longer show up on Today or in the Morning Edition. They stay in Email.
 • Fixed: every feed from your own site (like a Notes feed) counts as you in Conversations: your picture, the You tag, and no face for it in the row of faces.
 • A person's page in Conversations now says who they are, in their own words: the bio on their site, or their Mastodon or Bluesky bio.
-• Fixed: the green ring around a face (something unread from them in the last three days) now shows even when their newest post is already read.
+• The faces row explains itself: a green ring means something new from them you haven't read (also in How to use this app). Fixed: the ring now shows even when their newest post is already read.
 • Fixed: Show all under someone's blogroll on their page now opens the whole list.
 • The same post on Mastodon and Bluesky shows once in Conversations, with "Also on Mastodon" (or Bluesky) to open the other copy. In Following, a link someone shared on both counts them once.
 

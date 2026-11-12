@@ -1136,6 +1136,7 @@
           <dt>Read later</dt><dd>Press the bookmark on any story to keep it for later. It syncs to your other devices.</dd>
           <dt>Annotated</dt><dd>Select a passage in a story to highlight it or add a note. They’re all collected here.</dd>
           <dt>Discover</dt><dd>Blogs recommended by the people you already read.</dd>
+          <dt>Conversations</dt><dd>The blogs you read as a social feed. The faces at the top are the people who posted in the last three days; a <b>green ring</b> means something new from them you haven’t read yet, and it goes away once you’ve read it. Tap a face to see just their posts, and their name for their page.</dd>
           <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
           <dt>Write back</dt><dd>In any story, press Write back to reply to the writer: by email, in their comments, or on Mastodon or Bluesky, whichever they offer.</dd>
           <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
@@ -3638,7 +3639,8 @@
     const faceList = [...faces.values()].sort( // close friends first
       (a, b) => fids.has(b.f.id) - fids.has(a.f.id));
     const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted in the last three days (a ring means something unread)">${faceList.slice(0, 16).map(({ f, unread }) =>
-      `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>` : '';
+      `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}${unread ? ' · something new you haven’t read' : ' · all read'}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>
+      <p class="nb-faces-key"><i aria-hidden="true"></i>Posted in the last three days · a green ring means something new you haven’t read</p>` : '';
     const talks = all.filter(talky).length;
     const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each'], ['topics', 'Topics']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`
       + (groupsOf().length ? `<span class="nb-break"></span><div class="nb-seg nb-groups" role="group" aria-label="Groups"><button data-talk="nbgroup" data-g="" aria-pressed="${!grp}">All people</button>${groupsOf().map(g => `<button data-talk="nbgroup" data-g="${esc(g.id)}" aria-pressed="${grp?.id === g.id}">${esc(g.name)}</button>`).join('')}</div>` : '');
