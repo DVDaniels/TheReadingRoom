@@ -2746,7 +2746,8 @@
         if (it) store.set('shared:' + it.id, '1');
         // X: free, because X's own compose window does the posting and you press Post (no API, no charge)
         const toX = !draft && $('nX').checked && (home || words || link());
-        if (toX) await openXCopy(words || $('nTitle').value.trim(), home || link());
+        const xt = $('nTitle').value.trim();
+        if (toX) await openXCopy(home && xt && words ? `${xt}\n\n${words}` : (words || xt), home || link());
         const where = [home ? wp.site.replace(/^https?:\/\//, '') : '', ...shared].filter(Boolean);
         if (bad.length) {
           say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}${warned.length ? ' ' + warned.join(' ') : ''}`, true);
@@ -2767,7 +2768,7 @@
   /** Open X's compose window with the note's words and its link. A link counts as 23 characters on X. */
   async function openXCopy(words, url) {
     const room = 280 - (url ? 24 : 0);
-    const chars = [...words.replace(/\s+/g, ' ').trim()];
+    const chars = [...words.replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim()];
     const t = chars.length > room ? chars.slice(0, room - 1).join('').replace(/\s+\S*$/, '') + '…' : chars.join('');
     const q = `text=${encodeURIComponent(t)}${url ? `&url=${encodeURIComponent(url)}` : ''}`;
     try { await invoke('open_share', { url: `https://x.com/intent/post?${q}` }); } catch (e) { status(msg(e), true); }
