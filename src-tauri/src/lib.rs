@@ -2295,6 +2295,7 @@ pub fn run() {
             social::social_followers,
             social::social_follow,
             social::social_shared,
+            social::social_search,
             social::social_blog_mentions,
             topic_search,
             smallweb_feed,

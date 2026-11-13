@@ -1411,9 +1411,86 @@ pub async fn social_blog_mentions(domain: String) -> Vec<Note> {
     out
 }
 
+/// The words of a search, lowercased, without # or @, for matching and hashtags.
+pub fn search_words(q: &str) -> Vec<String> {
+    q.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// What everyone is saying right now about something (an outage, the news): recent public posts on Bluesky and
+/// Mastodon through your connected accounts, newest first. Mastodon's own search only finds posts on servers that
+/// allow it, so its hashtags for the words are read too.
+#[tauri::command]
+pub async fn social_search(query: String) -> Conversations {
+    let mut c = Conversations::default();
+    let q = query.trim().to_string();
+    let words = search_words(&q);
+    if words.is_empty() {
+        return c;
+    }
+    let has_all = |t: &str| { let t = t.to_lowercase(); words.iter().all(|w| t.contains(w.as_str())) };
+    if secret_get("bluesky").is_some() {
+        match bsky_session(false).await {
+            Ok(_) => match bsky(true, "app.bsky.feed.searchPosts", &[("q", q.clone()), ("sort", "latest".into()), ("limit", "60".into())], None).await {
+                Ok(v) => {
+                    for p in v["posts"].as_array().cloned().unwrap_or_default() {
+                        c.posts.push(bsky_note(&p, "search"));
+                    }
+                }
+                Err(e) => c.errors.push(format!("Bluesky: {e}")),
+            },
+            Err(e) => c.errors.push(format!("Bluesky: {e}")),
+        }
+    }
+    if masto_saved().is_ok() {
+        let mut got_any = false;
+        let mut first_err = None;
+        match masto(reqwest::Method::GET, "/api/v2/search", &[("q", q.clone()), ("type", "statuses".into()), ("resolve", "false".into()), ("limit", "40".into())], None).await {
+            Ok(v) => {
+                got_any = true;
+                for x in v["statuses"].as_array().cloned().unwrap_or_default() {
+                    c.posts.push(masto_note(&x, "search"));
+                }
+            }
+            Err(e) => first_err = Some(e),
+        }
+        // Hashtags: each word, and all of them run together (#OutlookDown)
+        let mut tags: Vec<String> = words.iter().filter(|w| w.chars().count() >= 3).take(3).cloned().collect();
+        if words.len() > 1 { tags.push(words.concat()); }
+        for tag in tags {
+            if let Ok(v) = masto(reqwest::Method::GET, &format!("/api/v1/timelines/tag/{tag}"), &[("limit", "30".into())], None).await {
+                got_any = true;
+                for x in v.as_array().cloned().unwrap_or_default() {
+                    let n = masto_note(&x, "search");
+                    if has_all(&format!("{} {}", n.text, n.link_title)) || tag == words.concat() {
+                        c.posts.push(n);
+                    }
+                }
+            }
+        }
+        if !got_any {
+            if let Some(e) = first_err { c.errors.push(format!("Mastodon: {e}")); }
+        }
+    }
+    // one of each, newest first, boosts and replies included (a reply often has the news)
+    let mut seen = std::collections::HashSet::new();
+    c.posts.retain(|n| seen.insert(format!("{}:{}", n.network, n.id)));
+    c.posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    c.posts.truncate(120);
+    c
+}
+
 #[cfg(test)]
 mod more_tests {
     use super::own_site;
+
+    #[test]
+    fn search_words_drop_marks() {
+        assert_eq!(super::search_words("  #Outlook down! @msft365status "), vec!["outlook", "down", "msft365status"]);
+        assert!(super::search_words(" # ! ").is_empty());
+    }
 
     #[test]
     fn finds_how_a_site_describes_its_writer() {

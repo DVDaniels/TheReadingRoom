@@ -1975,3 +1975,19 @@ button.nb-count:hover { color: var(--accent); text-decoration: underline; }
 .set-switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hide-view { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 .hide-view:hover { color: var(--accent); }
+
+/* Conversations › Search */
+.sr-form { display: flex; gap: 8px; margin: 4px 0 10px; }
+.sr-form input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.sr-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sr-past { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.sr-chip { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+.sr-chip.on { border-color: var(--accent); }
+.sr-x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 6px; }
+.sr-intro { max-width: 62ch; }
+.sr-note { font-size: 12px; }
+.sr-feeds { list-style: none; padding: 0; margin: 6px 0 8px; }
+.sr-item { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; background: none; border: 0; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--ink); cursor: pointer; font: inherit; }
+.sr-item span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sr-item b { font-weight: 600; line-height: 1.3; }
+.sr-item small { color: var(--muted); font-size: 12px; }

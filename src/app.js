@@ -1162,7 +1162,7 @@
           <dt>Read later</dt><dd>Press the bookmark on any story to keep it for later. It syncs to your other devices.</dd>
           <dt>Annotated</dt><dd>Select a passage in a story to highlight it or add a note. They’re all collected here.</dd>
           <dt>Discover</dt><dd>Blogs recommended by the people you already read.</dd>
-          <dt>Conversations</dt><dd>The blogs you read as a social feed. The faces at the top are the people who posted in the last three days; a <b>green ring</b> means something new from them you haven’t read yet, and it goes away once you’ve read it. Tap a face to see just their posts, and their name for their page.</dd>
+          <dt>Conversations</dt><dd>The blogs you read as a social feed. The faces at the top are the people who posted in the last three days; a <b>green ring</b> means something new from them you haven’t read yet, and it goes away once you’ve read it. Tap a face to see just their posts, and their name for their page. <b>Search</b> shows what people are saying right now about anything (an outage, the news): recent posts on Bluesky and Mastodon through your accounts, and posts from the blogs you read.</dd>
           <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
           <dt>Write back</dt><dd>In any story, press Write back to reply to the writer: by email, in their comments, or on Mastodon or Bluesky, whichever they offer.</dd>
           <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
@@ -4043,7 +4043,7 @@
   }
 
   // Tabs: what people share, replies to you, your posts, and people linking to your blog
-  const TALK_TABS = [['blogs', 'Neighborhood'], ['shared', 'Following'], ['you', 'You']];
+  const TALK_TABS = [['blogs', 'Neighborhood'], ['shared', 'Following'], ['you', 'You'], ['search', 'Search']];
   const WEEK_MS = 7 * DAY;
   const myDomain = () => {
     const f = myFeed(); if (!f) return '';
@@ -4272,6 +4272,53 @@
       ${SOC.mentions.slice(0, 3).map(n => `<button class="talk" data-talk="tab" data-tab="blog"><small>${esc(n.author.name)} · ${NET[n.network]} · ${esc(fmtWhen(n.created_at))}</small>${esc(n.text.length > 160 ? n.text.slice(0, 160) + '…' : n.text)}</button>`).join('')}</div>`;
     return out;
   }
+  // ---- Search: what everyone is saying right now (an outage, the news), on Bluesky and Mastodon through your
+  // accounts, and in the feeds you read. Newest first; Check again (or the refresh button) looks again.
+  const searches = () => { try { return JSON.parse(store.get('searches') || '[]'); } catch { return []; } };
+  const setSearches = list => store.set('searches', JSON.stringify(list.slice(0, 8)));
+  const srWords = q => q.toLowerCase().split(/\s+/).map(w => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
+  function feedMatches(q) {
+    const words = srWords(q), since = Date.now() - 7 * DAY;
+    if (!words.length) return [];
+    return S.items.filter(i => Date.parse(i.date) > since && !isEmailItem(i) && !isMuted(i))
+      .filter(i => { const t = `${i.title} ${i.summary}`.toLowerCase(); return words.every(w => t.includes(w)); })
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  }
+  async function runSearch(q) {
+    q = (q || '').trim(); if (!q) return;
+    SOC.tab = 'search'; SOC.person = null; SOC.sq = q; SOC.srAllFeeds = false;
+    setSearches([q, ...searches().filter(x => x.toLowerCase() !== q.toLowerCase())]);
+    SOC.sres = { q, loading: true, posts: SOC.sres?.q === q ? SOC.sres.posts : [], errors: [] };
+    renderList();
+    let res = { posts: [], errors: [] };
+    if (anySocial()) { try { res = await invoke('social_search', { query: q }); } catch (e) { res.errors = [msg(e)]; } }
+    if (SOC.sq !== q) return; // another search started meanwhile
+    SOC.sres = { q, loading: false, posts: res.posts || [], errors: res.errors || [], at: Date.now() };
+    if (S.view === 'talk' && SOC.tab === 'search') renderList();
+  }
+  function searchHtml() {
+    const q = SOC.sq || '', r = SOC.sres && SOC.sres.q === q ? SOC.sres : null, past = searches();
+    const form = `<form class="sr-form" id="srForm" role="search"><input type="search" id="srQ" value="${esc(q)}" placeholder="What’s going on? Try “Outlook down”" aria-label="Search what people are saying" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Search</button></form>
+      ${past.length ? `<div class="sr-past">${past.map(p => `<span class="sr-chip${p === q ? ' on' : ''}"><button class="linkish" data-talk="srch" data-q="${esc(p)}">${esc(p)}</button><button class="sr-x" data-talk="srdrop" data-q="${esc(p)}" aria-label="Forget ${esc(p)}">×</button></span>`).join('')}</div>` : ''}`;
+    if (!q) return `<div class="nb-col sr">${form}<p class="sec-s sr-intro">When something big happens (an outage, a storm, the news), see what people are saying about it right now: recent posts from everyone on Bluesky and Mastodon${anySocial() ? '' : ' (connect an account in Settings › Connections)'}, and posts from the blogs you read.</p></div>`;
+    const feeds = feedMatches(q), shownFeeds = SOC.srAllFeeds ? feeds : feeds.slice(0, 6);
+    const nets = [SOC.accounts.bluesky && 'Bluesky', SOC.accounts.mastodon && 'Mastodon'].filter(Boolean);
+    const social = !anySocial() ? `<p class="sec-s">Connect Bluesky or Mastodon (Settings › Connections) to see what everyone is saying about this right now. Below are posts from the blogs you read.</p>`
+      : r?.loading && !r.posts.length ? `<p class="sec-s sr-wait">Looking on ${nets.join(' and ')}…</p>`
+      : !r ? '' : `<p class="sec-s">${r.posts.length ? `${r.posts.length} recent post${r.posts.length === 1 ? '' : 's'} on ${nets.join(' and ')}, newest first` : `Nothing on ${nets.join(' or ')} yet`}${r.at ? ` · looked ${esc(fmtWhen(r.at))}` : ''} · <button class="linkish" data-talk="srch" data-q="${esc(q)}">Check again</button></p>
+        ${r.errors.length ? `<p class="sec-s err">${r.errors.map(esc).join(' · ')}</p>` : ''}
+        ${SOC.accounts.mastodon ? '<p class="sec-s sr-note">Mastodon only shows posts its search allows, plus posts with these words as hashtags.</p>' : ''}
+        <div class="sr-list">${r.posts.map(n => noteHtml(n)).join('')}</div>`;
+    const feedList = feeds.length ? `<h2 class="sec-t">In the blogs you read</h2><p class="sec-s">${feeds.length} post${feeds.length === 1 ? '' : 's'} from the last week</p>
+      <ul class="sr-feeds">${shownFeeds.map(i => { const f = feedById(i.feed_id); return `<li><button class="sr-item" data-open="${esc(i.id)}">${f ? nbFace(f, 'nb-av sm') : ''}<span><b>${esc(headline(i) || (i.summary || '').slice(0, 100))}</b><small>${esc(f?.title || '')} · ${esc(fmtWhen(i.date))}</small></span></button></li>`; }).join('')}</ul>
+      ${feeds.length > shownFeeds.length ? `<button class="linkish" data-talk="srfeeds">Show all ${feeds.length}</button>` : ''}`
+      : `<h2 class="sec-t">In the blogs you read</h2><p class="sec-s">Nothing from the last week yet.</p>`;
+    return `<div class="sr">${form}<div class="tcols"><div class="tmain"><h2 class="sec-t">What people are saying</h2>${social}</div><aside class="tside">${feedList}</aside></div></div>`;
+  }
+  document.addEventListener('submit', e => {
+    if (e.target.id !== 'srForm') return;
+    e.preventDefault(); runSearch($('srQ').value);
+  });
   function talkHtml() {
     const who = SOC.person && feedById(SOC.person);
     paintTalkHead();
@@ -4279,6 +4326,7 @@
     const { tab } = talkTabsInfo();
     if (tab === 'blogs') return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
     if (tab === 'you') return `<div class="nb-col">${profilesHtml()}${youHtml()}</div>`;
+    if (tab === 'search') return searchHtml();
     return `<div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
         <aside class="tside">${sideHtml()}</aside></div>`;
   }
@@ -4374,6 +4422,7 @@
   }, true);
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
+    if (e.target.id === 'talkRefresh' && SOC.tab === 'search' && SOC.sq) { runSearch(SOC.sq); return; }
     if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
@@ -4438,6 +4487,9 @@
       if (SOC.tab === 'you') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000);
     }
     if (k === 'youchip') { SOC.youChip = b.dataset.k; renderList(); return; }
+    if (k === 'srch') { runSearch(b.dataset.q); return; }
+    if (k === 'srdrop') { setSearches(searches().filter(q => q !== b.dataset.q)); renderList(); return; }
+    if (k === 'srfeeds') { SOC.srAllFeeds = true; renderList(); return; }
     if (k === 'newpost') { if (SOC.accounts.wordpress) openNote(null); else openCompose(null); }
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
     if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }
