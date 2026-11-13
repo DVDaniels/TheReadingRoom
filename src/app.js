@@ -71,7 +71,8 @@
     if (!document.body.dataset.screen) setScreen('list');
   }
   applyPlatform();
-  invoke('app_info').then(info => { IOS = info.platform === 'ios'; applyPlatform(); render(); }).catch(() => {});
+  let APP = { platform: '', version: '' };
+  invoke('app_info').then(info => { APP = info; IOS = info.platform === 'ios'; applyPlatform(); render(); }).catch(() => {});
 
   // Which folders are collapsed is remembered between launches.
   const collapsed = new Set((() => { try { return JSON.parse(localStorage.getItem('collapsed') || '[]'); } catch { return []; } })());
@@ -946,6 +947,7 @@
 
   function selectView(v) {
     const was = S.view;
+    if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
     // Back within half an hour is the same visit: "Since you were here" and the faces stay as they were
@@ -1162,7 +1164,7 @@
           <dt>Read later</dt><dd>Press the bookmark on any story to keep it for later. It syncs to your other devices.</dd>
           <dt>Annotated</dt><dd>Select a passage in a story to highlight it or add a note. They’re all collected here.</dd>
           <dt>Discover</dt><dd>Blogs recommended by the people you already read.</dd>
-          <dt>Conversations</dt><dd>The blogs you read as a social feed. The faces at the top are the people who posted in the last three days; a <b>green ring</b> means something new from them you haven’t read yet, and it goes away once you’ve read it. Tap a face to see just their posts, and their name for their page. <b>Search</b> shows what people are saying right now about anything (an outage, the news): recent posts on Bluesky and Mastodon through your accounts, and posts from the blogs you read.</dd>
+          <dt>Conversations</dt><dd>The blogs you read as a social feed. The faces at the top are the people who posted in the last three days; a <b>green ring</b> means something new from them you haven’t read yet, and it goes away once you’ve read it. Tap a face to see just their posts, and their name for their page. The small labels on a post explain themselves when you tap them: <b>You</b> (your own site), a <b>star</b> (a close friend: pinned to the top, with an alert when they post), <b>Reads you</b> (you’re on their blogroll), <b>Links to you</b>, and <b>Back after</b> a few months of quiet. The row of hearts and speech bubbles under a post counts the likes, replies and mentions other sites sent it; tap it to see who. <b>Search</b> shows what people are saying right now about anything (an outage, the news): recent posts on Bluesky and Mastodon through your accounts, and posts from the blogs you read.</dd>
           <dt>Folders</dt><dd>Drag feeds onto a folder in the sidebar to group them, like Tech or Friends.</dd>
           <dt>Write back</dt><dd>In any story, press Write back to reply to the writer: by email, in their comments, or on Mastodon or Bluesky, whichever they offer.</dd>
           <dt>Listen</dt><dd>In any story, press Listen to have it read aloud. Choose a voice you like.</dd>
@@ -2418,9 +2420,18 @@
   // The links that used to fill the bottom of the sidebar live here now. Each keeps its own handler;
   // choosing one closes Settings and opens that panel.
   const closeSettings = () => { $('settingsPanel').hidden = true; };
-  $('settingsBtn').onclick = () => { paintShowSettings(); $('settingsPanel').hidden = false; $('settingsDone').focus(); };
+  $('settingsBtn').onclick = () => { paintShowSettings(); $('setVer').textContent = APP.version ? `The Reading Room ${APP.version}` : ''; $('settingsPanel').hidden = false; $('settingsDone').focus(); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
   $('settingsDone').onclick = e => { e.stopPropagation(); closeSettings(); };
+  // Help and feedback: GitHub issues (the app has no server or mail of its own), the App Store's review page, the support page
+  const openOut = url => invoke('open_external', { url }).catch(e => status(msg(e), true));
+  const deviceName = () => APP.platform === 'ios' ? (/iPad/.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && !phoneSize.matches ? 'iPad' : 'iPhone') : APP.platform === 'macos' ? 'Mac' : 'computer';
+  $('feedbackBtn').onclick = () => {
+    const body = `**What happened, or what would you like?**\n\n\n**Steps to see it (if it's a problem)**\n\n\n---\nThe Reading Room ${APP.version || ''} on ${deviceName()}`;
+    openOut('https://github.com/DVDaniels/TheReadingRoom/issues/new?body=' + encodeURIComponent(body));
+  };
+  $('rateBtn').onclick = () => openOut('https://apps.apple.com/app/id6828213191?action=write-review');
+  $('supportBtn').onclick = () => openOut('https://readingroomapp.com/support/');
   $('settingsPanel').addEventListener('click', e => {
     const t = e.target.closest('[data-theme]');
     if (t) { typePrefs.theme = t.dataset.theme; applyType(); return; } // Appearance changes in place; Settings stays open
@@ -3091,7 +3102,7 @@
       return `<article class="nb-post nb-reply${i.read || mine ? '' : ' unread'}" data-id="${esc(i.id)}">
         ${f ? `<button class="nb-avb" data-talk="nbwho" data-feed="${esc(f.id)}" title="Only ${esc(f.title)}">${nbFace(f, 'nb-av md')}</button>` : nbFace(null, 'nb-av md')}
         <div class="nb-main">
-          <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? '<span class="nb-tag you">You</span>' : ''}<span>replied</span><time>${esc(fmtWhen(i.date))}</time></div>
+          <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? cueTag('you', 'You') : ''}<span>replied</span><time>${esc(fmtWhen(i.date))}</time></div>
           ${short ? '' : `<button class="nb-title sm" data-open="${esc(i.id)}">${esc(headline(i))}</button>`}
           ${t ? `<p class="nb-text">${esc(t)}</p>` : ''}
           ${likedByHtml(i)}
@@ -3104,7 +3115,7 @@
     return `<article class="nb-post${i.read || mine ? '' : ' unread'}${short ? ' short' : ''}${mine ? ' mine' : ''}" data-id="${esc(i.id)}">
       ${f ? `<button class="nb-avb" data-talk="nbwho" data-feed="${esc(f.id)}" title="Only ${esc(f.title)}">${nbFace(f)}</button>` : nbFace(null)}
       <div class="nb-main">
-        <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? '<span class="nb-tag you">You</span>' : ''}${isFriend(f) ? `<span class="nb-star" title="Close friend">${NB_STAR}</span>` : ''}<span>${esc(hostOfU(i.link))}</span><time>${esc(fmtWhen(i.date))}</time>${x.toMe.has(i.id) ? '<span class="nb-tag">Links to you</span>' : readsYou(f) ? READS_YOU : ''}${back ? `<span class="nb-tag back">Back after ${back} month${back === 1 ? '' : 's'}</span>` : ''}</div>
+        <div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f?.id || '')}">${nbName(i)}</button>${mine ? cueTag('you', 'You') : ''}${isFriend(f) ? `<button class="nb-star" data-talk="cue" data-cue="friend" title="${esc(CUES.friend)}" aria-label="Close friend">${NB_STAR}</button>` : ''}<span>${esc(hostOfU(i.link))}</span><time>${esc(fmtWhen(i.date))}</time>${x.toMe.has(i.id) ? cueTag('links', 'Links to you') : readsYou(f) ? READS_YOU : ''}${back ? cueTag('back', `Back after ${back} month${back === 1 ? '' : 's'}`, 'back') : ''}</div>
         ${reply}
         ${short ? '' : `<button class="nb-title" data-open="${esc(i.id)}">${esc(headline(i))}</button>`}
         ${text ? `<p class="nb-text">${esc(text)}</p>` : ''}
@@ -3531,7 +3542,17 @@
   function needReport() { if (!D.report && !SOC.discLoading) { SOC.discLoading = true; invoke('discover_get').then(r => { D.report = r.report; PV++; if (S.view === 'talk') renderList(); }).catch(() => {}); } }
   const rollsYou = () => { const d = myDomain(); return new Set(((D.report?.listed || []).find(l => l.domain === d)?.by) || []); };
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
-  const READS_YOU = '<span class="nb-tag reads" title="You’re on their blogroll">Reads you</span>';
+  // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
+  const CUES = {
+    you: 'You: a post from your own site.',
+    friend: 'Close friend: their new posts are pinned to the top of the Neighborhood, and you get an alert when they post. Change it with the Close friend button on their page.',
+    reads: 'Reads you: your site is on their blogroll.',
+    links: 'Links to you: this post links to your site.',
+    back: 'Back after a quiet spell: their first post in months.',
+    react: 'Likes, replies, reposts and mentions that other sites and people sent to this post. Tap to see who.',
+  };
+  const cueTag = (k, label, cls = '') => `<button class="nb-tag${cls ? ' ' + cls : ''}" data-talk="cue" data-cue="${k}" title="${esc(CUES[k])}">${esc(label)}</button>`;
+  const READS_YOU = cueTag('reads', 'Reads you', 'reads');
 
   // ---- Comment counts, when the post's feed gives one
   const commentsBtn = i => i.comments > 0 && isWeb(i.link) ? `<button class="linkish nb-count" data-talk="cmts" data-id="${esc(i.id)}" aria-expanded="${SOC.cmOpen === i.id}" title="Read the comments">${i.comments} ${i.comments === 1 ? 'comment' : 'comments'}</button>` : '';
@@ -3741,13 +3762,13 @@
     if (!c || !(c.like + c.reply + c.repost + c.mention)) return '';
     const bits = [c.like && `${HEART}${c.like}`, c.reply && `${NB_TALK}${c.reply}`, c.repost && `${NB_SHARE}${c.repost}`, c.mention && `<span class="wm-m">@</span>${c.mention}`].filter(Boolean);
     const open = SOC.wmOpen === i.id, list = SOC.wmList?.get(i.link);
-    return `<div class="nb-react"><button class="nb-react-b" data-talk="wmopen" data-id="${esc(i.id)}" aria-expanded="${open}" title="Reactions from other sites">${bits.join('<span class="sep"></span>')}</button>
+    return `<div class="nb-react"><button class="nb-react-b" data-talk="wmopen" data-id="${esc(i.id)}" aria-expanded="${open}" title="${esc(CUES.react)}">${bits.join('<span class="sep"></span>')}</button>
       ${open ? (list === undefined ? '<p class="note">Looking at who reacted…</p>' : list.err ? `<p class="note err">${esc(list.err)}</p>` : wmListHtml(list)) : ''}</div>`;
   }
   function wmListHtml(list) {
     const likes = list.filter(r => r.kind === 'like' || r.kind === 'repost'), talk = list.filter(r => r.kind === 'reply' || r.kind === 'mention');
     const face = r => `<span class="nb-av sm" style="--h:${hueFor(r.name || r.url)}">${esc((r.name || '?')[0].toUpperCase())}${isWeb(r.photo) ? `<img class="nb-face-img" src="${esc(r.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>`;
-    return `<div class="wm-list">
+    return `<div class="wm-list"><p class="wm-what">Reactions other sites and people sent to this post</p>
       ${likes.length ? `<div class="wm-faces">${likes.slice(0, 16).map(r => `<button class="wm-face" data-talk="open" data-url="${esc(r.url)}" title="${esc(r.name || '')} ${r.kind === 'like' ? 'liked' : 'reposted'} it">${face(r)}</button>`).join('')}<span class="wm-who">${esc(likes.slice(0, 2).map(r => r.name).filter(Boolean).join(', '))}${likes.length > 2 ? ` and ${likes.length - 2} more` : ''}</span></div>` : ''}
       ${talk.slice(0, 6).map(r => `<button class="wm-r" data-talk="open" data-url="${esc(r.url)}">${face(r)}<span><b>${esc(r.name || hostOfU(r.url))}</b> ${r.kind === 'reply' ? 'replied' : 'mentioned it'}${r.date ? ` · ${esc(fmtWhen(r.date))}` : ''}${r.text ? `<small>${esc(r.text.length > 220 ? r.text.slice(0, 210) + '…' : r.text)}</small>` : ''}</span></button>`).join('')}
     </div>`;
@@ -4464,6 +4485,7 @@
     if (k === 'rollall') { const f = feedById(b.dataset.feed); if (!f) return; const site = isWeb(f.site) ? f.site : 'https://' + bareHost(hostOfU(f.url)) + '/';
       const not = (ROLLS[site]?.list || []).filter(e => !followsDomain(bareHost(hostOfU(e.url)))); followMany(not.map(e => e.feed || e.url), b, false); return; }
     if (k === 'notelike') { likeNote(b); return; }
+    if (k === 'cue') { status(CUES[b.dataset.cue] || ''); return; }
     if (k === 'wmopen') {
       const it = item(b.dataset.id); if (!it) return;
       if (SOC.wmOpen === it.id) { SOC.wmOpen = null; renderList(); paintReaderTalk(); return; }
@@ -4651,6 +4673,7 @@
 
   function closeReader(silent) {
     if (!S.readerId) return;
+    if (!silent) maybeAskReview();
     S.readerId = null; articleFor = null; hidePops();
     // A video stops when you leave it; a podcast that's playing keeps going until the next story
     const au = $('rAudio'); if (!au || au.paused) { $('rMedia').innerHTML = ''; $('rMedia').hidden = true; }
@@ -5871,8 +5894,19 @@
   // ------------------------------------------------------------ Your year in reading
   // Counted from the day this arrived: each story you open, per device (so Mac and iPhone add up when prefs sync).
   let statsTimer = 0;
+  // Apple's own rating prompt, asked for at a quiet moment (closing a story) once someone clearly uses the app:
+  // 25 stories opened on this device over at least four days, at most once per version and 120 days apart.
+  // Apple decides whether it actually shows (three times a year at most, never in TestFlight).
+  function maybeAskReview() {
+    const opens = Number(store.get('rvOpens')) || 0, first = Number(store.get('rvFirst')) || 0, last = Number(store.get('rvAsked')) || 0;
+    if (!APP.version || opens < 25 || !first || Date.now() - first < 4 * DAY) return;
+    if (store.get('rvVersion') === APP.version || (last && Date.now() - last < 120 * DAY)) return;
+    store.set('rvVersion', APP.version); store.set('rvAsked', String(Date.now()));
+    setTimeout(() => invoke('request_review').catch(() => {}), 800);
+  }
   function countOpen(it) {
     const f = feedById(it.feed_id); if (!f || isJobItem(it)) return;
+    store.set('rvOpens', String((Number(store.get('rvOpens')) || 0) + 1)); if (!store.get('rvFirst')) store.set('rvFirst', String(Date.now()));
     const now = new Date(), y = String(now.getFullYear());
     const st = S.prefs.stats = { since: now.toISOString(), years: {}, ...(S.prefs.stats || {}) };
     st.years = { ...st.years };

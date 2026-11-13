@@ -1,5 +1,9 @@
 Thanks for testing The Reading Room! New in this build: Search in Conversations, and more ways to find, follow and talk with the people you read.
 
+HELP AND FEEDBACK
+• Settings, Help and feedback: Send feedback (a GitHub form with your version filled in), Rate The Reading Room, Help on the web, and the version number.
+• Tap a small label on a Conversations post (the star, You, Reads you, Links to you, Back after) and it says what it means. The hearts and speech bubbles under a post say whose reactions they are when opened.
+
 SEARCH
 • Conversations, Search: when something big happens (an outage, the news), type it in and see what people are saying right now on Bluesky and Mastodon, plus posts from the blogs you read. Recent searches stay as chips. Check again looks again.
 

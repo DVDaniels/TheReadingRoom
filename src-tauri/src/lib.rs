@@ -17,6 +17,7 @@ mod watch;
 mod share;
 mod email;
 mod webmention;
+mod review;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -2351,6 +2352,7 @@ pub fn run() {
             web_state,
             open_share,
             open_external,
+            review::request_review,
             add_highlight,
             set_note,
             delete_highlight,

@@ -11,6 +11,10 @@ rather than a second one being made, since Apple allows one version in progress 
 prepare: makes the new version (once the one before it is approved), fills in What's New, the description,
 promotional text, keywords and App Review notes from appstore/<version>/, and picks the build (the newest
 valid build of that version, unless a build number is given). Screenshots carry over from the last version.
+Other languages: each folder in appstore/locales/ (zh-Hans, zh-Hant, ja…) is a translated App Store page
+(description-mac/ios, promo, keywords, subtitle). prepare adds the language if the app doesn't have it yet and
+fills it in. What's New in that language comes from appstore/<version>/<locale>/whats-new-<mac|ios>.txt, else English.
+Those pages use the English screenshots.
 submit: sends that version to App Review.
 """
 import os, sys, time
@@ -46,6 +50,26 @@ def call(method, path, **kw):
 
 def note(t, m):
     print(f"::notice title={t}::{m}")
+
+
+LOCALES = sorted(d for d in os.listdir("appstore/locales") if os.path.isdir(f"appstore/locales/{d}")) \
+    if os.path.isdir("appstore/locales") else []
+
+
+def loc_text(locale, version, name):
+    for p in (f"appstore/{version}/{locale}/{name}", f"appstore/locales/{locale}/{name}"):
+        if os.path.exists(p):
+            return open(p).read().strip()
+    return None
+
+
+def soft(fn, title, *a):
+    """A translated page that Apple won't take mustn't stop the English release."""
+    try:
+        return fn(*a)
+    except SystemExit:
+        print(f"::warning title={title}::Skipped; the English page is unaffected")
+        return None
 
 
 def text(version, name, fallback=None):
@@ -119,10 +143,38 @@ def prepare(platform, version_string, build_no):
     if not locs:
         print(f"::error title=Listing::No listing language on {LABEL[platform]} {version_string}.")
         sys.exit(1)
+    def attrs_for(locale):
+        if locale not in LOCALES:
+            return attrs
+        t = {
+            "whatsNew": (loc_text(locale, version_string, f"whats-new-{kind}.txt") or attrs.get("whatsNew")) if released else None,
+            "description": loc_text(locale, version_string, f"description-{kind}.txt"),
+            "promotionalText": loc_text(locale, version_string, "promo.txt"),
+            "keywords": loc_text(locale, version_string, "keywords.txt"),
+        }
+        return {**attrs, **{k: v_ for k, v_ in t.items() if v_}}
+
     for loc in locs:
-        call("PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {"type": "appStoreVersionLocalizations",
-             "id": loc["id"], "attributes": attrs}})
-        note("Listing", f"{loc['attributes'].get('locale')}: " + ", ".join(sorted(attrs)))
+        locale = loc["attributes"].get("locale")
+        if locale in LOCALES:
+            soft(call, f"Listing {locale}", "PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {
+                 "type": "appStoreVersionLocalizations", "id": loc["id"], "attributes": attrs_for(locale)}})
+        else:
+            call("PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {"type": "appStoreVersionLocalizations",
+                 "id": loc["id"], "attributes": attrs}})
+        note("Listing", f"{locale}: " + ", ".join(sorted(attrs_for(locale))))
+
+    # Translated pages: the language has to exist on the app's info (name, subtitle) before the version can have it
+    have = {l["attributes"].get("locale") for l in locs}
+    missing = [l for l in LOCALES if l not in have]
+    if LOCALES:
+        add_languages(missing, version_string)
+    for locale in missing:
+        out = soft(call, f"Listing {locale}", "POST", "/appStoreVersionLocalizations", json={"data": {
+              "type": "appStoreVersionLocalizations", "attributes": {"locale": locale, **attrs_for(locale)},
+              "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": v["id"]}}}}})
+        if out:
+            note("Listing", f"{locale} added: " + ", ".join(sorted(attrs_for(locale))))
 
     # The privacy policy link lives on the app's info, which can only change while a version is being prepared
     PRIVACY = "https://readingroomapp.com/privacy/"
@@ -167,6 +219,30 @@ def prepare(platform, version_string, build_no):
     b = builds[0]
     call("PATCH", f"/appStoreVersions/{v['id']}/relationships/build", json={"data": {"type": "builds", "id": b["id"]}})
     note("Build", f"{LABEL[platform]} {version_string} build {b['attributes']['version']} (uploaded {b['attributes'].get('uploadedDate', '')[:16]})")
+
+
+def add_languages(locales, version_string):
+    """Give each translated language its app info (the English name, a translated subtitle, the privacy link)."""
+    infos = [i for i in call("GET", f"/apps/{AID}/appInfos")["data"]
+             if i["attributes"].get("appStoreState") not in ("READY_FOR_DISTRIBUTION", "READY_FOR_SALE", "REPLACED_WITH_NEW_INFO")]
+    for info in infos:
+        ils = call("GET", f"/appInfos/{info['id']}/appInfoLocalizations")["data"]
+        by = {il["attributes"].get("locale"): il for il in ils}
+        en = by.get("en-US") or (ils[0] if ils else None)
+        name = (en or {}).get("attributes", {}).get("name") or "The Reading Room – RSS Reader"
+        for locale in LOCALES:
+            sub = loc_text(locale, version_string, "subtitle.txt")
+            if locale in by:
+                if sub and by[locale]["attributes"].get("subtitle") != sub:
+                    soft(call, f"Subtitle {locale}", "PATCH", f"/appInfoLocalizations/{by[locale]['id']}", json={"data": {
+                         "type": "appInfoLocalizations", "id": by[locale]["id"], "attributes": {"subtitle": sub}}})
+                continue
+            a = {"locale": locale, "name": name, "privacyPolicyUrl": "https://readingroomapp.com/privacy/"}
+            if sub:
+                a["subtitle"] = sub
+            if soft(call, f"Language {locale}", "POST", "/appInfoLocalizations", json={"data": {"type": "appInfoLocalizations",
+                    "attributes": a, "relationships": {"appInfo": {"data": {"type": "appInfos", "id": info["id"]}}}}}):
+                note("Language", f"{locale} added to the app ({name})")
 
 
 def submit(platform, version_string):
