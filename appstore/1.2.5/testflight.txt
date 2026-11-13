@@ -1,53 +1,45 @@
-Thanks for testing The Reading Room! New in this build: more ways to find, follow and talk with the people you read in Conversations.
+Thanks for testing The Reading Room! New in this build: Search in Conversations, and more ways to find, follow and talk with the people you read.
+
+SEARCH
+• Conversations, Search: when something big happens (an outage, the news), type it in and see what people are saying right now on Bluesky and Mastodon, plus posts from the blogs you read. Recent searches stay as chips. Check again looks again.
 
 BRING YOUR PEOPLE OVER
-• With Mastodon or Bluesky connected, the Neighborhood offers the blogs of the people you follow there. Try Follow all, or Choose to pick.
+• With Mastodon or Bluesky connected, the Neighborhood offers the blogs of the people you follow there. Try Follow all, or Choose.
 
-THEIR BLOGROLL
-• On someone's page (tap their face or name), Their blogroll lists every site they recommend, with Follow, or Follow all.
+A PAGE FOR EACH PERSON
+• Tap a face or name. Their page now says who they are, in their own words, and lists Their blogroll with Follow or Follow all.
 
-REPOST
-• Repost next to Like puts the post on your site as a short note with its picture card. Add a few words if you like. Check it on your site, and that the button turns into Reposted.
+REPOST AND COMMENTS
+• Repost next to Like puts the post on your site as a short note with its picture card. Check the button turns into Reposted.
+• Tap "12 comments" to read a post's comments in the app. Join in on their site opens their comment form.
 
-COMMENTS
-• Tap "12 comments" on a post to read the comments right in the app, replies tucked under the comment they answer. Join in on their site opens their comment form.
+GROUPS AND TOPICS
+• On someone's page, Groups puts them in a group of your own; groups show as chips in the Neighborhood and reach your other devices.
+• Posts show their writers' topics. Tap one to see everyone's posts on it, or Mute this topic.
 
-GROUPS
-• On someone's page, press Groups to put them in a group of your own, like Photographers. Your groups show as chips at the top of the Neighborhood. Rename or delete from the bar that appears. Check groups reach your other devices.
-
-TOPICS
-• Posts show the topics their writers gave them. Tap one to see everyone's posts on it, or Mute this topic. The Topics chip lists this fortnight's topics. Tags appear on new posts after a refresh.
-
-YOUR REPLIES
-• Replies you post from your site are listed in You, Your replies. When the other person writes back on their blog, it says they answered, and "Since you were here" tells you too.
-
-DRAFTS
-• Start a reply, then tap away. Your words are still there when you come back, and the post's Reply button says draft. Cancel throws the draft away.
-
-MENTIONS
-• In a reply from your site, type @ and a few letters of someone you read, then pick them. Their name links to their site, so they're told they were mentioned.
+YOUR REPLIES, DRAFTS, MENTIONS
+• Replies you post from your site are listed in You, Your replies, and you're told when they answer on their blog.
+• An unfinished reply waits for you (the Reply button says draft). Cancel throws it away.
+• In a reply from your site, type @ and pick someone you read. Their name links to their site.
 
 MARK ALL AS READ
-• Conversations in the sidebar now shows how many new posts and replies are waiting. Mark all as read sits at the bottom of the Neighborhood.
+• Conversations in the sidebar shows how many new posts and replies are waiting. Mark all as read is at the bottom of the Neighborhood.
 
 CHOOSE WHAT'S IN THE SIDEBAR
 • Settings, Appearance, Show in the sidebar: switch off Morning Edition, Email, Help Wanted or Books if you don't use them. Each of those pages also has Hide from sidebar under its title. Nothing is deleted, and the choice syncs.
 
 ALSO IN THIS BETA
-• Close friends: pin someone's new posts to the top of the Neighborhood, with an alert when they post.
+• Close friends: their new posts pinned to the top, with an alert when they post.
 • Liked by: posts the people you read liked on their own sites.
 • Quote in a reply: select words in a post, then Quote in a reply.
-• Filters: Photos, Long reads, One from each.
-• Reads you: writers with you on their blogroll.
+• Filters: Photos, Long reads, One from each. Reads you: writers with you on their blogroll.
 • Alerts for replies, comments and mentions (switch in the You tab).
-• A clear Back button on a person's page (Esc on the Mac).
-• Fixed: your emails no longer show up on Today or in the Morning Edition. They stay in Email.
-• Fixed: every feed from your own site (like a Notes feed) counts as you in Conversations: your picture, the You tag, and no face for it in the row of faces.
-• A person's page in Conversations now says who they are, in their own words: the bio on their site, or their Mastodon or Bluesky bio.
-• NEW: Conversations › Search. When something big happens (an outage, the news), type it in and see what people are saying right now on Bluesky and Mastodon, plus posts from the blogs you read. Your recent searches stay as chips.
-• The faces row explains itself: a green ring means something new from them you haven't read (also in How to use this app). Fixed: the ring now shows even when their newest post is already read.
-• Fixed: Show all under someone's blogroll on their page now opens the whole list.
-• The same post on Mastodon and Bluesky shows once in Conversations, with "Also on Mastodon" (or Bluesky) to open the other copy. In Following, a link someone shared on both counts them once.
-• Fixed: a note with a title now keeps the title when you share copies to Bluesky, Mastodon and X.
+• The same post on Mastodon and Bluesky shows once, with "Also on Mastodon" (or Bluesky).
+• The faces row explains itself: a green ring means something new from them you haven't read.
+• Fixed: the green ring shows even when their newest post is already read.
+• Fixed: Show all under someone's blogroll opens the whole list.
+• Fixed: your emails stay in Email, not on Today or in the Morning Edition.
+• Fixed: every feed from your own site (like a Notes feed) counts as you in Conversations.
+• Fixed: a note with a title keeps it when you share copies to Bluesky, Mastodon and X.
 
 Something not right? Send feedback from TestFlight or open an issue at github.com/DVDaniels/TheReadingRoom/issues.
