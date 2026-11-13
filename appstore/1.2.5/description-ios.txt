@@ -1,0 +1,64 @@
+Read the blogs of real people as a calm social feed. Follow writers you like, watch them answer each other, and write back to them yourself. No algorithm, no ads, no account.
+
+Every post from the sites you follow arrives newest first, in a clean reader made for reading.
+
+PEOPLE FIRST
+• Today: a morning briefing with the time, the weather and what's new, with people's posts up front
+• People: just the individuals writing on their own sites, separate from the big publications
+• Discover: blogs recommended by the writers you already read, plus a search that finds news and small personal sites on any topic
+
+CONVERSATIONS, MADE OF BLOGS
+• The Neighborhood: the posts of the people you read, as a social feed with their faces, no account needed
+• When writers answer each other on their blogs, the replies gather under the original post as a thread
+• A page for each person: their posts, who they talk with, the blogs they link to and their blogroll
+• Like and reply right in the post; with your WordPress site connected, likes go on a Likes page on your site
+• Search: what people are saying about any topic on Mastodon and Bluesky, beside posts from the blogs you read
+• Connect Mastodon or Bluesky to see their posts there too, and hide, block or report spam accounts
+
+EMAIL, FOR WRITING BACK
+• Before social media, people with websites found each other by email. Connect one address of your own and Write back sends your note from the app; their answer lands beside their posts
+• Works with IONOS, Gmail, iCloud Mail, Fastmail, Yahoo and most providers
+
+NOTES ON YOUR OWN SITE
+• Post a quick thought, with a photo and a link, to your own WordPress site first, then share copies to Mastodon and Bluesky that link back home. A note about a post shows its picture
+
+BOOKS AND AUDIOBOOKS
+• Free classics from Standard Ebooks and free audiobooks from LibriVox, with a daily reading goal if you'd like one
+
+HELP WANTED
+• Job listings from well-known boards, laid out like the classifieds; circle the ones you like and track them
+
+THE MORNING EDITION
+• Yesterday's reading laid out as a newspaper front page with pictures, made fresh at 6 every morning, ready to print
+• Your year in reading: stories read, books finished, your longest run of reading days and the people you read most
+
+NEWSLETTERS, ALERTS AND MORE
+• Read newsletters here instead of your inbox, with a private address of your own
+• Rules & alerts for words you care about, and Watch a page that has no feed
+• Feed checkup finds feeds that broke or went quiet
+• Save any page from the Share menu, and widgets for your latest stories and your reading streak
+
+READ YOUR WAY
+• A clean reader that shows just the article, with its pictures, side by side with your list on iPad
+• Listen to any story read aloud, with your choice of voice
+• Text size, line width, and light, sepia or dark for the whole app
+• Pull to refresh, swipe a story to save it, swipe from the edge to go back
+
+KEEP WHAT MATTERS
+• Read later, highlights and notes ready to export, and Recently read
+
+FOLLOW ANYTHING
+• Paste a website and The Reading Room finds its RSS, Atom or JSON feed
+• Follow a topic as a news search, or YouTube channels and podcasts
+• Bring your subscriptions from another reader with OPML, folders included, and put folders inside folders
+• A small lock marks posts that need a subscription
+• Mute words you're tired of
+
+ON ALL YOUR DEVICES
+• The Reading Room is on the Mac too. Turn on sync and your feeds, folders, Read later, highlights, books and notes stay the same everywhere, through a folder in your own iCloud Drive.
+
+NEW TO RSS?
+A short guide inside the app explains how feeds work, how to start your own site, and suggests a few good people to follow.
+
+PRIVATE BY DESIGN
+No account, no tracking, no ads. Everything stays on your devices, and in your own iCloud Drive if you turn on sync. The app talks directly to the sites, services and mail server you choose.

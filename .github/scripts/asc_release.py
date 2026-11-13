@@ -10,14 +10,17 @@ rather than a second one being made, since Apple allows one version in progress 
 
 prepare: makes the new version (once the one before it is approved), fills in What's New, the description,
 promotional text, keywords and App Review notes from appstore/<version>/, and picks the build (the newest
-valid build of that version, unless a build number is given). Screenshots carry over from the last version.
+valid build of that version, unless a build number is given). The English subtitle comes from
+appstore/<version>/subtitle.txt when there is one. Screenshots carry over from the last version, unless
+appstore/<version>/screenshots/ has new ones: iphone-*.png (1290 x 2796), ipad-*.png (2048 x 2732) and mac-*.png
+(2880 x 1800), which replace that device's English screenshots in file-name order.
 Other languages: each folder in appstore/locales/ (zh-Hans, zh-Hant, ja…) is a translated App Store page
 (description-mac/ios, promo, keywords, subtitle). prepare adds the language if the app doesn't have it yet and
 fills it in. What's New in that language comes from appstore/<version>/<locale>/whats-new-<mac|ios>.txt, else English.
 Those pages use the English screenshots.
 submit: sends that version to App Review.
 """
-import os, sys, time
+import glob, hashlib, os, sys, time
 import jwt, requests
 
 API = "https://api.appstoreconnect.apple.com/v1"
@@ -182,6 +185,11 @@ def prepare(platform, version_string, build_no):
         if info["attributes"].get("appStoreState") in ("READY_FOR_DISTRIBUTION", "READY_FOR_SALE", "REPLACED_WITH_NEW_INFO"):
             continue
         for il in call("GET", f"/appInfos/{info['id']}/appInfoLocalizations")["data"]:
+            sub = text(version_string, "subtitle.txt")
+            if sub and il["attributes"].get("locale") == "en-US" and il["attributes"].get("subtitle") != sub:
+                if soft(call, "Subtitle", "PATCH", f"/appInfoLocalizations/{il['id']}", json={"data": {"type": "appInfoLocalizations",
+                        "id": il["id"], "attributes": {"subtitle": sub}}}) is not None:
+                    note("Subtitle", f"en-US: {sub}")
             if il["attributes"].get("privacyPolicyUrl") != PRIVACY:
                 try:
                     call("PATCH", f"/appInfoLocalizations/{il['id']}", json={"data": {"type": "appInfoLocalizations", "id": il["id"],
@@ -189,6 +197,9 @@ def prepare(platform, version_string, build_no):
                     note("Privacy policy", f"{il['attributes'].get('locale')}: {PRIVACY}")
                 except SystemExit:
                     note("Privacy policy", "Couldn't change it on this version; it stays as it was")
+
+    en = next((l for l in locs if l["attributes"].get("locale") == "en-US"), locs[0])
+    screenshots(platform, version_string, en)
 
     notes = text(version_string, "review-notes.txt")
     if notes:
@@ -219,6 +230,41 @@ def prepare(platform, version_string, build_no):
     b = builds[0]
     call("PATCH", f"/appStoreVersions/{v['id']}/relationships/build", json={"data": {"type": "builds", "id": b["id"]}})
     note("Build", f"{LABEL[platform]} {version_string} build {b['attributes']['version']} (uploaded {b['attributes'].get('uploadedDate', '')[:16]})")
+
+
+SHOT_SETS = {"IOS": (("APP_IPHONE_67", "iphone-*.png"), ("APP_IPAD_PRO_3GEN_129", "ipad-*.png")),
+             "MAC_OS": (("APP_DESKTOP", "mac-*.png"),)}
+
+
+def screenshots(platform, version_string, loc):
+    """New screenshots in appstore/<version>/screenshots/ replace that device's set. New ones go up first and the old
+    ones come off only once all of them are in, so a failed upload never leaves the page without pictures."""
+    for kind, pattern in SHOT_SETS[platform]:
+        files = sorted(glob.glob(f"appstore/{version_string}/screenshots/{pattern}"))
+        if not files:
+            continue
+        sets = {x["attributes"]["screenshotDisplayType"]: x for x in
+                call("GET", f"/appStoreVersionLocalizations/{loc['id']}/appScreenshotSets")["data"]}
+        st = sets.get(kind) or call("POST", "/appScreenshotSets", json={"data": {"type": "appScreenshotSets",
+             "attributes": {"screenshotDisplayType": kind},
+             "relationships": {"appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": loc["id"]}}}}})["data"]
+        old = [x["id"] for x in call("GET", f"/appScreenshotSets/{st['id']}/appScreenshots")["data"]]
+        for f in files:
+            data = open(f, "rb").read()
+            shot = call("POST", "/appScreenshots", json={"data": {"type": "appScreenshots",
+                   "attributes": {"fileName": os.path.basename(f), "fileSize": len(data)},
+                   "relationships": {"appScreenshotSet": {"data": {"type": "appScreenshotSets", "id": st["id"]}}}}})["data"]
+            for op in shot["attributes"]["uploadOperations"]:
+                r = requests.request(op["method"], op["url"], data=data[op["offset"]: op["offset"] + op["length"]],
+                                     headers={h["name"]: h["value"] for h in op.get("requestHeaders", [])}, timeout=120)
+                if r.status_code >= 300:
+                    print(f"::error title=Screenshot {f}::{r.status_code} {r.text[:500]}")
+                    sys.exit(1)
+            call("PATCH", f"/appScreenshots/{shot['id']}", json={"data": {"type": "appScreenshots", "id": shot["id"],
+                 "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
+        for sid in old:
+            call("DELETE", f"/appScreenshots/{sid}")
+        note("Screenshots", f"{kind}: {len(files)} new, {len(old)} old removed")
 
 
 def add_languages(locales, version_string):
