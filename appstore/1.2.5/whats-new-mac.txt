@@ -1,0 +1,13 @@
+• Search in Conversations: when something big happens, see what people are saying right now on Bluesky and Mastodon, beside posts from the blogs you read.
+• Close friends: their new posts sit at the top of the Neighborhood, with an alert when they post.
+• Bring your people over: with Mastodon or Bluesky connected, follow the blogs of the people you already follow there.
+• A page for each person now says who they are, in their own words, and lists their blogroll with Follow all.
+• Liked by: posts the people you read liked on their own sites.
+• Repost a post to your own site as a short note, and read a post's comments right in the app.
+• Groups of your own, topics on posts (tap one, or mute it), and filters for Photos, Long reads and One from each.
+• Quote in a reply, drafts that wait for you, @ mentions, and a list of Your replies with a heads-up when they answer.
+• Reads you: writers who have you on their blogroll. Small labels on posts explain themselves when you point at them.
+• The same post on Mastodon and Bluesky shows once.
+• Show in the sidebar: hide Morning Edition, Email, Help Wanted or Books if you don't use them.
+• Settings, Help and feedback: send feedback, rate the app, and help on the web.
+• Fixes: your own emails stay in Email, every feed from your own site counts as you, and a titled note keeps its title when shared.
