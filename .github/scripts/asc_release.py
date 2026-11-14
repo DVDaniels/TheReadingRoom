@@ -172,12 +172,18 @@ def prepare(platform, version_string, build_no):
     missing = [l for l in LOCALES if l not in have]
     if LOCALES:
         add_languages(missing, version_string)
+    # Adding a language to the app can make its page on this version too: fill that one in rather than make another
+    now = {l["attributes"].get("locale"): l for l in call("GET", f"/appStoreVersions/{v['id']}/appStoreVersionLocalizations")["data"]} if missing else {}
     for locale in missing:
-        out = soft(call, f"Listing {locale}", "POST", "/appStoreVersionLocalizations", json={"data": {
-              "type": "appStoreVersionLocalizations", "attributes": {"locale": locale, **attrs_for(locale)},
-              "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": v["id"]}}}}})
+        if locale in now:
+            out = soft(call, f"Listing {locale}", "PATCH", f"/appStoreVersionLocalizations/{now[locale]['id']}", json={"data": {
+                  "type": "appStoreVersionLocalizations", "id": now[locale]["id"], "attributes": attrs_for(locale)}})
+        else:
+            out = soft(call, f"Listing {locale}", "POST", "/appStoreVersionLocalizations", json={"data": {
+                  "type": "appStoreVersionLocalizations", "attributes": {"locale": locale, **attrs_for(locale)},
+                  "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": v["id"]}}}}})
         if out:
-            note("Listing", f"{locale} added: " + ", ".join(sorted(attrs_for(locale))))
+            note("Listing", f"{locale} filled in: " + ", ".join(sorted(attrs_for(locale))))
 
     # The privacy policy link lives on the app's info, which can only change while a version is being prepared
     PRIVACY = "https://readingroomapp.com/privacy/"
@@ -249,6 +255,9 @@ def screenshots(platform, version_string, loc):
              "attributes": {"screenshotDisplayType": kind},
              "relationships": {"appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": loc["id"]}}}}})["data"]
         old = [x["id"] for x in call("GET", f"/appScreenshotSets/{st['id']}/appScreenshots")["data"]]
+        # Apple keeps at most 10 per set: make room first when old and new together are more than that
+        while old and len(old) + len(files) > 10:
+            call("DELETE", f"/appScreenshots/{old.pop()}")
         for f in files:
             data = open(f, "rb").read()
             shot = call("POST", "/appScreenshots", json={"data": {"type": "appScreenshots",
@@ -264,7 +273,7 @@ def screenshots(platform, version_string, loc):
                  "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
         for sid in old:
             call("DELETE", f"/appScreenshots/{sid}")
-        note("Screenshots", f"{kind}: {len(files)} new, {len(old)} old removed")
+        note("Screenshots", f"{kind}: {len(files)} new; the old ones removed")
 
 
 def add_languages(locales, version_string):
