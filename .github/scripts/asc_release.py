@@ -66,10 +66,10 @@ def loc_text(locale, version, name):
     return None
 
 
-def soft(fn, title, *a):
+def soft(fn, title, *a, **kw):
     """A translated page that Apple won't take mustn't stop the English release."""
     try:
-        return fn(*a)
+        return fn(*a, **kw)
     except SystemExit:
         print(f"::warning title={title}::Skipped; the English page is unaffected")
         return None
