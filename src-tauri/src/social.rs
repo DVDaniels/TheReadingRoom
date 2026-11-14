@@ -2083,8 +2083,10 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
 /// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
 #[tauri::command]
-pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>) -> Result<SiteNote, String> {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>) -> Result<SiteNote, String> {
     let repost = repost.unwrap_or(false) && link.starts_with("http");
+    // a reply answers the post's author (u-in-reply-to); a repost passes it along; otherwise the note is about it (a bookmark)
+    let card_kind = if repost { CardKind::Repost } else if reply.unwrap_or(false) && link.starts_with("http") { CardKind::Reply } else { CardKind::Bookmark };
     if text.trim().is_empty() && photo.is_empty() && !repost {
         return Err("Write something first.".into());
     }
@@ -2148,7 +2150,7 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
             }
         }
         html.push('\n');
-        html.push_str(&link_card(&link, &label, &site, &pic.1, repost));
+        html.push_str(&link_card(&link, &label, &site, &pic.1, card_kind));
         if media_id == 0 && pic.0 > 0 {
             media_id = pic.0; // your own photo, if you added one, stays the featured image
         }
@@ -2180,12 +2182,27 @@ async fn fetch_picture(url: &str) -> Option<(Vec<u8>, String)> {
     Some((bytes.to_vec(), if kind == "image/jpg" { "image/jpeg".into() } else { kind }))
 }
 
-/// A card for the post a note is about: its picture (if any), title and site, all one link to it. Marked up as
-/// a bookmark (u-bookmark-of h-cite), so sites that take Webmentions can show the note as a share of their post.
-/// A repost is the same card marked u-repost-of, with a "Reposted" line, so the post's site can show it as one.
-fn link_card(link: &str, title: &str, site: &str, image: &str, repost: bool) -> String {
+/// What a note's link card says about the post it points to.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum CardKind {
+    /// a note about the post, for your own readers (u-bookmark-of)
+    Bookmark,
+    /// the post passed along to your readers (u-repost-of), with a "Reposted" line
+    Repost,
+    /// your answer to the post's author (u-in-reply-to), so their site can show it as a comment
+    Reply,
+}
+
+/// A card for the post a note is about: its picture (if any), title and site, all one link to it. The class tells
+/// sites that take Webmentions what the note is: a bookmark (u-bookmark-of), a repost (u-repost-of, with a
+/// "Reposted" line) or a reply (u-in-reply-to), so the post's site can show it as the right kind of response.
+fn link_card(link: &str, title: &str, site: &str, image: &str, kind: CardKind) -> String {
     let href = html_escape::encode_double_quoted_attribute(link);
-    let (kind, lead) = if repost { ("u-repost-of", "<span style=\"display:block;font-size:.8em;opacity:.7;margin-bottom:.2em\">↻ Reposted</span>") } else { ("u-bookmark-of", "") };
+    let (kind, lead) = match kind {
+        CardKind::Repost => ("u-repost-of", "<span style=\"display:block;font-size:.8em;opacity:.7;margin-bottom:.2em\">↻ Reposted</span>"),
+        CardKind::Reply => ("u-in-reply-to", ""),
+        CardKind::Bookmark => ("u-bookmark-of", ""),
+    };
     let pic = if image.is_empty() {
         String::new()
     } else {
@@ -2426,9 +2443,11 @@ mod their_likes_tests {
 
     #[test]
     fn repost_card_is_marked_as_a_repost() {
-        let c = super::link_card("https://b.blog/p/", "A post", "B", "", true);
+        let c = super::link_card("https://b.blog/p/", "A post", "B", "", super::CardKind::Repost);
         assert!(c.contains("u-repost-of h-cite") && c.contains("Reposted"));
-        assert!(super::link_card("https://b.blog/p/", "A post", "B", "", false).contains("u-bookmark-of"));
+        assert!(super::link_card("https://b.blog/p/", "A post", "B", "", super::CardKind::Bookmark).contains("u-bookmark-of"));
+        let r = super::link_card("https://b.blog/p/", "A post", "B", "", super::CardKind::Reply);
+        assert!(r.contains("u-in-reply-to h-cite") && !r.contains("u-bookmark-of") && !r.contains("Reposted"));
     }
 
     #[test]

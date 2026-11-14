@@ -3840,7 +3840,7 @@
         <button class="btn" type="button" data-rb="more" aria-haspopup="menu">More ways</button>
         <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
       </div>
-      <p class="note">${wp ? `A reply on your site links to their post, and ${esc(f?.title || 'their site')} is told if their site listens for that.` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
+      <p class="note nb-rb-wm">${wp ? `A reply on your site links to their post. Checking whether ${esc(f?.title || 'their site')} shows replies from other sites…` : 'Connect your site to post replies there, or use More ways.'}</p></form>`;
     const ta = box.querySelector('textarea'), dkey = box.dataset.box;
     const draft = DRAFTS[dkey]?.text || '';
     if (keep) { ta.value = keep.text; if (keep.focus) { ta.focus(); ta.setSelectionRange(keep.at, keep.at); } }
@@ -3848,12 +3848,23 @@
     if (keep && draft && !keep.text.includes(draft.trim())) { ta.value = draft.trimEnd() + '\n\n' + keep.text; }
     ta.addEventListener('input', () => setDraft(dkey, ta.value));
     if (wp) mentionPicker(ta);
-    // email, if they list an address and you have a mailbox here
+    // email, if they list an address and you have a mailbox here; and whether their site shows replies from other sites
+    const theirHost = (() => { try { return new URL(it.link).hostname.replace(/^www\./, ''); } catch { return f?.title || 'Their site'; } })();
     invoke('reply_options', { itemId: it.id }).then(o => {
+      if (!box.isConnected) return;
+      const note = box.querySelector('.nb-rb-wm');
+      if (wp && note) {
+        if (o?.webmention) {
+          note.innerHTML = `<span class="nb-rb-yes">✓ ${esc(theirHost)} shows replies from other sites.</span> Yours can appear under the post (they may approve it first).`;
+        } else {
+          note.innerHTML = `${esc(theirHost)} doesn’t take replies from other sites. Yours will stay on ${esc(host)}${o?.comments ? ', or you can leave a comment on their post.' : '.'}`;
+          if (o?.comments) box.querySelector('.nb-rb-mail').insertAdjacentHTML('beforeend', `<button class="btn" type="button" data-talk="open" data-url="${esc(o.comments)}">Comment on their site</button>`);
+        }
+      }
       const addr = plainAddress(o?.email?.address || '');
-      if (!addr || !MAIL.account || !box.isConnected) return;
-      box.querySelector('.nb-rb-mail').innerHTML = `<button class="btn" type="button" data-rb="mail" data-to="${esc(addr)}">Email ${esc(f?.title?.split(' ')[0] || 'them')}</button>`;
-    }).catch(() => {});
+      if (!addr || !MAIL.account) return;
+      box.querySelector('.nb-rb-mail').insertAdjacentHTML('afterbegin', `<button class="btn" type="button" data-rb="mail" data-to="${esc(addr)}">Email ${esc(f?.title?.split(' ')[0] || 'them')}</button>`);
+    }).catch(() => { const note = box.querySelector('.nb-rb-wm'); if (wp && note && box.isConnected) note.textContent = `A reply on your site links to their post, and ${f?.title || 'their site'} is told if their site listens for that.`; });
     box.querySelector('form').onclick = async e => {
       const k = e.target.closest('[data-rb]')?.dataset.rb; if (!k) return;
       const text = ta.value.trim();
@@ -3864,7 +3875,7 @@
         if (!text) { ta.focus(); status('Write a few words first.'); return; }
         const btn = e.target; btn.disabled = true; btn.textContent = 'Posting…';
         try {
-          const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
+          const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '', reply: true });
           setDraft(dkey, ''); if (r.url) rememberReply(it, r.url);
           box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
           status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if their site listens for that.`);

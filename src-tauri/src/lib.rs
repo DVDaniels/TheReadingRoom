@@ -1911,7 +1911,12 @@ async fn reply_options(state: State<'_, Shared>, item_id: String) -> Result<repl
     if !link.starts_with("http") {
         return Err("This story has no web page to reply to.".into());
     }
-    Ok(reply::find(&state.client, &link, &feed_url).await)
+    let mut opts = reply::find(&state.client, &link, &feed_url).await;
+    // Some sites name their Webmention address only in the server's Link header, not in the page
+    if !opts.webmention {
+        opts.webmention = webmention::discover(&state.client, &link).await.is_some();
+    }
+    Ok(opts)
 }
 
 /// Which kind of device the page is running on, so it can lay itself out to match.
