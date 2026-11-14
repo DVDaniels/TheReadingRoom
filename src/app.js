@@ -3864,7 +3864,7 @@
         if (!text) { ta.focus(); status('Write a few words first.'); return; }
         const btn = e.target; btn.disabled = true; btn.textContent = 'Posting…';
         try {
-          const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '' });
+          const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '', reply: true });
           setDraft(dkey, ''); if (r.url) rememberReply(it, r.url);
           box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
           status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if their site listens for that.`);
