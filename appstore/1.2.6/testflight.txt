@@ -1,0 +1,8 @@
+Thanks for testing The Reading Room! This build fixes replies you post to your own site.
+
+REPLIES
+• Reply to a post and choose Post on your site: the reply is now marked as a reply, so the other site sees it as one (before, it arrived as a bookmark).
+• The Reply box now says whether their site shows replies from other sites. If it does, your reply can appear under their post. If it doesn't, it says the reply stays on your site, and offers their comments section when the post has one.
+• Sites that announce replies only in their server headers are now recognized too.
+
+Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said.
