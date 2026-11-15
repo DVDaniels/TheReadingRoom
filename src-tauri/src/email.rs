@@ -147,33 +147,74 @@ async fn secure<S: AsyncRead + AsyncWrite + Unpin>(host: &str, s: S) -> Result<T
     }
 }
 
-/// IMAP on port 993 is secure from the start; other ports (Bridge's 1143) start plain and switch with STARTTLS.
-async fn imap_stream(a: &Account) -> Result<TlsStream<TcpStream>, String> {
-    let raw = tcp(&a.imap_host, a.imap_port).await?;
-    if a.imap_port == 993 {
-        return secure(&a.imap_host, raw).await;
+/// How long to wait for a plain greeting before deciding the server wants a secure connection from the
+/// first byte. Bridge answers at once; a real server gets longer.
+fn quick(host: &str) -> Duration {
+    if is_local(host) { Duration::from_secs(3) } else { Duration::from_secs(10) }
+}
+
+/// How a server wants to be spoken to: secure from the first byte, or plain and then STARTTLS.
+/// The port is only a guess (Bridge can be set either way on any port), so each is tried in turn.
+enum Opened<T> {
+    Ready(T),
+    /// The server said nothing, or the secure handshake failed: try the other way.
+    OtherWay(String),
+    Failed(String),
+}
+
+/// IMAP: returns the stream and whether the greeting still has to be read (secure from the start).
+async fn imap_stream(a: &Account) -> Result<(TlsStream<TcpStream>, bool), String> {
+    let implicit_first = a.imap_port == 993;
+    let first = if implicit_first { imap_implicit(a).await } else { imap_starttls(a).await };
+    let why = match first {
+        Opened::Ready(t) => return Ok((t, implicit_first)),
+        Opened::Failed(e) => return Err(e),
+        Opened::OtherWay(e) => e,
+    };
+    let second = if implicit_first { imap_starttls(a).await } else { imap_implicit(a).await };
+    match second {
+        Opened::Ready(t) => Ok((t, !implicit_first)),
+        Opened::Failed(e) | Opened::OtherWay(e) => Err(if implicit_first { why } else { e }),
     }
+}
+
+async fn imap_implicit(a: &Account) -> Opened<TlsStream<TcpStream>> {
+    let raw = match tcp(&a.imap_host, a.imap_port).await { Ok(r) => r, Err(e) => return Opened::Failed(e) };
+    match secure(&a.imap_host, raw).await { Ok(t) => Opened::Ready(t), Err(e) => Opened::OtherWay(e) }
+}
+
+async fn imap_starttls(a: &Account) -> Opened<TlsStream<TcpStream>> {
+    let raw = match tcp(&a.imap_host, a.imap_port).await { Ok(r) => r, Err(e) => return Opened::Failed(e) };
     let mut io = BufReader::new(raw);
-    let hello = read_line(&mut io, &a.imap_host).await?;
+    let hello = match read_line_within(&mut io, &a.imap_host, quick(&a.imap_host)).await {
+        Ok(l) => l,
+        Err(e) => return Opened::OtherWay(e),
+    };
     if !hello.starts_with("* OK") {
-        return Err(format!("{} didn't greet like a mail server.", a.imap_host));
+        return Opened::OtherWay(format!("{} didn't greet like a mail server.", a.imap_host));
     }
-    io.get_mut().write_all(b"rr0 STARTTLS\r\n").await.map_err(|e| e.to_string())?;
+    if let Err(e) = io.get_mut().write_all(b"rr0 STARTTLS\r\n").await {
+        return Opened::Failed(e.to_string());
+    }
     loop {
-        let l = read_line(&mut io, &a.imap_host).await?;
+        let l = match read_line(&mut io, &a.imap_host).await { Ok(l) => l, Err(e) => return Opened::Failed(e) };
         if l.starts_with("rr0 ") {
             if !l.starts_with("rr0 OK") {
-                return Err(format!("{} wouldn't make a secure connection on port {}. Check the port (secure from the start is 993).", a.imap_host, a.imap_port));
+                return Opened::Failed(format!("{} wouldn't make a secure connection on port {}. Check the port (secure from the start is 993).", a.imap_host, a.imap_port));
             }
             break;
         }
     }
-    secure(&a.imap_host, io.into_inner()).await
+    match secure(&a.imap_host, io.into_inner()).await { Ok(t) => Opened::Ready(t), Err(e) => Opened::Failed(e) }
 }
 
 async fn read_line(io: &mut BufReader<TcpStream>, host: &str) -> Result<String, String> {
+    read_line_within(io, host, WAIT).await
+}
+
+async fn read_line_within(io: &mut BufReader<TcpStream>, host: &str, wait: Duration) -> Result<String, String> {
     let mut l = String::new();
-    match tokio::time::timeout(WAIT, io.read_line(&mut l)).await {
+    match tokio::time::timeout(wait, io.read_line(&mut l)).await {
         Ok(Ok(n)) if n > 0 => Ok(l),
         _ => Err(format!("{host} stopped answering.")),
     }
@@ -182,8 +223,8 @@ async fn read_line(io: &mut BufReader<TcpStream>, host: &str) -> Result<String, 
 type Imap = async_imap::Session<TlsStream<TcpStream>>;
 
 async fn imap_login(a: &Account) -> Result<Imap, String> {
-    let implicit = a.imap_port == 993;
-    let mut client = async_imap::Client::new(imap_stream(a).await?);
+    let (stream, implicit) = imap_stream(a).await?;
+    let mut client = async_imap::Client::new(stream);
     if implicit {
         let _greeting = tokio::time::timeout(WAIT, client.read_response())
             .await
@@ -212,6 +253,10 @@ pub async fn check(a: &Account) -> Result<(), String> {
     let mut s = imap_login(a).await?;
     s.select("INBOX").await.map_err(|e| format!("Signed in, but couldn't open the inbox ({e})."))?;
     let _ = s.logout().await;
+    // Sending too, so a wrong SMTP port or setting shows up now rather than on the first email
+    let mut out = smtp_open(a).await.map_err(|e| format!("Reading works, but sending doesn't: {e}"))?;
+    out.sign_in(a).await.map_err(|e| format!("Reading works, but sending doesn't: {e}"))?;
+    let _ = out.cmd("QUIT", 221, "").await;
     Ok(())
 }
 
@@ -540,12 +585,16 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Smtp<S> {
         }
         Ok(text)
     }
-    async fn send(&mut self, a: &Account, to: &str, msg: &str) -> Result<(), String> {
+    async fn sign_in(&mut self, a: &Account) -> Result<(), String> {
         use base64::Engine;
         let host = format!("EHLO {}", a.domain());
         self.cmd(&host, 250, "The mail server didn't say hello").await?;
         let auth = base64::engine::general_purpose::STANDARD.encode(format!("\0{}\0{}", a.address, a.password));
         self.cmd(&format!("AUTH PLAIN {auth}"), 235, "The mail server didn't accept the address and password for sending").await?;
+        Ok(())
+    }
+    async fn send(&mut self, a: &Account, to: &str, msg: &str) -> Result<(), String> {
+        self.sign_in(a).await?;
         self.cmd(&format!("MAIL FROM:<{}>", a.address), 250, "The mail server wouldn't send from this address").await?;
         self.cmd(&format!("RCPT TO:<{}>", to.trim()), 250, "The mail server wouldn't send to that address").await?;
         self.cmd("DATA", 354, "The mail server wouldn't take the email").await?;
@@ -586,20 +635,60 @@ pub async fn send(a: &Account, o: &Outgoing<'_>) -> Result<String, String> {
     let to = plain_address(o.to).ok_or("Enter one email address to send to.")?;
     let o = &Outgoing { to: &to, ..*o };
     let msg = compose(a, o);
-    let raw = tcp(&a.smtp_host, a.smtp_port).await?;
-    if a.smtp_port == 465 {
-        let mut s = Smtp { io: BufReader::new(secure(&a.smtp_host, raw).await?) };
-        s.reply().await?;
-        s.send(a, o.to, &msg).await?;
-    } else {
-        let mut plain = Smtp { io: BufReader::new(raw) };
-        plain.reply().await?;
-        plain.cmd(&format!("EHLO {}", a.domain()), 250, "The mail server didn't say hello").await?;
-        plain.cmd("STARTTLS", 220, "The mail server wouldn't make a secure connection").await?;
-        let mut s = Smtp { io: BufReader::new(secure(&a.smtp_host, plain.io.into_inner()).await?) };
-        s.send(a, o.to, &msg).await?;
-    }
+    let mut s = smtp_open(a).await?;
+    s.send(a, o.to, &msg).await?;
     Ok(msg)
+}
+
+/// Open SMTP, ready for EHLO over a secure connection. Port 465 is usually secure from the start and
+/// 587 starts plain and switches with STARTTLS, but Proton Mail Bridge uses 1025 either way (SSL is
+/// Bridge 3's setting), so if the first way doesn't work the other is tried.
+async fn smtp_open(a: &Account) -> Result<Smtp<TlsStream<TcpStream>>, String> {
+    let implicit_first = a.smtp_port == 465;
+    let first = if implicit_first { smtp_implicit(a).await } else { smtp_starttls(a).await };
+    let why = match first {
+        Opened::Ready(s) => return Ok(s),
+        Opened::Failed(e) => return Err(e),
+        Opened::OtherWay(e) => e,
+    };
+    match if implicit_first { smtp_starttls(a).await } else { smtp_implicit(a).await } {
+        Opened::Ready(s) => Ok(s),
+        Opened::Failed(e) | Opened::OtherWay(e) => Err(if is_local(&a.smtp_host) {
+            format!("Couldn't start sending through Proton Mail Bridge ({why}; then: {e}). Check Bridge is open and signed in, and that the SMTP port matches Mailbox details.")
+        } else if implicit_first { why } else { e }),
+    }
+}
+
+async fn smtp_implicit(a: &Account) -> Opened<Smtp<TlsStream<TcpStream>>> {
+    let raw = match tcp(&a.smtp_host, a.smtp_port).await { Ok(r) => r, Err(e) => return Opened::Failed(e) };
+    let t = match secure(&a.smtp_host, raw).await { Ok(t) => t, Err(e) => return Opened::OtherWay(e) };
+    let mut s = Smtp { io: BufReader::new(t) };
+    match s.reply().await {
+        Ok((220, _)) => Opened::Ready(s),
+        Ok((code, text)) => Opened::Failed(format!("The mail server didn't say hello ({code} {})", text.lines().last().unwrap_or("").get(4..).unwrap_or("").trim())),
+        Err(e) => Opened::Failed(e),
+    }
+}
+
+async fn smtp_starttls(a: &Account) -> Opened<Smtp<TlsStream<TcpStream>>> {
+    let raw = match tcp(&a.smtp_host, a.smtp_port).await { Ok(r) => r, Err(e) => return Opened::Failed(e) };
+    let mut plain = Smtp { io: BufReader::new(raw) };
+    // A server that's secure from the start says nothing until the handshake: don't wait long.
+    match plain.reply_within(quick(&a.smtp_host)).await {
+        Ok((220, _)) => {}
+        Ok(_) => return Opened::OtherWay("The mail server didn't greet like a mail server".into()),
+        Err(e) => return Opened::OtherWay(e),
+    }
+    if let Err(e) = plain.cmd(&format!("EHLO {}", a.domain()), 250, "The mail server didn't say hello").await {
+        return Opened::Failed(e);
+    }
+    if let Err(e) = plain.cmd("STARTTLS", 220, "The mail server wouldn't make a secure connection").await {
+        return Opened::Failed(e);
+    }
+    match secure(&a.smtp_host, plain.io.into_inner()).await {
+        Ok(t) => Opened::Ready(Smtp { io: BufReader::new(t) }),
+        Err(e) => Opened::Failed(e),
+    }
 }
 
 /// File a sent reply in the mailbox's Sent folder, as Mail does (best effort).
