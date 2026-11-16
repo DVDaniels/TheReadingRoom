@@ -68,7 +68,7 @@ def create(name, folder, traffic=50):
               "attributes": {"name": name, "trafficProportion": int(traffic), "platform": "IOS"},
               "relationships": {"app": {"data": {"type": "apps", "id": R.AID}}}}})["data"]
         R.note("Test", f"made {name}, {traffic}% of visitors see the new page")
-    trs = R.call("GET", f"/appStoreVersionExperimentsV2/{t['id']}/appStoreVersionExperimentTreatments")["data"]
+    trs = call2("GET", f"/appStoreVersionExperiments/{t['id']}/appStoreVersionExperimentTreatments")["data"]
     tr = trs[0] if trs else R.call("POST", "/appStoreVersionExperimentTreatments", json={"data": {
          "type": "appStoreVersionExperimentTreatments", "attributes": {"name": "B"},
          "relationships": {"appStoreVersionExperimentV2": {"data": {"type": "appStoreVersionExperiments", "id": t["id"]}}}}})["data"]
