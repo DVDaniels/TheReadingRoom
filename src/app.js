@@ -2291,7 +2291,57 @@
   const socialKind = link => /bsky\.app\/profile\/[^/]+\/post\//.test(link || '') ? 'Bluesky'
     : /^https?:\/\/[^/]+\/@[\w.]+\/\d+$/.test(link || '') ? 'Mastodon' : null;
   const isSocialFeed = f => /\/@[\w.]+\.rss$/.test(f?.url || '') || /bsky\.app\/profile\/[^/]+\/rss$/.test(f?.url || '');
-  const kindTag = it => it.audio ? '<span class="via">Podcast</span>' : ytId(it.link) ? '<span class="via">Video</span>' : socialKind(it.link) ? `<span class="via">${socialKind(it.link)}</span>` : '';
+  // a podcast episode or a video file the feed attaches ("#video" marks one whose address doesn't say)
+  const isVideoFile = u => /#video$|\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(u || '');
+  const kindTag = it => it.audio ? `<span class="via">${isVideoFile(it.audio) ? 'Video' : 'Podcast'}</span>${OFF.has(it.audio) ? `<span class="via" title="${esc(CUES.offline)}">Saved</span>` : ''}` : ytId(it.link) ? '<span class="via">Video</span>' : socialKind(it.link) ? `<span class="via">${socialKind(it.link)}</span>` : '';
+
+  // ---- Save for offline: the episode or video file is downloaded to this device and plays from there.
+  // Which files are saved is kept per device (localStorage), with when each was finished; finished ones are
+  // removed after a week. The files live in the app's Caches folder (offline.rs).
+  const OFF = {
+    map: (() => { try { return JSON.parse(store.get('offline') || '{}'); } catch { return {}; } })(),
+    busy: {},
+    has(u) { return !!this.map[u]; },
+    save() { store.set('offline', JSON.stringify(this.map)); },
+  };
+  const fileSrc = p => (window.__TAURI__?.core?.convertFileSrc || (x => x))(p);
+  const mb = n => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+  function paintOffline(url) {
+    const row = $('rOff'); if (!row || row.dataset.url !== url) return;
+    const busy = OFF.busy[url];
+    row.innerHTML = busy
+      ? `<span>Saving for offline… ${busy.total ? Math.floor(busy.got / busy.total * 100) + '%' : mb(busy.got)}</span>`
+      : OFF.has(url)
+        ? `<span title="${esc(CUES.offline)}">Saved on this ${esc(deviceName())}. It plays without a connection.</span><button class="linkish" type="button" data-off="remove">Remove</button>`
+        : `<button class="linkish" type="button" data-off="save">Save for offline</button>`;
+  }
+  async function offlineSave(url) {
+    if (OFF.busy[url]) return;
+    OFF.busy[url] = { got: 0, total: 0 }; paintOffline(url);
+    try {
+      const path = await invoke('offline_save', { url });
+      OFF.map[url] = { at: new Date().toISOString() }; OFF.save();
+      status('Saved for offline.');
+      const a = $('rAudio'); if (a && a.dataset.url === url && a.paused) { const t = a.currentTime; a.src = fileSrc(path); a.addEventListener('loadedmetadata', () => { a.currentTime = t; }, { once: true }); }
+    } catch (e) { status(msg(e), true); }
+    delete OFF.busy[url]; paintOffline(url); renderList();
+  }
+  async function offlineRemove(url) {
+    try { await invoke('offline_remove', { url }); } catch {}
+    delete OFF.map[url]; OFF.save();
+    const a = $('rAudio'); if (a && a.dataset.url === url && a.paused) a.src = url.replace(/#video$/, '');
+    paintOffline(url); renderList(); status('Removed the saved copy.');
+  }
+  listen('offline-progress', e => { const p = e.payload || {}; if (OFF.busy[p.url]) { OFF.busy[p.url] = p; paintOffline(p.url); } });
+  // finished a week ago or more: free the space
+  setTimeout(async () => {
+    const week = Date.now() - 7 * 864e5; let changed = false;
+    for (const [u, v] of Object.entries(OFF.map)) {
+      if (v.done && Date.parse(v.done) < week) { try { await invoke('offline_remove', { url: u }); } catch {} delete OFF.map[u]; changed = true; }
+      else if (!(await invoke('offline_path', { url: u }).catch(() => 'x'))) { delete OFF.map[u]; changed = true; } // the system cleared it
+    }
+    if (changed) { OFF.save(); renderList(); }
+  }, 6000);
 
   function paintMedia(it) {
     const box = $('rMedia'), yt = ytId(it.link);
@@ -2299,10 +2349,21 @@
     if (yt) {
       box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title)}</div>`;
     } else if (it.audio) {
-      const key = 'pos:' + it.id;
-      box.innerHTML = `<div class="r-audio"><audio id="rAudio" controls preload="metadata" src="${esc(it.audio)}"></audio>
-        <div class="seg r-rate" role="group" aria-label="Speed">${[1, 1.25, 1.5, 2].map(r => `<button type="button" data-rate="${r}" aria-pressed="${r === 1}">${r}×</button>`).join('')}</div></div>`;
+      const key = 'pos:' + it.id, vid = isVideoFile(it.audio), remote = it.audio.replace(/#video$/, '');
+      box.innerHTML = `<div class="r-audio${vid ? ' r-vfile' : ''}">${vid
+        ? `<video id="rAudio" controls playsinline preload="metadata" data-url="${esc(it.audio)}" src="${esc(remote)}"></video>`
+        : `<audio id="rAudio" controls preload="metadata" data-url="${esc(it.audio)}" src="${esc(remote)}"></audio>`}
+        <div class="seg r-rate" role="group" aria-label="Speed">${[1, 1.25, 1.5, 2].map(r => `<button type="button" data-rate="${r}" aria-pressed="${r === 1}">${r}×</button>`).join('')}</div>
+        <div class="r-off" id="rOff" data-url="${esc(it.audio)}"></div></div>`;
       const a = $('rAudio');
+      paintOffline(it.audio);
+      // a saved copy plays from this device
+      if (OFF.has(it.audio)) invoke('offline_path', { url: it.audio }).then(p => {
+        if (!p) { delete OFF.map[it.audio]; OFF.save(); paintOffline(it.audio); return; }
+        if ($('rAudio') === a && a.paused && !a.currentTime) a.src = fileSrc(p);
+      }).catch(() => {});
+      $('rOff').onclick = e => { const b = e.target.closest('[data-off]'); if (!b) return; b.dataset.off === 'save' ? offlineSave(it.audio) : offlineRemove(it.audio); };
+      a.addEventListener('ended', () => { if (OFF.has(it.audio)) { OFF.map[it.audio].done = new Date().toISOString(); OFF.save(); } });
       const saved = Number(store.get(key)) || 0;
       a.addEventListener('loadedmetadata', () => { if (saved > 5 && saved < a.duration - 10) a.currentTime = saved; }, { once: true });
       let last = 0;
@@ -2420,7 +2481,14 @@
   // The links that used to fill the bottom of the sidebar live here now. Each keeps its own handler;
   // choosing one closes Settings and opens that panel.
   const closeSettings = () => { $('settingsPanel').hidden = true; };
-  $('settingsBtn').onclick = () => { paintShowSettings(); $('setVer').textContent = APP.version ? `The Reading Room ${APP.version}` : ''; $('settingsPanel').hidden = false; $('settingsDone').focus(); };
+  const paintOfflineSetting = () => invoke('offline_usage').then(u => { const n = $('offlineNote'); if (n) n.textContent = u.count ? `${u.count} saved on this ${deviceName()}, ${mb(u.bytes)}. Remove them all` : 'Podcast episodes and videos you save play without a connection'; }).catch(() => {});
+  $('offlineBtn') && ($('offlineBtn').onclick = async () => {
+    const u = await invoke('offline_usage').catch(() => ({ count: 0 }));
+    if (!u.count) { status('Nothing saved for offline yet. Open a podcast episode or a video and choose Save for offline.'); return; }
+    if (!confirm(`Remove all ${u.count} saved episodes and videos (${mb(u.bytes)}) from this ${deviceName()}? You can save them again any time.`)) return;
+    await invoke('offline_clear').catch(e => status(msg(e), true)); OFF.map = {}; OFF.save(); renderList(); status('Removed everything saved for offline.');
+  });
+  $('settingsBtn').onclick = () => { paintShowSettings(); paintOfflineSetting(); $('setVer').textContent = APP.version ? `The Reading Room ${APP.version}` : ''; $('settingsPanel').hidden = false; $('settingsDone').focus(); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
   $('settingsDone').onclick = e => { e.stopPropagation(); closeSettings(); };
   // Help and feedback: GitHub issues (the app has no server or mail of its own), the App Store's review page, the support page
@@ -3575,6 +3643,7 @@
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
+    offline: 'Saved for offline: this episode or video is on this device and plays without a connection. Finished ones are removed after a week.',
     you: 'You: a post from your own site.',
     friend: 'Close friend: their new posts are pinned to the top of the Neighborhood, and you get an alert when they post. Change it with the Close friend button on their page.',
     reads: 'Reads you: your site is on their blogroll.',

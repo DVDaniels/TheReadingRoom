@@ -10,6 +10,7 @@ EMAIL
 
 REPOSTS
 • Reposting a YouTube or Vimeo video now says "Reposted" above the player, so your site shows it as a repost instead of a plain note.
+• Save for offline: podcast episodes and video files from feeds can be saved to your device and play without a connection (finished ones are removed after a week; Settings › Saved for offline shows the space used). YouTube and Vimeo videos can't be saved.
 • YouTube channels whose feed YouTube won't give out (it answers "not found" for some channels) now work: the app reads the channel's Videos page instead. Members-only videos are marked.
 • "Reposted" now opens a choice: see your repost, or repost it again. If you delete a repost from your site, the button goes back to "Repost".
 • A note about a YouTube or Vimeo video now shares to Bluesky with the video as its card, so it plays right in the post (the link to your note goes in the words). On Mastodon it already plays.

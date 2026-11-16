@@ -457,17 +457,23 @@ pub fn story_links(html: &str, own_link: &str) -> String {
     out.join(" ")
 }
 
-/// A podcast episode's audio: an enclosure that's audio, or ends like an audio file.
+/// A podcast episode's audio (an enclosure that's audio, or ends like an audio file), or else a video file the feed attaches.
 fn story_audio(e: &feed_rs::model::Entry) -> String {
     for m in &e.media {
         for c in &m.content {
             let typ = c.content_type.as_ref().map(|t| t.to_string()).unwrap_or_default();
             let Some(u) = c.url.as_ref() else { continue };
             let p = u.path().to_ascii_lowercase();
+            if !(u.scheme() == "https" || u.scheme() == "http") {
+                continue;
+            }
             if typ.starts_with("audio") || [".mp3", ".m4a", ".aac", ".ogg", ".opus"].iter().any(|x| p.ends_with(x)) {
-                if u.scheme() == "https" || u.scheme() == "http" {
-                    return u.to_string();
-                }
+                return u.to_string();
+            }
+            // a video file the feed attaches (a video podcast, a blog's own clip); "#video" tells the reader to show it
+            if typ.starts_with("video") || [".mp4", ".m4v", ".mov", ".webm"].iter().any(|x| p.ends_with(x)) {
+                let s = u.to_string();
+                return if [".mp4", ".m4v", ".mov", ".webm"].iter().any(|x| p.ends_with(x)) { s } else { format!("{s}#video") };
             }
         }
     }

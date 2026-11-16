@@ -780,6 +780,8 @@ html.ios .set-item.syncbtn { padding: 0; font-size: 17px; }
 .r-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .r-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .r-audio audio { flex: 1; min-width: 240px; }
+.r-audio video { flex: 1 1 100%; width: 100%; max-height: 70vh; border-radius: 8px; background: #000; }
+.r-off { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: .85em; color: var(--muted); }
 .r-rate button { padding: 4px 9px; font-size: 12px; font-family: var(--font-mono); }
 .prose .r-post { font-size: 1.15em; line-height: 1.6; white-space: pre-line; }
 .replymenu { min-width: 280px; max-width: 340px; }

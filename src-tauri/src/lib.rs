@@ -19,6 +19,7 @@ mod email;
 mod webmention;
 mod review;
 mod youtube;
+mod offline;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -2296,6 +2297,11 @@ pub fn run() {
             webmention::wm_mentions,
             social::site_note,
             social::site_post_gone,
+            offline::offline_save,
+            offline::offline_path,
+            offline::offline_remove,
+            offline::offline_usage,
+            offline::offline_clear,
             social::social_share_note,
             social::social_reply,
             social::social_moderate,
