@@ -1968,6 +1968,19 @@ fn video_thumb(url: &str) -> Option<String> {
     ok.then(|| format!("https://img.youtube.com/vi/{id}/hqdefault.jpg"))
 }
 
+/// Whether a post you made on your site is gone (deleted or in the trash): its page answers "not found".
+/// Anything else, including no answer, counts as still there.
+#[tauri::command]
+pub async fn site_post_gone(url: String) -> bool {
+    if !url.starts_with("http") {
+        return false;
+    }
+    match client().get(url.trim()).timeout(Duration::from_secs(15)).send().await {
+        Ok(r) => matches!(r.status().as_u16(), 404 | 410),
+        Err(_) => false,
+    }
+}
+
 /// A video's title from its site (YouTube or Vimeo), for a card that plays it.
 async fn video_name(url: &str) -> Option<String> {
     let endpoint = match embeddable(url)?.0 {

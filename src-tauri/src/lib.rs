@@ -2294,6 +2294,7 @@ pub fn run() {
             webmention::wm_counts,
             webmention::wm_mentions,
             social::site_note,
+            social::site_post_gone,
             social::social_share_note,
             social::social_reply,
             social::social_moderate,

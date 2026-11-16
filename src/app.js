@@ -3389,11 +3389,42 @@
   // ---- Repost: put someone's post on your own site as a short "reposted" note with its picture card. Their site is
   // told (the Webmention plugin sends it), so it can show the repost. Kept by the post's address (synced).
   const repostOf = it => (S.prefs.reposts || {})[normU(it.link)];
-  const repostBtn = it => !SOC.accounts.wordpress || !isWeb(it.link) ? '' : repostOf(it)
-    ? `<button class="linkish nb-rp on" data-talk="open" data-url="${esc(repostOf(it).url)}" title="See your repost">Reposted ✓</button>`
-    : `<button class="linkish nb-rp" data-talk="repost" data-id="${esc(it.id)}">Repost</button>`;
-  function openRepost(it) {
+  const repostBtn = it => {
+    if (!SOC.accounts.wordpress || !isWeb(it.link)) return '';
+    if (!repostOf(it)) return `<button class="linkish nb-rp" data-talk="repost" data-id="${esc(it.id)}">Repost</button>`;
+    if (!rpSwept) { rpSwept = true; setTimeout(sweepReposts, 4000); }
+    return `<button class="linkish nb-rp on" data-talk="repost" data-id="${esc(it.id)}" title="See your repost, or repost it again">Reposted ✓</button>`;
+  };
+  // Reposts deleted from your site (their page says "not found") are forgotten, so the button says Repost again.
+  // Checked once a session, newest first, a few dozen at most.
+  let rpSwept = false;
+  async function sweepReposts() {
+    const all = Object.entries(S.prefs.reposts || {}).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, 40);
+    let changed = false;
+    for (const [key, r] of all) {
+      if (await invoke('site_post_gone', { url: r.url }).catch(() => false)) { delete S.prefs.reposts[key]; changed = true; }
+    }
+    if (changed) { savePrefs(); renderList(); paintReaderTalk(); }
+  }
+  async function openRepost(it) {
     const f = nbWho(it), host = SOC.accounts.wordpress.site.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const prev = repostOf(it);
+    // already reposted: if that post is gone from your site, start fresh; if not, offer to see it or repost again
+    if (prev && await invoke('site_post_gone', { url: prev.url }).catch(() => false)) {
+      delete S.prefs.reposts[normU(it.link)]; savePrefs(); renderList(); paintReaderTalk();
+    } else if (prev) {
+      const when = new Date(prev.at); const day = isNaN(when) ? '' : ` on ${when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      const el = sheet('repostPanel', `<h2>You reposted this</h2>
+        <p class="note">You put it on ${esc(host)}${esc(day)}. You can look at that repost, or repost it again as a new note.</p>
+        <div class="row sheet-foot"><button class="btn" type="button" id="rpNo">Cancel</button><button class="btn" type="button" id="rpSee">See your repost</button><button class="btn primary" type="button" id="rpAgain">Repost again</button></div>`, 'Repost');
+      $('rpNo').onclick = () => { el.hidden = true; };
+      $('rpSee').onclick = () => { el.hidden = true; openWeb(prev.url); };
+      $('rpAgain').onclick = () => { el.hidden = true; repostSheet(it, f, host); };
+      return;
+    }
+    repostSheet(it, f, host);
+  }
+  function repostSheet(it, f, host) {
     const el = sheet('repostPanel', `<h2>Repost to ${esc(host)}</h2>
       <div class="rp-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<span><small>↻ Reposted</small><b>${esc(headline(it))}</b><small>${esc(f?.title || hostOfU(it.link))}</small></span></div>
       <textarea id="rpText" rows="3" placeholder="Add a few words (optional)"></textarea>
