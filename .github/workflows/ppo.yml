@@ -1,0 +1,35 @@
+name: Product page test
+
+# Run by hand. Tests a second set of iPhone/iPad screenshots against the live store page (Apple's Product
+# Page Optimization). create → submit (App Review) → start once approved; status shows where it stands.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [status, create, submit, start, stop]
+        default: status
+      name:
+        description: "Test name"
+        default: "New look"
+      folder:
+        description: "Screenshots for the new page (create only)"
+        default: "appstore/ppo/new-look"
+      traffic:
+        description: "Percent of visitors who see the new page (create only)"
+        default: "50"
+
+jobs:
+  ppo:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          python .github/scripts/asc_ppo.py "${{ inputs.action }}" "${{ inputs.name }}" "${{ inputs.folder }}" "${{ inputs.traffic }}"

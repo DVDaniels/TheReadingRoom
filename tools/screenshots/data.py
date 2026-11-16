@@ -5,16 +5,16 @@ NOW = datetime.now(timezone.utc).replace(microsecond=0)
 def ago(h): return (NOW - timedelta(hours=h)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 PEOPLE = [  # id, name, host, recent posts in 30 days
-    (1, 'Maya Okafor', 'mayaokafor.net'),
-    (2, 'Theo Lindqvist', 'theo.ink'),
-    (3, 'Priya Raman', 'priyaraman.blog'),
-    (4, 'Sam Whitfield', 'samwhitfield.org'),
-    (5, 'June Alvarez', 'junealvarez.com'),
+    (1, 'Sarah Mitchell', 'sarahmitchell.net'),
+    (2, 'Jake Turner', 'jaketurner.ink'),
+    (3, 'Emily Carter', 'emilycarter.blog'),
+    (4, 'Mike Sullivan', 'mikesullivan.org'),
+    (5, 'Linda Russo', 'lindarusso.com'),
     (6, 'Ben Harlow', 'benharlow.net'),
-    (7, 'Ama Mensah', 'amamensah.me'),
-    (8, 'Lena Brooks', 'lenabrooks.co'),
-    (9, 'Owen Park', 'owenpark.dev'),
-    (10, 'Rosa Delgado', 'rosadelgado.org'),
+    (7, 'Jessica Brooks', 'jessicabrooks.me'),
+    (8, 'Amy Parker', 'amyparker.co'),
+    (9, 'Kevin Chen', 'kevinchen.dev'),
+    (10, 'Maria Lopez', 'marialopez.org'),
 ]
 FOLDERS = [
     {'id': 1, 'name': 'Friends', 'parent_id': None, 'position': 0},
@@ -39,7 +39,7 @@ def post(pid, slug, title, hours, summary, image='', links=(), read=False, tags=
                   'read_at': None, 'byline': P(pid)[1], 'paid': False, 'links': ' '.join(links), 'comments': comments, 'tags': tags})
 
 PIC = 'https://pics.test/'
-# A conversation: Ben's post, answered by Priya and Theo
+# A conversation: Ben's post, answered by Emily and Jake
 post(6, 'keep-a-blogroll', 'Why I still keep a blogroll', 9,
      "Every few months someone asks why my site still has a list of other people's blogs on it, like it's 2004. The honest answer: it's the best way I know to send someone somewhere good. No algorithm picked these people. I did, because I read them.",
      tags='indieweb\tblogging', comments=4)
@@ -47,7 +47,7 @@ post(3, 'my-blogroll-is-a-bookshelf', 'My blogroll is a bookshelf', 6,
      "Ben Harlow wrote this morning about why he keeps a blogroll. Mine works like the shelf by my front door: the books I'd hand you on your way out. Half the writers I love, I found on someone else's list.",
      links=(url(6, 'keep-a-blogroll'),), tags='blogging')
 post(2, 'blogrolls-are-links', 'Blogrolls are just links, and links are the web', 3,
-     "Agreeing with Ben and Priya here. A link from one person to another is the oldest recommendation engine we have, and it still works better than any feed I've been shown.",
+     "Agreeing with Ben and Emily here. A link from one person to another is the oldest recommendation engine we have, and it still works better than any feed I've been shown.",
      links=(url(6, 'keep-a-blogroll'), url(3, 'my-blogroll-is-a-bookshelf')), tags='indieweb')
 # Posts with pictures
 post(1, 'first-tomatoes', 'The first tomatoes of the fall garden', 2,
@@ -91,7 +91,7 @@ ARTICLE = """<p>Every few months someone asks why my site still has a list of ot
 <p>Then go read someone else's list, and follow one person you didn't know yesterday.</p>"""
 STATE['highlights'] = [{'id': 1, 'item_id': '6-keep-a-blogroll', 'text': "A web made of people pointing at people is a web you can actually walk around in.",
                         'note': 'Putting this on the front of my own blogroll page.', 'start': 0, 'created_at': ago(1)}]
-PLINKS = {f"https://{p[2]}/": {'at': 9e12, 'links': [], 'icon': '', 'about': a} for p, a in zip(PEOPLE, [
+PLINKS = {f"https://{p[2]}/": {'at': 9e12, 'links': [], 'icon': PIC + f"face-{p[0]}.jpg", 'about': a} for p, a in zip(PEOPLE, [
     'Gardener and neighborhood organizer. Writes about tomatoes, compost and the people on her street.',
     'Web developer. Small sites, plain HTML and CSS that works everywhere.',
     'Reader, librarian, list-maker. Every book I finish, written up here.',

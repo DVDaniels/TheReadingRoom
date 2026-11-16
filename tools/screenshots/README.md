@@ -9,3 +9,9 @@ Made from the real interface (src/) running in a browser with a pretend Rust sid
     python3 frame.py iphone; python3 frame.py ipad; python3 frame.py mac   # final/<device>-1..6.png
 
 Captions are in frame.py (SHOTS). Copy final/*.png to appstore/<version>/screenshots/; release.yml prepare uploads them.
+
+Pictures in pics/: face-1..10.jpg are AI-generated faces (thispersondoesnotexist.com), not real people, one per
+writer in data.py. tomatoes.jpg is "Heirloom tomatoes in a blue bowl on a wooden table" from Unsplash (Unsplash
+License): https://unsplash.com/photos/heirloom-tomatoes-in-a-blue-bowl-on-a-wooden-table-BlAlRrC0w3w
+
+appstore/ppo/<name>/ holds screenshots for a product page test (.github/workflows/ppo.yml).
