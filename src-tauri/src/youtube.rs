@@ -141,7 +141,68 @@ fn push(items: &mut Vec<ParsedItem>, vid: &str, title: &str, ago: &str, thumb: &
         links: String::new(),
         comments: -1,
         tags: String::new(),
+        videos: String::new(),
     });
+}
+
+/// A single video's id, from any of YouTube's video addresses (watch, youtu.be, shorts, live, embed).
+pub fn video_id(url: &str) -> Option<String> {
+    static V: OnceLock<Regex> = OnceLock::new();
+    re(&V, r"^(?:https?://)?(?:www\.|m\.|music\.)?(?:youtube(?:-nocookie)?\.com/(?:watch\?(?:[^#]*?&)?v=|shorts/|live/|embed/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+        .captures(url.trim())
+        .map(|c| c[1].to_string())
+}
+
+/// Who made a video, from YouTube's oEmbed answer: its title, the channel's name and address.
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct VideoInfo {
+    pub id: String,
+    pub title: String,
+    pub channel: String,
+    pub channel_url: String,
+}
+
+static INFO: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<VideoInfo>>>> = OnceLock::new();
+
+pub async fn video_info(client: &reqwest::Client, id: &str) -> Option<VideoInfo> {
+    let cache = INFO.get_or_init(Default::default);
+    if let Some(hit) = cache.lock().ok().and_then(|c| c.get(id).cloned()) {
+        return hit;
+    }
+    let watch = format!("https://www.youtube.com/watch?v={id}");
+    let resp = client.get("https://www.youtube.com/oembed").query(&[("url", watch.as_str()), ("format", "json")]).timeout(Duration::from_secs(12)).send().await.ok()?;
+    let found = if resp.status().is_success() {
+        let v: Value = resp.json().await.ok()?;
+        let channel_url = v["author_url"].as_str().unwrap_or_default().to_string();
+        (!channel_url.is_empty()).then(|| VideoInfo {
+            id: id.to_string(),
+            title: v["title"].as_str().unwrap_or_default().trim().to_string(),
+            channel: v["author_name"].as_str().unwrap_or_default().trim().to_string(),
+            channel_url,
+        })
+    } else if resp.status().as_u16() == 404 || resp.status().as_u16() == 401 || resp.status().as_u16() == 403 {
+        None // gone, private, or not allowed to be shown elsewhere: remember that
+    } else {
+        return None; // a hiccup: ask again next time
+    };
+    if let Ok(mut c) = cache.lock() {
+        c.insert(id.to_string(), found.clone());
+    }
+    found
+}
+
+/// Who made each of these videos (up to 60, six at a time); videos that can't be looked up are left out.
+#[tauri::command]
+pub async fn video_channels(ids: Vec<String>) -> Vec<VideoInfo> {
+    use futures::stream::{self, StreamExt};
+    let client = crate::feeds::client();
+    let ids: Vec<String> = ids.into_iter().filter(|i| i.len() == 11).take(60).collect();
+    stream::iter(ids)
+        .map(|id| { let c = client.clone(); async move { video_info(&c, &id).await } })
+        .buffered(6)
+        .filter_map(|x| async move { x })
+        .collect()
+        .await
 }
 
 /// Read the channel's Videos page for a YouTube feed or channel address.
@@ -204,6 +265,16 @@ mod tests {
         assert_eq!(f.items[2].date, "2026-11-02T06:00:00Z");
         assert_eq!(f.items[2].image, "https://i.ytimg.com/vi/JVaJqZRzQGQ/hqdefault.jpg");
         assert!(parse_page("<html>no data</html>", now).is_none());
+    }
+
+    #[test]
+    fn finds_a_video_id() {
+        assert_eq!(video_id("https://www.youtube.com/watch?v=S9dOX-Xtfbc").as_deref(), Some("S9dOX-Xtfbc"));
+        assert_eq!(video_id("https://youtu.be/S9dOX-Xtfbc?si=abc").as_deref(), Some("S9dOX-Xtfbc"));
+        assert_eq!(video_id("youtube.com/shorts/S9dOX-Xtfbc").as_deref(), Some("S9dOX-Xtfbc"));
+        assert_eq!(video_id("https://m.youtube.com/watch?feature=share&v=S9dOX-Xtfbc").as_deref(), Some("S9dOX-Xtfbc"));
+        assert_eq!(video_id("https://www.youtube.com/@JessaLynnASMR"), None);
+        assert_eq!(video_id("https://example.com/watch?v=S9dOX-Xtfbc"), None);
     }
 
     #[test]

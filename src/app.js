@@ -31,6 +31,7 @@
     all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
     notes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+    videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
@@ -105,11 +106,16 @@
   const isEmailFeed = f => !!f && f.url === EMAIL_FEED;
   const isEmailItem = i => isEmailFeed(feedById(i.feed_id));
   const MAIL = { account: null, checking: false, last: 0, error: '' };
+  // Videos: YouTube and Vimeo videos and video files, in a tab of their own (Settings can hide it; then they stay in Today)
+  const isVideoItem = i => !!(ytId(i.link) || isVideoFile(i.audio) || /^https?:\/\/(www\.)?vimeo\.com\/\d+/.test(i.link || ''));
+  const videosOn = () => !hiddenViews().has('videos');
   function inScope(i, view = S.view) {
     if (view === 'email') return isEmailItem(i);
     if ((view === 'all' || view === 'today' || view === 'people') && isEmailItem(i)) return false; // your mail stays in Email
     if (view === 'jobs') return isJobItem(i);
     if ((view === 'all' || view === 'today' || view === 'people') && isJobItem(i)) return false;
+    if (view === 'videos') return isVideoItem(i);
+    if ((view === 'today' || view === 'people') && videosOn() && isVideoItem(i)) return false; // videos have their own tab
     if (view === 'all') return true;
     if (view === 'today') return isToday(i);
     if (view === 'saved') return i.saved;
@@ -316,7 +322,7 @@
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
   const OPTIONAL_VIEWS = [['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
-    ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
+    ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
     const h = hiddenViews(); if (on) h.delete(v); else h.add(v);
@@ -358,6 +364,7 @@
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
+        { view: 'videos', label: 'Videos', count: unreadIn('videos'), icon: ICONS.videos },
         { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
         { view: 'email', label: 'Email', count: unreadIn('email'), icon: ICONS.email }]) +
       '<hr class="nav-gap">' +
@@ -412,7 +419,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -464,6 +471,7 @@
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
+      : S.view === 'videos' ? `${unreadIn('videos')} unread from the channels you follow`
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'email' ? mailSub()
@@ -566,6 +574,7 @@
   function emptyText() {
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'email') return MAIL.account ? (S.unreadOnly ? ['No unread email', 'Switch to “All” to see email you’ve read, or press Refresh.'] : ['No email yet', 'Press Refresh to check your inbox.']) : ['', ''];
+    if (S.view === 'videos') return S.unreadOnly && S.items.some(isVideoItem) ? ['You’re caught up on videos', 'Switch to “All” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a YouTube channel: paste its address, or a link to any of its videos, into Add feed. Channels the people you read share show up above.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
     if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
@@ -691,7 +700,7 @@
       return `<div class="brief-off"><button class="linkish" id="briefShow" type="button">Show today’s briefing</button></div>`;
     }
     const seenStory = new Set();
-    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i) && !isJobItem(i) && !isEmailItem(i)).filter(i => {
+    const unread = S.items.filter(i => isToday(i) && !i.read && !isMuted(i) && !isJobItem(i) && !isEmailItem(i) && !(videosOn() && isVideoItem(i))).filter(i => {
       const k = storyKey(i);
       if (k.length < 16) return true;
       if (seenStory.has(k)) return false;
@@ -807,7 +816,7 @@
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = S.view === 'email' ? mailBarHtml() : briefHtml();
+    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? (S.q ? '' : sharedChannelsHtml()) : briefHtml();
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
@@ -1079,7 +1088,7 @@
         <ul class="g-list">
           <li><b>Mastodon:</b> type their handle, like <code>@name@mastodon.social</code>.</li>
           <li><b>Bluesky:</b> type <code>@name.bsky.social</code> or paste their profile link.</li>
-          <li><b>YouTube:</b> paste a channel’s address. New videos play right in the app.</li>
+          <li><b>YouTube:</b> paste a channel’s address, or a link to any of its videos. New videos play right in the app, in the Videos tab (Settings can hide it).</li>
           <li><b>Podcasts:</b> paste a show’s Apple Podcasts link or its feed. Episodes play in the app and remember where you stopped.</li>
         </ul>
         <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> in Settings to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
@@ -2177,8 +2186,91 @@
     renderList();
   }
 
+  // ---- Channels your people share: YouTube videos in the posts of the people you read, grouped by the channel
+  // that made them (YouTube's oEmbed says who), most-shared first. Channels you already follow are left out.
+  const VID = { info: new Map(), asked: new Set(), busy: false, added: new Set(), err: {} };
+  const isYouTubeFeed = f => /youtube\.com\//.test(f?.url || '');
+  function sharedVideos() {
+    const since = Date.now() - 60 * DAY, out = new Map(); // video id → { feeds: Set, item, date }
+    for (const i of S.items) {
+      if (!i.videos || new Date(i.date).getTime() < since) continue;
+      const f = feedById(i.feed_id);
+      if (!f || isYouTubeFeed(f) || isEmailFeed(f) || isJobFeed(f)) continue;
+      for (const id of i.videos.split(' ').filter(Boolean)) {
+        const v = out.get(id) || { feeds: new Set(), item: i, date: i.date };
+        v.feeds.add(f.id); if (i.date > v.date) { v.date = i.date; v.item = i; }
+        out.set(id, v);
+      }
+    }
+    return out;
+  }
+  async function lookUpVideos(ids) {
+    const need = ids.filter(id => !VID.asked.has(id)).slice(0, 60);
+    if (!need.length || VID.busy) return;
+    VID.busy = true; need.forEach(id => VID.asked.add(id));
+    try { for (const v of await invoke('video_channels', { ids: need })) VID.info.set(v.id, v); } catch {}
+    VID.busy = false;
+    if (S.view === 'videos' || S.view === 'discover') renderList();
+  }
+  function sharedChannelsHtml() {
+    const shared = sharedVideos();
+    if (!shared.size) return '';
+    lookUpVideos([...shared.entries()].sort((a, b) => b[1].date.localeCompare(a[1].date)).map(([id]) => id));
+    const followed = new Set(S.feeds.filter(isYouTubeFeed).map(f => (f.title || '').trim().toLowerCase()));
+    const chans = new Map(); // channel address → { name, feeds: Set, videos: [] }
+    for (const [id, v] of shared) {
+      const info = VID.info.get(id); if (!info || !info.channel) continue;
+      if (followed.has(info.channel.toLowerCase()) || VID.added.has(info.channel_url)) continue;
+      const c = chans.get(info.channel_url) || { name: info.channel, url: info.channel_url, feeds: new Set(), videos: [] };
+      v.feeds.forEach(x => c.feeds.add(x)); c.videos.push({ id, title: info.title, date: v.date });
+      chans.set(info.channel_url, c);
+    }
+    const list = [...chans.values()].sort((a, b) => b.feeds.size - a.feeds.size || b.videos.length - a.videos.length).slice(0, 6);
+    if (!list.length) return VID.busy ? '<section class="vchans"><h3>Channels your people share</h3><p class="note">Looking up the videos in the posts you read…</p></section>' : '';
+    const who = c => { const names = [...c.feeds].map(id => feedById(id)?.title).filter(Boolean); return names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and '); };
+    return `<section class="vchans"><h3>Channels your people share</h3><p class="note" title="${esc(CUES.vchans)}">YouTube channels whose videos turned up in the posts of people you read.</p><div class="vchan-row">${list.map(c => {
+      const v = c.videos.sort((a, b) => b.date.localeCompare(a.date))[0];
+      return `<article class="vchan"><button class="vchan-pic" type="button" data-vplay="${esc(v.id)}" title="Play “${esc(v.title)}”"><img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer"></button>
+        <div class="vchan-body"><b>${esc(c.name)}</b><span>Shared by ${esc(who(c))}</span>
+        <div class="t-acts"><button class="btn" type="button" data-vfollow="${esc(c.url)}" data-vname="${esc(c.name)}">Follow</button>${VID.err[c.url] ? `<span class="fol-err">${esc(VID.err[c.url])}</span>` : ''}</div></div></article>`;
+    }).join('')}</div></section>`;
+  }
+  async function followChannel(b) {
+    const url = b.dataset.vfollow; b.disabled = true; b.textContent = 'Following…';
+    try { const r = await invoke('add_feed', { url, title: null, folderId: null }); VID.added.add(url); status(`Following ${r.title}. Its new videos show up in ${videosOn() ? 'Videos' : 'your feeds'}.`); await load(); }
+    catch (e) { VID.err[url] = msg(e); status(msg(e), true); b.disabled = false; b.textContent = 'Follow'; }
+    renderList();
+  }
+  // a shared video plays in a small window over the list
+  function playShared(id) {
+    const info = VID.info.get(id);
+    const el = sheet('vplayPanel', `<h2>${esc(info?.title || 'Video')}</h2><div class="r-video">${ytPlayer(id, info?.title)}</div>
+      <div class="row sheet-foot"><button class="btn" type="button" id="vpClose">Close</button></div>`, 'Video');
+    $('vpClose').onclick = () => { el.hidden = true; el.innerHTML = ''; };
+    el.onmousedown = e => { if (e.target === el) { el.hidden = true; el.innerHTML = ''; } }; // closing stops the video
+  }
+  // "Follow this channel" under a video in a story: the row names the channel once YouTube says who made it
+  const followRow = id => `<div class="vfol" data-vfol="${esc(id)}"><button class="linkish" type="button" data-vfollowid="${esc(id)}">Follow this channel</button></div>`;
+  async function fillFollowRows(root = document) {
+    const rows = [...root.querySelectorAll('[data-vfol]')]; if (!rows.length) return;
+    const need = rows.map(r => r.dataset.vfol).filter(id => !VID.info.has(id));
+    if (need.length) { try { for (const v of await invoke('video_channels', { ids: need })) VID.info.set(v.id, v); } catch {} }
+    const followed = new Set(S.feeds.filter(isYouTubeFeed).map(f => (f.title || '').trim().toLowerCase()));
+    for (const r of rows) {
+      const info = VID.info.get(r.dataset.vfol);
+      if (!info) { r.remove(); continue; } // YouTube wouldn't say who made it
+      r.innerHTML = followed.has(info.channel.toLowerCase()) || VID.added.has(info.channel_url)
+        ? `<span>✓ You follow ${esc(info.channel)}</span>`
+        : `<button class="linkish" type="button" data-vfollow="${esc(info.channel_url)}" data-vname="${esc(info.channel)}">Follow ${esc(info.channel)}</button><span>New videos from this channel will show up in ${videosOn() ? 'Videos' : 'your feeds'}.</span>`;
+    }
+  }
+  document.addEventListener('click', e => {
+    const f = e.target.closest('[data-vfollow]'); if (f) { e.preventDefault(); followChannel(f); return; }
+    const p = e.target.closest('[data-vplay]'); if (p) { e.preventDefault(); playShared(p.dataset.vplay); }
+  });
+
   function discoverHtml() {
-    return searchHtml() + (D.res || D.searching ? '' : smallWebHtml()) + blogrollHtml();
+    return searchHtml() + (D.res || D.searching ? '' : sharedChannelsHtml() + smallWebHtml()) + blogrollHtml();
   }
   // ---- Kagi Small Web: the newest posts from an open list of personal sites, with a Follow button for each site
   function smallHit(p) {
@@ -2347,7 +2439,8 @@
     const box = $('rMedia'), yt = ytId(it.link);
     box.hidden = !(yt || it.audio); box.innerHTML = '';
     if (yt) {
-      box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title)}</div>`;
+      box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
+      fillFollowRows(box);
     } else if (it.audio) {
       const key = 'pos:' + it.id, vid = isVideoFile(it.audio), remote = it.audio.replace(/#video$/, '');
       box.innerHTML = `<div class="r-audio${vid ? ' r-vfile' : ''}">${vid
@@ -3643,6 +3736,7 @@
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
+    vchans: 'Channels your people share: YouTube channels whose videos the people you read put in their posts lately, most shared first. Follow one and its new videos show up in Videos.',
     offline: 'Saved for offline: this episode or video is on this device and plays without a connection. Finished ones are removed after a week.',
     you: 'You: a post from your own site.',
     friend: 'Close friend: their new posts are pinned to the top of the Neighborhood, and you get an alert when they post. Change it with the Close friend button on their page.',
@@ -4897,7 +4991,9 @@
       v.className = 'r-video r-inline-video';
       v.innerHTML = ytPlayer(id, a.closest('figure')?.querySelector('figcaption')?.textContent || 'Video');
       spot.replaceWith(v);
+      v.insertAdjacentHTML('afterend', followRow(id));
     });
+    fillFollowRows(body);
     body.querySelectorAll('img').forEach(img => {
       img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
       // A picture that can't load leaves no empty frame behind (nor an empty figure around it).

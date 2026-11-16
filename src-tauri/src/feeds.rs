@@ -39,6 +39,8 @@ pub struct ParsedItem {
     pub comments: i64,
     /// The post's own topics (RSS/Atom categories, JSON Feed tags), tab-separated, up to 8
     pub tags: String,
+    /// YouTube videos the post shows or links to: their ids, space-separated, up to 10
+    pub videos: String,
 }
 
 /// Comment counts feeds give for each post (WordPress's slash:comments, Atom's thr:total or thr:count),
@@ -357,13 +359,29 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             let key = if !link.is_empty() { link.clone() } else { e.id.clone() };
             let comments = [&raw_link, &link, &e.id].iter().find_map(|k| counts.get(k.as_str()).copied()).unwrap_or(-1);
             let tags = story_tags(e.categories.iter().map(|c| c.label.clone().unwrap_or_else(|| c.term.clone())));
-            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments, tags }
+            let videos = story_videos(&format!("{full} {body}"));
+            ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments, tags, videos }
         })
         .collect();
     Ok(Fetched { url: base.to_string(), title, site, items })
 }
 
 /// A post's own topics, tidied: at most 8, each once (any case), no "Uncategorized" or catch-alls, tab-separated.
+/// The YouTube videos a post shows (an embedded player) or links to, by id: how the app finds channels the
+/// people you read share.
+pub fn story_videos(html: &str) -> String {
+    static YT: OnceLock<Regex> = OnceLock::new();
+    let re = YT.get_or_init(|| Regex::new(r"(?:youtube(?:-nocookie)?\.com/(?:watch\?(?:[^\s\x22'<>]*?&(?:amp;)?)?v=|embed/|shorts/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})").unwrap());
+    let mut ids: Vec<&str> = Vec::new();
+    for c in re.captures_iter(html) {
+        let id = c.get(1).map(|m| m.as_str()).unwrap_or_default();
+        if !ids.contains(&id) && ids.len() < 10 {
+            ids.push(id);
+        }
+    }
+    ids.join(" ")
+}
+
 pub fn story_tags(raw: impl Iterator<Item = String>) -> String {
     let mut seen = std::collections::HashSet::new();
     let mut out: Vec<String> = Vec::new();
@@ -557,6 +575,7 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             links: p.links.clone(),
             comments: p.comments,
             tags: p.tags.clone(),
+            videos: p.videos.clone(),
         })
         .collect()
 }
@@ -601,6 +620,15 @@ mod tests {
         let f = super::parse(rss, "https://b.blog/feed").unwrap();
         assert_eq!(f.items[0].tags, "Photography\tTravel & Food");
         assert_eq!(f.items[1].tags, "");
+    }
+
+    #[test]
+    fn finds_youtube_videos_in_a_post() {
+        let html = r#"<p>Look:</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?feature=oembed"></iframe>
+            <a href="https://youtu.be/S9dOX-Xtfbc?si=x">again</a> <a href="https://www.youtube.com/watch?app=desktop&amp;v=abcdefghijk">x</a>
+            <a href="https://www.youtube.com/embed/dQw4w9WgXcQ">dup</a> <a href="https://www.youtube.com/@someone">channel</a>"#;
+        assert_eq!(super::story_videos(html), "dQw4w9WgXcQ S9dOX-Xtfbc abcdefghijk");
+        assert_eq!(super::story_videos("<p>no videos</p>"), "");
     }
 
     #[test]

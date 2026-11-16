@@ -442,6 +442,13 @@ async fn add_feed(
     if url.is_empty() {
         return Err("Paste a feed or website address first.".into());
     }
+    // A single YouTube video: follow the channel that made it
+    if let Some(id) = youtube::video_id(&url) {
+        url = youtube::video_info(&state.client, &id)
+            .await
+            .map(|v| v.channel_url)
+            .ok_or("Couldn't find the channel for that video. Paste the channel's address instead.")?;
+    }
     // Words rather than an address: follow that search on Google News.
     let mut title = title;
     let looks_social = url.trim().starts_with('@');
@@ -700,6 +707,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
                 links: String::new(),
                 comments: -1,
             tags: String::new(),
+            videos: String::new(),
             })
             .collect();
         let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
@@ -2298,6 +2306,7 @@ pub fn run() {
             social::site_note,
             social::site_post_gone,
             offline::offline_save,
+            youtube::video_channels,
             offline::offline_path,
             offline::offline_remove,
             offline::offline_usage,

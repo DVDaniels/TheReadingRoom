@@ -71,6 +71,8 @@ pub struct Item {
     pub comments: i64,
     /// The post's topics from its feed, tab-separated
     pub tags: String,
+    /// YouTube videos the post shows or links to (video ids, space-separated)
+    pub videos: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -101,6 +103,7 @@ pub struct NewItem {
     pub links: String,
     pub comments: i64,
     pub tags: String,
+    pub videos: String,
 }
 
 fn has_column(conn: &Connection, table: &str, col: &str) -> rusqlite::Result<bool> {
@@ -190,6 +193,9 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     // Version 1.2.5: a post's topics (feed categories)
     if !has_column(&conn, "items", "tags")? {
         conn.execute("ALTER TABLE items ADD COLUMN tags TEXT DEFAULT ''", [])?;
+    }
+    if !has_column(&conn, "items", "videos")? {
+        conn.execute("ALTER TABLE items ADD COLUMN videos TEXT DEFAULT ''", [])?;
     }
     if !has_column(&conn, "items", "comments")? {
         conn.execute("ALTER TABLE items ADD COLUMN comments INTEGER DEFAULT -1", [])?;
@@ -470,7 +476,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
         "COALESCE(links, '')"
     };
     let mut st = conn.prepare(&format!(
-        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), {links}, COALESCE(comments, -1), COALESCE(tags, '')
+        "SELECT id, feed_id, title, link, date, summary, image, read, saved, read_at, COALESCE(audio, ''), COALESCE(shares, ''), COALESCE(byline, ''), COALESCE(paid, 0), {links}, COALESCE(comments, -1), COALESCE(tags, ''), COALESCE(videos, '')
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
@@ -495,6 +501,7 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
             links: r.get(14)?,
             comments: r.get(15)?,
             tags: r.get(16)?,
+            videos: r.get(17)?,
         })
     })?;
     rows.collect()
@@ -589,11 +596,14 @@ pub fn store_fetch(
             if !it.tags.is_empty() {
                 tx.execute("UPDATE items SET tags=?1 WHERE id=?2", params![it.tags, id])?;
             }
+            if !it.videos.is_empty() {
+                tx.execute("UPDATE items SET videos=?1 WHERE id=?2", params![it.videos, id])?;
+            }
             continue;
         }
         tx.execute(
-            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at, audio, shares, paid, links, comments, tags) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
-            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now, it.audio, it.shares, it.paid as i64, it.links, it.comments, it.tags],
+            "INSERT INTO items(id, feed_id, title, link, date, summary, image, fetched_at, audio, shares, paid, links, comments, tags, videos) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+            params![it.id, feed.id, it.title, it.link, it.date, it.summary, it.image, now, it.audio, it.shares, it.paid as i64, it.links, it.comments, it.tags, it.videos],
         )?;
         added += 1;
     }
@@ -707,7 +717,7 @@ mod tests {
         set_feed_folder(&c, 1, Some(f)).unwrap();
         assert_eq!(feeds(&c).unwrap()[0].folder_id, Some(f));
         let feed = feed(&c, 1).unwrap().unwrap();
-        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into(), audio: String::new(), shares: String::new(), paid: false, links: String::new(), comments: -1, tags: String::new() };
+        let it = NewItem { id: "x".into(), title: "T".into(), link: "https://a.com/1".into(), date: "2026-10-28T00:00:00Z".into(), summary: "".into(), image: "https://a.com/i.jpg".into(), audio: String::new(), shares: String::new(), paid: false, links: String::new(), comments: -1, tags: String::new(), videos: String::new() };
         store_fetch(&mut c, &feed, "A", "", &[it], "2026-10-28T01:00:00Z").unwrap();
         mark(&mut c, &["x".into()], Some(true), None, "2026-10-28T02:00:00Z").unwrap();
         let i = &items(&c, 10).unwrap()[0];
