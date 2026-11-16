@@ -2750,7 +2750,7 @@
           const t = $('nTitle').value.trim();
           // a titled note's copies lead with the title (a copy with a photo gets no link card to carry it)
           const copy = home && t ? (words ? `${t}\n\n${words}` : t) : words;
-          const res = await invoke('social_share_note', { networks: picks, text: copy, link: home || link(), title: home ? (t || `A note on ${wp.name || 'my site'}`) : (it ? headline(it) : ''), photo, alt, video: home ? link() : '' });
+          const res = await invoke('social_share_note', { networks: picks, text: copy, link: home || link(), title: home ? (t || `A note on ${wp.name || 'my site'}`) : (it ? headline(it) : ''), photo, alt, video: home ? link() : '', videoTitle: it ? headline(it) : '' });
           shared = res.filter(r => !r.error).map(r => NET[r.network]); bad = res.filter(r => r.error);
           warned = res.filter(r => !r.error && r.warning).map(r => `${NET[r.network]}: ${r.warning}`);
         }

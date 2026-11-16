@@ -1968,6 +1968,18 @@ fn video_thumb(url: &str) -> Option<String> {
     ok.then(|| format!("https://img.youtube.com/vi/{id}/hqdefault.jpg"))
 }
 
+/// A video's title from its site (YouTube or Vimeo), for a card that plays it.
+async fn video_name(url: &str) -> Option<String> {
+    let endpoint = match embeddable(url)?.0 {
+        "youtube" => "https://www.youtube.com/oembed",
+        "vimeo" => "https://vimeo.com/api/oembed.json",
+        _ => return None,
+    };
+    let v: Value = client().get(endpoint).query(&[("url", url.trim()), ("format", "json")]).timeout(Duration::from_secs(10)).send().await.ok()?.json().await.ok()?;
+    let t = v["title"].as_str()?.trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
+
 /// The video a note is about: the one attached, or else the first one on a line of its own.
 fn note_video(text: &str, attached: &str) -> Option<String> {
     if embeddable(attached).is_some() {
@@ -2284,7 +2296,7 @@ async fn masto_media(bytes: &[u8], alt: &str) -> Result<String, String> {
 /// with its description, and the link home. A note about a video gets the video's picture on its Bluesky
 /// card (still linking home), and on Mastodon the video's address, so its preview shows the video.
 #[tauri::command]
-pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String, video: Option<String>) -> Vec<Posted> {
+pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String, video: Option<String>, video_title: Option<String>) -> Vec<Posted> {
     let bytes = if photo.is_empty() { None } else { photo_bytes(&photo).ok() };
     let video = note_video(&text, video.as_deref().unwrap_or("")).filter(|v| v != &link);
     let thumb = video.as_deref().and_then(video_thumb).or_else(|| video_thumb(&link)).unwrap_or_default();
@@ -2318,6 +2330,15 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                     }
                     let v = bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.feed.post", "record": record }))).await?;
                     Ok(bsky_web_url(&st(&v, "uri"), &s.handle))
+                } else if let Some(v) = video.as_deref() {
+                    // a video: the card is the video itself, so it plays right in the post; the link home goes in the words
+                    let words = fit(&text, if link.is_empty() { 300 } else { 300 - link.chars().count() - 2 });
+                    let full = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
+                    let named = match video_title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                        Some(t) => t.to_string(),
+                        None => video_name(v).await.unwrap_or_default(),
+                    };
+                    bsky_post(&full, v, &named, "", &thumb).await
                 } else {
                     // no photo: the words, and a card for the note on your site
                     let words = fit(&text, 300);

@@ -10,5 +10,6 @@ EMAIL
 
 REPOSTS
 • Reposting a YouTube or Vimeo video now says "Reposted" above the player, so your site shows it as a repost instead of a plain note.
+• A note about a YouTube or Vimeo video now shares to Bluesky with the video as its card, so it plays right in the post (the link to your note goes in the words). On Mastodon it already plays.
 
 Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app. Repost a video and check your site.
