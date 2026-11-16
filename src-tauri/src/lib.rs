@@ -1277,6 +1277,37 @@ async fn open_share(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// A video in its own small window that floats above the app while you keep reading (Mac). The window
+/// shows the video's page only (readingroomapp.com/play for YouTube, or the file itself) and gets no
+/// access to the app. One window, reused.
+#[cfg(desktop)]
+#[tauri::command]
+async fn open_player(app: AppHandle, url: String, title: String) -> Result<(), String> {
+    let u = web_url(&url)?;
+    let name = if title.trim().is_empty() { "Video".to_string() } else { title.trim().chars().take(120).collect() };
+    if let Some(w) = app.get_webview_window("player") {
+        w.navigate(u).map_err(|e| e.to_string())?;
+        let _ = w.set_title(&name);
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "player", WebviewUrl::External(u))
+        .title(name)
+        .inner_size(640.0, 360.0)
+        .min_inner_size(320.0, 180.0)
+        .always_on_top(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn open_player(_url: String, _title: String) -> Result<(), String> {
+    Err("A video window is only on the Mac.".into())
+}
+
 /// Hand a link to the Mac: web pages to your browser, mailto: to Mail.
 #[tauri::command]
 fn open_external(app: AppHandle, url: String) -> Result<(), String> {
@@ -2373,6 +2404,7 @@ pub fn run() {
             web_nav,
             web_state,
             open_share,
+            open_player,
             open_external,
             review::request_review,
             add_highlight,

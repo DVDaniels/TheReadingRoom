@@ -2378,7 +2378,8 @@
   // ------------------------------------------------------------ people everywhere: videos, podcasts, social posts
   // YouTube won't play inside the app directly (Error 153: the app isn't a website), so videos play through
   // a small player page on readingroomapp.com, which hosts YouTube's privacy-enhanced player.
-  const ytPlayer = (id, title) => `<iframe src="https://readingroomapp.com/play/?v=${encodeURIComponent(id)}&title=${encodeURIComponent(title || '')}" title="${esc(title || 'Video')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+  const ytPlayUrl = (id, title, o = {}) => `https://readingroomapp.com/play/?v=${encodeURIComponent(id)}&title=${encodeURIComponent(title || '')}${o.t >= 1 ? `&t=${Math.floor(o.t)}` : ''}${o.auto ? '&autoplay=1' : ''}`;
+  const ytPlayer = (id, title, o = {}) => `<iframe src="${esc(ytPlayUrl(id, title, o))}" title="${esc(title || 'Video')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
   const ytId = link => { const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(link || ''); return m ? m[1] : null; };
   const socialKind = link => /bsky\.app\/profile\/[^/]+\/post\//.test(link || '') ? 'Bluesky'
     : /^https?:\/\/[^/]+\/@[\w.]+\/\d+$/.test(link || '') ? 'Mastodon' : null;
@@ -2439,16 +2440,21 @@
     const box = $('rMedia'), yt = ytId(it.link);
     box.hidden = !(yt || it.audio); box.innerHTML = '';
     if (yt) {
-      box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
+      const back = miniTime(yt, it.id); // coming back from the mini player: carry on from there
+      box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title, back)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
       fillFollowRows(box);
     } else if (it.audio) {
       const key = 'pos:' + it.id, vid = isVideoFile(it.audio), remote = it.audio.replace(/#video$/, '');
       box.innerHTML = `<div class="r-audio${vid ? ' r-vfile' : ''}">${vid
         ? `<video id="rAudio" controls playsinline preload="metadata" data-url="${esc(it.audio)}" src="${esc(remote)}"></video>`
         : `<audio id="rAudio" controls preload="metadata" data-url="${esc(it.audio)}" src="${esc(remote)}"></audio>`}
-        <div class="seg r-rate" role="group" aria-label="Speed">${[1, 1.25, 1.5, 2].map(r => `<button type="button" data-rate="${r}" aria-pressed="${r === 1}">${r}×</button>`).join('')}</div>
+        <div class="seg r-rate" role="group" aria-label="Speed">${[1, 1.25, 1.5, 2].map(r => `<button type="button" data-rate="${r}" aria-pressed="${r === 1}">${r}×</button>`).join('')}</div>${vid ? `<button type="button" class="linkish r-pip" id="rPip" hidden title="${esc(CUES.pip)}">Picture in picture</button>` : ''}
         <div class="r-off" id="rOff" data-url="${esc(it.audio)}"></div></div>`;
+      // coming back from the mini player: the same player moves back here, still playing
+      if (MINI.el && MINI.url === it.audio && MINI.item === it.id) { const el = MINI.el; MINI.el = null; closeMini(); $('rAudio').replaceWith(el); el.id = 'rAudio'; }
       const a = $('rAudio');
+      box.querySelectorAll('[data-rate]').forEach(x => x.setAttribute('aria-pressed', String(Number(x.dataset.rate) === a.playbackRate)));
+      if (vid && pipOk(a)) { $('rPip').hidden = false; $('rPip').onclick = () => pip(a); }
       paintOffline(it.audio);
       // a saved copy plays from this device
       if (OFF.has(it.audio)) invoke('offline_path', { url: it.audio }).then(p => {
@@ -2456,19 +2462,99 @@
         if ($('rAudio') === a && a.paused && !a.currentTime) a.src = fileSrc(p);
       }).catch(() => {});
       $('rOff').onclick = e => { const b = e.target.closest('[data-off]'); if (!b) return; b.dataset.off === 'save' ? offlineSave(it.audio) : offlineRemove(it.audio); };
+      box.querySelector('.r-rate').onclick = e => {
+        const b = e.target.closest('[data-rate]'); if (!b) return;
+        a.playbackRate = Number(b.dataset.rate);
+        box.querySelectorAll('[data-rate]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      };
+      if (a._wired) return; // a player back from the mini player already has its listeners
+      a._wired = true;
+      a.addEventListener('play', () => { if (MINI.kind && MINI.el !== a) closeMini(); }); // one thing plays at a time
       a.addEventListener('ended', () => { if (OFF.has(it.audio)) { OFF.map[it.audio].done = new Date().toISOString(); OFF.save(); } });
       const saved = Number(store.get(key)) || 0;
       a.addEventListener('loadedmetadata', () => { if (saved > 5 && saved < a.duration - 10) a.currentTime = saved; }, { once: true });
       let last = 0;
       a.addEventListener('timeupdate', () => { if (Math.abs(a.currentTime - last) > 5) { last = a.currentTime; store.set(key, String(Math.floor(a.currentTime))); } });
       a.addEventListener('ended', () => store.set(key, '0'));
-      box.querySelector('.r-rate').onclick = e => {
-        const b = e.target.closest('[data-rate]'); if (!b) return;
-        a.playbackRate = Number(b.dataset.rate);
-        box.querySelectorAll('[data-rate]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-      };
     }
   }
+
+  // ---- The mini player: when you leave a story while its video or episode is playing, it keeps playing in
+  // a small box in the corner while you browse. Tap its title to go back to the story; × stops it. A YouTube
+  // player can't be moved without starting over, so readingroomapp.com/play tells the app how far along it is
+  // and the corner copy starts from there. A video file or an episode moves over as it is, still playing.
+  // Video files can also go to picture in picture, and on the Mac any video can go to its own floating window.
+  const MINI = { kind: null, item: null, title: '', v: null, t: 0, url: null, el: null };
+  window.addEventListener('message', e => {
+    if (e.origin !== 'https://readingroomapp.com' || !e.data || e.data.rr !== 'yt') return;
+    const f = [...document.querySelectorAll('iframe')].find(x => x.contentWindow === e.source); if (!f) return;
+    f._t = Number(e.data.t) || 0; f._on = e.data.state === 1; f._v = String(e.data.v || '');
+    if (f._on && MINI.kind && !$('mini').contains(f)) closeMini(); // one thing plays at a time
+  });
+  const pipOk = v => !!v && v.tagName === 'VIDEO' && (document.pictureInPictureEnabled
+    || (typeof v.webkitSupportsPresentationMode === 'function' && v.webkitSupportsPresentationMode('picture-in-picture')));
+  function pip(v) {
+    try { if (v.requestPictureInPicture) v.requestPictureInPicture().catch(() => v.webkitSetPresentationMode?.('picture-in-picture')); else v.webkitSetPresentationMode('picture-in-picture'); }
+    catch { status("Picture in picture isn't available here.", true); }
+  }
+  // the time to pick up a YouTube video from, if the mini player has it (and the mini player closes)
+  function miniTime(v, itemId) {
+    if (MINI.kind !== 'yt' || MINI.v !== v || MINI.item !== itemId) return {};
+    const f = $('mini').querySelector('iframe'), t = f && f._v === v ? f._t : MINI.t;
+    closeMini();
+    return { t, auto: 1 };
+  }
+  // Leaving the story in the reader: whatever is playing there goes to the corner.
+  function toMini() {
+    const it = item(S.readerId); if (!it) return;
+    const a = $('rAudio');
+    if (a && !a.paused && !a.ended) {
+      openMini({ kind: isVideoFile(a.dataset.url) ? 'vfile' : 'audio', item: it.id, title: headline(it), url: a.dataset.url, el: a });
+      return;
+    }
+    const f = [...$('reader').querySelectorAll('.r-video iframe')].find(x => x._on && x._v);
+    if (f) openMini({ kind: 'yt', item: it.id, title: f.title && f.title !== 'Video' ? f.title : headline(it), v: f._v, t: f._t });
+  }
+  const MINI_ICONS = {
+    pip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none"/></svg>',
+    window: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  };
+  function openMini(o) {
+    closeMini();
+    Object.assign(MINI, { t: 0, v: null, url: null, el: null }, o);
+    const box = $('mini'), vid = o.kind !== 'audio';
+    box.className = 'miniplayer ' + (vid ? 'is-video' : 'is-audio');
+    const btn = (k, label) => `<button type="button" class="icon" data-mini="${k}" aria-label="${esc(label)}" title="${esc(label)}">${MINI_ICONS[k]}</button>`;
+    box.innerHTML = `<div class="mp-media"></div><div class="mp-row">
+      <button type="button" class="mp-title linkish" data-mini="open" title="${esc(CUES.mini)}">${esc(o.title || 'Playing')}</button>
+      ${o.kind === 'vfile' && pipOk(o.el) ? btn('pip', 'Picture in picture') : ''}${!IOS && vid ? btn('window', 'Open in its own window') : ''}${btn('close', 'Stop')}</div>`;
+    const m = box.querySelector('.mp-media');
+    if (o.kind === 'yt') m.innerHTML = `<div class="r-video">${ytPlayer(o.v, o.title, { t: o.t, auto: 1 })}</div>`;
+    else { o.el.removeAttribute('id'); m.appendChild(o.el); } // moved in one step, so it doesn't stop
+    box.hidden = false;
+    if (!store.get('miniSeen')) { store.set('miniSeen', '1'); status(CUES.miniFirst); }
+  }
+  function closeMini() {
+    if (!MINI.kind) return;
+    if (MINI.el) { MINI.el.pause(); }
+    const box = $('mini'); box.innerHTML = ''; box.hidden = true;
+    Object.assign(MINI, { kind: null, item: null, title: '', v: null, t: 0, url: null, el: null });
+  }
+  $('mini').addEventListener('click', e => {
+    const b = e.target.closest('[data-mini]'); if (!b) return;
+    const k = b.dataset.mini;
+    if (k === 'close') closeMini();
+    else if (k === 'pip' && MINI.el) pip(MINI.el);
+    else if (k === 'open') { if (item(MINI.item)) openReader(MINI.item); else status('That story is no longer in your list.', true); }
+    else if (k === 'window') {
+      let url, t = MINI.t;
+      if (MINI.kind === 'yt') { const f = $('mini').querySelector('iframe'); if (f && f._v === MINI.v) t = f._t; url = ytPlayUrl(MINI.v, MINI.title, { t, auto: 1 }); }
+      else { url = MINI.url.replace(/#video$/, ''); t = MINI.el?.currentTime || 0; if (t >= 1) url += `#t=${Math.floor(t)}`; }
+      const title = MINI.title;
+      invoke('open_player', { url, title }).then(closeMini).catch(err => status(String(err), true));
+    }
+  });
   // Short posts and videos come straight from the feed; their web pages aren't articles.
   function feedOnlyBody(it) {
     const kind = socialKind(it.link), yt = ytId(it.link);
@@ -3737,6 +3823,9 @@
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
     vchans: 'Channels your people share: YouTube channels whose videos the people you read put in their posts lately, most shared first. Follow one and its new videos show up in Videos.',
+    mini: 'Back to the story. The video or episode keeps playing here while you browse; × stops it.',
+    miniFirst: 'Still playing: it moved to the corner so you can keep browsing. Tap its title to go back to the story.',
+    pip: 'Picture in picture: the video floats above everything, even other apps, and keeps playing.',
     offline: 'Saved for offline: this episode or video is on this device and plays without a connection. Finished ones are removed after a week.',
     you: 'You: a post from your own site.',
     friend: 'Close friend: their new posts are pinned to the top of the Neighborhood, and you get an alert when they post. Change it with the Close friend button on their page.',
@@ -4863,6 +4952,7 @@
 
   function openReader(id) {
     const it = item(id); if (!it) return;
+    if (S.readerId && S.readerId !== id) toMini(); // what's playing keeps going in the corner
     if (!S.readerId && !isSplit()) listScroll = $('main').scrollTop;
     if (!S.readerId && S.view === 'talk') talkScroll = [$('main').scrollTop, $('listView').scrollTop];
     S.readerId = S.selId = id; S.keep.add(id);
@@ -4878,10 +4968,11 @@
 
   function closeReader(silent) {
     if (!S.readerId) return;
+    toMini(); // whatever is playing keeps going in the corner
     if (!silent) maybeAskReview();
     S.readerId = null; articleFor = null; hidePops();
-    // A video stops when you leave it; a podcast that's playing keeps going until the next story
-    const au = $('rAudio'); if (!au || au.paused) { $('rMedia').innerHTML = ''; $('rMedia').hidden = true; }
+    // what was playing has moved to the mini player; the rest stops
+    $('rMedia').innerHTML = ''; $('rMedia').hidden = true;
     // videos inside the story stop too (a hidden player keeps playing otherwise)
     $('rBody').querySelectorAll('.r-video').forEach(v => v.remove());
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide();
@@ -4989,7 +5080,7 @@
       if (!id || id === shown) { spot.remove(); return; } // the story's own video already plays above
       const v = document.createElement('div');
       v.className = 'r-video r-inline-video';
-      v.innerHTML = ytPlayer(id, a.closest('figure')?.querySelector('figcaption')?.textContent || 'Video');
+      v.innerHTML = ytPlayer(id, a.closest('figure')?.querySelector('figcaption')?.textContent || 'Video', miniTime(id, S.readerId));
       spot.replaceWith(v);
       v.insertAdjacentHTML('afterend', followRow(id));
     });
