@@ -18,6 +18,7 @@ mod share;
 mod email;
 mod webmention;
 mod review;
+mod youtube;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;

@@ -217,7 +217,8 @@ pub fn discover(html: &str, base: &str) -> Option<String> {
 }
 
 /// Like `fetch`, but patient with YouTube, whose feeds answer "not found" on and off for channels that
-/// exist (a known YouTube problem since late 2025): wait a moment and ask once more.
+/// exist (a known YouTube problem since late 2025), and for some channels every time: wait a moment and ask
+/// once more, then read the channel's Videos page.
 pub async fn fetch_patient(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
     if crate::share::is_saved_feed(url) {
         return Ok(crate::share::empty_fetch(url));
@@ -226,15 +227,22 @@ pub async fn fetch_patient(client: &reqwest::Client, url: &str) -> Result<Fetche
         return crate::watch::fetch(client, url).await;
     }
     match fetch(client, url).await {
-        Err(e) if url.contains("youtube.com/") && e.contains("404") => {
-            tokio::time::sleep(Duration::from_millis(2500)).await;
-            fetch(client, url).await.map_err(|_| YOUTUBE_HICCUP.to_string())
+        Err(e) if url.contains("youtube.com/") => {
+            // a passing hiccup: ask once more
+            if e.contains("404") {
+                tokio::time::sleep(Duration::from_millis(2500)).await;
+                if let Ok(f) = fetch(client, url).await {
+                    return Ok(f);
+                }
+            }
+            // YouTube keeps refusing some channels' feeds: read the channel's Videos page instead
+            crate::youtube::from_page(client, url).await.map_err(|_| YOUTUBE_HICCUP.to_string())
         }
         r => r,
     }
 }
 
-pub const YOUTUBE_HICCUP: &str = "YouTube's feed didn't answer just now. YouTube has been doing this on and off for every RSS reader; try again in a little while.";
+pub const YOUTUBE_HICCUP: &str = "YouTube isn't giving out a feed for this channel right now, and its Videos page couldn't be read either. Check that the address is a YouTube channel, or try again later.";
 
 /// Fetch a feed, following a website address to the feed it advertises.
 pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
