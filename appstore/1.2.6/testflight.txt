@@ -15,5 +15,6 @@ REPOSTS
 • YouTube channels whose feed YouTube won't give out (it answers "not found" for some channels) now work: the app reads the channel's Videos page instead. Members-only videos are marked.
 • "Reposted" now opens a choice: see your repost, or repost it again. If you delete a repost from your site, the button goes back to "Repost".
 • A note about a YouTube or Vimeo video now shares to Bluesky with the video as its card, so it plays right in the post (the link to your note goes in the words). On Mastodon it already plays.
+• Keep watching while you browse: leave a story while its video or podcast plays and it keeps going in a small box in the corner. Tap its title to go back; × stops it. Video files can go to Picture in picture, and on the Mac any video can open in its own window.
 
-Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app. Repost a video and check your site.
+Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app. Repost a video and check your site. Play a video, go back to the list, and see that it keeps playing in the corner.
