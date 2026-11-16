@@ -2127,22 +2127,6 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
         }
         html.push('\n');
         html.push_str(&block);
-        // the video's own picture as the featured image, so lists, feeds and previews show it
-        if media_id == 0 {
-            if let Some(thumb) = video_thumb(&link) {
-                if let Some((bytes, kind)) = fetch_picture(&thumb).await {
-                    let name = format!("note-video-{}.jpg", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
-                    let up = wp_auth(client().post(format!("{}/wp-json/wp/v2/media", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"))
-                        .header("Content-Type", kind)
-                        .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
-                        .body(bytes)
-                        .timeout(Duration::from_secs(90));
-                    if let Ok(m) = call(up).await {
-                        media_id = m["id"].as_i64().unwrap_or(0);
-                    }
-                }
-            }
-        }
     } else if link.starts_with("http") && embeddable(&link).is_none() {
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
         let site = link_site.unwrap_or_default().trim().to_string();

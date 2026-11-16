@@ -8,4 +8,7 @@ REPLIES
 EMAIL
 • Sending through Proton Mail Bridge no longer stops with "The mail server stopped answering." The app now works with Bridge set to SSL or STARTTLS, and connecting a mailbox checks sending too.
 
-Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app.
+REPOSTS
+• Reposting a YouTube or Vimeo video now says "Reposted" above the player, so your site shows it as a repost instead of a plain note.
+
+Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app. Repost a video and check your site.
