@@ -29,7 +29,7 @@
         return;
       }
       var t = parseInt(q.get('t') || '0', 10);
-      var params = new URLSearchParams({ rel: '0', playsinline: '1' });
+      var params = new URLSearchParams({ rel: '0', playsinline: '1', enablejsapi: '1', origin: location.origin });
       if (t > 0) params.set('start', String(t));
       if (q.get('autoplay') === '1') params.set('autoplay', '1');
       var f = document.createElement('iframe');
@@ -39,6 +39,28 @@
       f.allowFullscreen = true;
       f.referrerPolicy = 'strict-origin-when-cross-origin';
       document.body.appendChild(f);
+
+      // Tell the app how far along the video is and whether it's playing, so when you leave the story
+      // the app's mini player can carry on from the same spot. Only the time and play state are sent.
+      if (window.parent === window) return;
+      var yt = 'https://www.youtube-nocookie.com', heard = false, tries = 0;
+      var listen = function () {
+        if (heard || tries++ > 40) return;
+        try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'rr', channel: 'widget' }), yt); } catch (e) {}
+        setTimeout(listen, 250);
+      };
+      f.addEventListener('load', listen);
+      var state = -1, time = t > 0 ? t : 0;
+      window.addEventListener('message', function (e) {
+        if (e.origin !== yt || e.source !== f.contentWindow) return;
+        var d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
+        if (!d || d.info == null) return;
+        heard = true;
+        if (typeof d.info.currentTime === 'number') time = d.info.currentTime;
+        if (typeof d.info.playerState === 'number') state = d.info.playerState;
+        if (d.event === 'onStateChange' && typeof d.info === 'number') state = d.info;
+        window.parent.postMessage({ rr: 'yt', v: id, t: time, state: state }, '*');
+      });
     })();
   </script>
   <noscript><p>Turn on JavaScript to play this video.</p></noscript>
