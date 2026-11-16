@@ -2119,8 +2119,30 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
     }
     // a video you're writing about plays right in the post (unless the note already shows it)
     if let Some(block) = embed_block(&link).filter(|_| !html.contains(&format!("\"url\":\"{}\"", link.trim()))) {
+        // a repost or reply of a video still says so (u-repost-of / u-in-reply-to), then the player
+        if card_kind != CardKind::Bookmark {
+            let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
+            html.push('\n');
+            html.push_str(&video_kind_line(&link, &label, link_site.as_deref().unwrap_or(""), card_kind));
+        }
         html.push('\n');
         html.push_str(&block);
+        // the video's own picture as the featured image, so lists, feeds and previews show it
+        if media_id == 0 {
+            if let Some(thumb) = video_thumb(&link) {
+                if let Some((bytes, kind)) = fetch_picture(&thumb).await {
+                    let name = format!("note-video-{}.jpg", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+                    let up = wp_auth(client().post(format!("{}/wp-json/wp/v2/media", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"))
+                        .header("Content-Type", kind)
+                        .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
+                        .body(bytes)
+                        .timeout(Duration::from_secs(90));
+                    if let Ok(m) = call(up).await {
+                        media_id = m["id"].as_i64().unwrap_or(0);
+                    }
+                }
+            }
+        }
     } else if link.starts_with("http") && embeddable(&link).is_none() {
         let label = if link_title.trim().is_empty() { link.clone() } else { link_title.trim().to_string() };
         let site = link_site.unwrap_or_default().trim().to_string();
@@ -2211,6 +2233,21 @@ fn link_card(link: &str, title: &str, site: &str, image: &str, kind: CardKind) -
     let from = if site.is_empty() { String::new() } else { format!("<span class=\"p-author h-card\" style=\"display:block;font-size:.85em;opacity:.7;margin-top:.2em\">{}</span>", esc_html(site)) };
     format!(
         "<!-- wp:html -->\n<a class=\"note-link note-card {kind} h-cite\" href=\"{href}\" style=\"display:block;border:1px solid rgba(128,128,128,.35);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit\">{pic}<span style=\"display:block;padding:.75em 1em\">{lead}<strong class=\"p-name\">→ {}</strong>{from}</span></a>\n<!-- /wp:html -->",
+        esc_html(title)
+    )
+}
+
+/// For a video note that's a repost or a reply: one line saying so, marked for Webmentions, above the player.
+fn video_kind_line(link: &str, title: &str, site: &str, kind: CardKind) -> String {
+    let href = html_escape::encode_double_quoted_attribute(link);
+    let (class, cls, lead) = match kind {
+        CardKind::Repost => ("u-repost-of", "note-repost", "↻ Reposted"),
+        CardKind::Reply => ("u-in-reply-to", "note-reply", "↩ In reply to"),
+        CardKind::Bookmark => ("u-bookmark-of", "note-bookmark", "→"),
+    };
+    let from = if site.trim().is_empty() { String::new() } else { format!(" · {}", esc_html(site.trim())) };
+    format!(
+        "<!-- wp:paragraph {{\"className\":\"{cls}\"}} -->\n<p class=\"{cls}\">{lead} <a class=\"{class} h-cite\" href=\"{href}\">{}</a>{from}</p>\n<!-- /wp:paragraph -->",
         esc_html(title)
     )
 }
@@ -2443,6 +2480,9 @@ mod their_likes_tests {
 
     #[test]
     fn repost_card_is_marked_as_a_repost() {
+        let v = super::video_kind_line("https://youtu.be/x1", "A <video>", "Chan", super::CardKind::Repost);
+        assert!(v.contains("u-repost-of") && v.contains("↻ Reposted") && v.contains("A &lt;video&gt;") && v.contains(" · Chan"));
+        assert!(super::video_kind_line("https://youtu.be/x1", "V", "", super::CardKind::Reply).contains("u-in-reply-to"));
         let c = super::link_card("https://b.blog/p/", "A post", "B", "", super::CardKind::Repost);
         assert!(c.contains("u-repost-of h-cite") && c.contains("Reposted"));
         assert!(super::link_card("https://b.blog/p/", "A post", "B", "", super::CardKind::Bookmark).contains("u-bookmark-of"));
