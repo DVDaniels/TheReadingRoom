@@ -1129,7 +1129,7 @@
           <li>Pick a home. Simple, free places to start include <a href="https://bearblog.dev/">Bear Blog</a>, <a href="https://neocities.org/">Neocities</a> and <a href="https://wordpress.com/">WordPress.com</a>. A domain of your own, like <code>yourname.com</code>, can come later.</li>
           <li>Write a short About page: who you are and what you’ll write about.</li>
           <li>Publish one post. A review, a recipe, something you learned this week. Short is fine.</li>
-          <li>Follow your own site here with <b>+ Add a feed</b>, open it and choose <b>This is my site</b>.</li>
+          <li>Follow your own site here with <b>+ Add a feed</b>, open it and choose <b>This is my site</b>. Your page, like the one each person you read has, is then at the top of Conversations › You.</li>
           <li>Connect Mastodon or Bluesky in <button class="b-link" data-view="talk">Conversations</button>. When you post something new, it offers to share it there for you, with a link back home, and the replies show up in the app.</li>
         </ol>
         <p style="margin-top:12px">Keep private things private: a site is public, so leave out your home address, phone number and anything you wouldn’t put on a postcard. For more on why personal sites matter, read <a href="https://readingroomapp.com/#why">why The Reading Room exists</a> and the <a href="https://indieweb.org/POSSE">IndieWeb’s page on POSSE</a>.</p></section>
@@ -3822,6 +3822,7 @@
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
+    mypage: 'Your page: your posts and notes, who talks with you and who links to you, the same page each person you read has.',
     ytc: site => `Comment on ${site}: copies what you wrote and opens the video on ${site}. Paste it into the comments there. ${site} doesn’t take replies from other sites, so this is how your words get under the video.`,
     vchans: 'Channels your people share: YouTube channels whose videos the people you read put in their posts lately, most shared first. Follow one and its new videos show up in Videos.',
     mini: 'Back to the story. The video or episode keeps playing here while you browse; × stops it.',
@@ -4241,21 +4242,21 @@
         <div class="pp-who"><h2>${esc(f.title)}</h2>
           ${about ? `<p class="pp-about">${esc(about)}</p>` : ''}
           <div class="pp-where"><button class="linkish" data-talk="open" data-url="${esc(isWeb(f.site) ? f.site : 'https://' + host + '/')}">${esc(host)}</button>${accts.map(r => `<button class="linkish" data-talk="open" data-url="${esc(r.person.url || r.url)}">${ICON_NET[r.network] || ''} ${esc(r.person.handle)}</button>`).join('')}${plinks.map(l => `<button class="linkish" data-talk="open" data-url="${esc(l.url)}">${esc(l.label)}</button>`).join('')}</div>
-          <p class="pp-pace">${esc(pace)}${theirs.length ? ` · you’ve read ${read} of ${theirs.length}` : ''}${toYou.length ? ` · linked to you ${toYou.length === 1 ? 'once' : toYou.length + ' times'}` : ''}${readsYou(f) ? ' · you’re on their blogroll' : ''}</p>
+          <p class="pp-pace">${esc(pace)}${theirs.length && !isMine ? ` · you’ve read ${read} of ${theirs.length}` : ''}${toYou.length ? ` · linked to you ${toYou.length === 1 ? 'once' : toYou.length + ' times'}` : ''}${readsYou(f) ? ' · you’re on their blogroll' : ''}</p>
         </div></header>
       <div class="pp-acts">
         ${latest && !isMine ? `<button class="btn primary" data-talk="nbreply" data-id="${esc(latest.id)}" aria-haspopup="menu">Write back</button>` : ''}
-        <button class="btn" data-view="${f.id}">All their posts</button>
+        <button class="btn" data-view="${f.id}">${isMine ? 'All your posts' : 'All their posts'}</button>
         ${isMine ? '' : `<button class="btn" data-talk="groups" data-feed="${esc(f.id)}" aria-haspopup="dialog">Groups${groupsOf().filter(g => inGroup(g, f)).length ? ` · ${groupsOf().filter(g => inGroup(g, f)).map(g => esc(g.name)).join(', ')}` : ''}</button>`}
         ${isMine ? '' : `<button class="btn pp-friend${isFriend(f) ? ' on' : ''}" data-talk="friend" data-feed="${esc(f.id)}" aria-pressed="${isFriend(f)}" title="${isFriend(f) ? 'Stop pinning their posts' : 'Pin their new posts to the top of the Neighborhood'}">${NB_STAR}Close friend</button>`}
         ${isMine ? '' : followButtons(f)}
       </div>
       ${isFriend(f) ? `<p class="pp-sub pp-friend-note">Their new posts sit at the top of the Neighborhood. ${alertsBtn('friend', S.prefs.friendAlerts !== false, 'Alerts when close friends post')}</p>` : ''}
       ${sec('Talks with', talks.length ? `<div class="pp-faces">${talks.map(t => `<button class="pp-face" data-talk="nbwho" data-feed="${esc(t.f.id)}">${nbFace(t.f, 'nb-av md')}<span><b>${esc(t.f.title)}</b><small>${t.n} ${t.n === 1 ? 'reply or mention' : 'replies and mentions'}</small></span></button>`).join('')}</div>` : '')}
-      ${sec('Emails from them', mails.length ? mails.map(i => `<button class="nb-pair" data-open="${esc(i.id)}">${ICON_MAIL}<span><b>${esc(i.title)}</b><small>${esc(fmtWhen(i.date))}</small></span></button>`).join('') : '')}
+      ${sec(isMine ? 'Emails from your address' : 'Emails from them', mails.length ? mails.map(i => `<button class="nb-pair" data-open="${esc(i.id)}">${ICON_MAIL}<span><b>${esc(i.title)}</b><small>${esc(fmtWhen(i.date))}</small></span></button>`).join('') : '')}
       ${sec('Recent', stream.slice(0, shownN).map(e => e.i ? nbCard(e.i, x, soc) : nbNote(e.s)).join('') + (stream.length > shownN ? `<button class="btn nb-more" data-talk="ppmore">Show more</button>` : '') || '<p class="note">Nothing from them yet. New posts show up after the next refresh.</p>')}
-      ${sec('They link to', linksTo.length ? `<p class="pp-sub">Blogs ${esc(f.title)} links to that you don’t follow yet.</p>${linksTo.map(writerRow).join('')}` : '')}
-      ${sec('Their blogroll', rollHtml(f))}
+      ${sec(isMine ? 'You link to' : 'They link to', linksTo.length ? `<p class="pp-sub">Blogs ${esc(f.title)} links to that you don’t follow yet.</p>${linksTo.map(writerRow).join('')}` : '')}
+      ${sec(isMine ? 'Your blogroll' : 'Their blogroll', rollHtml(f))}
     </div>`;
   }
 
@@ -4412,10 +4413,33 @@
     await Promise.allSettled(tasks);
   }
   const fmtN = n => n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n || 0);
+  // Your own page (the same page everyone you read has), first in the You tab
+  function myPageCard() {
+    const mine = myFeed();
+    if (!mine) return `<button class="pcard mycard" data-talk="pickmine" title="${esc(CUES.mypage)}">
+        <span class="pav mine-empty">${ICONS.site}</span>
+        <span class="pwho"><b>Your page</b><span class="plain">Show the app which site is yours</span></span></button>`;
+    const pid = personId(mine.id), ids = new Set(S.feeds.filter(g => personId(g.id) === pid || g.id === pid).map(g => g.id));
+    const month = S.items.filter(i => ids.has(i.feed_id) && Date.now() - Date.parse(i.date) < 30 * DAY).length;
+    const x = nbIndex(), links = S.items.filter(i => x.toMe.has(i.id) && Date.now() - Date.parse(i.date) < 30 * DAY).length;
+    return `<button class="pcard mycard" data-talk="nbwho" data-feed="${esc(pid)}" title="${esc(CUES.mypage)}">
+        <span class="pav mine-face">${nbFace(mine, 'nb-av md')}</span>
+        <span class="pwho"><b>Your page</b><span>${esc(mine.title)} · ${esc(bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)))}</span></span>
+        <span class="pnums"><span class="pnum"><strong>${fmtN(month)}</strong><small>Posts this month</small></span><span class="pnum"><strong>${fmtN(links)}</strong><small>Linked to you</small></span></span></button>`;
+  }
+  // No site marked as yours yet: pick it from the people you follow, or add it
+  function openPickMine() {
+    const people = S.feeds.filter(f => kindOf(f) === 'person' && !isEmailFeed(f)).sort((a, b) => a.title.localeCompare(b.title));
+    const el = sheet('pickMine', `<h2>Which site is yours?</h2>
+      <p class="note">Your page shows your posts and notes, who talks with you and who links to you, like the page each person you read has. It needs your site's feed in your feeds.</p>
+      ${people.length ? `<label class="pm-field"><span>Your site</span><select id="pmSel">${people.map(f => `<option value="${esc(f.url)}">${esc(f.title)} · ${esc(bareHost(hostOfU(isWeb(f.site) ? f.site : f.url)))}</option>`).join('')}</select></label>` : ''}
+      <div class="row sheet-foot"><button class="btn" type="button" id="pmAdd">My site isn’t here: add it</button>${people.length ? '<button class="btn primary" type="button" id="pmOk">This is my site</button>' : ''}</div>`, 'Which site is yours?');
+    $('pmAdd').onclick = () => { el.hidden = true; openAdd(); status('Paste your site’s address, then open it and choose This is my site.'); };
+    if ($('pmOk')) $('pmOk').onclick = () => { S.prefs.mine = $('pmSel').value; savePrefs(); el.hidden = true; renderList(); status('Got it. Your page is at the top of You.'); };
+  }
   function profilesHtml() {
     const ps = SOC.profiles || [];
-    if (!ps.length) return '';
-    return `<div class="pstrip">${ps.map(p => {
+    return `<div class="pstrip">${myPageCard()}${ps.map(p => {
       const fresh = (SOC.followers || []).filter(f => f.network === p.network && Date.now() - Date.parse(f.followed_at) < WEEK_MS).length;
       return `<button class="pcard" data-talk="open" data-url="${esc(p.url)}" title="Open your ${NET[p.network]} profile">
         <span class="pav">${isWeb(p.avatar) ? `<img src="${esc(p.avatar)}" alt="" referrerpolicy="no-referrer">` : esc((p.name || '?')[0])}<span class="net">${ICON_NET[p.network]}</span></span>
@@ -4768,6 +4792,7 @@
       if (!SOC.person) SOC.personFrom = { tab: SOC.tab, chip: SOC.youChip, top: $('main').scrollTop };
       SOC.person = b.dataset.feed; SOC.personShown = 15; SOC.tab = 'blogs'; renderList(); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'nbback') { personBack(); return; }
+    if (k === 'pickmine') { openPickMine(); return; }
     if (k === 'ppmore') { SOC.personShown = (SOC.personShown || 15) + 15; renderList(); return; }
     if (k === 'nbonly') { SOC.nbOnly = b.dataset.k; SOC.nbShown = 30; renderList(); return; }
     if (k === 'nbwelcomed') { store.set('nbWelcomed', '1'); renderList(); return; }

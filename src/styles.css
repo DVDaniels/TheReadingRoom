@@ -887,6 +887,11 @@ body.home .b-hl { padding: 11px 0; gap: 3px; }
 .pstrip { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin: 6px 0 4px; }
 .pcard { all: unset; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .pcard:hover { border-color: var(--accent-soft); }
+.pav.mine-face { background: none; }
+.pav.mine-empty { background: var(--accent-soft, #e3f1ec); color: var(--accent); }
+.pwho span.plain { font-family: inherit; white-space: normal; }
+.pm-field { display: grid; gap: 6px; margin: 14px 0 6px; font-weight: 600; }
+.pm-field select { font: inherit; font-weight: 400; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: inherit; }
 .pav { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #6E56CF, #3CC39E); display: grid; place-items: center; color: #fff; font-weight: 700; font-family: var(--font-read); font-size: 20px; flex: none; position: relative; }
 .pav img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .pav .net { position: absolute; right: -3px; bottom: -3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; color: var(--accent); }
