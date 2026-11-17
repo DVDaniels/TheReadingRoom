@@ -17,6 +17,6 @@ REPOSTS
 • A note about a YouTube or Vimeo video now shares to Bluesky with the video as its card, so it plays right in the post (the link to your note goes in the words). On Mastodon it already plays.
 • Keep watching while you browse: leave a story while its video or podcast plays and it keeps going in a small box in the corner. Tap its title to go back; × stops it. Video files can go to Picture in picture, and on the Mac any video can open in its own window.
 • Refreshing while you're on Videos now keeps you on Videos.
-• Answer a YouTube video in its own comments: in the reply box, Comment on YouTube copies your words and opens the video, so you can paste them there.
+• Answer a video in its own comments: in the reply box, Comment on YouTube (or Rumble, Vimeo, Odysee, Dailymotion, TikTok) copies your words and opens the video, so you can paste them there.
 
 Please try a reply to a blog that shows webmentions, and one that doesn't, and tell us what the Reply box said. If you use Proton, send an email from the app. Repost a video and check your site. Play a video, go back to the list, and see that it keeps playing in the corner.

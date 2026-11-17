@@ -1088,7 +1088,7 @@
         <ul class="g-list">
           <li><b>Mastodon:</b> type their handle, like <code>@name@mastodon.social</code>.</li>
           <li><b>Bluesky:</b> type <code>@name.bsky.social</code> or paste their profile link.</li>
-          <li><b>YouTube:</b> paste a channel’s address, or a link to any of its videos. New videos play right in the app, in the Videos tab (Settings can hide it). To answer a video, Comment on YouTube copies your words and opens it, so you can paste them under the video.</li>
+          <li><b>YouTube:</b> paste a channel’s address, or a link to any of its videos. New videos play right in the app, in the Videos tab (Settings can hide it). To answer a video, Comment on YouTube copies your words and opens it, so you can paste them under the video (the same works for Rumble, Vimeo, Odysee, Dailymotion and TikTok).</li>
           <li><b>Podcasts:</b> paste a show’s Apple Podcasts link or its feed. Episodes play in the app and remember where you stopped.</li>
         </ul>
         <p style="margin-top:12px">Type words instead of an address, like <code>space exploration</code>, and you’ll follow that topic through Google News. Moving from another reader? Use <b>Import OPML</b> in Settings to bring your whole list across. Someone shares a link to a list of feeds, like a blogroll or a club? Choose <b>+ Add a feed</b>, then <b>Follow a list of feeds</b>: you get every feed in it, and new ones as the list grows.</p></section>
@@ -3822,7 +3822,7 @@
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
-    ytc: 'Comment on YouTube: copies what you wrote and opens the video on YouTube. Paste it into the comments there. YouTube doesn’t take replies from other sites, so this is how your words get under the video.',
+    ytc: site => `Comment on ${site}: copies what you wrote and opens the video on ${site}. Paste it into the comments there. ${site} doesn’t take replies from other sites, so this is how your words get under the video.`,
     vchans: 'Channels your people share: YouTube channels whose videos the people you read put in their posts lately, most shared first. Follow one and its new videos show up in Videos.',
     mini: 'Back to the story. The video or episode keeps playing here while you browse; × stops it.',
     miniFirst: 'Still playing: it moved to the corner so you can keep browsing. Tap its title to go back to the story.',
@@ -4111,26 +4111,36 @@
       set(on ? (uri || '1') : '');
     } catch (e) { set(was || ''); status(msg(e), true); }
   }
-  // ---- Comment on YouTube: YouTube takes no replies from other sites and can't fill in its comment box,
-  // so copy the words and open the video there (like the copy for X)
-  async function ytComment(it, text) {
-    const id = ytId(it?.link); if (!id) return;
+  // ---- Comment on YouTube (and other video sites): they take no replies from other sites and can't fill in
+  // their comment box, so copy the words and open the video there (like the copy for X)
+  const VIDEO_SITES = [['YouTube', /(^|\.)(youtube\.com|youtu\.be)$/], ['Vimeo', /(^|\.)vimeo\.com$/], ['Rumble', /(^|\.)rumble\.com$/],
+    ['Odysee', /(^|\.)odysee\.com$/], ['Dailymotion', /(^|\.)(dailymotion\.com|dai\.ly)$/], ['TikTok', /(^|\.)tiktok\.com$/]];
+  function videoSite(it) {
+    const link = it?.link || '', yt = ytId(link);
+    if (yt) return { name: 'YouTube', url: `https://www.youtube.com/watch?v=${yt}` };
+    let u; try { u = new URL(link); } catch { return null; }
+    if (!/^https?:$/.test(u.protocol) || u.pathname.length < 2) return null; // a video, not the site's home page
+    const hit = VIDEO_SITES.find(([n, re]) => n !== 'YouTube' && re.test(u.hostname));
+    return hit ? { name: hit[0], url: link } : null;
+  }
+  async function videoComment(it, text) {
+    const v = videoSite(it); if (!v) return;
     let copied = false;
     if (text) { try { await navigator.clipboard.writeText(text); copied = true; } catch {} }
-    try { await invoke('open_external', { url: `https://www.youtube.com/watch?v=${id}` }); }
+    try { await invoke('open_external', { url: v.url }); }
     catch (e) { status(msg(e), true); return; }
-    status(copied ? 'Your words are copied. Paste them into the comments under the video.' : text ? 'Opened the video on YouTube. Copying didn’t work, so copy your words from the reply box.' : 'Opened the video on YouTube. Its comments are under the video.');
+    status(copied ? `Your words are copied. Paste them into the comments under the video on ${v.name}.` : text ? `Opened the video on ${v.name}. Copying didn’t work, so copy your words from the reply box.` : `Opened the video on ${v.name}. Its comments are under the video.`);
   }
   // ---- Reply right in the card: post a reply on your own site (their site is told), or email them
   async function nbReplyBox(b, it, keep) {
     document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
     const sel = `.n-box[data-box="nb:${CSS.escape(it.id)}"]`;
     const box = b?.closest('.r-talk, .nb-main')?.querySelector(sel) || document.querySelector(sel); if (!box) return;
-    const f = nbWho(it), wp = SOC.accounts.wordpress, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const f = nbWho(it), wp = SOC.accounts.wordpress, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, ''), vsite = videoSite(it);
     box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Write back to ${esc(f?.title || 'them')}…"></textarea>
       <div class="row">
         ${wp ? `<button class="btn primary" type="button" data-rb="site">Post on ${esc(host)}</button>` : ''}
-        <span class="nb-rb-mail">${ytId(it.link) ? `<button class="btn" type="button" data-rb="yt" title="${esc(CUES.ytc)}">Comment on YouTube</button>` : ''}</span>
+        <span class="nb-rb-mail">${vsite ? `<button class="btn" type="button" data-rb="yt" title="${esc(CUES.ytc(vsite.name))}">Comment on ${esc(vsite.name)}</button>` : ''}</span>
         <button class="btn" type="button" data-rb="more" aria-haspopup="menu">More ways</button>
         <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
       </div>
@@ -4151,7 +4161,7 @@
         if (o?.webmention) {
           note.innerHTML = `<span class="nb-rb-yes">✓ ${esc(theirHost)} shows replies from other sites.</span> Yours can appear under the post (they may approve it first).`;
         } else {
-          note.innerHTML = ytId(it.link) ? `YouTube doesn’t take replies from other sites. Yours will stay on ${esc(host)}. To put the same words under the video, use Comment on YouTube.`
+          note.innerHTML = vsite ? `${esc(vsite.name)} doesn’t take replies from other sites. Yours will stay on ${esc(host)}. To put the same words under the video, use Comment on ${esc(vsite.name)}.`
             : `${esc(theirHost)} doesn’t take replies from other sites. Yours will stay on ${esc(host)}${o?.comments ? ', or you can leave a comment on their post.' : '.'}`;
           if (o?.comments) box.querySelector('.nb-rb-mail').insertAdjacentHTML('beforeend', `<button class="btn" type="button" data-talk="open" data-url="${esc(o.comments)}">Comment on their site</button>`);
         }
@@ -4165,7 +4175,7 @@
       const text = ta.value.trim();
       if (k === 'cancel') { setDraft(dkey, ''); box.innerHTML = ''; renderList(); paintReaderTalk(); return; }
       if (k === 'more') { openReply(e.target, it); return; }
-      if (k === 'yt') { ytComment(it, text); return; }
+      if (k === 'yt') { videoComment(it, text); return; }
       if (k === 'mail') { box.innerHTML = ''; openMailCompose({ to: e.target.dataset.to, toName: f?.title || '', subject: `Re: ${headline(it)}`, body: `${text}\n\n—\nIn reply to “${headline(it)}”\n${it.link}` }); return; }
       if (k === 'site') {
         if (!text) { ta.focus(); status('Write a few words first.'); return; }
@@ -4889,7 +4899,8 @@
         ? `<button type="button" role="menuitem" data-reply-mail="${esc(o.email.address)}" data-subject="${esc(subject)}">${ICON_MAIL}<span>Reply by email<small>to ${esc(o.email.address)}, from ${esc(MAIL.account.address)}</small></span></button>`
         : `<button type="button" role="menuitem" data-reply="${esc(`mailto:${o.email.address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)}">${ICON_MAIL}<span>Reply by email<small>${esc(o.email.address)}</small></span></button>`);
     }
-    if (ytId(it.link)) rows.push(`<button type="button" role="menuitem" data-reply-yt="1" title="${esc(CUES.ytc)}">${ICON_TALK}<span>Comment on YouTube<small>opens the video; its comments are under it</small></span></button>`);
+    const vs = videoSite(it);
+    if (vs) rows.push(`<button type="button" role="menuitem" data-reply-yt="1" title="${esc(CUES.ytc(vs.name))}">${ICON_TALK}<span>Comment on ${esc(vs.name)}<small>opens the video; its comments are under it</small></span></button>`);
     else if (o.comments) rows.push(`<button type="button" role="menuitem" data-reply-web="${esc(o.comments)}">${ICON_TALK}<span>Leave a comment<small>on the post</small></span></button>`);
     // With that network connected, Write back answers from your own account in the app (no website sign-in)
     for (const l of o.social || []) {
@@ -4913,7 +4924,7 @@
     $('replyMenu').hidden = true;
     if (b.dataset.replyYt) {
       const it = item(replyFor), box = it && document.querySelector(`.n-box[data-box="nb:${CSS.escape(it.id)}"] textarea`);
-      return ytComment(it, (box?.value || DRAFTS['nb:' + it?.id]?.text || '').trim());
+      return videoComment(it, (box?.value || DRAFTS['nb:' + it?.id]?.text || '').trim());
     }
     if (b.dataset.replyMail) {
       const it = item(S.readerId);
