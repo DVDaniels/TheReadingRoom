@@ -9,6 +9,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 pub const SUMMARY_CHARS: usize = 700;
+/// A video's description is the story's whole text (the reader shows it under the player), so it's kept longer.
+pub const DESCRIPTION_CHARS: usize = 5000;
 const MAX_BYTES: usize = 8_000_000;
 
 pub struct Fetched {
@@ -119,6 +121,44 @@ pub fn now_iso() -> String {
 
 fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
     cell.get_or_init(|| Regex::new(pat).expect("regex"))
+}
+
+/// A video's description from the feed's media:description (YouTube's feeds have no other text).
+fn media_description(e: &feed_rs::model::Entry) -> String {
+    e.media
+        .iter()
+        .filter_map(|m| m.description.as_ref())
+        .map(|d| {
+            if d.content_type.subty().as_str().eq_ignore_ascii_case("html") {
+                // an HTML description: keep its paragraphs as blank lines
+                static BR: OnceLock<Regex> = OnceLock::new();
+                let t = re(&BR, r"(?i)<br\s*/?>|</p>").replace_all(&d.content, "\n");
+                static TAG: OnceLock<Regex> = OnceLock::new();
+                html_escape::decode_html_entities(&re(&TAG, r"(?s)<[^>]*>").replace_all(&t, "")).to_string()
+            } else {
+                d.content.clone()
+            }
+        })
+        .find(|t| !t.trim().is_empty())
+        .unwrap_or_default()
+}
+
+/// Plain text with its line breaks kept (a video description's lines, chapters and link lists):
+/// spaces tidied within lines, at most one blank line in a row.
+pub fn plain_lines(s: &str, limit: usize) -> String {
+    static SP: OnceLock<Regex> = OnceLock::new();
+    static GAP: OnceLock<Regex> = OnceLock::new();
+    let s = s.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<String> = s.lines().map(|l| re(&SP, r"[ \t\u{a0}]+").replace_all(l, " ").trim().to_string()).collect();
+    let s = re(&GAP, r"\n{3,}").replace_all(&lines.join("\n"), "\n\n").trim().to_string();
+    if s.chars().count() <= limit {
+        return s;
+    }
+    let cut: String = s.chars().take(limit).collect();
+    match cut.rfind(char::is_whitespace) {
+        Some(i) if i > limit / 2 => format!("{}…", cut[..i].trim_end()),
+        _ => format!("{cut}…"),
+    }
 }
 
 /// Turn HTML into a tidy plain-text snippet.
@@ -333,19 +373,24 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
                 (Some(b), false) => b.join(&raw_link).map(|u| u.to_string()).unwrap_or(raw_link.clone()),
                 _ => raw_link.clone(),
             };
-            let body = e
+            let mut body = e
                 .summary
                 .as_ref()
                 .map(|s| s.content.clone())
                 .or_else(|| e.content.as_ref().and_then(|c| c.body.clone()))
                 .unwrap_or_default();
+            // YouTube (and other video feeds) leave those empty and put the description in media:description
+            let described = plain(&body, 10).is_empty() && {
+                body = media_description(e);
+                !body.is_empty()
+            };
             let full = e.content.as_ref().and_then(|c| c.body.clone()).unwrap_or_default();
             let image = story_image(e, &format!("{full} {body}"), base_url.as_ref());
             let audio = story_audio(e);
             let shares = story_shares(&format!("{full} {body}"), &link);
             let links = story_links(&format!("{full} {body}"), &link);
             let paid = looks_paid(&format!("{full} {body}"));
-            let summary = plain(&body, SUMMARY_CHARS);
+            let summary = if described { plain_lines(&body, DESCRIPTION_CHARS) } else { plain(&body, SUMMARY_CHARS) };
             let mut title = e.title.as_ref().map(|t| plain(&t.content, 300)).unwrap_or_default();
             if title.is_empty() {
                 title = if summary.is_empty() { "(untitled)".into() } else { plain(&summary, 90) };
@@ -660,6 +705,54 @@ mod tests {
         assert_eq!(f.items[0].summary, "Hello world & friends.");
         assert_eq!(f.items[0].date, "2026-10-27T10:00:00Z");
         assert_eq!(f.items[0].image, "");
+    }
+
+    #[test]
+    fn youtube_descriptions_become_the_story_text() {
+        // the shape of https://www.youtube.com/feeds/videos.xml?channel_id=…
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <title>Rosa Makes Things</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UC123"/>
+ <entry>
+  <id>yt:video:abcdefghijk</id>
+  <yt:videoId>abcdefghijk</yt:videoId>
+  <title>Building a bookshelf</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=abcdefghijk"/>
+  <published>2026-11-17T15:00:00+00:00</published>
+  <media:group>
+   <media:title>Building a bookshelf</media:title>
+   <media:content url="https://www.youtube.com/v/abcdefghijk?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/abcdefghijk/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Today I build a shelf   from scrap oak.
+
+
+
+Chapters:
+0:00 Intro
+1:23 Cutting &amp; gluing
+
+Tools: https://example.com/tools?a=1&amp;b=2</media:description>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:zyxwvutsrqp</id>
+  <title>A short</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/zyxwvutsrqp"/>
+  <published>2026-11-16T15:00:00+00:00</published>
+  <media:group><media:description></media:description></media:group>
+ </entry>
+</feed>"#;
+        let f = parse(xml, "https://www.youtube.com/feeds/videos.xml?channel_id=UC123").unwrap();
+        assert_eq!(
+            f.items[0].summary,
+            "Today I build a shelf from scrap oak.\n\nChapters:\n0:00 Intro\n1:23 Cutting & gluing\n\nTools: https://example.com/tools?a=1&b=2"
+        );
+        assert_eq!(f.items[0].image, "https://i2.ytimg.com/vi/abcdefghijk/hqdefault.jpg");
+        assert_eq!(f.items[1].summary, "");
+        // a long description is cut at a word, keeping its lines
+        let long = plain_lines(&format!("line one\n{}", "word ".repeat(2000)), DESCRIPTION_CHARS);
+        assert!(long.starts_with("line one\nword") && long.ends_with("word…") && long.chars().count() <= DESCRIPTION_CHARS + 1);
     }
 
     #[test]

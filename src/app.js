@@ -2555,12 +2555,23 @@
       invoke('open_player', { url, title }).then(closeMini).catch(err => status(String(err), true));
     }
   });
+  // A YouTube description (plain text from the feed): paragraphs and line breaks kept, web addresses as links,
+  // chapter times (1:23, 1:02:03) as buttons that start the player above at that point.
+  function videoText(s) {
+    const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]'])/g;
+    const times = t => t.replace(/(^|[\s(\[])((?:\d{1,2}:)?\d{1,2}:\d{2})(?=$|[\s)\].,:\-–—])/g, (m, pre, ts) => {
+      const secs = ts.split(':').reduce((a, n) => a * 60 + Number(n), 0);
+      return `${pre}<button type="button" class="b-link r-ts" data-ts="${secs}" title="${esc(CUES.vtime)}">${ts}</button>`;
+    });
+    const line = l => l.split(URL_RE).map((part, i) => i % 2 ? `<a href="${esc(part)}">${esc(part.replace(/^https?:\/\/(www\.)?/, ''))}</a>` : times(esc(part))).join('');
+    return s.split(/\n{2,}/).map(p => `<p>${p.split('\n').map(line).join('<br>')}</p>`).join('');
+  }
   // Short posts and videos come straight from the feed; their web pages aren't articles.
   function feedOnlyBody(it) {
     const kind = socialKind(it.link), yt = ytId(it.link);
     if (!kind && !yt) return null;
     const pic = !yt && isWeb(it.image) ? `<figure><img src="${esc(it.image)}" alt=""></figure>` : '';
-    const text = it.summary ? `<p class="${kind ? 'r-post' : ''}">${esc(it.summary)}</p>` : '';
+    const text = !it.summary ? '' : yt ? `<div class="r-desc">${videoText(it.summary)}</div>` : `<p class="${kind ? 'r-post' : ''}">${esc(it.summary)}</p>`;
     return `${text}${pic}<p class="note">${kind ? `A post on ${kind}.` : 'A video on YouTube.'} <button class="b-link" id="rOnSite">${kind ? `Open it on ${kind}` : 'Watch on YouTube'}</button></p>`;
   }
 
@@ -3828,6 +3839,7 @@
     mini: 'Back to the story. The video or episode keeps playing here while you browse; × stops it.',
     miniFirst: 'Still playing: it moved to the corner so you can keep browsing. Tap its title to go back to the story.',
     pip: 'Picture in picture: the video floats above everything, even other apps, and keeps playing.',
+    vtime: 'Play the video from this point.',
     offline: 'Saved for offline: this episode or video is on this device and plays without a connection. Finished ones are removed after a week.',
     you: 'You: a post from your own site.',
     friend: 'Close friend: their new posts are pinned to the top of the Neighborhood, and you get an alert when they post. Change it with the Close friend button on their page.',
@@ -5522,6 +5534,12 @@
   $('reader').addEventListener('click', e => {
     const a = e.target.closest('a[href]');
     if (a) { e.preventDefault(); openWeb(a.href); return; }
+    const ts = e.target.closest('[data-ts]');
+    if (ts) { // a chapter time in a video's description: play the video above from there
+      const it = item(S.readerId), id = ytId(it?.link), v = $('rMedia').querySelector('.r-video');
+      if (id && v) { v.innerHTML = ytPlayer(id, it.title, { t: Number(ts.dataset.ts), auto: true }); v.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      return;
+    }
     const m = e.target.closest('mark[data-h]');
     if (m && window.getSelection()?.isCollapsed) { openNoteEditor(Number(m.dataset.h)); return; }
     const j = e.target.closest('[data-jump]');

@@ -2035,3 +2035,7 @@ body:has(#player:not([hidden])) .miniplayer { bottom: calc(env(safe-area-inset-b
 html.ios .miniplayer { right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
 @media (max-width: 600px) { .miniplayer { width: min(250px, 64vw); } .miniplayer.is-audio { left: 12px; width: auto; } }
 .r-pip { font-size: 13px; }
+
+/* a YouTube video's description under its player: chapter times start the player there */
+.r-desc { overflow-wrap: anywhere; }
+.r-desc .r-ts { font: inherit; font-variant-numeric: tabular-nums; padding: 0; }

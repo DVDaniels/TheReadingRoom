@@ -581,6 +581,10 @@ pub fn store_fetch(
             if !it.audio.is_empty() {
                 tx.execute("UPDATE items SET audio=?1 WHERE id=?2 AND COALESCE(audio,'')=''", params![it.audio, id])?;
             }
+            // a video saved before the app read YouTube's descriptions gets its text on the next check
+            if !it.summary.is_empty() {
+                tx.execute("UPDATE items SET summary=?1 WHERE id=?2 AND COALESCE(summary,'')=''", params![it.summary, id])?;
+            }
             if !it.shares.is_empty() {
                 tx.execute("UPDATE items SET shares=?1 WHERE id=?2 AND COALESCE(shares,'')=''", params![it.shares, id])?;
             }
