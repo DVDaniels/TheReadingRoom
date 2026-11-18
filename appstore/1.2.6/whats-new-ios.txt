@@ -1,0 +1,10 @@
+• Videos: a tab of its own for the YouTube channels and video feeds you follow, so they don't crowd Today. Hide it in Settings if you'd rather keep them in Today.
+• Channels your people share: YouTube channels the writers you read keep sharing, ready to follow. Follow a channel from under a video in a post, or paste any YouTube video link into Add feed.
+• Mini player: leave a story while its video or episode plays and it keeps playing in a small box in the corner. Picture in picture for video files.
+• Save for offline: keep a podcast episode or video file on your iPhone or iPad to play without a connection.
+• Comment on YouTube (and Vimeo, Rumble, Odysee, Dailymotion, TikTok): your words are copied and the video opens, ready to paste under it.
+• Your page: a card at the top of Conversations › You opens your own person page.
+• The Reply box now says whether a writer's site shows replies from other blogs, and replies you post on your site are marked as replies.
+• Reposting a video marks it as a repost, the Bluesky copy plays the video, and Repost again works if you removed the first one.
+• YouTube channels whose feed YouTube refuses now load from their Videos page.
+• Email: setting up an account now checks sending too.
