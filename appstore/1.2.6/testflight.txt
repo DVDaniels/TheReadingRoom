@@ -11,7 +11,6 @@ EMAIL
 REPOSTS
 • Reposting a YouTube or Vimeo video now says "Reposted" above the player, so your site shows it as a repost instead of a plain note.
 • Videos: a new Videos tab for the YouTube channels you follow and video podcasts, kept out of Today (hide it in Settings › Appearance to have them back in Today). It shows "Channels your people share": channels whose videos turned up in posts by people you read, with Follow. Under a video in a story there's "Follow <channel>", and pasting a link to any YouTube video into Add feed follows its channel.
-• YouTube videos now show their description under the player, with working links. Tap a chapter time (like 1:23) to play from there. Videos already in the app get theirs at the next refresh.
 • Save for offline: podcast episodes and video files from feeds can be saved to your device and play without a connection (finished ones are removed after a week; Settings › Saved for offline shows the space used). YouTube and Vimeo videos can't be saved.
 • YouTube channels whose feed YouTube won't give out (it answers "not found" for some channels) now work: the app reads the channel's Videos page instead. Members-only videos are marked.
 • "Reposted" now opens a choice: see your repost, or repost it again. If you delete a repost from your site, the button goes back to "Repost".

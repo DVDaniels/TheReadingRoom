@@ -1,5 +1,4 @@
 • Videos: a tab of its own for the YouTube channels and video feeds you follow, so they don't crowd Today. Hide it in Settings if you'd rather keep them in Today.
-• YouTube videos show their description under the player. Tap a chapter time to play from there.
 • Channels your people share: YouTube channels the writers you read keep sharing, ready to follow. Follow a channel from under a video in a post, or paste any YouTube video link into Add feed.
 • Mini player: leave a story while its video or episode plays and it keeps playing in a small box in the corner. Picture in picture for video files, and a video in its own window.
 • Save for offline: keep a podcast episode or video file on your Mac to play without a connection.
