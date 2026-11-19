@@ -3993,7 +3993,11 @@
     const talks = all.filter(talky).length;
     const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each'], ['topics', 'Topics']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`
       + (groupsOf().length ? `<span class="nb-break"></span><div class="nb-seg nb-groups" role="group" aria-label="Groups"><button data-talk="nbgroup" data-g="" aria-pressed="${!grp}">All people</button>${groupsOf().map(g => `<button data-talk="nbgroup" data-g="${esc(g.id)}" aria-pressed="${grp?.id === g.id}">${esc(g.name)}</button>`).join('')}</div>` : '');
-    const opener = nbOpener(posts, soc, x, facesHtml, chips);
+    // Everything unread in this view (close friends at the top included), for Mark all as read up top and at the end
+    const unreadHere = [...pinned, ...list].flatMap(itemsOf).filter(i => !i.read && !isOwn(i.feed_id));
+    SOC.nbUnreadIds = unreadHere.map(i => i.id);
+    const readTop = unreadHere.length > 1 ? `<button class="btn nb-readtop" data-talk="nbreadall">Mark all ${unreadHere.length} as read</button>` : '';
+    const opener = nbOpener(posts, soc, x, facesHtml, chips, readTop);
     const tlabel = topic && (topicCloud(posts).find(c => c.k === topic)?.label || topic);
     const bars = (grp ? `<div class="nb-bar"><span><b>${esc(grp.name)}</b> · ${groupIds(grp).size} ${groupIds(grp).size === 1 ? 'person' : 'people'}</span><button class="linkish" data-talk="grpedit" data-g="${esc(grp.id)}">Rename or delete</button><button class="nb-x sm" data-talk="nbgroup" data-g="" aria-label="Show everyone" title="Show everyone">×</button></div>` : '')
       + (topic ? `<div class="nb-bar"><span>Posts about <b>#${esc(tlabel)}</b></span><button class="linkish" data-talk="topicmute" data-t="${esc(topic)}">Mute this topic</button><button class="nb-x sm" data-talk="topic" data-t="" aria-label="All topics" title="All topics">×</button></div>` : '');
@@ -4025,8 +4029,6 @@
       if (k === Math.min(4, shown.length - 1) && writers.length && !who) body += `<aside class="nb-wbox"><h3>Writers your writers link to</h3><p>Blogs the people you read keep linking to. Follow one to grow your neighborhood.</p>${writers.map(writerRow).join('')}</aside>`;
       if (k === Math.min(9, shown.length - 1) && elsewhere) body += elsewhere;
     });
-    const unreadHere = list.flatMap(e => e.t ? [e.t.root, ...e.t.replies] : e.i ? [e.i] : []).filter(i => !i.read && !isOwn(i.feed_id));
-    SOC.nbUnreadIds = unreadHere.map(i => i.id);
     const readAll = unreadHere.length > 1 ? `<button class="btn nb-readall" data-talk="nbreadall">Mark all ${unreadHere.length} as read</button>` : '';
     const end = readAll + (shown.length < list.length ? `<button class="btn nb-more" data-talk="nbmore">Show more</button>`
       : `<p class="nb-end">${list.length ? 'You’re caught up.' : SOC.nbOnly === 'talk' ? 'No conversations between blogs in the last two weeks yet.' : SOC.nbOnly === 'photos' ? 'No pictures in the last two weeks.' : 'Nothing here in the last two weeks.'}<small>${list.length ? `That’s everything ${who ? `from ${esc(who.title)} ` : ''}from the last two weeks.` : 'When one writer you read links to another’s post or blog, it shows up here.'}</small></p>`);
@@ -4311,7 +4313,7 @@
   }
 
   // "Since you were here": what's new, in a sentence, before you scroll
-  function nbOpener(posts, soc, x, facesHtml = '', chips = '') {
+  function nbOpener(posts, soc, x, facesHtml = '', chips = '', readTop = '') {
     const first = !SOC.nbVisit, cut = first ? Date.now() - 7 * DAY : SOC.nbVisit, mine = myFeed();
     const fresh = posts.filter(i => Date.parse(i.date) > cut && !isOwn(i.feed_id));
     const notes = soc.notes.filter(s => Date.parse(s.n.created_at) > cut);
@@ -4334,9 +4336,9 @@
     const small = (!n && !events.length) || store.get('nbMin') === '1';
     const k = `<div class="nb-open-top"><span class="nb-open-k">${first ? 'This week' : 'Since you were here'}</span>${chips}
       ${n || events.length ? `<button class="nb-min" data-talk="nbmin" title="${small ? 'Show more' : 'Fold away'}" aria-label="${small ? 'Show more' : 'Fold away'}">${small ? '+' : '–'}</button>` : ''}</div>`;
-    if (small) return `<section class="nb-open small">${k}<div class="nb-open-h sm"><span>${head}${events.length ? ` · ${events.length} conversation${events.length === 1 ? '' : 's'}` : ''}</span></div>${store.get('nbMin') === '1' ? '' : facesHtml}</section>`;
+    if (small) return `<section class="nb-open small">${k}<div class="nb-open-h sm"><span>${head}${events.length ? ` · ${events.length} conversation${events.length === 1 ? '' : 's'}` : ''}</span>${readTop}</div>${store.get('nbMin') === '1' ? '' : facesHtml}</section>`;
     return `<section class="nb-open">${k}
-      <div class="nb-open-h"><span>${head}${!n && !first ? '. Here’s the last two weeks.' : ''}</span></div>
+      <div class="nb-open-h"><span>${head}${!n && !first ? '. Here’s the last two weeks.' : ''}</span>${readTop}</div>
       ${facesHtml}
       ${events.length ? `<div class="nb-evs">${events.slice(0, 3).join('')}${events.length > 3 ? `<button class="nb-ev more" data-talk="nbonly" data-k="talk">${events.length - 3} more conversations</button>` : ''}</div>` : ''}
       ${yours ? `<button class="nb-ev mine" data-talk="tab" data-tab="posts">Your posts have ${yours} ${yours === 1 ? 'reply' : 'replies'} on Mastodon and Bluesky</button>` : ''}
