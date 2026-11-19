@@ -2281,13 +2281,21 @@
       <div class="mc-row">${list.map(tile).join('')}</div></section>`;
   }
   // Favorite channels also sit in the sidebar under Videos: one tap opens Videos showing just that channel
+  // Favorite channels fold away under their own heading, like a feed folder (remembered on this device)
+  const favsFolded = () => store.get('vfavFolded') === '1';
   function favChannelNav() {
     if (!videosOn()) return [];
-    return favChannels().map(u => S.feeds.find(f => f.url === u)).filter(Boolean).map(f => {
+    const feeds = favChannels().map(u => S.feeds.find(f => f.url === u)).filter(Boolean);
+    if (!feeds.length) return [];
+    const open = !favsFolded();
+    const unw = open ? 0 : S.items.filter(i => !i.read && isVideoItem(i) && feeds.some(f => f.id === i.feed_id)).length;
+    const head = { view: 'videos', html: `<div class="folder favfold"><button class="chev" type="button" data-vfavfold aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} favorite channels">${ICONS.chev}</button><button class="favhead" type="button" data-vfavfold title="${open ? 'Hide' : 'Show'} your favorite channels"><span class="name">Favorite channels</span><span class="count">${unw ? fmtCount(unw) : ''}</span></button></div>` };
+    if (!open) return [head];
+    return [head, ...feeds.map(f => {
       const n = S.items.filter(i => !i.read && i.feed_id === f.id && isVideoItem(i)).length;
       const on = S.view === 'videos' && String(S.vchan) === String(f.id);
       return { view: 'videos', html: `<button class="navsub" type="button" data-vchanside="${esc(f.id)}" aria-current="${on}" title="${esc(f.title)}: only this channel's videos"><span class="navsub-star" aria-hidden="true">★</span><span class="name">${esc(f.title)}</span><span class="count">${fmtCount(n)}</span></button>` };
-    });
+    })];
   }
   function toggleFavChannel(url) {
     const favs = favChannels(), on = favs.includes(url);
@@ -5629,6 +5637,7 @@
     const chev = e.target.closest('[data-chev]');
     if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
 
+    if (e.target.closest('[data-vfavfold]')) { store.set('vfavFolded', favsFolded() ? '' : '1'); renderRail(); return; }
     const vs = e.target.closest('[data-vchanside]');
     if (vs) { closeReader(true); if (S.view !== 'videos') selectView('videos'); S.vchan = vs.dataset.vchanside; S.shown = 60; render(); $('listView').scrollTo({ top: 0 }); return; }
     const v = e.target.closest('[data-view]');

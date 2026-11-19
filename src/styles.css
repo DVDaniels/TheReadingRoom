@@ -2066,3 +2066,10 @@ html.ios .miniplayer { right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px
 .nav button.navsub .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html.ios .nav button.navsub { padding-left: 46px; }
 @media (min-width: 761px) { body.rail-slim .nav button.navsub { display: none !important; } }
+.nav .favfold { padding-left: 14px; }
+.nav .favfold .favhead { flex: 1; min-width: 0; padding: 5px 10px 5px 4px; font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+.nav .favfold .favhead .count { font-weight: 400; letter-spacing: 0; }
+.nav button.navsub { padding-left: 46px; }
+html.ios .nav .favfold { padding-left: 18px; }
+html.ios .nav button.navsub { padding-left: 58px; }
+@media (min-width: 761px) { body.rail-slim .nav .favfold { display: none !important; } }
