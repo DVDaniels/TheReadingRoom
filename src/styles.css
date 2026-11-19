@@ -2073,3 +2073,7 @@ html.ios .nav button.navsub { padding-left: 46px; }
 html.ios .nav .favfold { padding-left: 18px; }
 html.ios .nav button.navsub { padding-left: 58px; }
 @media (min-width: 761px) { body.rail-slim .nav .favfold { display: none !important; } }
+/* Videos row with favorites: the chevron at its right end folds the favorites into Videos */
+.nav .vidrow > button[data-view] { flex: 1; min-width: 0; padding-left: 10px; }
+.nav .vidrow .chev { margin-right: 2px; }
+html.ios .rail .nav .vidrow > button[data-view] { padding-left: 10px; }

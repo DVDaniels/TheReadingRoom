@@ -11,7 +11,7 @@ NOTES ABOUT A POST, ON BLUESKY AND MASTODON
 
 VIDEOS
 • Your channels: a row at the top of Videos with every channel you follow, its newest video and how many you haven't watched. Tap one to see only its videos; tap it again (or Show every channel) for all.
-• Tap the star on a channel to make it a favorite. Favorites stay first, and also show in the sidebar under Videos, under a Favorite channels heading you can fold away: one tap opens just that channel.
+• Tap the star on a channel to make it a favorite. Favorites stay first, and also show in the sidebar under Videos, under a Favorite channels heading you can fold away. The arrow beside Videos folds them into Videos. One tap opens just that channel.
 • On the Mac, the empty side now says Pick a video to watch it here (and Pick an email in Email).
 • The bar now speaks of watching: Unwatched, All videos, Mark all watched, Search videos. Free to read is gone from Videos.
 
