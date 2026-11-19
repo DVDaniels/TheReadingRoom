@@ -1,9 +1,12 @@
-Thanks for testing The Reading Room! This build (1.2.7) adds YouTube video descriptions. It has everything from 1.2.6 too.
+Thanks for testing The Reading Room! This build (1.2.7) adds YouTube video descriptions and fixes how notes about a post look on Bluesky and Mastodon. It has everything from 1.2.6 too.
 
 YOUTUBE DESCRIPTIONS
 • Open a YouTube video from a channel you follow: its description now shows under the player, with its paragraphs and line breaks.
 • Web addresses in the description are links. Tap one to open it.
 • Tap a chapter time (like 1:23) to play the video from that point.
 • Videos already in the app get their description at the next refresh.
+
+NOTES ABOUT A POST, ON BLUESKY AND MASTODON
+• When you write a note about someone's post and share copies, the copy now shows their post (title, site and picture) instead of a second copy of your own words, with the link to your note underneath.
 
 Please tell us if a description looks wrong, or if tapping a chapter time doesn't start the video where it should (Mac and iPhone/iPad).

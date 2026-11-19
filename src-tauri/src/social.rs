@@ -2305,13 +2305,28 @@ async fn masto_media(bytes: &[u8], alt: &str) -> Result<String, String> {
     Ok(id)
 }
 
+/// The words of a copy, then each link on its own line, shortened to fit `limit`.
+/// `link_cost` is what a link counts as (Mastodon counts every link as 23); None counts its letters.
+fn copy_with_links(text: &str, links: &[&str], limit: usize, link_cost: Option<usize>) -> String {
+    let links: Vec<&str> = links.iter().copied().filter(|l| !l.trim().is_empty()).collect();
+    let used: usize = links.iter().map(|l| link_cost.unwrap_or_else(|| l.chars().count()) + 2).sum();
+    let words = fit(text, limit.saturating_sub(used));
+    std::iter::once(words.as_str()).chain(links.iter().copied()).filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join("\n\n")
+}
+
 /// Share copies of a note you posted on your site: the words (shortened if needed), the photo attached
 /// with its description, and the link home. A note about a video gets the video's picture on its Bluesky
 /// card (still linking home), and on Mastodon the video's address, so its preview shows the video.
+/// A note about someone's post gets that post as its card (Bluesky) or first link (Mastodon), with the
+/// link home to the note in the words.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String, video: Option<String>, video_title: Option<String>) -> Vec<Posted> {
+pub async fn social_share_note(networks: Vec<String>, text: String, link: String, title: String, photo: String, alt: String, video: Option<String>, video_title: Option<String>, about: Option<String>, about_title: Option<String>, about_site: Option<String>, about_image: Option<String>) -> Vec<Posted> {
     let bytes = if photo.is_empty() { None } else { photo_bytes(&photo).ok() };
     let video = note_video(&text, video.as_deref().unwrap_or("")).filter(|v| v != &link);
+    // the post your note is about (not a video, which has its own way): the copy's card shows it,
+    // and the link home to your note goes in the words, so your words aren't shown twice
+    let about = about.map(|a| a.trim().to_string()).filter(|a| a.starts_with("http") && a != &link && video.is_none());
     let thumb = video.as_deref().and_then(video_thumb).or_else(|| video_thumb(&link)).unwrap_or_default();
     // on Mastodon the video's address goes before the link home (the first link makes the preview),
     // unless your words already include it
@@ -2323,8 +2338,8 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
             "bluesky" => async {
                 let s = bsky_session(false).await?;
                 if let Some(b) = &bytes {
-                    let words = fit(&text, if link.is_empty() { 300 } else { 300 - link.chars().count() - 2 });
-                    let full = if link.is_empty() { words } else if words.is_empty() { link.clone() } else { format!("{words}\n\n{link}") };
+                    // a photo takes the place of a card, so the post you wrote about goes in the words too
+                    let full = copy_with_links(&text, &[about.as_deref().unwrap_or(""), &link], 300, None);
                     let up = client()
                         .post(format!("{}/xrpc/com.atproto.repo.uploadBlob", s.pds))
                         .bearer_auth(&s.jwt)
@@ -2352,6 +2367,11 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                         None => video_name(v).await.unwrap_or_default(),
                     };
                     bsky_post(&full, v, &named, "", &thumb).await
+                } else if let Some(a) = about.as_deref() {
+                    // a note about someone's post: the card is their post; the link home to your note goes in the words
+                    let full = copy_with_links(&text, &[&link], 300, None);
+                    let named = about_title.as_deref().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(a);
+                    bsky_post(&full, a, named, about_site.as_deref().unwrap_or("").trim(), about_image.as_deref().unwrap_or("")).await
                 } else {
                     // no photo: the words, and a card for the note on your site
                     let words = fit(&text, 300);
@@ -2360,9 +2380,10 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
             }
             .await,
             "mastodon" => async {
-                let links: Vec<&str> = masto_video.iter().map(String::as_str).chain(Some(link.as_str()).filter(|l| !l.is_empty())).collect();
-                let words = fit(&text, 500 - links.len() * 25); // Mastodon counts every link as 23
-                let status = std::iter::once(words.as_str()).chain(links.iter().copied()).filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
+                // the first link makes the preview: the video, else the post your note is about, then the link home
+                let about_link = about.as_deref().filter(|a| !text.contains(*a));
+                let links: Vec<&str> = masto_video.as_deref().or(about_link).into_iter().chain(Some(link.as_str())).collect();
+                let status = copy_with_links(&text, &links, 500, Some(23)); // Mastodon counts every link as 23
                 let mut body = json!({ "status": status, "visibility": "public" });
                 if let Some(b) = &bytes {
                     // if the server won't take the photo, post the words and link anyway, and say why
@@ -2393,6 +2414,18 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
 #[cfg(test)]
 mod note_tests {
     use super::*;
+    #[test]
+    fn copies_put_each_link_on_its_own_line() {
+        let note = "https://daviddaniels.com/notes/the-faa/";
+        let post = "https://viewfromthewing.com/faa-floppy-disks/";
+        let m = copy_with_links("Title\n\nWords.", &[post, note], 500, Some(23));
+        assert_eq!(m, format!("Title\n\nWords.\n\n{post}\n\n{note}"));
+        assert_eq!(copy_with_links("Hi", &["", note], 300, None), format!("Hi\n\n{note}"));
+        assert_eq!(copy_with_links("", &[note], 300, None), note);
+        let long = "word ".repeat(100);
+        let b = copy_with_links(&long, &[note], 300, None);
+        assert!(b.chars().count() <= 300 && b.ends_with(note), "{b}");
+    }
     #[test]
     fn notes_become_paragraphs_with_links() {
         let h = note_html("Hello <you> & me\nsecond line\n\nSee https://example.com/a?b=1&c=2.");
