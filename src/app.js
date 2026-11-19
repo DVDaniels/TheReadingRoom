@@ -3990,11 +3990,18 @@
     const facesHtml = faces.size > 1 ? `<nav class="nb-faces" aria-label="Who posted in the last three days (a ring means something unread)">${faceList.slice(0, 16).map(({ f, unread }) =>
       `<button class="nb-face${unread ? ' new' : ''}" data-talk="nbwho" data-feed="${esc(f.id)}" aria-pressed="${who?.id === f.id}" title="${esc(f.title)}${unread ? ' · something new you haven’t read' : ' · all read'}">${nbFace(f, 'nb-fav')}<b>${esc(f.title)}</b></button>`).join('')}</nav>
       <p class="nb-faces-key"><i aria-hidden="true"></i>Posted in the last three days · a green ring means something new you haven’t read</p>` : '';
-    const talks = all.filter(talky).length;
+    const talks = all.filter(talky).filter(e => itemsOf(e).some(i => !i.read && !isOwn(i.feed_id))).length; // unread ones only
     const chips = `<div class="nb-seg" role="group" aria-label="Show">${[['', 'Everything'], ['talk', `Conversations${talks ? ` · ${talks}` : ''}`], ['short', 'Notes'], ['photos', 'Photos'], ['long', 'Long reads'], ['each', 'One from each'], ['topics', 'Topics']].map(([k, l]) => `<button data-talk="nbonly" data-k="${k}" aria-pressed="${(SOC.nbOnly || '') === k}">${l}</button>`).join('')}</div>`
       + (groupsOf().length ? `<span class="nb-break"></span><div class="nb-seg nb-groups" role="group" aria-label="Groups"><button data-talk="nbgroup" data-g="" aria-pressed="${!grp}">All people</button>${groupsOf().map(g => `<button data-talk="nbgroup" data-g="${esc(g.id)}" aria-pressed="${grp?.id === g.id}">${esc(g.name)}</button>`).join('')}</div>` : '');
     // Everything unread in this view (close friends at the top included), for Mark all as read up top and at the end
-    const unreadHere = [...pinned, ...list].flatMap(itemsOf).filter(i => !i.read && !isOwn(i.feed_id));
+    let unreadHere = [...pinned, ...list].flatMap(itemsOf).filter(i => !i.read && !isOwn(i.feed_id));
+    // On Everything (no chip, person, group or topic), also take in the rest of what the sidebar's Conversations
+    // count includes: every unread post from your people in the last two weeks, and new answers to your replies
+    if (!SOC.nbOnly && !who && !grp && !topic) {
+      const had = new Set(unreadHere.map(i => i.id));
+      const extra = [...nbUnread(), ...myReplies().flatMap(answersTo)].filter(i => !i.read && !had.has(i.id) && had.add(i.id));
+      unreadHere = unreadHere.concat(extra);
+    }
     SOC.nbUnreadIds = unreadHere.map(i => i.id);
     const readTop = unreadHere.length > 1 ? `<button class="btn nb-readtop" data-talk="nbreadall">Mark all ${unreadHere.length} as read</button>` : '';
     const opener = nbOpener(posts, soc, x, facesHtml, chips, readTop);
