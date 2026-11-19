@@ -538,6 +538,10 @@
       bar.hidden = false;
       bar.innerHTML = `<button class="btn" data-export="all">${IOS ? 'Share all highlights' : 'Export all highlights'}</button>`;
       if ($('banner').dataset.kind === 'feed-error') hideBanner();
+    } else if (S.view === 'recent' && S.items.some(i => i.read_at)) {
+      bar.hidden = false;
+      bar.innerHTML = `<button class="btn" data-roundup>Make a roundup of your week</button><span class="note">Your favorites, a line each, for your site or an email</span>`;
+      if ($('banner').dataset.kind === 'feed-error') hideBanner();
     } else if (S.view === 'people') {
       bar.hidden = false;
       const n = S.feeds.filter(f => kindOf(f) === 'person').length;
@@ -790,6 +794,8 @@
     if (isHome()) {
       const hlWeek = S.highlights.filter(h => h.created_at && Date.now() - new Date(h.created_at).getTime() < 7 * DAY).length;
       if (hlWeek) statsHtml = `<p class="b-stats"><button class="b-link" data-view="annotated">${hlWeek} ${hlWeek === 1 ? 'passage' : 'passages'}</button> highlighted this week.</p>`;
+      const readWeek = S.items.filter(i => i.read_at && Date.now() - Date.parse(i.read_at) < 7 * DAY && isWeb(i.link) && !isEmailItem(i)).length;
+      if (readWeek >= 3) statsHtml += `<p class="b-stats">${readWeek} posts read this week. <button class="b-link" data-roundup>Make a roundup</button> to pass the best ones on.</p>`;
     }
     const peopleHtml = peopleShown.length ? `<div class="b-people"><h3 class="b-sub">From people you read</h3><div class="b-pgrid">${peopleShown.map(i => {
         const f = feedById(i.feed_id);
@@ -5280,7 +5286,7 @@
     const box = $('rNotes');
     box.hidden = !mine.length;
     box.innerHTML = mine.length ? `<div class="notes-head"><h2>Your highlights and notes</h2><button class="linkish" type="button" data-export="story">${IOS ? 'Share' : 'Export'}</button></div>` + mine.map(h =>
-      `<div class="quote" data-jump="${h.id}"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}</div>`).join('') : '';
+      `<div class="quote" data-jump="${h.id}"><q>${esc(h.text)}</q>${h.note ? `<span class="note-text">${esc(h.note)}</span>` : ''}<button class="linkish qc-btn" type="button" data-qcard="${h.id}" title="Make a picture of this passage to share">Quote card</button></div>`).join('') : '';
   }
 
   function hidePops() {
@@ -5338,6 +5344,9 @@
   }
   $('selHighlight').onclick = () => saveHighlight(false);
   $('selNote').onclick = () => saveHighlight(true);
+  const cardFromSel = () => { const t = pending?.text?.trim(), it = item(S.readerId); $('selPop').hidden = true; pending = null; if (t && it) openQuoteCard(t.length > 600 ? t.slice(0, 590).replace(/\s+\S*$/, '') + '…' : t, it); };
+  $('selCard').onclick = cardFromSel;
+  $('selCard').addEventListener('touchstart', e => { e.preventDefault(); cardFromSel(); }, { passive: false });
   // A tap would clear the selection before the click arrives, so act on the touch itself.
   for (const [id, note] of [['selHighlight', false], ['selNote', true]]) {
     $(id).addEventListener('touchstart', e => { e.preventDefault(); saveHighlight(note); }, { passive: false });
@@ -5395,6 +5404,162 @@
     if (b.dataset.export === 'story') { const it = item(S.readerId); if (it) exportText(`Highlights – ${it.title}`, storyMarkdown(it)); }
     else exportText('Highlights', allMarkdown());
   });
+
+  // ---- Quote cards: a passage as a picture, with who wrote it and where, to send in WhatsApp, Messages, Instagram…
+  const CARD_LOOK = {
+    paper: { bg: '#F7F2E8', ink: '#1F1B16', muted: '#6B645A', accent: '#127A62', line: '#DDD4C4' },
+    night: { bg: '#13201C', ink: '#F1EEE6', muted: '#A9B3AE', accent: '#3CC39E', line: '#2C3D37' },
+  };
+  const cardWriter = it => (!isEmailItem(it) && (it.byline || '').trim()) || srcLabel(it) || hostOfU(it.link);
+  function wrapLines(ctx, text, maxW) {
+    const out = [];
+    for (const para of text.split(/\n+/)) {
+      let line = '';
+      for (const w of para.split(/\s+/).filter(Boolean)) {
+        const t = line ? line + ' ' + w : w;
+        if (ctx.measureText(t).width <= maxW || !line) line = t; else { out.push(line); line = w; }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+  const fitOne = (ctx, t, maxW) => { if (ctx.measureText(t).width <= maxW) return t; let s = [...t]; while (s.length && ctx.measureText(s.join('') + '…').width > maxW) s.pop(); return s.join('').trimEnd() + '…'; };
+  async function drawQuoteCard(text, it, look = 'paper') {
+    const W = 1080, H = 1350, P = 96, c = CARD_LOOK[look] || CARD_LOOK.paper;
+    try { await Promise.all(['400 60px Newsreader', 'italic 400 32px Newsreader', '600 40px Geist', '400 30px Geist', '500 26px Geist'].map(f => document.fonts.load(f))); } catch {}
+    const cv = Object.assign(document.createElement('canvas'), { width: W, height: H }), ctx = cv.getContext('2d');
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = c.accent; ctx.fillRect(0, 0, W, 14);
+    ctx.textBaseline = 'alphabetic';
+    // the big opening quote mark
+    ctx.fillStyle = c.accent; ctx.font = '400 220px Newsreader'; ctx.fillText('“', P - 12, 290);
+    // the passage: as large as fits
+    const words = text.replace(/\s+/g, ' ').trim().replace(/^[“"']+|[”"']+$/g, '');
+    const top = 320, bottom = H - 430, maxW = W - P * 2;
+    let size = 84, lines, lh;
+    for (; size >= 30; size -= 2) {
+      ctx.font = `400 ${size}px Newsreader`; lh = Math.round(size * 1.32);
+      lines = wrapLines(ctx, words, maxW);
+      if (lines.length * lh <= bottom - top) break;
+    }
+    if (size < 30) { size = 30; lh = 40; ctx.font = '400 30px Newsreader'; lines = wrapLines(ctx, words, maxW); const n = Math.floor((bottom - top) / lh); if (lines.length > n) { lines = lines.slice(0, n); lines[n - 1] = fitOne(ctx, lines[n - 1] + ' …', maxW); } }
+    const last = lines.length - 1; lines[last] = lines[last] + '”';
+    ctx.fillStyle = c.ink;
+    let y = top + Math.max(0, ((bottom - top) - lines.length * lh) / 2) + size;
+    for (const l of lines) { ctx.fillText(l, P, y); y += lh; }
+    // who wrote it, the post, and where it lives
+    ctx.fillStyle = c.ink; ctx.font = '600 40px Geist'; ctx.fillText(fitOne(ctx, '— ' + cardWriter(it), maxW), P, H - 300);
+    ctx.fillStyle = c.muted; ctx.font = 'italic 400 34px Newsreader'; ctx.fillText(fitOne(ctx, headline(it), maxW), P, H - 246);
+    ctx.font = '400 30px Geist'; ctx.fillText(fitOne(ctx, hostOfU(it.link), maxW), P, H - 198);
+    ctx.fillStyle = c.line; ctx.fillRect(P, H - 140, maxW, 2);
+    ctx.font = '500 26px Geist'; ctx.fillStyle = c.muted; ctx.fillText('Found in The Reading Room', P, H - 86);
+    ctx.textAlign = 'right'; ctx.fillText('readingroomapp.com', W - P, H - 86); ctx.textAlign = 'left';
+    return cv;
+  }
+  async function openQuoteCard(text, it) {
+    if (!it || !text.trim()) return;
+    hidePops(); window.getSelection()?.removeAllRanges();
+    let look = store.get('cardLook') === 'night' ? 'night' : 'paper', cv = null;
+    const el = sheet('cardPanel', `<h2>Quote card</h2>
+      <p>A picture of the passage, with who wrote it and where. Send it with the link so people can read the whole post.</p>
+      <div class="qc-wrap"><img id="qcImg" alt=""></div>
+      <div class="row qc-looks"><div class="seg" id="qcLook"><button type="button" data-look="paper">Paper</button><button type="button" data-look="night">Night</button></div></div>
+      <p class="acct-note" id="qcNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="qcClose">Close</button><button class="btn" type="button" id="qcLink">Copy link</button>
+        ${IOS ? '<button class="btn primary" type="button" id="qcShare">Share…</button>' : '<button class="btn" type="button" id="qcCopy">Copy picture</button><button class="btn primary" type="button" id="qcSave">Save picture…</button>'}</div>`, 'Quote card');
+    const say = (t, err) => { $('qcNote').textContent = t; $('qcNote').classList.toggle('err', !!err); };
+    const paint = async () => {
+      el.querySelectorAll('[data-look]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.look === look)));
+      cv = await drawQuoteCard(text, it, look); $('qcImg').src = cv.toDataURL('image/png');
+      $('qcImg').alt = `“${clipT(text, 200)}” — ${cardWriter(it)}, ${hostOfU(it.link)}`;
+    };
+    const blob = () => new Promise(r => cv.toBlob(r, 'image/png'));
+    const fname = () => `Quote – ${cardWriter(it)}`.replace(/[\\/:*?"<>|]/g, '').slice(0, 70);
+    $('qcLook').onclick = e => { const b = e.target.closest('[data-look]'); if (!b) return; look = b.dataset.look; store.set('cardLook', look); paint(); };
+    $('qcClose').onclick = () => { el.hidden = true; };
+    $('qcLink').onclick = async () => { try { await navigator.clipboard.writeText(it.link); say('Link copied. Paste it after the picture.'); } catch { say(`The link is ${it.link}`); } };
+    if ($('qcShare')) $('qcShare').onclick = async () => {
+      const file = new File([await blob()], fname() + '.png', { type: 'image/png' });
+      const data = { files: [file], text: `${headline(it)} ${it.link}` };
+      if (navigator.canShare?.(data)) { try { await navigator.share(data); } catch (e) { if (e?.name !== 'AbortError') say(msg(e), true); } }
+      else say('Touch and hold the picture to save or share it, then send the link with it.');
+    };
+    if ($('qcCopy')) $('qcCopy').onclick = async () => {
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob() })]); say('Picture copied. Paste it into WhatsApp, Messages or anywhere else.'); }
+      catch { say('Couldn’t copy the picture here. Use Save picture… instead.', true); }
+    };
+    if ($('qcSave')) $('qcSave').onclick = async () => {
+      try { if (await invoke('save_image', { name: fname(), data: cv.toDataURL('image/png') })) say('Saved.'); } catch (e) { say(msg(e), true); }
+    };
+    await paint();
+  }
+
+  // ---- What I read this week: a roundup of your favorites, each with a line, for your site or an email
+  function roundupPicks() {
+    const since = Date.now() - 7 * DAY, recent = d => d && Date.parse(d) >= since;
+    const hl = new Map(); for (const h of S.highlights) if (!hl.has(h.item_id)) hl.set(h.item_id, h);
+    return S.items.filter(i => isWeb(i.link) && !isEmailItem(i) && !isOwn(i.feed_id) && (recent(i.read_at) || (i.saved && recent(i.date)) || (hl.has(i.id) && recent(hl.get(i.id).created_at))))
+      .map(i => ({ it: i, hl: hl.get(i.id), score: (hl.has(i.id) ? 3 : 0) + (i.saved ? 2 : 0) + (i.read_at ? 1 : 0) }))
+      .sort((a, b) => b.score - a.score || (b.it.read_at || b.it.date || '').localeCompare(a.it.read_at || a.it.date || ''))
+      .slice(0, 30);
+  }
+  function openRoundup() {
+    const picks = roundupPicks(), wp = SOC.accounts.wordpress;
+    if (!picks.length) { status('Nothing read this week yet. Read, save or highlight a few posts, then make your roundup.'); return; }
+    const on = new Set(picks.filter(p => p.score >= 2).slice(0, 7).map(p => p.it.id));
+    for (const p of picks) if (on.size < Math.min(5, picks.length)) on.add(p.it.id);
+    const hasHl = picks.some(p => p.hl);
+    const el = sheet('roundupPanel', `<h2>What I read this week</h2>
+      <p>Pick your favorites and add a line about each. Every writer you link to gets a nod: sites that take Webmentions hear about it.</p>
+      <input class="n-field n-title" id="ruTitle" type="text" maxlength="200" value="What I read this week" autocomplete="off">
+      <textarea id="ruIntro" rows="2" placeholder="A few words to start (optional)"></textarea>
+      <div class="ru-list" id="ruList">${picks.map(p => `<div class="ru-item${on.has(p.it.id) ? ' on' : ''}" data-ru="${esc(p.it.id)}">
+        <label class="ru-row"><input type="checkbox"${on.has(p.it.id) ? ' checked' : ''}><span><b>${esc(headline(p.it))}</b><small>${esc(cardWriter(p.it))} · ${esc(hostOfU(p.it.link))}${p.hl ? ' · highlighted' : p.it.saved ? ' · saved' : ''}</small></span></label>
+        <input class="n-field ru-why" type="text" maxlength="280" placeholder="Why it’s worth reading (optional)"></div>`).join('')}</div>
+      ${hasHl ? '<label class="c-net"><input type="checkbox" id="ruQuotes" checked>Add my highlight from each, as a quote</label>' : ''}
+      <p class="acct-note" id="ruNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="ruCancel">Cancel</button><button class="btn" type="button" id="ruCopy">${IOS ? 'Share…' : 'Copy'}</button><button class="btn" type="button" id="ruEmail">Email</button>
+        ${wp ? '<button class="btn" type="button" id="ruDraft">Save as draft</button><button class="btn primary" type="button" id="ruPost">Post to your site</button>' : ''}</div>`, 'What I read this week');
+    const say = (t, err) => { $('ruNote').textContent = t; $('ruNote').classList.toggle('err', !!err); };
+    const chosen = () => [...el.querySelectorAll('.ru-item')].filter(r => r.querySelector('input[type=checkbox]').checked).map(r => ({ p: picks.find(p => String(p.it.id) === r.dataset.ru), why: r.querySelector('.ru-why').value.trim() })).filter(x => x.p);
+    const quotesOn = () => !!$('ruQuotes')?.checked;
+    const label = t => { t = t.replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim(); return [...t].length > 78 ? [...t].slice(0, 77).join('').trimEnd() + '…' : t; };
+    // for your site: [Title](link) lines become links (and Webmentions); "> " lines become quotes
+    const asNote = () => [$('ruIntro').value.trim(), ...chosen().map(({ p, why }) => [`[${label(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}`,
+      quotesOn() && p.hl ? '> ' + p.hl.text.replace(/\s+/g, ' ').trim() : ''].filter(Boolean).join('\n\n'))].filter(Boolean).join('\n\n');
+    const asText = () => [$('ruTitle').value.trim(), $('ruIntro').value.trim(), ...chosen().map(({ p, why }) => [`${headline(p.it)} — ${cardWriter(p.it)}`, p.it.link, why, quotesOn() && p.hl ? `“${p.hl.text.replace(/\s+/g, ' ').trim()}”` : ''].filter(Boolean).join('\n'))].filter(Boolean).join('\n\n');
+    const count = () => {
+      const n = chosen().length;
+      el.querySelectorAll('.ru-item').forEach(r => r.classList.toggle('on', r.querySelector('input[type=checkbox]').checked));
+      for (const id of ['ruPost', 'ruDraft', 'ruEmail', 'ruCopy']) if ($(id)) $(id).disabled = !n;
+      say(n ? `${n} ${n === 1 ? 'post' : 'posts'} in your roundup.` : 'Pick at least one post.');
+    };
+    el.querySelector('#ruList').addEventListener('change', count);
+    $('ruCancel').onclick = () => { el.hidden = true; };
+    $('ruCopy').onclick = async () => {
+      const t = asText();
+      if (IOS && navigator.share) { try { await navigator.share({ title: $('ruTitle').value.trim(), text: t }); } catch (e) { if (e?.name !== 'AbortError') say(msg(e), true); } return; }
+      try { await navigator.clipboard.writeText(t); say('Copied. Paste it anywhere: a newsletter, a message, a post.'); } catch { say('Couldn’t copy it here.', true); }
+    };
+    $('ruEmail').onclick = async () => {
+      const subject = $('ruTitle').value.trim() || 'What I read this week', body = asText().replace(/^[^\n]*\n\n/, '');
+      if (MAIL.account) { el.hidden = true; openMailCompose({ to: '', subject, body }); }
+      else { try { await invoke('open_external', { url: `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}` }); } catch (e) { say(msg(e), true); } }
+    };
+    const post = async draft => {
+      $('ruPost').disabled = $('ruDraft').disabled = true;
+      say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
+      try {
+        const r = await invoke('site_note', { title: $('ruTitle').value.trim(), text: asNote(), link: '', linkTitle: '', photo: '', alt: '', draft, linkImage: '', linkSite: '' });
+        el.hidden = true;
+        status(draft ? 'Saved your roundup as a draft on your site. Finish it in WordPress whenever you like.' : `Posted your roundup to ${wp.site.replace(/^https?:\/\//, '')}.`);
+        if (!draft && r?.url) store.set('roundupAt', new Date().toISOString());
+      } catch (e) { say(msg(e), true); $('ruPost').disabled = $('ruDraft').disabled = false; }
+    };
+    if ($('ruPost')) { $('ruPost').onclick = () => post(false); $('ruDraft').onclick = () => post(true); }
+    count();
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-roundup]')) openRoundup(); });
 
   // ---- Listen: read the article aloud
   // iPhone and iPad use the app's native speech (keeps playing with the screen locked, Lock Screen controls);
@@ -5630,6 +5795,8 @@
     }
     const m = e.target.closest('mark[data-h]');
     if (m && window.getSelection()?.isCollapsed) { openNoteEditor(Number(m.dataset.h)); return; }
+    const qc = e.target.closest('[data-qcard]');
+    if (qc) { const h = S.highlights.find(x => String(x.id) === qc.dataset.qcard); if (h) openQuoteCard(h.text, item(S.readerId)); return; }
     const j = e.target.closest('[data-jump]');
     if (j) $('rBody').querySelector(`mark[data-h="${j.dataset.jump}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });

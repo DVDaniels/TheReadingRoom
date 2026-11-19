@@ -325,6 +325,22 @@ html[data-theme="sepia"] #viewTitle .sun { color: #D99A00; }
 .quote { border-left: 3px solid var(--mark); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 4px; }
 .quote q { font-family: var(--font-read); font-size: 16px; quotes: "“" "”"; cursor: pointer; }
 .quote .note-text { font-size: 13px; color: var(--muted); }
+.quote .qc-btn { align-self: flex-start; font-size: 12px; color: var(--muted); }
+/* Quote cards */
+.qc-wrap { display: flex; justify-content: center; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.qc-wrap img { width: min(300px, 100%); aspect-ratio: 4 / 5; border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18); -webkit-touch-callout: default; }
+.qc-looks { justify-content: center; }
+/* What I read this week */
+.ru-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+.ru-item { padding: 8px 10px; border-radius: 8px; }
+.ru-item.on { background: var(--accent-soft); }
+.ru-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.ru-row input { margin-top: 3px; flex: none; }
+.ru-row span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ru-row b { font-weight: 600; font-size: 14px; line-height: 1.35; }
+.ru-row small { color: var(--muted); font-size: 12px; }
+.ru-item .ru-why { display: none; margin: 8px 0 2px 24px; width: calc(100% - 24px); }
+.ru-item.on .ru-why { display: block; }
 .story .quotes { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 
 /* Sync */

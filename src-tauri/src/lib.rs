@@ -2030,6 +2030,28 @@ async fn save_text(app: AppHandle, name: String, text: String) -> Result<bool, S
     Ok(true)
 }
 
+/// Save a picture the app made (a quote card, PNG) to a file you choose. Mac only; iPhone uses the share sheet.
+#[tauri::command]
+async fn save_image(app: AppHandle, name: String, data: String) -> Result<bool, String> {
+    use base64::Engine;
+    let b64 = data.split_once(',').map(|(_, b)| b).unwrap_or(&data);
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| "Couldn't make the picture.".to_string())?;
+    let name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).take(80).collect();
+    let Some(file) = app
+        .dialog()
+        .file()
+        .set_title("Save picture")
+        .set_file_name(if name.trim().is_empty() { "Quote.png".to_string() } else { format!("{}.png", name.trim()) })
+        .add_filter("PNG picture", &["png"])
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    let path = file.into_path().map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+    std::fs::write(&path, bytes).map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+    Ok(true)
+}
+
 #[tauri::command]
 async fn export_opml(app: AppHandle, state: State<'_, Shared>) -> Result<bool, String> {
     let text = {
@@ -2425,6 +2447,7 @@ pub fn run() {
             list_pending,
             list_unfollow,
             save_text,
+            save_image,
             take_open_link
         ])
         .build(tauri::generate_context!())
