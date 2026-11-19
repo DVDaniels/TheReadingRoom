@@ -494,6 +494,7 @@
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('fFree').setAttribute('aria-pressed', String(!!S.freeOnly));
     const onVid = S.view === 'videos';
+    { const t = $('readerEmptyT'); if (t) t.textContent = onVid ? 'Pick a video to watch it here' : onMail ? 'Pick an email to read it here' : 'Pick a story to read it here'; }
     $('fFree').hidden = onMail || onVid; // nothing to pay for in Videos
     // Videos speaks of watching: Unwatched first, then All; Mark all watched
     $('fUnread').textContent = onVid ? 'Unwatched' : 'Unread';
