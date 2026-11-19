@@ -896,7 +896,8 @@
   function status(text, err) {
     const el = $('status'); el.textContent = text || ''; el.classList.toggle('err', !!err);
     clearTimeout(statusTimer);
-    if (text && !err) statusTimer = setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 6000);
+    if (text) statusTimer = setTimeout(() => { if (el.textContent === text) { el.textContent = ''; el.classList.remove('err'); } }, err ? 20000 : 6000);
+    el.title = text && err ? 'Click to clear' : '';
   }
   function showBanner(html, err, kind = 'feed-error') { const b = $('banner'); b.hidden = false; b.className = 'banner' + (err ? ' err' : ''); b.dataset.kind = kind; b.innerHTML = html; }
   function hideBanner() { const b = $('banner'); b.hidden = true; b.dataset.kind = ''; }
@@ -5684,6 +5685,7 @@
   let qt; $('q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.shown = 60; searchOlder(); renderList(); }, 150); });
   $('refresh').onclick = refresh;
 
+  $('status').onclick = () => { if ($('status').classList.contains('err')) status(''); };
   $('markAll').onclick = () => {
     const ids = visible().filter(i => !i.read).map(i => i.id);
     if (!ids.length) { status('Nothing unread here.'); return; }

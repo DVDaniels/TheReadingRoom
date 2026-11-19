@@ -1302,11 +1302,10 @@ pub async fn social_follow(network: String, person: String) -> Result<(), String
         let record = json!({ "$type": "app.bsky.graph.follow", "subject": person, "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
         bsky(false, "com.atproto.repo.createRecord", &[], Some(json!({ "repo": s.did, "collection": "app.bsky.graph.follow", "record": record }))).await.map(|_| ())
     } else {
-        masto(reqwest::Method::POST, &format!("/api/v1/accounts/{person}/follow"), &[], Some(json!({}))).await.map(|_| ()).map_err(|e| {
-            if e.contains("403") || e.to_lowercase().contains("scope") || e.contains("signed the app out") {
-                "Following needs a newer permission. Disconnect Mastodon and connect it again (Mastodon & Bluesky in the sidebar), then try once more.".into()
-            } else { e }
-        })
+        match masto(reqwest::Method::POST, &format!("/api/v1/accounts/{person}/follow"), &[], Some(json!({}))).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(masto_refused(e, "write:follows", "Following", "follow them").await),
+        }
     }
 }
 
@@ -1876,11 +1875,34 @@ pub async fn social_like(network: String, id: String, cid: String, on: bool, lik
         return Ok(String::new());
     }
     let path = format!("/api/v1/statuses/{id}/{}", if on { "favourite" } else { "unfavourite" });
-    masto(reqwest::Method::POST, &path, &[], Some(json!({}))).await.map(|_| String::new()).map_err(|e| {
-        if e.contains("403") || e.to_lowercase().contains("scope") {
-            "Favoriting needs a newer permission. Disconnect Mastodon and connect it again, then try once more.".into()
-        } else { e }
-    })
+    match masto(reqwest::Method::POST, &path, &[], Some(json!({}))).await {
+        Ok(_) => Ok(String::new()),
+        Err(e) => Err(masto_refused(e, "write:favourites", "Favoriting", "favorite that post").await),
+    }
+}
+
+/// What the app's Mastodon sign-in is allowed to do, as your server lists it (Mastodon 4.3 and later;
+/// None when the server doesn't say).
+async fn masto_scopes() -> Option<Vec<String>> {
+    let v = masto(reqwest::Method::GET, "/api/v1/apps/verify_credentials", &[], None).await.ok()?;
+    let list = v.get("scopes")?.as_array()?;
+    Some(list.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+}
+
+/// When Mastodon turns down an action: say "connect again" only if the sign-in really lacks the permission
+/// (or the server said so); otherwise pass on what the server said, so reconnecting isn't suggested in vain.
+async fn masto_refused(e: String, scope: &str, doing: &str, what: &str) -> String {
+    if e.contains("signed the app out") { return e; }
+    let parent = scope.split(':').next().unwrap_or("write");
+    let lacks = match masto_scopes().await {
+        Some(have) => !have.iter().any(|h| h == scope || h == parent),
+        None => e.to_lowercase().contains("outside the authorized scopes"),
+    };
+    if lacks {
+        format!("{doing} needs a newer permission. Disconnect Mastodon and connect it again (Mastodon & Bluesky in the sidebar), then try once more.")
+    } else {
+        format!("Your Mastodon server wouldn't {what}. {e}")
+    }
 }
 
 /// Your picture from your WordPress profile (WordPress uses Gravatar), larger than WordPress's own 96 px.

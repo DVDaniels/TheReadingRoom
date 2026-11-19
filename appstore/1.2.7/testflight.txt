@@ -10,3 +10,8 @@ NOTES ABOUT A POST, ON BLUESKY AND MASTODON
 • When you write a note about someone's post and share copies, the copy now shows their post (title, site and picture) instead of a second copy of your own words, with the link to your note underneath.
 
 Please tell us if a description looks wrong, or if tapping a chapter time doesn't start the video where it should (Mac and iPhone/iPad).
+
+CONVERSATIONS
+• Mark all as read is now at the top, next to Since you were here. On Everything it clears the Conversations number in the sidebar.
+• The Conversations chip counts only conversations you haven't read.
+• If Mastodon won't favorite or follow, the app now says why, and only asks you to reconnect when the permission is really missing. Tap a red message to clear it.
