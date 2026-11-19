@@ -359,13 +359,14 @@
       return `<button class="grp" type="button" data-group="${id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${name}">`
         + `<span class="grp-chev">${ICONS.chev}</span><span class="grp-name">${name}</span>`
         + `<span class="count">${open || !total ? '' : fmtCount(total)}</span></button>`
-        + shown.map(it => navButton(it.view, it.label, it.count, { icon: it.icon })).join('');
+        + shown.map(it => it.html || navButton(it.view, it.label, it.count, { icon: it.icon })).join('');
     };
     $('views').innerHTML =
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
         { view: 'videos', label: 'Videos', count: unreadIn('videos'), icon: ICONS.videos },
+        ...favChannelNav(),
         { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
         { view: 'email', label: 'Email', count: unreadIn('email'), icon: ICONS.email }]) +
       '<hr class="nav-gap">' +
@@ -2279,13 +2280,22 @@
     return `<section class="mychans"><div class="mc-head"><h3>Your channels</h3><span class="note" title="${esc(CUES.favchan)}">${favs.length ? 'Your favorites come first.' : 'Tap ☆ to make a channel a favorite. Favorites come first.'}</span>${cur ? `<button class="linkish" type="button" data-vchan="">Show every channel</button>` : ''}</div>
       <div class="mc-row">${list.map(tile).join('')}</div></section>`;
   }
+  // Favorite channels also sit in the sidebar under Videos: one tap opens Videos showing just that channel
+  function favChannelNav() {
+    if (!videosOn()) return [];
+    return favChannels().map(u => S.feeds.find(f => f.url === u)).filter(Boolean).map(f => {
+      const n = S.items.filter(i => !i.read && i.feed_id === f.id && isVideoItem(i)).length;
+      const on = S.view === 'videos' && String(S.vchan) === String(f.id);
+      return { view: 'videos', html: `<button class="navsub" type="button" data-vchanside="${esc(f.id)}" aria-current="${on}" title="${esc(f.title)}: only this channel's videos"><span class="navsub-star" aria-hidden="true">★</span><span class="name">${esc(f.title)}</span><span class="count">${fmtCount(n)}</span></button>` };
+    });
+  }
   function toggleFavChannel(url) {
     const favs = favChannels(), on = favs.includes(url);
     S.prefs.favChannels = on ? favs.filter(u => u !== url) : [...favs, url];
     savePrefs();
     const f = S.feeds.find(x => x.url === url);
-    status(on ? `${f?.title || 'That channel'} is no longer a favorite.` : `${f?.title || 'That channel'} is a favorite. It stays first in Your channels.`);
-    renderList();
+    status(on ? `${f?.title || 'That channel'} is no longer a favorite.` : `${f?.title || 'That channel'} is a favorite. It stays first in Your channels and in the sidebar under Videos.`);
+    renderList(); renderRail();
   }
   // a shared video plays in a small window over the list
   function playShared(id) {
@@ -2314,7 +2324,7 @@
     const f = e.target.closest('[data-vfollow]'); if (f) { e.preventDefault(); followChannel(f); return; }
     const p = e.target.closest('[data-vplay]'); if (p) { e.preventDefault(); playShared(p.dataset.vplay); return; }
     const st = e.target.closest('[data-vfav]'); if (st) { e.preventDefault(); toggleFavChannel(st.dataset.vfav); return; }
-    const ch = e.target.closest('[data-vchan]'); if (ch) { e.preventDefault(); const v = ch.dataset.vchan; S.vchan = v && String(S.vchan) !== v ? v : null; S.shown = 60; renderHead(); renderList(); $('listView').scrollTo({ top: 0 }); }
+    const ch = e.target.closest('[data-vchan]'); if (ch) { e.preventDefault(); const v = ch.dataset.vchan; S.vchan = v && String(S.vchan) !== v ? v : null; S.shown = 60; renderRail(); renderHead(); renderList(); $('listView').scrollTo({ top: 0 }); }
   });
 
   function discoverHtml() {
@@ -5619,6 +5629,8 @@
     const chev = e.target.closest('[data-chev]');
     if (chev) { const id = Number(chev.dataset.chev); collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); saveCollapsed(); renderRail(); return; }
 
+    const vs = e.target.closest('[data-vchanside]');
+    if (vs) { closeReader(true); if (S.view !== 'videos') selectView('videos'); S.vchan = vs.dataset.vchanside; S.shown = 60; render(); $('listView').scrollTo({ top: 0 }); return; }
     const v = e.target.closest('[data-view]');
     if (v) { closeReader(true); selectView(v.dataset.view); return; }
     if (e.target.closest('[data-guide-posse]')) { closeReader(true); selectView('guide'); setTimeout(() => document.getElementById('g-posse')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80); return; }

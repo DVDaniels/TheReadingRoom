@@ -2059,3 +2059,10 @@ html.ios .miniplayer { right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px
 .r-desc .r-ts { font: inherit; font-variant-numeric: tabular-nums; padding: 0; }
 
 #status.err { cursor: pointer; }
+
+/* favorite channels under Videos in the sidebar */
+.nav button.navsub { padding: 5px 10px 5px 38px; font-size: 13px; gap: 6px; }
+.nav button.navsub .navsub-star { color: #c58a00; font-size: 11px; flex: none; }
+.nav button.navsub .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.ios .nav button.navsub { padding-left: 46px; }
+@media (min-width: 761px) { body.rail-slim .nav button.navsub { display: none !important; } }
