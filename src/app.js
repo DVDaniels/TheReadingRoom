@@ -300,7 +300,8 @@
     S.hiddenMuted = 0;
     if (mutesApply()) { const before = list.length; list = list.filter(i => !isMuted(i)); S.hiddenMuted = before - list.length; }
     if (S.unreadOnly && usesUnreadFilter()) list = list.filter(i => !i.read || S.keep.has(i.id));
-    if (S.freeOnly && usesUnreadFilter() && S.view !== 'email') list = list.filter(i => !paywall(i) || S.keep.has(i.id));
+    if (S.freeOnly && usesUnreadFilter() && S.view !== 'email' && S.view !== 'videos') list = list.filter(i => !paywall(i) || S.keep.has(i.id));
+    if (S.view === 'videos' && S.vchan) list = list.filter(i => String(i.feed_id) === String(S.vchan));
     if (S.q) { const q = S.q.toLowerCase(); list = list.filter(i => (i.title + ' ' + i.summary).toLowerCase().includes(q)); }
     if (S.view === 'recent') list = [...list].sort((a, b) => (b.read_at || '').localeCompare(a.read_at || ''));
     else if (usesUnreadFilter()) list = collapseDuplicates(list);
@@ -471,7 +472,7 @@
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : S.view === 'discover' ? discoverSub()
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
-      : S.view === 'videos' ? `${unreadIn('videos')} unread from the channels you follow`
+      : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'email' ? mailSub()
@@ -492,7 +493,14 @@
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
     $('fUnread').setAttribute('aria-pressed', String(S.unreadOnly));
     $('fFree').setAttribute('aria-pressed', String(!!S.freeOnly));
-    $('fFree').hidden = onMail;
+    const onVid = S.view === 'videos';
+    $('fFree').hidden = onMail || onVid; // nothing to pay for in Videos
+    // Videos speaks of watching: Unwatched first, then All; Mark all watched
+    $('fUnread').textContent = onVid ? 'Unwatched' : 'Unread';
+    $('fAll').textContent = onVid ? 'All videos' : 'All';
+    if (onVid !== ($('seg').firstElementChild === $('fUnread'))) $('seg').insertBefore(onVid ? $('fUnread') : $('fAll'), $('seg').firstElementChild);
+    $('markAll').textContent = onVid ? 'Mark all watched' : 'Mark all read';
+    if (!onMail) $('q').placeholder = onVid ? 'Search videos' : 'Search stories';
     $('seg').hidden = !usesUnreadFilter();
     $('markAll').hidden = !usesUnreadFilter() || onMail; // in Email, mark read one at a time (or with m)
     $('refresh').disabled = S.refreshing;
@@ -574,7 +582,7 @@
   function emptyText() {
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'email') return MAIL.account ? (S.unreadOnly ? ['No unread email', 'Switch to “All” to see email you’ve read, or press Refresh.'] : ['No email yet', 'Press Refresh to check your inbox.']) : ['', ''];
-    if (S.view === 'videos') return S.unreadOnly && S.items.some(isVideoItem) ? ['You’re caught up on videos', 'Switch to “All” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a YouTube channel: paste its address, or a link to any of its videos, into Add feed. Channels the people you read share show up above.'];
+    if (S.view === 'videos') return S.vchan && S.unreadOnly ? ['You’ve watched everything from this channel', 'Switch to “All videos” to see them again.'] : S.unreadOnly && S.items.some(isVideoItem) ? ['You’ve watched everything', 'Switch to “All videos” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a YouTube channel: paste its address, or a link to any of its videos, into Add feed. Channels the people you read share show up above.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
     if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
@@ -816,7 +824,7 @@
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? (S.q ? '' : sharedChannelsHtml()) : briefHtml();
+    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? myChannelsHtml() + (S.q || S.vchan ? '' : sharedChannelsHtml()) : briefHtml();
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
@@ -849,7 +857,7 @@
           ${viaNews(it) ? `<button class="icon" data-act="hidesrc" title="Hide stories from ${esc(outletOf(it))}" aria-label="Hide stories from ${esc(outletOf(it))}">${ICONS.hide}</button>` : ''}
           ${isEmailItem(it) ? "" : `<button class="icon" data-act="share" title="Share" aria-label="Share" aria-haspopup="menu">${ICONS.share}</button>`}
           <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
-          <button class="icon" data-act="read" title="${it.read ? 'Mark unread' : 'Mark read'}" aria-label="${it.read ? 'Mark unread' : 'Mark read'}">${it.read ? ICONS.read : ICONS.unread}</button>
+          <button class="icon" data-act="read" title="${readWord(it)}" aria-label="${readWord(it)}">${it.read ? ICONS.read : ICONS.unread}</button>
         </div>
       </article>`;
     }
@@ -857,6 +865,8 @@
     if (all.length > list.length) out += `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>`;
     $('list').innerHTML = out + older;
   }
+  // in Videos, read means watched
+  const readWord = it => S.view === 'videos' && isVideoItem(it) ? (it.read ? 'Mark unwatched' : 'Mark watched') : (it.read ? 'Mark unread' : 'Mark read');
   function render() { renderRail(); renderHead(); renderList(); renderAddFolders(); if (S.readerId) renderReaderChrome(); updateWidget(); }
 
   // Stories without a picture get a tile in their feed's colour, with its first letter (like the sidebar).
@@ -960,6 +970,7 @@
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
+    if (S.view !== 'videos') S.vchan = null; // the channel picked in Videos is just for that visit
     // Back within half an hour is the same visit: "Since you were here" and the faces stay as they were
     if (S.view === 'talk' && was !== 'talk') { if (!SOC.nbLeft || Date.now() - SOC.nbLeft > 30 * 60e3) SOC.nbVisit = undefined; if (!SOC.keepPerson) SOC.person = null; SOC.keepPerson = false; }
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
@@ -2242,6 +2253,39 @@
     catch (e) { VID.err[url] = msg(e); status(msg(e), true); b.disabled = false; b.textContent = 'Follow'; }
     renderList();
   }
+  // Your channels: every channel with videos here, favorites (starred) first. Tap one to see only its videos.
+  const favChannels = () => Array.isArray(S.prefs.favChannels) ? S.prefs.favChannels : [];
+  function myChannelsHtml() {
+    const by = new Map(); // feed id → { f, latest item, unwatched }
+    for (const i of S.items) {
+      if (!isVideoItem(i)) continue;
+      const f = feedById(i.feed_id); if (!f) continue;
+      const c = by.get(f.id) || { f, latest: null, n: 0 };
+      if (!c.latest || i.date > c.latest.date) c.latest = i;
+      if (!i.read) c.n++;
+      by.set(f.id, c);
+    }
+    if (by.size < 2 && !S.vchan) return '';
+    const favs = favChannels(), rank = c => { const k = favs.indexOf(c.f.url); return k < 0 ? 1e6 : k; };
+    const list = [...by.values()].sort((a, b) => rank(a) - rank(b) || (b.latest.date || '').localeCompare(a.latest.date || ''));
+    const pic = c => { const id = ytId(c.latest.link || ''); const src = isWeb(c.latest.image) ? c.latest.image : id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : '';
+      return src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="mc-letter" style="--h:${tileFor(c.f).split('|')[0]}">${esc((c.f.title || '?').trim()[0] || '?')}</span>`; };
+    const tile = c => { const fav = favs.includes(c.f.url), on = String(S.vchan) === String(c.f.id);
+      return `<div class="mychan${on ? ' on' : ''}${fav ? ' is-fav' : ''}"><button class="mc-pick" type="button" data-vchan="${esc(c.f.id)}" title="${on ? 'Show every channel' : `Show only ${esc(c.f.title)}`}" aria-pressed="${on}">
+        <span class="mc-pic">${pic(c)}${c.n ? `<span class="mc-n">${c.n}</span>` : ''}</span><span class="mc-name">${esc(c.f.title)}</span></button>
+        <button class="mc-star" type="button" data-vfav="${esc(c.f.url)}" title="${fav ? 'Remove from favorites' : 'Favorite: keep this channel first'}" aria-label="${fav ? `Remove ${esc(c.f.title)} from favorites` : `Favorite ${esc(c.f.title)}`}" aria-pressed="${fav}">${fav ? '★' : '☆'}</button></div>`; };
+    const cur = S.vchan && feedById(S.vchan);
+    return `<section class="mychans"><div class="mc-head"><h3>Your channels</h3><span class="note" title="${esc(CUES.favchan)}">${favs.length ? 'Your favorites come first.' : 'Tap ☆ to make a channel a favorite. Favorites come first.'}</span>${cur ? `<button class="linkish" type="button" data-vchan="">Show every channel</button>` : ''}</div>
+      <div class="mc-row">${list.map(tile).join('')}</div></section>`;
+  }
+  function toggleFavChannel(url) {
+    const favs = favChannels(), on = favs.includes(url);
+    S.prefs.favChannels = on ? favs.filter(u => u !== url) : [...favs, url];
+    savePrefs();
+    const f = S.feeds.find(x => x.url === url);
+    status(on ? `${f?.title || 'That channel'} is no longer a favorite.` : `${f?.title || 'That channel'} is a favorite. It stays first in Your channels.`);
+    renderList();
+  }
   // a shared video plays in a small window over the list
   function playShared(id) {
     const info = VID.info.get(id);
@@ -2267,7 +2311,9 @@
   }
   document.addEventListener('click', e => {
     const f = e.target.closest('[data-vfollow]'); if (f) { e.preventDefault(); followChannel(f); return; }
-    const p = e.target.closest('[data-vplay]'); if (p) { e.preventDefault(); playShared(p.dataset.vplay); }
+    const p = e.target.closest('[data-vplay]'); if (p) { e.preventDefault(); playShared(p.dataset.vplay); return; }
+    const st = e.target.closest('[data-vfav]'); if (st) { e.preventDefault(); toggleFavChannel(st.dataset.vfav); return; }
+    const ch = e.target.closest('[data-vchan]'); if (ch) { e.preventDefault(); const v = ch.dataset.vchan; S.vchan = v && String(S.vchan) !== v ? v : null; S.shown = 60; renderHead(); renderList(); $('listView').scrollTo({ top: 0 }); }
   });
 
   function discoverHtml() {
@@ -3838,6 +3884,7 @@
   const CUES = {
     mypage: 'Your page: your posts and notes, who talks with you and who links to you, the same page each person you read has.',
     ytc: site => `Comment on ${site}: copies what you wrote and opens the video on ${site}. Paste it into the comments there. ${site} doesn’t take replies from other sites, so this is how your words get under the video.`,
+    favchan: 'Your channels: every channel you follow that has videos here. The number is how many you haven’t watched. Tap a channel to see only its videos; tap it again for all. Tap ☆ to make it a favorite, and favorites stay first.',
     vchans: 'Channels your people share: YouTube channels whose videos the people you read put in their posts lately, most shared first. Follow one and its new videos show up in Videos.',
     mini: 'Back to the story. The video or episode keeps playing here while you browse; × stops it.',
     miniFirst: 'Still playing: it moved to the corner so you can keep browsing. Tap its title to go back to the story.',
@@ -5689,9 +5736,10 @@
   $('markAll').onclick = () => {
     const ids = visible().filter(i => !i.read).map(i => i.id);
     if (!ids.length) { status('Nothing unread here.'); return; }
-    showBanner(`<span>Mark ${ids.length} ${ids.length === 1 ? 'story' : 'stories'} in ${esc(viewName())} as read?</span><button class="btn primary" id="yesAll">Mark read</button><button class="btn" id="noAll">Cancel</button>`, false, 'confirm');
+    const vid = S.view === 'videos', where = vid && S.vchan && feedById(S.vchan) ? feedById(S.vchan).title : viewName();
+    showBanner(`<span>Mark ${ids.length} ${vid ? (ids.length === 1 ? 'video' : 'videos') : ids.length === 1 ? 'story' : 'stories'} in ${esc(where)} as ${vid ? 'watched' : 'read'}?</span><button class="btn primary" id="yesAll">${vid ? 'Mark watched' : 'Mark read'}</button><button class="btn" id="noAll">Cancel</button>`, false, 'confirm');
     $('noAll').onclick = hideBanner;
-    $('yesAll').onclick = () => { hideBanner(); mark(ids, { read: true }); status(`Marked ${ids.length} as read.`); };
+    $('yesAll').onclick = () => { hideBanner(); mark(ids, { read: true }); status(`Marked ${ids.length} as ${vid ? 'watched' : 'read'}.`); };
   };
 
   // ------------------------------------------------------------ feeds and folders

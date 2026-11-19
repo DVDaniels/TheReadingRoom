@@ -9,6 +9,11 @@ YOUTUBE DESCRIPTIONS
 NOTES ABOUT A POST, ON BLUESKY AND MASTODON
 • When you write a note about someone's post and share copies, the copy now shows their post (title, site and picture) instead of a second copy of your own words, with the link to your note underneath.
 
+VIDEOS
+• Your channels: a row at the top of Videos with every channel you follow, its newest video and how many you haven't watched. Tap one to see only its videos; tap it again (or Show every channel) for all.
+• Tap the star on a channel to make it a favorite. Favorites stay first.
+• The bar now speaks of watching: Unwatched, All videos, Mark all watched, Search videos. Free to read is gone from Videos.
+
 Please tell us if a description looks wrong, or if tapping a chapter time doesn't start the video where it should (Mac and iPhone/iPad).
 
 CONVERSATIONS
