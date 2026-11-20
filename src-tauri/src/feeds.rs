@@ -280,6 +280,21 @@ pub async fn fetch_patient(client: &reqwest::Client, url: &str) -> Result<Fetche
             // YouTube keeps refusing some channels' feeds: read the channel's Videos page instead
             crate::youtube::from_page(client, url).await.map_err(|_| YOUTUBE_HICCUP.to_string())
         }
+        // YouTube also answers some apps with a feed that has the channel's name but no videos, while the
+        // same feed lists them in a browser: ask once more, then read the channel's Videos page. A channel
+        // that really has no videos keeps its empty feed.
+        Ok(f) if f.items.is_empty() && url.contains("youtube.com/") => {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            if let Ok(again) = fetch(client, url).await {
+                if !again.items.is_empty() {
+                    return Ok(again);
+                }
+            }
+            match crate::youtube::from_page(client, url).await {
+                Ok(page) if !page.items.is_empty() => Ok(page),
+                _ => Ok(f),
+            }
+        }
         r => r,
     }
 }
