@@ -1790,6 +1790,141 @@ async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: b
     }))
 }
 
+// ---- Markets on Today: a few stocks (Finnhub, with your own free key) and coins (CoinGecko, no key)
+
+const FINNHUB_KEY: &str = "finnhub-key";
+
+async fn market_json(state: &Shared, url: &str, who: &str) -> Result<serde_json::Value, String> {
+    let resp = state.client.get(url).timeout(Duration::from_secs(12)).send().await.map_err(|_| format!("Couldn't reach {who}."))?;
+    match resp.status().as_u16() {
+        200 => {}
+        401 | 403 => return Err(format!("{who} didn't accept the key. Check it in Settings › Markets on Today.")),
+        429 => return Err(format!("{who} asked the app to slow down. Prices will come back in a minute.")),
+        s => return Err(format!("{who} answered with error {s}.")),
+    }
+    let text = resp.text().await.map_err(|_| format!("{who} was cut off."))?;
+    serde_json::from_str(&text).map_err(|_| format!("{who} sent something unexpected."))
+}
+
+fn finnhub_key() -> Option<String> {
+    social::secret_get(FINNHUB_KEY).and_then(|v| v.as_str().map(str::to_string)).filter(|k| !k.trim().is_empty())
+}
+
+/// A stock symbol as people type it: "aapl" → "AAPL", "brk.b" → "BRK.B"
+fn clean_symbol(s: &str) -> String {
+    s.trim().trim_start_matches('$').to_uppercase().chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':')).take(15).collect()
+}
+
+async fn stock_quote(state: &Shared, key: &str, sym: &str) -> Result<(f64, f64), String> {
+    let mut u = url::Url::parse("https://finnhub.io/api/v1/quote").expect("static url");
+    u.query_pairs_mut().append_pair("symbol", sym).append_pair("token", key);
+    let v = market_json(state, u.as_str(), "Finnhub").await?;
+    let price = v.get("c").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let prev = v.get("pc").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    if price <= 0.0 {
+        return Err(format!("Finnhub doesn't know {sym}. Free keys cover U.S. stocks and funds."));
+    }
+    let pct = v.get("dp").and_then(|x| x.as_f64()).unwrap_or(if prev > 0.0 { (price - prev) / prev * 100.0 } else { 0.0 });
+    Ok((price, pct))
+}
+
+/// Today's prices: each stock and coin with its price and the day's change in percent.
+#[tauri::command]
+async fn markets_now(state: State<'_, Shared>, stocks: Vec<String>, coins: Vec<String>) -> Result<serde_json::Value, String> {
+    let mut out = Vec::new();
+    let mut problem = String::new();
+    let stocks: Vec<String> = stocks.iter().map(|s| clean_symbol(s)).filter(|s| !s.is_empty()).take(5).collect();
+    if !stocks.is_empty() {
+        match finnhub_key() {
+            None => problem = "Add a free Finnhub key in Settings › Markets on Today to see stocks.".into(),
+            Some(key) => {
+                for s in &stocks {
+                    match stock_quote(state.inner(), &key, s).await {
+                        Ok((price, pct)) => out.push(serde_json::json!({ "kind": "stock", "id": s, "sym": s, "price": price, "pct": pct })),
+                        Err(e) => {
+                            out.push(serde_json::json!({ "kind": "stock", "id": s, "sym": s, "price": null, "pct": null }));
+                            if problem.is_empty() { problem = e; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let coins: Vec<String> = coins.iter().map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')).take(5).collect();
+    if !coins.is_empty() {
+        let mut u = url::Url::parse("https://api.coingecko.com/api/v3/simple/price").expect("static url");
+        u.query_pairs_mut().append_pair("ids", &coins.join(",")).append_pair("vs_currencies", "usd").append_pair("include_24hr_change", "true");
+        match market_json(state.inner(), u.as_str(), "CoinGecko").await {
+            Ok(v) => {
+                for c in &coins {
+                    let e = v.get(c.as_str());
+                    out.push(serde_json::json!({ "kind": "coin", "id": c,
+                        "price": e.and_then(|x| x.get("usd")).and_then(|x| x.as_f64()),
+                        "pct": e.and_then(|x| x.get("usd_24h_change")).and_then(|x| x.as_f64()) }));
+                }
+            }
+            Err(e) => {
+                for c in &coins { out.push(serde_json::json!({ "kind": "coin", "id": c, "price": null, "pct": null })); }
+                if problem.is_empty() { problem = e; }
+            }
+        }
+    }
+    Ok(serde_json::json!({ "quotes": out, "problem": problem }))
+}
+
+/// Find a coin by name or ticker ("btc", "solana"): CoinGecko's id, symbol and name for the top matches.
+#[tauri::command]
+async fn coin_search(state: State<'_, Shared>, query: String) -> Result<serde_json::Value, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Err("Type a coin's name or ticker.".into());
+    }
+    let mut u = url::Url::parse("https://api.coingecko.com/api/v3/search").expect("static url");
+    u.query_pairs_mut().append_pair("query", q);
+    let v = market_json(state.inner(), u.as_str(), "CoinGecko").await?;
+    let found: Vec<serde_json::Value> = v.get("coins").and_then(|c| c.as_array()).map(|a| a.iter().take(6).map(|c| serde_json::json!({
+        "id": c.get("id"), "sym": c.get("symbol").and_then(|s| s.as_str()).unwrap_or("").to_uppercase(), "name": c.get("name"),
+    })).collect()).unwrap_or_default();
+    if found.is_empty() {
+        return Err(format!("CoinGecko didn't find “{q}”."));
+    }
+    Ok(serde_json::Value::Array(found))
+}
+
+/// Whether a Finnhub key is saved (the key itself never goes back to the page).
+#[tauri::command]
+fn markets_key_status() -> bool {
+    finnhub_key().is_some()
+}
+
+/// Check a Finnhub key with one quote, then keep it in the Keychain. An empty key removes it.
+#[tauri::command]
+async fn markets_key_set(state: State<'_, Shared>, key: String) -> Result<bool, String> {
+    let key = key.trim().to_string();
+    if key.is_empty() {
+        social::secret_delete(FINNHUB_KEY);
+        return Ok(false);
+    }
+    if key.len() > 100 || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err("That doesn't look like a Finnhub key. Copy it from your Finnhub dashboard.".into());
+    }
+    stock_quote(state.inner(), &key, "AAPL").await?;
+    social::secret_set(FINNHUB_KEY, &serde_json::Value::String(key))?;
+    Ok(true)
+}
+
+/// Is this a stock Finnhub knows? Its price, so the settings can show it's right.
+#[tauri::command]
+async fn stock_check(state: State<'_, Shared>, symbol: String) -> Result<serde_json::Value, String> {
+    let sym = clean_symbol(&symbol);
+    if sym.is_empty() {
+        return Err("Type a ticker, like AAPL.".into());
+    }
+    let key = finnhub_key().ok_or("Add your free Finnhub key first.")?;
+    let (price, pct) = stock_quote(state.inner(), &key, &sym).await?;
+    Ok(serde_json::json!({ "sym": sym, "price": price, "pct": pct }))
+}
+
 // ---- Discover: blogs your sites recommend (see discover.rs)
 
 fn followed_domains(conn: &Connection) -> std::collections::HashSet<String> {
@@ -2389,6 +2524,11 @@ pub fn run() {
             app_info,
             weather_place,
             weather_now,
+            markets_now,
+            coin_search,
+            markets_key_status,
+            markets_key_set,
+            stock_check,
             set_mutes,
             set_prefs,
             speak,
