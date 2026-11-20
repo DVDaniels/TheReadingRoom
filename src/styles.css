@@ -2097,11 +2097,21 @@ html.ios .nav button.navsub { padding-left: 58px; }
 html.ios .rail .nav .vidrow > button[data-view] { padding-left: 10px; }
 
 /* Markets on Today */
-.b-mk { margin: 10px 0 4px; }
-.mk-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.mk-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card, transparent); font-family: var(--font-ui); font-size: 13px; color: var(--ink); cursor: pointer; font-variant-numeric: tabular-nums; }
-.mk-chip b { font-weight: 600; letter-spacing: .02em; }
-.mk-chip .mk-c { font-size: 12px; color: var(--muted); }
+.b-panel { margin: 12px 0 4px; padding: 12px 14px 12px; border: 1px solid var(--b-line, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--b-bg, var(--bg)) 70%, var(--surface, transparent)); }
+.bp-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.bp-head .b-sub { margin: 0; }
+.bp-meta { font-size: 12px; color: var(--b-soft, var(--muted)); font-variant-numeric: tabular-nums; }
+.bp-meta .err { color: #c2413a; }
+.brief .bp-edit { margin-left: auto; font-size: 12px; color: var(--b-soft, var(--muted)); }
+.brief .bp-edit:hover { color: var(--accent); }
+/* Markets: one labelled row for stocks, one for crypto */
+.mk-grp + .mk-grp { margin-top: 10px; }
+.mk-lab { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--b-soft, var(--muted)); }
+.mk-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.brief .mk-chip { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 1px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, transparent); font-family: var(--font-ui); font-size: 13px; color: var(--ink); cursor: pointer; font-variant-numeric: tabular-nums; text-align: left; }
+.mk-chip b { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--b-soft, var(--muted)); }
+.mk-chip .mk-p { grid-column: 1 / -1; grid-row: 2; font-size: 15px; font-weight: 500; }
+.mk-chip .mk-c { grid-column: 2; grid-row: 1; font-size: 11px; color: var(--muted); }
 .mk-chip.up .mk-c { color: #1f8a5b; }
 .mk-chip.down .mk-c { color: #c2413a; }
 .mk-chip:hover { border-color: var(--accent); }
@@ -2114,10 +2124,13 @@ html.ios .rail .nav .vidrow > button[data-view] { padding-left: 10px; }
 .mk-key { margin: 6px 0 4px; }
 
 /* Your day on Today */
-.b-day { margin: 12px 0 4px; }
-.b-day .b-sub { margin-bottom: 6px; }
-.day-ev, .day-rem { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.day-ev li { display: grid; grid-template-columns: 68px 1fr; gap: 8px; font-size: 14px; line-height: 1.35; }
+/* Your day: Calendar and Reminders side by side when there's room, the Day One button underneath */
+.day-cols { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.day-col { flex: 1 1 220px; min-width: 0; }
+.day-col h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--b-ink, var(--ink)); }
+.day-subh { margin: 8px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--b-soft, var(--muted)); }
+.day-ev, .day-rem { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.day-ev li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; font-size: 14px; line-height: 1.35; }
 .day-ev time { color: var(--b-soft, var(--muted)); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 1px; }
 .day-ev b, .day-rem span { font-weight: 500; color: var(--b-ink, var(--ink)); }
 .day-ev small, .day-rem small { display: block; font-size: 12px; color: var(--b-soft, var(--muted)); font-weight: 400; }
@@ -2127,3 +2140,9 @@ html.ios .rail .nav .vidrow > button[data-view] { padding-left: 10px; }
 .day-rem li.done span { text-decoration: line-through; opacity: .55; }
 .day-rem small.late { color: #c2413a; }
 .day-note { margin: 4px 0; font-size: 13px; color: var(--b-soft, var(--muted)); }
+.day-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--b-line, var(--line)); }
+.day-foot .day-one { display: inline-flex; align-items: center; gap: 8px; }
+.day-foot .day-one svg { width: 16px; height: 16px; }
+.day-pick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.day-pick label { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.day-pick small { color: var(--muted); font-size: 12px; }

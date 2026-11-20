@@ -6557,9 +6557,11 @@
         <b>${esc(sym)}</b><span class="mk-p">${x ? esc(mkPrice(x.price)) : '…'}</span>${pct == null ? '' : `<span class="mk-c">${pct > 0.005 ? '▲' : pct < -0.005 ? '▼' : ''}${Math.abs(pct).toFixed(1)}%</span>`}</button>`;
     };
     const when = mkData?.at ? new Date(mkData.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
-    return `<div class="b-mk" aria-label="Markets">
-      <div class="mk-row">${p.stocks.map(s => chip('stock', s, s)).join('')}${p.coins.map(c => chip('coin', c.id, c.sym)).join('')}</div>
-      <p class="mk-note">${mkData?.problem ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? `Prices as of ${esc(when)}, may be delayed` : 'Getting prices…'} · <button class="linkish" type="button" data-mkedit>Change</button></p></div>`;
+    const row = (label, chips) => chips ? `<div class="mk-grp"><span class="mk-lab">${label}</span><div class="mk-row">${chips}</div></div>` : '';
+    return `<section class="b-panel b-mk" aria-label="Markets">
+      <div class="bp-head"><h3 class="b-sub">Markets</h3><span class="bp-meta">${mkData?.problem ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? `As of ${esc(when)} · may be delayed` : 'Getting prices…'}</span><button class="linkish bp-edit" type="button" data-mkedit>Change</button></div>
+      ${row('Stocks', p.stocks.map(s => chip('stock', s, s)).join(''))}
+      ${row('Crypto', p.coins.map(c => chip('coin', c.id, c.sym)).join(''))}</section>`;
   }
   async function openMarkets() {
     const p = mkPicks();
@@ -6649,39 +6651,56 @@
   }
   const hm = s => new Date(s * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const where = IOS ? 'Settings › Privacy & Security' : 'System Settings › Privacy & Security';
+  const showUndated = () => dayPrefs().undated !== false;
+  const pageDay = () => doPrefs().page === 'today' ? 'today' : 'yesterday';
+  const DAYONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>';
   function dayHtml() {
-    if (!dayOn()) return '';
-    if (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000) setTimeout(() => loadDay(), 0);
+    if (!dayOn() && !doPrefs().on) return '';
+    if (dayOn() && (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000)) setTimeout(() => loadDay(), 0);
     const d = DAYB.data, dev = IOS ? 'this iPhone or iPad' : 'this Mac';
-    if (!d) return `<div class="b-day"><h3 class="b-sub">Your day</h3><p class="day-note">Looking at your calendar…</p></div>`;
-    const ask = [d.calendar === 'ask' && 'Calendar', d.reminders === 'ask' && 'Reminders'].filter(Boolean);
-    const denied = [d.calendar === 'denied' && 'Calendars', d.reminders === 'denied' && 'Reminders'].filter(Boolean);
-    const now = Date.now() / 1000;
-    const ev = d.calendar === 'granted' ? (d.events.length
+    const head = `<div class="bp-head"><h3 class="b-sub">Your day</h3><button class="linkish bp-edit" type="button" data-dayedit>Change</button></div>`;
+    const dayone = doPrefs().on ? `<div class="day-foot"><button class="btn day-one" type="button" data-dayone-page>${DAYONE_ICON}Write ${pageDay() === 'yesterday' ? 'yesterday’s' : 'today’s'} page in Day One</button></div>` : '';
+    if (dayOn() && !d) return `<section class="b-panel b-day">${head}<p class="day-note">Looking at your calendar…</p>${dayone}</section>`;
+    const p = dayPrefs(), ask = [], denied = [];
+    if (d) {
+      if (d.calendar === 'ask') ask.push('Calendar'); if (d.reminders === 'ask') ask.push('Reminders');
+      if (d.calendar === 'denied') denied.push('Calendars'); if (d.reminders === 'denied') denied.push('Reminders');
+    }
+    const now = Date.now() / 1000, [start] = dayBounds();
+    const ev = p.cal && d?.calendar === 'granted' ? `<div class="day-col"><h4>Calendar</h4>${d.events.length
       ? `<ul class="day-ev">${d.events.map(e => `<li class="${!e.all_day && e.end < now ? 'past' : ''}"><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>`
-      : '<p class="day-note">Nothing on your calendar today.</p>') : '';
-    const [, end] = dayBounds();
-    const rem = d.reminders === 'granted' ? (d.todo.length
-      ? `<ul class="day-rem">${d.todo.map(r => `<li><label><input type="checkbox" data-remdone="${esc(r.id)}"><span>${esc(r.title || 'Reminder')}${r.due != null ? `<small class="${r.due < now - 60 ? 'late' : ''}">${r.due < end - 86400 ? 'Overdue' : esc(hm(r.due))}${r.list ? ' · ' + esc(r.list) : ''}</small>` : r.list ? `<small>${esc(r.list)}</small>` : ''}</span></label></li>`).join('')}</ul>`
-      : '<p class="day-note">No reminders due today.</p>') : '';
-    return `<div class="b-day"><h3 class="b-sub">Your day</h3>${ev}${rem}
+      : '<p class="day-note">Nothing on your calendar today.</p>'}</div>` : '';
+    const remLi = r => `<li><label><input type="checkbox" data-remdone="${esc(r.id)}"><span>${esc(r.title || 'Reminder')}${r.due != null
+      ? `<small class="${r.due < now - 60 ? 'late' : ''}">${r.due < start ? 'Overdue' : r.due - start < 60 ? 'Today' : esc(hm(r.due))}${r.list ? ' · ' + esc(r.list) : ''}</small>`
+      : r.list ? `<small>${esc(r.list)}</small>` : ''}</span></label></li>`;
+    let rem = '';
+    if (p.rem && d?.reminders === 'granted') {
+      const und = showUndated() ? (d.undated || []).slice(0, 5) : [], more = showUndated() ? Math.max(0, (d.undated_total || 0) - und.length) : 0;
+      rem = `<div class="day-col"><h4>Reminders</h4>`
+        + (d.todo.length ? `<ul class="day-rem">${d.todo.map(remLi).join('')}</ul>` : `<p class="day-note">Nothing due today.</p>`)
+        + (und.length ? `<p class="day-subh">No date</p><ul class="day-rem">${und.map(remLi).join('')}</ul>` : '')
+        + (more ? `<p class="day-note">${more} more without a date in Reminders.</p>` : '')
+        + `</div>`;
+    }
+    const cols = ev || rem ? `<div class="day-cols">${ev}${rem}</div>` : '';
+    return `<section class="b-panel b-day">${head}${cols}
       ${ask.length ? `<p class="day-note"><button class="btn" type="button" data-dayask>Allow ${ask.join(' and ')} on ${dev}</button></p>` : ''}
       ${denied.length ? `<p class="day-note">The Reading Room can’t see ${denied.join(' or ')} on ${dev}. Turn it on in ${where} › ${denied.join(' / ')}.</p>` : ''}
-      ${doPrefs().on ? `<p class="day-note"><button class="linkish" type="button" data-dayone-page>Write today’s page in Day One</button></p>` : ''}</div>`;
+      ${dayone}</section>`;
   }
   document.addEventListener('change', async e => {
     const c = e.target.closest('[data-remdone]'); if (!c) return;
     const li = c.closest('li'); li?.classList.add('done');
     try {
       await invoke('reminder_done', { id: c.dataset.remdone, done: c.checked });
-      if (DAYB.data) DAYB.data.todo = DAYB.data.todo.filter(r => r.id !== c.dataset.remdone);
+      if (DAYB.data) { const id = c.dataset.remdone; DAYB.data.todo = DAYB.data.todo.filter(r => r.id !== id); if (DAYB.data.undated?.some(r => r.id === id)) { DAYB.data.undated = DAYB.data.undated.filter(r => r.id !== id); DAYB.data.undated_total = Math.max(0, (DAYB.data.undated_total || 1) - 1); } }
       setTimeout(() => { if (S.view === 'today') renderList(); }, 900);
     } catch (err) { c.checked = !c.checked; li?.classList.remove('done'); status(msg(err)); }
   });
   document.addEventListener('click', e => {
     if (e.target.closest('[data-dayask]')) { loadDay(true); return; }
     if (e.target.closest('[data-dayedit]')) { openDaySettings(); return; }
-    if (e.target.closest('[data-dayone-page]')) { dayOne(morningPage(), 'Morning'); return; }
+    if (e.target.closest('[data-dayone-page]')) { morningPage().then(t => dayOne(t, 'Morning')); return; }
   });
 
   // Day One: a new entry filled in, through Day One's own dayone:// link. Day One opens and you finish it there.
@@ -6690,22 +6709,40 @@
     try { await invoke('day_one', { text, journal: p.journal || '', tags }); }
     catch (err) { status(msg(err)); }
   }
-  function morningPage() {
-    const d = new Date(), out = [`# ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
-    try {
-      const place = wxPlace();
-      if (place && wxData) { const w = WX.find(([codes]) => codes.includes(Number(wxData.code))); out.push(`${Math.round(wxData.temp)}°${w ? ', ' + w[3].toLowerCase() : ''} in ${place.name} (high ${Math.round(wxData.high)}°, low ${Math.round(wxData.low)}°)`); }
-    } catch {}
-    const day = DAYB.data;
-    if (day?.events?.length) out.push('## On the calendar\n' + day.events.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}${e.location ? ` (${e.location})` : ''}`).join('\n'));
-    if (day?.todo?.length) out.push('## To do\n' + day.todo.map(r => `- [ ] ${r.title}`).join('\n'));
-    try {
-      if (mkAny() && mkData?.quotes?.length) out.push('## Markets\n' + mkData.quotes.filter(q => q.price != null).map(q => `${q.kind === 'coin' ? (mkPicks().coins.find(c => c.id === q.id)?.sym || q.id) : q.id} ${mkPrice(q.price)} (${q.pct >= 0 ? '+' : ''}${(q.pct || 0).toFixed(1)}%)`).join(' · '));
-    } catch {}
-    const y0 = new Date(d); y0.setHours(0, 0, 0, 0); const yStart = y0.getTime() - DAY;
-    const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= yStart && Date.parse(i.read_at) < y0.getTime() && isWeb(i.link) && !isEmailItem(i)).slice(0, 8);
-    if (read.length) out.push('## Read yesterday\n' + read.map(i => `- [${headline(i)}](${i.link}) — ${cardWriter(i)}`).join('\n'));
-    out.push('## Today\n');
+  // The journal page is about yesterday (for writing first thing the next morning) or about today, as chosen in
+  // Your day › Day One. Yesterday's page has yesterday's date, events, the reminders finished that day and what you
+  // read; today's page has today's weather, events, what's due, markets and what you read yesterday.
+  // (Day One's link can't set the entry's date: the entry is dated when it's made.)
+  async function morningPage() {
+    const yday = pageDay() === 'yesterday';
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const d = new Date(t0); if (yday) d.setDate(d.getDate() - 1);
+    const out = [`# ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
+    let day = DAYB.data;
+    if (yday && dayOn()) {
+      try { day = await invoke('day_today', { from: d.getTime() / 1000, to: t0.getTime() / 1000, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: false, done: true }); }
+      catch { day = null; }
+    }
+    if (!yday) {
+      try {
+        const place = wxPlace();
+        if (place && wxData) { const w = WX.find(([codes]) => codes.includes(Number(wxData.code))); out.push(`${Math.round(wxData.temp)}°${w ? ', ' + w[3].toLowerCase() : ''} in ${place.name} (high ${Math.round(wxData.high)}°, low ${Math.round(wxData.low)}°)`); }
+      } catch {}
+    }
+    if (dayPrefs().cal && day?.events?.length) out.push('## On the calendar\n' + day.events.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}${e.location ? ` (${e.location})` : ''}`).join('\n'));
+    if (dayPrefs().rem) {
+      if (yday && day?.done?.length) out.push('## Got done\n' + day.done.map(r => `- [x] ${r.title}`).join('\n'));
+      if (!yday && day?.todo?.length) out.push('## To do\n' + day.todo.map(r => `- [ ] ${r.title}`).join('\n'));
+    }
+    if (!yday) {
+      try {
+        if (mkAny() && mkData?.quotes?.length) out.push('## Markets\n' + mkData.quotes.filter(q => q.price != null).map(q => `${q.kind === 'coin' ? (mkPicks().coins.find(c => c.id === q.id)?.sym || q.id) : q.id} ${mkPrice(q.price)} (${q.pct >= 0 ? '+' : ''}${(q.pct || 0).toFixed(1)}%)`).join(' · '));
+      } catch {}
+    }
+    const yStart = t0.getTime() - DAY;
+    const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= yStart && Date.parse(i.read_at) < t0.getTime() && isWeb(i.link) && !isEmailItem(i)).slice(0, 8);
+    if (read.length) out.push(`## ${yday ? 'What I read' : 'Read yesterday'}\n` + read.map(i => `- [${headline(i)}](${i.link}) — ${cardWriter(i)}`).join('\n'));
+    out.push(yday ? '## How the day went\n' : '## Today\n');
     return out.join('\n\n');
   }
   function journalItem(it) {
@@ -6722,16 +6759,20 @@
     const el = sheet('dayPanel', `<h2>Your day on Today</h2>
       <p>Today can show your events and the reminders due today, read from Calendar and Reminders on each of your devices. They never leave the device. Each device asks your OK once.</p>
       <label class="c-net"><input type="checkbox" id="dayCal"${p.cal ? ' checked' : ''}>Today’s events from Calendar</label>
-      <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today (tick them off right on Today)</label>
+      <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today and overdue (tick them off right on Today)</label>
+      <label class="c-net"><input type="checkbox" id="dayUnd"${p.undated !== false ? ' checked' : ''}>Also reminders with no date (the newest five)</label>
       <h3 class="mk-h">Day One</h3>
       <p class="note">If you journal in Day One, the app can start entries for you: today’s page from Today, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
       <label class="c-net"><input type="checkbox" id="doOn"${o.on ? ' checked' : ''}>Show Day One buttons</label>
+      <p class="note" style="margin-bottom:4px">The page from Today is about:</p>
+      <div class="day-pick" role="radiogroup" aria-label="The Day One page is about"><label><input type="radio" name="doPage" value="yesterday"${o.page !== 'today' ? ' checked' : ''}>Yesterday <small>for writing the next morning: yesterday’s date, events, what got done and what you read</small></label><label><input type="radio" name="doPage" value="today"${o.page === 'today' ? ' checked' : ''}>Today <small>today’s weather, events, what’s due, markets and what you read yesterday</small></label></div>
+      <p class="note">Day One dates the entry when it’s made, so for yesterday’s page change the date in Day One.</p>
       <div class="row"><input class="n-field" id="doJournal" type="text" placeholder="Journal (blank: your default journal)" value="${esc(o.journal || '')}" autocomplete="off" style="flex:1;min-width:160px"><input class="n-field" id="doTags" type="text" placeholder="Tags, like reading" value="${esc(o.tags || '')}" autocomplete="off" style="flex:1;min-width:120px"></div>
       <p class="acct-note" id="dayNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day on Today');
     const save = () => {
-      S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked };
-      S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim() };
+      S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked, undated: $('dayUnd').checked };
+      S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim(), page: el.querySelector('input[name="doPage"]:checked')?.value || 'yesterday' };
       savePrefs(); applyDayOne(); DAYB.data = null; renderList();
     };
     el.addEventListener('change', save);

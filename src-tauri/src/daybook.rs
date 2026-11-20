@@ -24,6 +24,8 @@ pub struct Reminder {
     pub due: Option<f64>,
     pub list: String,
     pub priority: u64,
+    /// seconds since 1970: when it was made (undated reminders are shown newest first), or when it was finished
+    pub at: Option<f64>,
 }
 
 /// "granted", "denied", "ask" (never asked) or "unavailable" (not on this device)
@@ -32,7 +34,14 @@ pub struct Day {
     pub calendar: String,
     pub reminders: String,
     pub events: Vec<Event>,
+    /// open reminders due by the end of the day (overdue too), soonest first
     pub todo: Vec<Reminder>,
+    /// open reminders with no due date, newest first
+    pub undated: Vec<Reminder>,
+    /// how many open reminders have no due date in all (undated holds at most 12)
+    pub undated_total: usize,
+    /// reminders finished between from and to (only when asked for, for a page about yesterday)
+    pub done: Vec<Reminder>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -107,39 +116,64 @@ mod apple {
         }
     }
 
-    /// Reminders not done yet that are due by the end of today (overdue ones too), soonest first.
-    fn reminders(store: &EKEventStore, to: f64) -> Vec<Reminder> {
+    fn fetch(store: &EKEventStore, pred: &objc2_foundation::NSPredicate, finished: bool) -> Vec<Reminder> {
         let (tx, rx) = mpsc::channel::<Vec<Reminder>>();
         unsafe {
-            let end = NSDate::dateWithTimeIntervalSince1970(to);
-            let pred = store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(None, Some(&end), None);
             let done = RcBlock::new(move |found: *mut NSArray<EKReminder>| unsafe {
                 let mut out = Vec::new();
                 if let Some(found) = found.as_ref() {
                     let cal = NSCalendar::currentCalendar();
                     for r in found.iter() {
                         let due = r.dueDateComponents().and_then(|c| cal.dateFromComponents(&c)).map(|d| d.timeIntervalSince1970());
+                        let at = if finished { r.completionDate() } else { r.creationDate() }.map(|d| d.timeIntervalSince1970());
                         out.push(Reminder {
                             id: ns(&r.calendarItemIdentifier()),
                             title: ns(&r.title()),
                             due,
                             list: r.calendar().map(|c| ns(&c.title())).unwrap_or_default(),
                             priority: r.priority() as u64,
+                            at,
                         });
                     }
                 }
                 let _ = tx.send(out);
             });
-            let _ = store.fetchRemindersMatchingPredicate_completion(&pred, &done);
+            let _ = store.fetchRemindersMatchingPredicate_completion(pred, &done);
         }
-        let mut out = rx.recv_timeout(Duration::from_secs(20)).unwrap_or_default();
-        out.sort_by(|a, b| a.due.unwrap_or(f64::MAX).partial_cmp(&b.due.unwrap_or(f64::MAX)).unwrap_or(std::cmp::Ordering::Equal));
-        out.truncate(12);
+        rx.recv_timeout(Duration::from_secs(20)).unwrap_or_default()
+    }
+
+    /// Every open reminder, split into the ones due by `to` (overdue too; soonest first) and the ones with no
+    /// due date (newest first). Reminders due after today are left out. (Asking Reminders for "due before the
+    /// end of today" leaves out every reminder without a date, so this asks for all open ones and sorts here.)
+    fn open_reminders(store: &EKEventStore, to: f64) -> (Vec<Reminder>, Vec<Reminder>, usize) {
+        let pred = unsafe { store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(None, None, None) };
+        let all = fetch(store, &pred, false);
+        let (mut dated, mut undated): (Vec<Reminder>, Vec<Reminder>) = all.into_iter().partition(|r| r.due.is_some());
+        dated.retain(|r| r.due.unwrap_or(f64::MAX) < to);
+        dated.sort_by(|a, b| a.due.unwrap_or(f64::MAX).partial_cmp(&b.due.unwrap_or(f64::MAX)).unwrap_or(std::cmp::Ordering::Equal));
+        dated.truncate(12);
+        let total = undated.len();
+        undated.sort_by(|a, b| b.at.unwrap_or(0.0).partial_cmp(&a.at.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+        undated.truncate(12);
+        (dated, undated, total)
+    }
+
+    /// Reminders finished between `from` and `to`, in the order they were finished.
+    fn finished(store: &EKEventStore, from: f64, to: f64) -> Vec<Reminder> {
+        let pred = unsafe {
+            let start = NSDate::dateWithTimeIntervalSince1970(from);
+            let end = NSDate::dateWithTimeIntervalSince1970(to);
+            store.predicateForCompletedRemindersWithCompletionDateStarting_ending_calendars(Some(&start), Some(&end), None)
+        };
+        let mut out = fetch(store, &pred, true);
+        out.sort_by(|a, b| a.at.unwrap_or(0.0).partial_cmp(&b.at.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+        out.truncate(20);
         out
     }
 
     /// Today's events and reminders. With `ask`, the system prompt is shown for whatever hasn't been answered yet.
-    pub fn today(from: f64, to: f64, want_cal: bool, want_rem: bool, ask: bool) -> Day {
+    pub fn today(from: f64, to: f64, want_cal: bool, want_rem: bool, ask: bool, want_done: bool) -> Day {
         let store = unsafe { EKEventStore::new() };
         let mut day = Day { calendar: "off".into(), reminders: "off".into(), ..Default::default() };
         if want_cal {
@@ -162,7 +196,13 @@ mod apple {
             day.events = events(&store, from, to);
         }
         if day.reminders == "granted" {
-            day.todo = reminders(&store, to);
+            let (todo, undated, total) = open_reminders(&store, to);
+            day.todo = todo;
+            day.undated = undated;
+            day.undated_total = total;
+            if want_done {
+                day.done = finished(&store, from, to);
+            }
         }
         day
     }
@@ -185,7 +225,7 @@ mod apple {
 pub use apple::{set_done, today};
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool) -> Day {
+pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _want_done: bool) -> Day {
     let off = |w: bool| if w { "unavailable" } else { "off" }.to_string();
     Day { calendar: off(want_cal), reminders: off(want_rem), ..Default::default() }
 }

@@ -24,11 +24,11 @@ CONVERSATIONS
 • If Mastodon won't favorite or follow, the app now says why, and only asks you to reconnect when the permission is really missing. Tap a red message to clear it.
 
 YOUR DAY ON TODAY
-• Settings › Your day on Today: today's events from Calendar and the reminders due today, read on your device (nothing leaves it). Tick reminders off right on Today. Each device asks your OK once.
-• Day One: turn on Day One buttons there to get "Write today's page in Day One" on Today and "Journal in Day One" in a story's Share menu (with your highlights and notes).
+• Settings › Your day on Today: today's events from Calendar, and reminders due today, overdue or with no date, read on your device (nothing leaves it). Tick reminders off right on Today. Each device asks your OK once.
+• Day One: turn on Day One buttons there to get a Day One button on Today that writes yesterday's page (or today's, your choice) and "Journal in Day One" in a story's Share menu (with your highlights and notes).
 
 MARKETS ON TODAY
-• Settings › Markets on Today: up to five stocks or funds and five coins at the top of Today, with the day's change. Crypto works right away (CoinGecko). Stocks need a free Finnhub key (finnhub.io, no credit card), kept in your Keychain. Prices may be delayed.
+• Settings › Markets on Today: up to five stocks or funds and five coins at the top of Today, stocks and crypto in their own rows, with the day's change. Crypto works right away (CoinGecko). Stocks need a free Finnhub key (finnhub.io, no credit card), kept in your Keychain. Prices may be delayed.
 
 SHARE WHAT YOU READ
 • Quote cards: select words in a story and tap Quote card (or Quote card under any highlight). You get a picture of the passage with the writer's name and site, to send in WhatsApp, Messages or anywhere. Paper or Night.

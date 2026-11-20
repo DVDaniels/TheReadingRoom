@@ -1795,8 +1795,9 @@ async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: b
 
 /// Today's events and reminders from this device. `ask` shows the system's OK prompt for anything not yet answered.
 #[tauri::command]
-async fn day_today(from: f64, to: f64, calendar: bool, reminders: bool, ask: bool) -> Result<daybook::Day, String> {
-    tauri::async_runtime::spawn_blocking(move || daybook::today(from, to, calendar, reminders, ask))
+/// `done` also lists the reminders finished between `from` and `to` (for a journal page about yesterday).
+async fn day_today(from: f64, to: f64, calendar: bool, reminders: bool, ask: bool, done: Option<bool>) -> Result<daybook::Day, String> {
+    tauri::async_runtime::spawn_blocking(move || daybook::today(from, to, calendar, reminders, ask, done.unwrap_or(false)))
         .await
         .map_err(|_| "Couldn't read Calendar and Reminders.".to_string())
 }
