@@ -23,6 +23,10 @@ CONVERSATIONS
 • The Conversations chip counts only conversations you haven't read.
 • If Mastodon won't favorite or follow, the app now says why, and only asks you to reconnect when the permission is really missing. Tap a red message to clear it.
 
+YOUR DAY ON TODAY
+• Settings › Your day on Today: today's events from Calendar and the reminders due today, read on your device (nothing leaves it). Tick reminders off right on Today. Each device asks your OK once.
+• Day One: turn on Day One buttons there to get "Write today's page in Day One" on Today and "Journal in Day One" in a story's Share menu (with your highlights and notes).
+
 MARKETS ON TODAY
 • Settings › Markets on Today: up to five stocks or funds and five coins at the top of Today, with the day's change. Crypto works right away (CoinGecko). Stocks need a free Finnhub key (finnhub.io, no credit card), kept in your Keychain. Prices may be delayed.
 

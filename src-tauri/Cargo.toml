@@ -45,17 +45,19 @@ tauri-plugin-icloud-folder = { path = "plugins/icloud-folder" }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSURL", "NSData", "NSString", "NSError", "NSArray", "NSBundle"] }
+objc2-foundation = { version = "0.3", features = ["NSURL", "NSData", "NSString", "NSError", "NSArray", "NSBundle", "NSDate", "NSPredicate", "NSCalendar", "NSObjCRuntime"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSound", "UNNotificationTrigger", "block2"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSError", "NSString", "NSBundle"] }
+objc2-foundation = { version = "0.3", features = ["NSError", "NSString", "NSBundle", "NSArray", "NSDate", "NSPredicate", "NSCalendar", "NSObjCRuntime"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSound", "UNNotificationTrigger", "block2"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 security-framework = { version = "3", features = ["OSX_10_15"] }
+# Today's calendar and reminders (daybook.rs): the Calendar and Reminders data already on the device
+objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKEventStore", "EKEvent", "EKCalendarItem", "EKCalendar", "EKReminder", "EKObject", "EKTypes"] }
 
 [profile.release]
 codegen-units = 1

@@ -577,8 +577,9 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 
   /* The briefing: greeting and notes on the left, the lead story big on the right, four more beneath */
   body.home .brief { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.55fr); column-gap: 28px; row-gap: 12px; padding: 24px 24px 20px;
-    grid-template-areas: "top lead" "line lead" "mk lead" "inbrief lead" "foot lead" "people people" "more more"; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto; }
+    grid-template-areas: "top lead" "line lead" "mk lead" "day lead" "inbrief lead" "foot lead" "people people" "more more"; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto auto; }
   body.home .b-mk { grid-area: mk; margin: 0; }
+  body.home .b-day { grid-area: day; margin: 0; }
   body.home .b-people { grid-area: people; }
   body.home .b-pgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   body.home .b-top { grid-area: top; flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -2111,3 +2112,18 @@ html.ios .rail .nav .vidrow > button[data-view] { padding-left: 10px; }
 .mk-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--accent-soft); font-size: 13px; font-weight: 600; }
 .mk-tag button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 4px; }
 .mk-key { margin: 6px 0 4px; }
+
+/* Your day on Today */
+.b-day { margin: 12px 0 4px; }
+.b-day .b-sub { margin-bottom: 6px; }
+.day-ev, .day-rem { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.day-ev li { display: grid; grid-template-columns: 68px 1fr; gap: 8px; font-size: 14px; line-height: 1.35; }
+.day-ev time { color: var(--b-soft, var(--muted)); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 1px; }
+.day-ev b, .day-rem span { font-weight: 500; color: var(--b-ink, var(--ink)); }
+.day-ev small, .day-rem small { display: block; font-size: 12px; color: var(--b-soft, var(--muted)); font-weight: 400; }
+.day-ev li.past { opacity: .55; }
+.day-rem label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.35; cursor: pointer; }
+.day-rem input { margin-top: 2px; accent-color: var(--accent); }
+.day-rem li.done span { text-decoration: line-through; opacity: .55; }
+.day-rem small.late { color: #c2413a; }
+.day-note { margin: 4px 0; font-size: 13px; color: var(--b-soft, var(--muted)); }

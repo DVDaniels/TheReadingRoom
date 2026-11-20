@@ -20,6 +20,7 @@ mod webmention;
 mod review;
 mod youtube;
 mod offline;
+mod daybook;
 
 use futures::stream::{self, StreamExt};
 use rusqlite::Connection;
@@ -1790,6 +1791,43 @@ async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: b
     }))
 }
 
+// ---- Today's calendar and reminders (daybook.rs) and journaling in Day One
+
+/// Today's events and reminders from this device. `ask` shows the system's OK prompt for anything not yet answered.
+#[tauri::command]
+async fn day_today(from: f64, to: f64, calendar: bool, reminders: bool, ask: bool) -> Result<daybook::Day, String> {
+    tauri::async_runtime::spawn_blocking(move || daybook::today(from, to, calendar, reminders, ask))
+        .await
+        .map_err(|_| "Couldn't read Calendar and Reminders.".to_string())
+}
+
+/// Tick a reminder off in Reminders (or untick it).
+#[tauri::command]
+async fn reminder_done(id: String, done: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || daybook::set_done(&id, done))
+        .await
+        .map_err(|_| "Couldn't reach Reminders.".to_string())?
+}
+
+/// Open Day One with a new entry filled in (its dayone://post link). Day One must be installed.
+#[tauri::command]
+fn day_one(app: AppHandle, text: String, journal: String, tags: String) -> Result<(), String> {
+    let mut u = url::Url::parse("dayone://post").expect("static url");
+    {
+        let mut q = u.query_pairs_mut();
+        q.append_pair("entry", text.trim());
+        if !journal.trim().is_empty() {
+            q.append_pair("journal", journal.trim());
+        }
+        if !tags.trim().is_empty() {
+            q.append_pair("tags", tags.trim());
+        }
+    }
+    // Day One reads spaces as %20, not +
+    let link = u.as_str().replace('+', "%20");
+    app.opener().open_url(link, None::<&str>).map_err(|_| "Couldn't open Day One. Is it installed on this device?".to_string())
+}
+
 // ---- Markets on Today: a few stocks (Finnhub, with your own free key) and coins (CoinGecko, no key)
 
 const FINNHUB_KEY: &str = "finnhub-key";
@@ -2525,6 +2563,9 @@ pub fn run() {
             weather_place,
             weather_now,
             markets_now,
+            day_today,
+            reminder_done,
+            day_one,
             coin_search,
             markets_key_status,
             markets_key_set,

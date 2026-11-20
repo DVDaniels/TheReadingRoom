@@ -23,6 +23,15 @@
       </array>
     </dict>
   </array>
+  <!-- Today's calendar and reminders: what the system shows when it asks (once) -->
+  <key>NSCalendarsUsageDescription</key>
+  <string>Today shows your events for the day, read from Calendar on this device. Nothing is sent anywhere.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Today shows your events for the day, read from Calendar on this device. Nothing is sent anywhere.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>Today shows the reminders due today, read from Reminders on this device, and lets you tick them off. Nothing is sent anywhere.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Today shows the reminders due today, read from Reminders on this device, and lets you tick them off. Nothing is sent anywhere.</string>
   <key>NSHumanReadableCopyright</key>
   <string>© 2026 David Daniels</string>
 </dict>

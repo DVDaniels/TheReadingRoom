@@ -93,6 +93,18 @@ jobs:
           # Listen keeps reading with the screen locked
           /usr/libexec/PlistBuddy -c "Delete :UIBackgroundModes" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" -c "Add :UIBackgroundModes:0 string audio" "$PLIST"
+          # Today's calendar and reminders (the system asks once; the words below are what it shows)
+          for K in NSCalendarsUsageDescription NSCalendarsFullAccessUsageDescription; do
+            /usr/libexec/PlistBuddy -c "Delete :$K" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :$K string 'Today shows your events for the day, read from Calendar on this device. Nothing is sent anywhere.'" "$PLIST"
+          done
+          for K in NSRemindersUsageDescription NSRemindersFullAccessUsageDescription; do
+            /usr/libexec/PlistBuddy -c "Delete :$K" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :$K string 'Today shows the reminders due today, read from Reminders on this device, and lets you tick them off. Nothing is sent anywhere.'" "$PLIST"
+          done
+          # so the app can tell whether Day One is installed
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" -c "Add :LSApplicationQueriesSchemes:0 string dayone" "$PLIST"
 
       - name: Build the iPhone and iPad app
         run: |

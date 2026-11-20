@@ -809,6 +809,7 @@
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
       ${mkHtml()}
+      ${dayHtml()}
       ${inBriefHtml}${leadHtml}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
@@ -5750,6 +5751,7 @@
   }
   async function share(kind) {
     const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
+    if (kind === 'dayone') { journalItem(it); return; }
     if (kind === 'note') { if (SOC.accounts.wordpress) openNote(it); else { openAccounts().then(() => $('wpSite')?.focus()); status('Connect your site first, then write your note.'); } return; }
     if (kind === 'bluesky' || kind === 'mastodon') { openCompose(it, kind); return; }
     if (kind === 'sheet') { navigator.share?.({ title: it.title, url: it.link }).catch(() => {}); return; }
@@ -6623,6 +6625,123 @@
   loadMarkets();
   setInterval(() => loadMarkets(), 10 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadMarkets(); });
+
+  // ------------------------------------------------------------ Your day on Today: Calendar and Reminders from this device, and Day One
+  // Calendar and Reminders are read on the device (EventKit) and never leave it. The on/off choice syncs; the system's
+  // OK is per device, so a device that hasn't been asked shows an "Allow" button.
+  const DAYB = { data: null, at: 0, busy: false, day: '' };
+  const dayPrefs = () => S.prefs.day || {};
+  const dayOn = () => !!(dayPrefs().cal || dayPrefs().rem);
+  const doPrefs = () => S.prefs.dayone || {};
+  const dayBounds = () => { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(a); b.setDate(b.getDate() + 1); return [a.getTime() / 1000, b.getTime() / 1000]; };
+  async function loadDay(ask) {
+    if (!dayOn() || (DAYB.busy && !ask)) return;
+    const today = new Date().toDateString();
+    if (!ask && DAYB.data && DAYB.day === today && Date.now() - DAYB.at < 5 * 60 * 1000) return;
+    DAYB.busy = true;
+    try {
+      const [from, to] = dayBounds();
+      DAYB.data = await invoke('day_today', { from, to, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: !!ask });
+      DAYB.at = Date.now(); DAYB.day = today;
+      if (S.view === 'today') renderList();
+    } catch { /* leave the last day */ }
+    finally { DAYB.busy = false; }
+  }
+  const hm = s => new Date(s * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const where = IOS ? 'Settings › Privacy & Security' : 'System Settings › Privacy & Security';
+  function dayHtml() {
+    if (!dayOn()) return '';
+    if (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000) setTimeout(() => loadDay(), 0);
+    const d = DAYB.data, dev = IOS ? 'this iPhone or iPad' : 'this Mac';
+    if (!d) return `<div class="b-day"><h3 class="b-sub">Your day</h3><p class="day-note">Looking at your calendar…</p></div>`;
+    const ask = [d.calendar === 'ask' && 'Calendar', d.reminders === 'ask' && 'Reminders'].filter(Boolean);
+    const denied = [d.calendar === 'denied' && 'Calendars', d.reminders === 'denied' && 'Reminders'].filter(Boolean);
+    const now = Date.now() / 1000;
+    const ev = d.calendar === 'granted' ? (d.events.length
+      ? `<ul class="day-ev">${d.events.map(e => `<li class="${!e.all_day && e.end < now ? 'past' : ''}"><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>`
+      : '<p class="day-note">Nothing on your calendar today.</p>') : '';
+    const [, end] = dayBounds();
+    const rem = d.reminders === 'granted' ? (d.todo.length
+      ? `<ul class="day-rem">${d.todo.map(r => `<li><label><input type="checkbox" data-remdone="${esc(r.id)}"><span>${esc(r.title || 'Reminder')}${r.due != null ? `<small class="${r.due < now - 60 ? 'late' : ''}">${r.due < end - 86400 ? 'Overdue' : esc(hm(r.due))}${r.list ? ' · ' + esc(r.list) : ''}</small>` : r.list ? `<small>${esc(r.list)}</small>` : ''}</span></label></li>`).join('')}</ul>`
+      : '<p class="day-note">No reminders due today.</p>') : '';
+    return `<div class="b-day"><h3 class="b-sub">Your day</h3>${ev}${rem}
+      ${ask.length ? `<p class="day-note"><button class="btn" type="button" data-dayask>Allow ${ask.join(' and ')} on ${dev}</button></p>` : ''}
+      ${denied.length ? `<p class="day-note">The Reading Room can’t see ${denied.join(' or ')} on ${dev}. Turn it on in ${where} › ${denied.join(' / ')}.</p>` : ''}
+      ${doPrefs().on ? `<p class="day-note"><button class="linkish" type="button" data-dayone-page>Write today’s page in Day One</button></p>` : ''}</div>`;
+  }
+  document.addEventListener('change', async e => {
+    const c = e.target.closest('[data-remdone]'); if (!c) return;
+    const li = c.closest('li'); li?.classList.add('done');
+    try {
+      await invoke('reminder_done', { id: c.dataset.remdone, done: c.checked });
+      if (DAYB.data) DAYB.data.todo = DAYB.data.todo.filter(r => r.id !== c.dataset.remdone);
+      setTimeout(() => { if (S.view === 'today') renderList(); }, 900);
+    } catch (err) { c.checked = !c.checked; li?.classList.remove('done'); status(msg(err)); }
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-dayask]')) { loadDay(true); return; }
+    if (e.target.closest('[data-dayedit]')) { openDaySettings(); return; }
+    if (e.target.closest('[data-dayone-page]')) { dayOne(morningPage(), 'Morning'); return; }
+  });
+
+  // Day One: a new entry filled in, through Day One's own dayone:// link. Day One opens and you finish it there.
+  async function dayOne(text, tag) {
+    const p = doPrefs(), tags = [p.tags || '', tag || ''].map(t => t.trim()).filter(Boolean).join(',');
+    try { await invoke('day_one', { text, journal: p.journal || '', tags }); }
+    catch (err) { status(msg(err)); }
+  }
+  function morningPage() {
+    const d = new Date(), out = [`# ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
+    try {
+      const place = wxPlace();
+      if (place && wxData) { const w = WX.find(([codes]) => codes.includes(Number(wxData.code))); out.push(`${Math.round(wxData.temp)}°${w ? ', ' + w[3].toLowerCase() : ''} in ${place.name} (high ${Math.round(wxData.high)}°, low ${Math.round(wxData.low)}°)`); }
+    } catch {}
+    const day = DAYB.data;
+    if (day?.events?.length) out.push('## On the calendar\n' + day.events.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}${e.location ? ` (${e.location})` : ''}`).join('\n'));
+    if (day?.todo?.length) out.push('## To do\n' + day.todo.map(r => `- [ ] ${r.title}`).join('\n'));
+    try {
+      if (mkAny() && mkData?.quotes?.length) out.push('## Markets\n' + mkData.quotes.filter(q => q.price != null).map(q => `${q.kind === 'coin' ? (mkPicks().coins.find(c => c.id === q.id)?.sym || q.id) : q.id} ${mkPrice(q.price)} (${q.pct >= 0 ? '+' : ''}${(q.pct || 0).toFixed(1)}%)`).join(' · '));
+    } catch {}
+    const y0 = new Date(d); y0.setHours(0, 0, 0, 0); const yStart = y0.getTime() - DAY;
+    const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= yStart && Date.parse(i.read_at) < y0.getTime() && isWeb(i.link) && !isEmailItem(i)).slice(0, 8);
+    if (read.length) out.push('## Read yesterday\n' + read.map(i => `- [${headline(i)}](${i.link}) — ${cardWriter(i)}`).join('\n'));
+    out.push('## Today\n');
+    return out.join('\n\n');
+  }
+  function journalItem(it) {
+    const hls = S.highlights.filter(h => h.item_id === it.id);
+    const parts = [`## [${headline(it)}](${it.link})`, `${cardWriter(it)} · ${hostOfU(it.link)}`];
+    for (const h of hls) parts.push(`> ${h.text.replace(/\s+/g, ' ').trim()}` + (h.note ? `\n\n${h.note}` : ''));
+    parts.push('');
+    dayOne(parts.join('\n\n'), 'Reading');
+  }
+  const applyDayOne = () => { const b = document.querySelector('#shareMenu [data-share="dayone"]'); if (b) b.hidden = !doPrefs().on; };
+
+  function openDaySettings() {
+    const p = dayPrefs(), o = doPrefs();
+    const el = sheet('dayPanel', `<h2>Your day on Today</h2>
+      <p>Today can show your events and the reminders due today, read from Calendar and Reminders on each of your devices. They never leave the device. Each device asks your OK once.</p>
+      <label class="c-net"><input type="checkbox" id="dayCal"${p.cal ? ' checked' : ''}>Today’s events from Calendar</label>
+      <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today (tick them off right on Today)</label>
+      <h3 class="mk-h">Day One</h3>
+      <p class="note">If you journal in Day One, the app can start entries for you: today’s page from Today, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
+      <label class="c-net"><input type="checkbox" id="doOn"${o.on ? ' checked' : ''}>Show Day One buttons</label>
+      <div class="row"><input class="n-field" id="doJournal" type="text" placeholder="Journal (blank: your default journal)" value="${esc(o.journal || '')}" autocomplete="off" style="flex:1;min-width:160px"><input class="n-field" id="doTags" type="text" placeholder="Tags, like reading" value="${esc(o.tags || '')}" autocomplete="off" style="flex:1;min-width:120px"></div>
+      <p class="acct-note" id="dayNote" aria-live="polite"></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day on Today');
+    const save = () => {
+      S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked };
+      S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim() };
+      savePrefs(); applyDayOne(); DAYB.data = null; renderList();
+    };
+    el.addEventListener('change', save);
+    $('doTry').onclick = () => { save(); dayOne('Hello from The Reading Room.', ''); $('dayNote').textContent = 'If Day One opened with a new entry, it works. You can delete that entry.'; };
+    $('dayDone').onclick = () => { save(); el.hidden = true; if (dayOn()) loadDay(true); };
+  }
+  $('dayBtn').onclick = () => { closeSettings(); openDaySettings(); };
+  applyDayOne();
+  setInterval(() => loadDay(), 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadDay(); });
 
 
   // ------------------------------------------------------------ Your year in reading
