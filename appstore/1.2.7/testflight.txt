@@ -23,6 +23,9 @@ CONVERSATIONS
 • The Conversations chip counts only conversations you haven't read.
 • If Mastodon won't favorite or follow, the app now says why, and only asks you to reconnect when the permission is really missing. Tap a red message to clear it.
 
+MARKETS ON TODAY
+• Settings › Markets on Today: up to five stocks or funds and five coins at the top of Today, with the day's change. Crypto works right away (CoinGecko). Stocks need a free Finnhub key (finnhub.io, no credit card), kept in your Keychain. Prices may be delayed.
+
 SHARE WHAT YOU READ
 • Quote cards: select words in a story and tap Quote card (or Quote card under any highlight). You get a picture of the passage with the writer's name and site, to send in WhatsApp, Messages or anywhere. Paper or Night.
 • What I read this week: in Recently read (or from Today), pick your favorites, add a line about each, then post the roundup to your site, email it or copy it.

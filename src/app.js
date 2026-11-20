@@ -808,6 +808,7 @@
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
+      ${mkHtml()}
       ${inBriefHtml}${leadHtml}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
@@ -6520,6 +6521,108 @@
   loadWeather();
   setInterval(() => loadWeather(), 10 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWeather(); });
+
+  // ------------------------------------------------------------ Markets on Today: up to 5 stocks and 5 coins at a glance
+  // Stocks come from Finnhub with your own free key (kept in the Keychain); coins from CoinGecko (no key).
+  // Only the ticker symbols are sent. Prices may be delayed.
+  const MK = { busy: false };
+  const mkPicks = () => { const m = S.prefs.markets || {}; return { stocks: (m.stocks || []).slice(0, 5), coins: (m.coins || []).slice(0, 5) }; };
+  const mkAny = () => { const p = mkPicks(); return p.stocks.length + p.coins.length > 0; };
+  let mkData = (() => { try { return JSON.parse(store.get('marketsNow') || 'null'); } catch { return null; } })();
+  const mkSig = () => JSON.stringify(mkPicks());
+  async function loadMarkets(force) {
+    if (!mkAny() || MK.busy) return;
+    if (!force && mkData && mkData.sig === mkSig() && Date.now() - mkData.at < 10 * 60 * 1000) return;
+    MK.busy = true;
+    try {
+      const p = mkPicks();
+      const r = await invoke('markets_now', { stocks: p.stocks, coins: p.coins.map(c => c.id) });
+      mkData = { ...r, sig: mkSig(), at: Date.now() }; store.set('marketsNow', JSON.stringify(mkData));
+      if (S.view === 'today') renderList();
+    } catch { /* keep the last prices */ }
+    finally { MK.busy = false; }
+  }
+  const mkPrice = n => n == null ? '—' : n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n >= 1 ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toPrecision(3);
+  function mkHtml() {
+    if (!mkAny()) return '';
+    if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
+    const p = mkPicks(), q = new Map((mkData?.sig === mkSig() ? mkData.quotes : mkData?.quotes || []).map(x => [`${x.kind}:${x.id}`, x]));
+    const chip = (kind, id, sym) => {
+      const x = q.get(`${kind}:${id}`), pct = x?.pct;
+      const dir = pct == null ? '' : pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : 'flat';
+      const url = kind === 'coin' ? `https://www.coingecko.com/en/coins/${encodeURIComponent(id)}` : `https://finance.yahoo.com/quote/${encodeURIComponent(id)}`;
+      return `<button class="mk-chip ${dir}" type="button" data-mkurl="${esc(url)}" title="${esc(sym)}${x?.price != null ? ` · $${esc(mkPrice(x.price))}` : ''}">
+        <b>${esc(sym)}</b><span class="mk-p">${x ? esc(mkPrice(x.price)) : '…'}</span>${pct == null ? '' : `<span class="mk-c">${pct > 0.005 ? '▲' : pct < -0.005 ? '▼' : ''}${Math.abs(pct).toFixed(1)}%</span>`}</button>`;
+    };
+    const when = mkData?.at ? new Date(mkData.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<div class="b-mk" aria-label="Markets">
+      <div class="mk-row">${p.stocks.map(s => chip('stock', s, s)).join('')}${p.coins.map(c => chip('coin', c.id, c.sym)).join('')}</div>
+      <p class="mk-note">${mkData?.problem ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? `Prices as of ${esc(when)}, may be delayed` : 'Getting prices…'} · <button class="linkish" type="button" data-mkedit>Change</button></p></div>`;
+  }
+  async function openMarkets() {
+    const p = mkPicks();
+    let hasKey = false; try { hasKey = await invoke('markets_key_status'); } catch {}
+    let stocks = [...p.stocks], coins = [...p.coins], found = [];
+    const el = sheet('mkPanel', `<h2>Markets on Today</h2>
+      <p>Up to five stocks or funds and five coins, at the top of Today. The app sends only the ticker symbols. Prices may be delayed; this isn't investment advice.</p>
+      <h3 class="mk-h">Stocks and funds</h3>
+      <div class="mk-picked" id="mkStocks"></div>
+      <form class="row" id="mkStockForm"><input class="search" id="mkStockIn" type="text" placeholder="Ticker, like AAPL" autocomplete="off" autocapitalize="characters" style="flex:1;min-width:120px"><button class="btn" type="submit">Add</button></form>
+      <div class="mk-key" id="mkKeyBox"></div>
+      <h3 class="mk-h">Crypto</h3>
+      <div class="mk-picked" id="mkCoins"></div>
+      <form class="row" id="mkCoinForm"><input class="search" id="mkCoinIn" type="text" placeholder="Bitcoin, ETH, Solana…" autocomplete="off" style="flex:1;min-width:120px"><button class="btn" type="submit">Find</button></form>
+      <div class="voices" id="mkCoinRes"></div>
+      <p class="acct-note" id="mkNote" aria-live="polite"></p>
+      <p class="note">Stock prices: Finnhub. Crypto prices: CoinGecko.</p>
+      <div class="row sheet-foot">${mkAny() ? '<button class="btn danger" type="button" id="mkRemove">Remove markets</button>' : ''}<button class="btn primary" type="button" id="mkDone">Done</button></div>`, 'Markets on Today');
+    const say = (t, err) => { $('mkNote').textContent = t; $('mkNote').classList.toggle('err', !!err); };
+    const save = () => { S.prefs.markets = { stocks, coins }; savePrefs(); mkData = null; store.set('marketsNow', ''); renderList(); loadMarkets(true); };
+    const paint = () => {
+      $('mkStocks').innerHTML = stocks.map(s => `<span class="mk-tag">${esc(s)}<button type="button" data-mkdel-s="${esc(s)}" aria-label="Remove ${esc(s)}">×</button></span>`).join('') || '<span class="note">None yet</span>';
+      $('mkCoins').innerHTML = coins.map(c => `<span class="mk-tag" title="${esc(c.name || '')}">${esc(c.sym)}<button type="button" data-mkdel-c="${esc(c.id)}" aria-label="Remove ${esc(c.sym)}">×</button></span>`).join('') || '<span class="note">None yet</span>';
+      $('mkKeyBox').innerHTML = hasKey
+        ? `<p class="note">Your Finnhub key is saved in the Keychain. <button class="linkish" type="button" id="mkKeyDel">Remove the key</button></p>`
+        : `<p class="note">Stocks need a free key from Finnhub (no credit card, for personal use): sign up at <button class="linkish" type="button" data-mkurl="https://finnhub.io/register">finnhub.io</button>, copy the key from your dashboard and paste it here. It stays in your Keychain.</p>
+           <form class="row" id="mkKeyForm"><input class="search" id="mkKeyIn" type="password" placeholder="Finnhub key" autocomplete="off" style="flex:1;min-width:160px"><button class="btn" type="submit">Save key</button></form>`;
+    };
+    el.addEventListener('click', async e => {
+      const ds = e.target.closest('[data-mkdel-s]'); if (ds) { stocks = stocks.filter(s => s !== ds.dataset.mkdelS); paint(); save(); return; }
+      const dc = e.target.closest('[data-mkdel-c]'); if (dc) { coins = coins.filter(c => c.id !== dc.dataset.mkdelC); paint(); save(); return; }
+      const pick = e.target.closest('[data-mkcoin]');
+      if (pick) { const c = found[Number(pick.dataset.mkcoin)]; if (c && !coins.some(x => x.id === c.id)) { if (coins.length >= 5) { say('Five coins at most. Remove one first.', true); return; } coins.push(c); paint(); save(); say(`Added ${c.name}.`); } $('mkCoinRes').innerHTML = ''; $('mkCoinIn').value = ''; return; }
+      if (e.target.id === 'mkKeyDel') { try { await invoke('markets_key_set', { key: '' }); } catch {} hasKey = false; paint(); say('Removed the key.'); return; }
+      if (e.target.id === 'mkDone') { el.hidden = true; return; }
+      if (e.target.id === 'mkRemove') { stocks = []; coins = []; save(); el.hidden = true; return; }
+    });
+    el.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (e.target.id === 'mkKeyForm') {
+        const key = $('mkKeyIn').value; say('Checking the key with Finnhub…');
+        try { hasKey = await invoke('markets_key_set', { key }); paint(); say('Key saved.'); loadMarkets(true); } catch (err) { say(msg(err), true); }
+      } else if (e.target.id === 'mkStockForm') {
+        const t = $('mkStockIn').value.trim(); if (!t) return;
+        if (stocks.length >= 5) { say('Five stocks at most. Remove one first.', true); return; }
+        if (!hasKey) { say('Save your Finnhub key first, then add stocks.', true); return; }
+        say(`Looking up ${t.toUpperCase()}…`);
+        try { const r = await invoke('stock_check', { symbol: t }); if (!stocks.includes(r.sym)) stocks.push(r.sym); $('mkStockIn').value = ''; paint(); save(); say(`Added ${r.sym} ($${mkPrice(r.price)}).`); }
+        catch (err) { say(msg(err), true); }
+      } else if (e.target.id === 'mkCoinForm') {
+        $('mkCoinRes').innerHTML = '<p class="note">Looking…</p>';
+        try { found = await invoke('coin_search', { query: $('mkCoinIn').value }); $('mkCoinRes').innerHTML = found.map((c, i) => `<button type="button" class="voice" data-mkcoin="${i}"><span class="v-name">${esc(c.name)} <span class="note">${esc(c.sym)}</span></span></button>`).join(''); }
+        catch (err) { $('mkCoinRes').innerHTML = `<p class="note err">${esc(msg(err))}</p>`; }
+      }
+    });
+    paint();
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-mkedit]')) { openMarkets(); return; }
+    const u = e.target.closest('[data-mkurl]'); if (u) invoke('open_external', { url: u.dataset.mkurl }).catch(() => {});
+  });
+  $('marketsBtn').onclick = () => { closeSettings(); openMarkets(); };
+  loadMarkets();
+  setInterval(() => loadMarkets(), 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadMarkets(); });
 
 
   // ------------------------------------------------------------ Your year in reading
