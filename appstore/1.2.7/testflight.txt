@@ -16,7 +16,7 @@ VIDEOS
 • The bar now speaks of watching: Unwatched, All videos, Mark all watched, Search videos. Free to read is gone from Videos.
 
 Please tell us if a description looks wrong, or if tapping a chapter time doesn't start the video where it should (Mac and iPhone/iPad).
-• Some YouTube channels were added with no videos (YouTube sent the app an empty list). The app now asks again and, if needed, reads the channel's Videos page.
+• A channel or blog that posts rarely could look empty when you follow lots of busy feeds (the app only loaded the newest 2,000 stories overall). Now every feed's newest 20 always show.
 
 CONVERSATIONS
 • Mark all as read is now at the top, next to Since you were here. On Everything it clears the Conversations number in the sidebar.

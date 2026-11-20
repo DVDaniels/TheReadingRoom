@@ -467,6 +467,9 @@ pub fn rename_feed(conn: &Connection, id: i64, title: &str) -> rusqlite::Result<
 
 // ---------------------------------------------------------------- stories
 
+/// However busy the other feeds are, each feed's newest stories this many are always loaded.
+pub const PER_FEED_SHOWN: i64 = 20;
+
 pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
     // An email's "links" is its sender's address (mailto:…), so the app can match emails to the people you read
     let mail: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='email_meta'", [], |r| r.get(0))?;
@@ -480,9 +483,11 @@ pub fn items(conn: &Connection, limit: i64) -> rusqlite::Result<Vec<Item>> {
          FROM items
          WHERE id IN (SELECT id FROM items ORDER BY date DESC LIMIT ?1)
             OR saved=1 OR id IN (SELECT item_id FROM highlights)
+            -- every feed's own newest few too, so a quiet channel or blog isn't empty when busy feeds fill the limit
+            OR id IN (SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY date DESC) AS n FROM items) WHERE n <= ?2)
          ORDER BY date DESC"
     ))?;
-    let rows = st.query_map([limit], |r| {
+    let rows = st.query_map([limit, PER_FEED_SHOWN], |r| {
         Ok(Item {
             id: r.get(0)?,
             feed_id: r.get(1)?,
@@ -743,6 +748,29 @@ mod tests {
         let c = open(&path, false).unwrap();
         let c = { drop(c); open(&path, false).unwrap() };
         assert_eq!(cached_article(&c, "x").unwrap().map(|k| k.byline), Some("Ann".to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn quiet_feeds_still_load() {
+        // A busy feed fills the limit with newer stories; the quiet one's videos still come in
+        let dir = std::env::temp_dir().join(format!("rr-quiet-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("q.db");
+        let _ = std::fs::remove_file(&path);
+        let mut c = open(&path, false).unwrap();
+        let busy = add_feed(&c, "https://busy.example/feed", "Busy", "", None).unwrap();
+        let quiet = add_feed(&c, "https://www.youtube.com/feeds/videos.xml?channel_id=UCq", "Quiet", "", None).unwrap();
+        let mk = |id: String, day: u32| NewItem { id: id.clone(), title: id.clone(), link: format!("https://x/{id}"), date: format!("2026-11-{day:02}T00:00:00Z"), summary: "".into(), image: "".into(), audio: String::new(), shares: String::new(), paid: false, links: String::new(), comments: -1, tags: String::new(), videos: String::new() };
+        let b: Vec<NewItem> = (0..50).map(|n| mk(format!("b{n}"), 15 + (n % 5))).collect();
+        let q: Vec<NewItem> = (0..30).map(|n| mk(format!("q{n}"), 1 + (n % 7))).collect();
+        let fb = feed(&c, busy).unwrap().unwrap();
+        let fq = feed(&c, quiet).unwrap().unwrap();
+        store_fetch(&mut c, &fb, "Busy", "", &b, "2026-11-19T00:00:00Z").unwrap();
+        store_fetch(&mut c, &fq, "Quiet", "", &q, "2026-11-19T00:00:00Z").unwrap();
+        let got = items(&c, 10).unwrap();
+        assert_eq!(got.iter().filter(|i| i.feed_id == quiet).count(), PER_FEED_SHOWN as usize);
+        assert_eq!(got.iter().filter(|i| i.feed_id == busy).count(), PER_FEED_SHOWN as usize);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
