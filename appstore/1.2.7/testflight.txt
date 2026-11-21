@@ -17,6 +17,7 @@ EMAIL
 • Newsletters: hidden preview text and tracking pixels are gone, buttons look like buttons, columns stay apart and the footer is small. (Newly arrived email gets all of this.)
 
 ALSO IN 1.2.7
+• Settings › Experimental: turn My Day, Email, Morning Edition and Help Wanted on or off. With all four off, the app is just your feed reader.
 • Your day and Markets (now on My Day): Calendar, Reminders and Day One; stocks and crypto in their own rows.
 • Quote cards, What I read this week, YouTube descriptions with chapter times, Your channels and favorites in Videos, Mark all as read in Conversations.
 

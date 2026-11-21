@@ -332,14 +332,23 @@
     const name = OPTIONAL_VIEWS.find(x => x[0] === v)?.[1] || v;
     if (!on && S.view === v) selectView('today');
     renderRail(); renderHead(); paintShowSettings();
-    status(on ? `${name} is back in the sidebar.` : `${name} is hidden. Bring it back in Settings › Appearance.`);
+    const where = EXPERIMENTAL.includes(v) ? 'Settings › Experimental' : 'Settings › Appearance';
+    status(on ? `${name} is back in the sidebar.` : `${name} is off. Turn it back on in ${where}.`);
+    if (v === 'email' && on) checkMail(true);
   }
+  // Settings › Experimental: My Day, Email, Morning Edition and Help Wanted go beyond reading feeds (David, Nov 21).
+  // Turned off, each is gone from the sidebar and stops its work (no mail checks, nothing from My Day on Today);
+  // with all four off the app is a plain feed reader. Same switch as hiding a view (S.prefs.hiddenViews).
+  const EXPERIMENTAL = ['myday', 'email', 'edition', 'jobs'];
   function paintShowSettings() {
-    const el = $('setShow'); if (!el) return;
     const h = hiddenViews();
-    el.innerHTML = OPTIONAL_VIEWS.map(([v, label, what]) => `<label class="set-switch"><span><b>${label}</b><small>${what}</small></span><input type="checkbox" role="switch" data-show="${v}"${h.has(v) ? '' : ' checked'}></label>`).join('');
+    const sw = ([v, label, what]) => `<label class="set-switch"><span><b>${label}</b><small>${what}</small></span><input type="checkbox" role="switch" data-show="${v}"${h.has(v) ? '' : ' checked'}></label>`;
+    const el = $('setShow'); if (el) el.innerHTML = OPTIONAL_VIEWS.filter(x => !EXPERIMENTAL.includes(x[0])).map(sw).join('');
+    const ex = $('setExp'); if (ex) ex.innerHTML = EXPERIMENTAL.map(v => OPTIONAL_VIEWS.find(x => x[0] === v)).filter(Boolean).map(sw).join('');
+    document.querySelectorAll('#expList [data-exp]').forEach(li => { li.hidden = h.has(li.dataset.exp); });
+    const list = $('expList'); if (list) list.hidden = ![...list.children].some(li => !li.hidden);
   }
-  $('setShow')?.addEventListener('change', e => { const c = e.target.closest('[data-show]'); if (c) showView(c.dataset.show, c.checked); });
+  for (const id of ['setShow', 'setExp']) $(id)?.addEventListener('change', e => { const c = e.target.closest('[data-show]'); if (c) showView(c.dataset.show, c.checked); });
   $('hideViewBtn')?.addEventListener('click', () => showView(S.view, false));
 
   let loadedOnce = false;
@@ -2307,7 +2316,7 @@
   // (David, Nov 21: "a notification to look"). Calendar's own alerts still ring at the time; this is just a nudge.
   function mydayNavItem() {
     const it = { view: 'myday', label: 'My Day', count: '', icon: ICONS.myday };
-    if (!dayPrefs().cal) return it;
+    if (!dayPrefs().cal || !myDayOn()) return it;
     const today = new Date().toDateString();
     if (!DAYB.data || DAYB.day !== today) setTimeout(() => loadDay(), 0);
     if (!BDAY.list || BDAY.day !== today || Date.now() - BDAY.at > 60 * 60 * 1000) setTimeout(() => loadBirthdays(), 0);
@@ -2838,7 +2847,7 @@
   // A Proton mailbox comes through Bridge on the Mac; iPhone and iPad have no Bridge to reach
   const bridgeAway = () => !!MAIL.account && IOS && /^(127\.0\.0\.1|localhost|::1|\[::1\])$/.test(MAIL.account.imap_host);
   async function checkMail(quiet) {
-    if (!MAIL.account || MAIL.checking || bridgeAway()) return;
+    if (!MAIL.account || MAIL.checking || bridgeAway() || hiddenViews().has('email')) return;
     if (quiet && Date.now() - MAIL.last < 120e3) return;
     MAIL.checking = true; MAIL.last = Date.now();
     if (S.view === 'email') { renderList(); renderHead(); }
@@ -6766,7 +6775,7 @@
   const doPrefs = () => S.prefs.dayone || {};
   const dayBounds = () => { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(a); b.setDate(b.getDate() + 1); return [a.getTime() / 1000, b.getTime() / 1000]; };
   async function loadDay(ask) {
-    if (!dayOn() || (DAYB.busy && !ask)) return;
+    if (!dayOn() || (!myDayOn() && !ask) || (DAYB.busy && !ask)) return;
     const today = new Date().toDateString();
     if (!ask && DAYB.data && DAYB.day === today && Date.now() - DAYB.at < 5 * 60 * 1000) return;
     DAYB.busy = true;

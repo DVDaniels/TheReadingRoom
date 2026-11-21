@@ -2332,3 +2332,4 @@ body.rail-slim .nav .md-bday { position: absolute; bottom: 1px; right: 0; margin
 .wk-photo img { width: 120px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 .wk-photo-in { display: flex; flex-direction: column; gap: 6px; flex: 1 1 220px; min-width: 0; }
 .wk-photo-in .b-link { align-self: flex-start; }
+#expList { margin-top: 12px; }

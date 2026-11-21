@@ -196,6 +196,14 @@
       </div>
       <div class="set-show"><h4>Show in the sidebar</h4><div id="setShow"></div>
         <span>Turn off the parts you don’t use. Nothing is deleted, and you can turn them back on here. This syncs to your other devices.</span></div></section>
+    <section class="set-group"><h3>Experimental</h3>
+      <div class="set-show"><div id="setExp"></div>
+        <span>Extras that go beyond reading feeds, and still changing. Turn them all off and The Reading Room is just your feed reader. Nothing is deleted.</span></div>
+      <ul class="set-list" id="expList">
+        <li data-exp="myday"><button class="set-item" id="mydayBtn" type="button">My Day</button><span>Your goals, rituals, and opening on My Day in the morning</span></li>
+        <li data-exp="myday"><button class="set-item" id="dayBtn" type="button">Your day</button><span>Calendar, reminders and Day One on My Day</span></li>
+        <li data-exp="email"><button class="set-item" id="mailBtn" type="button">Email</button><span id="mailSetNote">Read and answer one mailbox of your own in the Email tab</span></li>
+      </ul></section>
     <section class="set-group"><h3>Your feeds</h3>
       <ul class="set-list">
         <li><button class="set-item" id="importBtn" type="button">Import OPML</button><span>Bring your feeds over from another reader</span></li>
@@ -207,14 +215,11 @@
         <li><button class="set-item" id="muteBtn" type="button">Muted words</button><span>Keep stories with these words out of your lists</span></li>
         <li><button class="set-item" id="rulesBtn" type="button">Rules &amp; alerts</button><span>Be alerted, save or mark read when certain stories arrive</span></li>
         <li><button class="set-item" id="yearBtn" type="button">Your year</button><span>Your year in reading</span></li>
-        <li><button class="set-item" id="mydayBtn" type="button">My Day</button><span>Your goals, rituals, and opening on My Day in the morning</span></li>
-        <li><button class="set-item" id="dayBtn" type="button">Your day</button><span>Calendar, reminders and Day One on My Day</span></li>
         <li><button class="set-item" id="marketsBtn" type="button">Markets</button><span>A few stocks and coins on My Day and under the top story on Today</span></li>
       </ul></section>
     <section class="set-group"><h3>Connections</h3>
       <ul class="set-list">
         <li><button class="set-item" id="socialBtn" type="button">Your site, Mastodon &amp; Bluesky</button><span>Post notes and see replies in Conversations</span></li>
-        <li><button class="set-item" id="mailBtn" type="button">Email</button><span id="mailSetNote">Read and answer one mailbox of your own in the Email tab</span></li>
         <li><button class="set-item" id="offlineBtn" type="button">Saved for offline</button><span id="offlineNote">Podcast episodes and videos you save play without a connection</span></li>
         <li><button class="syncbtn set-item" id="syncBtn" type="button"><span class="dot" id="syncDot"></span><span id="syncLabel">Sync between Macs: off</span></button><span>Feeds, Read later and highlights through iCloud Drive</span></li>
       </ul></section>
