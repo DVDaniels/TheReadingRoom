@@ -25,6 +25,7 @@
     read: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>',
     unread: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>',
     edition: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2h-1M7.5 8.5h6M7.5 12h6M7.5 15.5h4"/></svg>',
+    myday: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
     today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     later: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     recent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -127,7 +128,7 @@
     if (folder) { const f = feedById(i.feed_id); return !!f && folderIdsIn(folder).includes(f.folder_id); }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -322,7 +323,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your Big 3, goals, calendar and markets, and a weekly review'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -364,6 +365,7 @@
     $('views').innerHTML =
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
+        { view: 'myday', label: 'My Day', count: '', icon: ICONS.myday },
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
         videosNavItem(),
         ...favChannelNav(),
@@ -421,7 +423,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -434,7 +436,8 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday') && !S.readerId));
+    document.body.classList.toggle('myday-view', S.view === 'myday');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -462,6 +465,7 @@
   function renderHead() {
     $('viewTitle').innerHTML = S.view === 'today'
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
+      : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     if (S.view === 'today') paintGoalChip();
@@ -476,6 +480,7 @@
       : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
+      : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your Big 3, your goals, your calendar and the markets')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -488,7 +493,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -808,9 +813,8 @@
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
-      ${mkHtml()}
-      ${dayHtml()}
-      ${inBriefHtml}${leadHtml}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
+      ${myDayOn() ? glanceHtml() : mkHtml() + dayHtml()}
+      ${inBriefHtml}${leadHtml}${peopleHtml}${trendHtml()}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
 
@@ -830,6 +834,7 @@
     }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
+    if (S.view === 'myday') { paintMyDay(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
@@ -937,9 +942,11 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'myday', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
+      // Mornings start on My Day (Your compass › Open on My Day before 10 am turns this off)
+      if (!loadedOnce && S.view === 'today' && myDayOn() && mdMorningStart() && new Date().getHours() < 10) S.view = 'myday';
       loadedOnce = true;
       render(); welcome(); processNew();
     } catch (e) { status(msg(e), true); }
@@ -980,7 +987,8 @@
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
-    if (S.view !== 'videos') S.vchan = null; // the channel picked in Videos is just for that visit
+    if (S.view !== 'videos') S.vchan = null;
+    if (S.view !== 'myday') { MD.mode = null; MD.step = 0; } // the channel picked in Videos is just for that visit
     // Back within half an hour is the same visit: "Since you were here" and the faces stay as they were
     if (S.view === 'talk' && was !== 'talk') { if (!SOC.nbLeft || Date.now() - SOC.nbLeft > 30 * 60e3) SOC.nbVisit = undefined; if (!SOC.keepPerson) SOC.person = null; SOC.keepPerson = false; }
     S.keep.clear(); S.selId = null; S.shown = 60; hideBanner(); render(); $('main').scrollTo({ top: 0 }); $('listView').scrollTo({ top: 0 });
@@ -2974,12 +2982,14 @@
     if (now - t < 6 * DAY) return t.toLocaleDateString([], { weekday: 'short' });
     return t.toLocaleDateString([], t.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
   }
+  // The line under an email's subject: its own words, without the email it answers
+  const mailSnip = t => (t || '').replace(/\s(On\s.{4,200}?\swrote:|-{3,}\s*Original Message|>\s).*$/s, '').trim();
   function mailRow(it) {
     const from = srcLabel(it);
     return `<article class="story mail-row${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}${S.readerId === it.id ? ' open' : ''}" data-id="${esc(it.id)}">
       <span class="mr-av" style="--h:${hueFor('mail:' + from)}" aria-hidden="true">${esc((from.trim()[0] || '?').toUpperCase())}</span>
       <button class="mr-main title" data-act="open"><span class="mr-top"><span class="mr-from">${esc(from)}</span><time datetime="${esc(it.date)}">${esc(mailWhen(it.date))}</time></span>
-        <span class="mr-subj">${esc(headline(it))}</span>${it.summary ? `<span class="mr-snip">${esc(it.summary)}</span>` : ''}</button>
+        <span class="mr-subj">${esc(headline(it))}</span>${mailSnip(it.summary) ? `<span class="mr-snip">${esc(mailSnip(it.summary))}</span>` : ''}</button>
       <div class="acts mr-acts">
         <button class="icon" data-act="mdel" title="Move to the Trash" aria-label="Move to the Trash">${ICONS.trash}</button>
         <button class="icon${it.saved ? ' on' : ''}" data-act="save" title="${it.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${it.saved ? 'Remove from Read later' : 'Read later'}">${it.saved ? ICONS.saved : ICONS.save}</button>
@@ -3919,6 +3929,7 @@
   const readsYou = f => !!f && !isOwn(f.id) && rollsYou().has(f.title);
   // The little labels on a card say what they mean when tapped (iPhone has no hover) or hovered (Mac)
   const CUES = {
+    trend: 'Trending in your neighborhood: names, topics and links that several of the people you read wrote about this week, more than they usually do. Worked out on this device from the posts you already have. Tap one to see their posts side by side.',
     mypage: 'Your page: your posts and notes, who talks with you and who links to you, the same page each person you read has.',
     ytc: site => `Comment on ${site}: copies what you wrote and opens the video on ${site}. Paste it into the comments there. ${site} doesn’t take replies from other sites, so this is how your words get under the video.`,
     favchan: 'Your channels: every channel you follow that has videos here. The number is how many you haven’t watched. Tap a channel to see only its videos; tap it again for all. Tap ☆ to make it a favorite, and favorites stay first.',
@@ -5221,20 +5232,91 @@
 
   // Story HTML comes from the Rust side already cleaned (no scripts, styles or event handlers).
   // Emails are laid out with tables (no lines between cells) and carry hidden lines meant for inbox previews.
-  // Here: drop the empty spacer cells and rows, and a first line that only repeats the subject.
+  // Read like email: the email being answered folds away, the signature is set apart, and plain text cut into
+  // short lines goes back into paragraphs. Newsletters: their hidden preview line goes, links drawn as buttons
+  // stay buttons, side-by-side columns stay apart, and the footer (unsubscribe and so on) is made small.
+  // Tracking pixels are taken out before anything loads (see mailFragment).
+  function mailFragment(html) {
+    const t = document.createElement('template'); t.innerHTML = html; // nothing in a template loads
+    const f = t.content;
+    f.querySelectorAll('[data-rr-hide]').forEach(el => el.remove());
+    f.querySelectorAll('img').forEach(img => {
+      const w = Number(img.getAttribute('width')), h = Number(img.getAttribute('height')), src = img.getAttribute('src') || '';
+      if ((w > 0 && w <= 3) || (h > 0 && h <= 3) || /\/(open|o|t|track|pixel|beacon)\.(gif|png)(\?|$)|\/(track|open)\/|[?&](open|track)=|pixel\.|beacon|spacer\.gif/i.test(src)) img.remove();
+    });
+    return f;
+  }
   function tidyMail(body, it) {
     const empty = el => !el.textContent.trim() && !el.querySelector('img, a, hr');
     body.querySelectorAll('tr').forEach(tr => { if (empty(tr)) tr.remove(); });
     body.querySelectorAll('td, th').forEach(td => { if (empty(td)) td.remove(); });
     const first = [...body.querySelectorAll('p, div, span, td, h1, h2')].find(el => el.textContent.trim());
     if (first && it && first.textContent.trim() === headline(it).trim() && !first.querySelector('img')) first.remove();
+    // Plain text: "> " lines are a quote; lines cut at about 72 characters go back into paragraphs
+    body.querySelectorAll('p').forEach(p => {
+      if (!p.querySelector('br') || p.querySelector('table, div, p')) return;
+      const lines = p.innerHTML.split(/<br\s*\/?>/i), texts = lines.map(l => l.replace(/<[^>]+>/g, '').replace(/&[a-z#0-9]+;/gi, 'x').trim());
+      if (lines.every(l => /^&gt;/.test(l.trim()))) {
+        const q = document.createElement('blockquote'); const inner = document.createElement('p');
+        inner.innerHTML = lines.map(l => l.trim().replace(/^(&gt;\s?)+/, '')).join('<br>'); q.appendChild(inner); p.replaceWith(q); return;
+      }
+      if (lines.length < 3) return;
+      const wrapped = texts.filter(t => t.length >= 50 && t.length <= 80).length;
+      if (wrapped / texts.length < 0.5) return;
+      let out = lines[0];
+      for (let k = 1; k < lines.length; k++) out += (texts[k - 1].length < 45 || !texts[k] || /^([-*•]|\d+[.)])\s/.test(texts[k])) ? '<br>' + lines[k] : ' ' + lines[k].trimStart();
+      p.innerHTML = out;
+    });
+    // The email being answered: from "On … wrote:" (or "Original Message") to the end, folded away
+    const fold = start => {
+      if (!start?.parentNode || start.closest('details')) return;
+      const det = document.createElement('details'); det.className = 'mail-quote';
+      det.innerHTML = '<summary>Show the earlier email</summary>';
+      start.parentNode.insertBefore(det, start);
+      for (let n = start; n;) { const next = n.nextSibling; det.appendChild(n); n = next; }
+    };
+    const marker = [...body.querySelectorAll('p, div, span, td')].find(el => el.textContent.length < 400 && /^\s*(On\s.{4,200}\swrote:|-{3,}\s*Original Message\s*-{3,})/i.test(el.textContent) && ![...el.children].some(c => /^(P|DIV|TABLE)$/.test(c.tagName)));
+    if (marker) fold(marker);
+    else if (it && /^(re|aw|sv|antw)\s*:/i.test(headline(it))) body.querySelectorAll('blockquote').forEach(b => { if (!b.parentElement?.closest('blockquote, details')) fold(b); });
+    // The signature: after a "-- " line, or a "Sent from my …" line
+    const sig = body.querySelector('[data-rr-sig]') || [...body.querySelectorAll('p, div')].find(el => !el.querySelector('p, div, table') && (/^--\s*(\n|$)/.test(el.innerText || el.textContent) || /^\s*--\s*$/.test(el.textContent) || /^Sent from my \w+/i.test(el.textContent.trim())));
+    if (sig && !sig.closest('details')) for (let n = sig; n; n = n.nextElementSibling) n.classList.add('mail-sig');
+    // Newsletters: buttons, columns and the footer
+    body.querySelectorAll('a[data-rr-btn]').forEach(a => a.classList.add('mail-btn'));
+    body.querySelectorAll('tr').forEach(tr => {
+      const cells = [...tr.children].filter(c => /^T[DH]$/.test(c.tagName));
+      if (cells.length >= 2 && cells.filter(c => c.textContent.trim().length > 30 || c.querySelector('img')).length >= 2) tr.classList.add('mail-cols');
+    });
+    const foot = [...body.querySelectorAll('p, td, div, span')].filter(el => el.textContent.length < 1500 && /unsubscribe|opt[ -]out|email preferences|manage (your )?(subscription|preferences|email)|update your preferences/i.test(el.textContent)).pop();
+    if (foot) {
+      const block = (foot.closest('tr') && foot.closest('tr').textContent.length < 1500 ? foot.closest('tr') : null) || foot.closest('p, div') || foot;
+      for (let n = block; n; n = n.nextElementSibling) n.classList.add('mail-foot');
+    }
+  }
+  // Who an email is from, above it (name, address, when)
+  function mailHead(it) {
+    const name = it.byline || srcLabel(it) || 'Email';
+    const when = new Date(it.date).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const el = document.createElement('div'); el.className = 'mail-head';
+    el.innerHTML = `<span class="mr-av" style="--h:${hueFor('mail:' + srcLabel(it))}" aria-hidden="true">${esc((name.trim()[0] || '?').toUpperCase())}</span>
+      <div class="mh-who"><b>${esc(name)}</b> <span class="mh-addr"></span><small>${esc(when)}</small></div>`;
+    invoke('email_from', { itemId: it.id }).then(r => {
+      const a = el.querySelector('.mh-addr'); if (!a || !r) return;
+      if (r.address && r.address !== name) a.textContent = `<${r.address}>`;
+      const sm = el.querySelector('small');
+      if (sm) sm.textContent = [r.to ? `to ${r.to}` : '', r.replyTo && r.replyTo !== r.address ? `replies go to ${r.replyTo}` : '', when].filter(Boolean).join(' · ');
+    }).catch(() => {});
+    return el;
   }
   function paintArticle() {
     const body = $('rBody');
-    body.innerHTML = articleHtml;
     const isMail = isEmailItem(item(S.readerId) || {});
     body.classList.toggle('mail-body', isMail);
-    if (isMail) tidyMail(body, item(S.readerId));
+    if (isMail) {
+      const it = item(S.readerId), f = mailFragment(articleHtml);
+      tidyMail(f, it);
+      body.replaceChildren(mailHead(it), f);
+    } else body.innerHTML = articleHtml;
     // YouTube players in the story come through as marked links; play them right here
     const shown = ytId(item(S.readerId)?.link);
     body.querySelectorAll('a[href$="#rr-video"]').forEach(a => {
@@ -6540,7 +6622,7 @@
       const p = mkPicks();
       const r = await invoke('markets_now', { stocks: p.stocks, coins: p.coins.map(c => c.id) });
       mkData = { ...r, sig: mkSig(), at: Date.now() }; store.set('marketsNow', JSON.stringify(mkData));
-      if (S.view === 'today') renderList();
+      if (S.view === 'today' || S.view === 'myday') renderList();
     } catch { /* keep the last prices */ }
     finally { MK.busy = false; }
   }
@@ -6567,8 +6649,8 @@
     const p = mkPicks();
     let hasKey = false; try { hasKey = await invoke('markets_key_status'); } catch {}
     let stocks = [...p.stocks], coins = [...p.coins], found = [];
-    const el = sheet('mkPanel', `<h2>Markets on Today</h2>
-      <p>Up to five stocks or funds and five coins, at the top of Today. The app sends only the ticker symbols. Prices may be delayed; this isn't investment advice.</p>
+    const el = sheet('mkPanel', `<h2>Markets</h2>
+      <p>Up to five stocks or funds and five coins, on My Day (the first three also show on Today). The app sends only the ticker symbols. Prices may be delayed; this isn't investment advice.</p>
       <h3 class="mk-h">Stocks and funds</h3>
       <div class="mk-picked" id="mkStocks"></div>
       <form class="row" id="mkStockForm"><input class="search" id="mkStockIn" type="text" placeholder="Ticker, like AAPL" autocomplete="off" autocapitalize="characters" style="flex:1;min-width:120px"><button class="btn" type="submit">Add</button></form>
@@ -6579,7 +6661,7 @@
       <div class="voices" id="mkCoinRes"></div>
       <p class="acct-note" id="mkNote" aria-live="polite"></p>
       <p class="note">Stock prices: Finnhub. Crypto prices: CoinGecko.</p>
-      <div class="row sheet-foot">${mkAny() ? '<button class="btn danger" type="button" id="mkRemove">Remove markets</button>' : ''}<button class="btn primary" type="button" id="mkDone">Done</button></div>`, 'Markets on Today');
+      <div class="row sheet-foot">${mkAny() ? '<button class="btn danger" type="button" id="mkRemove">Remove markets</button>' : ''}<button class="btn primary" type="button" id="mkDone">Done</button></div>`, 'Markets');
     const say = (t, err) => { $('mkNote').textContent = t; $('mkNote').classList.toggle('err', !!err); };
     const save = () => { S.prefs.markets = { stocks, coins }; savePrefs(); mkData = null; store.set('marketsNow', ''); renderList(); loadMarkets(true); };
     const paint = () => {
@@ -6645,7 +6727,7 @@
       const [from, to] = dayBounds();
       DAYB.data = await invoke('day_today', { from, to, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: !!ask });
       DAYB.at = Date.now(); DAYB.day = today;
-      if (S.view === 'today') renderList();
+      if (S.view === 'today' || S.view === 'myday') renderList();
     } catch { /* leave the last day */ }
     finally { DAYB.busy = false; }
   }
@@ -6694,7 +6776,7 @@
     try {
       await invoke('reminder_done', { id: c.dataset.remdone, done: c.checked });
       if (DAYB.data) { const id = c.dataset.remdone; DAYB.data.todo = DAYB.data.todo.filter(r => r.id !== id); if (DAYB.data.undated?.some(r => r.id === id)) { DAYB.data.undated = DAYB.data.undated.filter(r => r.id !== id); DAYB.data.undated_total = Math.max(0, (DAYB.data.undated_total || 1) - 1); } }
-      setTimeout(() => { if (S.view === 'today') renderList(); }, 900);
+      setTimeout(() => { if (S.view === 'today') renderList(); else if (S.view === 'myday') mdRender(); }, 900);
     } catch (err) { c.checked = !c.checked; li?.classList.remove('done'); status(msg(err)); }
   });
   document.addEventListener('click', e => {
@@ -6729,6 +6811,7 @@
         if (place && wxData) { const w = WX.find(([codes]) => codes.includes(Number(wxData.code))); out.push(`${Math.round(wxData.temp)}°${w ? ', ' + w[3].toLowerCase() : ''} in ${place.name} (high ${Math.round(wxData.high)}°, low ${Math.round(wxData.low)}°)`); }
       } catch {}
     }
+    { const nk = dayKey(d), notes = S.prefs.mydays?.[nk]?.notes || []; if (notes.length) out.push('## Notes from the day\n' + notes.map(x => `- ${x.t}`).join('\n')); }
     if (dayPrefs().cal && day?.events?.length) out.push('## On the calendar\n' + day.events.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}${e.location ? ` (${e.location})` : ''}`).join('\n'));
     if (dayPrefs().rem) {
       if (yday && day?.done?.length) out.push('## Got done\n' + day.done.map(r => `- [x] ${r.title}`).join('\n'));
@@ -6756,20 +6839,20 @@
 
   function openDaySettings() {
     const p = dayPrefs(), o = doPrefs();
-    const el = sheet('dayPanel', `<h2>Your day on Today</h2>
-      <p>Today can show your events and the reminders due today, read from Calendar and Reminders on each of your devices. They never leave the device. Each device asks your OK once.</p>
+    const el = sheet('dayPanel', `<h2>Your day</h2>
+      <p>My Day can show your events and the reminders due today, read from Calendar and Reminders on each of your devices. They never leave the device. Each device asks your OK once.</p>
       <label class="c-net"><input type="checkbox" id="dayCal"${p.cal ? ' checked' : ''}>Today’s events from Calendar</label>
-      <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today and overdue (tick them off right on Today)</label>
+      <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today and overdue (tick them off right on My Day)</label>
       <label class="c-net"><input type="checkbox" id="dayUnd"${p.undated !== false ? ' checked' : ''}>Also reminders with no date (the newest five)</label>
       <h3 class="mk-h">Day One</h3>
-      <p class="note">If you journal in Day One, the app can start entries for you: today’s page from Today, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
+      <p class="note">If you journal in Day One, the app can start entries for you: a page from My Day, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
       <label class="c-net"><input type="checkbox" id="doOn"${o.on ? ' checked' : ''}>Show Day One buttons</label>
-      <p class="note" style="margin-bottom:4px">The page from Today is about:</p>
+      <p class="note" style="margin-bottom:4px">The morning page from My Day is about:</p>
       <div class="day-pick" role="radiogroup" aria-label="The Day One page is about"><label><input type="radio" name="doPage" value="yesterday"${o.page !== 'today' ? ' checked' : ''}>Yesterday <small>for writing the next morning: yesterday’s date, events, what got done and what you read</small></label><label><input type="radio" name="doPage" value="today"${o.page === 'today' ? ' checked' : ''}>Today <small>today’s weather, events, what’s due, markets and what you read yesterday</small></label></div>
       <p class="note">Day One dates the entry when it’s made, so for yesterday’s page change the date in Day One.</p>
       <div class="row"><input class="n-field" id="doJournal" type="text" placeholder="Journal (blank: your default journal)" value="${esc(o.journal || '')}" autocomplete="off" style="flex:1;min-width:160px"><input class="n-field" id="doTags" type="text" placeholder="Tags, like reading" value="${esc(o.tags || '')}" autocomplete="off" style="flex:1;min-width:120px"></div>
       <p class="acct-note" id="dayNote" aria-live="polite"></p>
-      <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day on Today');
+      <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day');
     const save = () => {
       S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked, undated: $('dayUnd').checked };
       S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim(), page: el.querySelector('input[name="doPage"]:checked')?.value || 'yesterday' };
@@ -6783,6 +6866,698 @@
   applyDayOne();
   setInterval(() => loadDay(), 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadDay(); });
+
+  // ------------------------------------------------------------ My Day: your compass, your day and the markets
+  // A page to start the day on and check in with during it: today's Big 3 and the season's goals (typed in here,
+  // synced with the other prefs), a quick place to put things down, Your day and Markets (moved off Today, which
+  // keeps one glance line), an evening mode for closing the day and planning tomorrow, and a Weekly Preview that
+  // saves a private review to Day One and a Weeknotes draft for your site. Goals and "what got in the way" never
+  // go into anything public.
+  const MD = { mode: null, step: 0, cap: '', capTo: 'task', force: false, refocus: '', tmr: null, wkCal: null, saveT: 0 };
+  function myDayOn() { return !hiddenViews().has('myday'); }
+  const MD_ACCTS = ['Spiritual', 'Vocational', 'Intellectual', 'Physical', 'Social', 'Avocational', 'Financial'];
+  const cmp = () => {
+    const c = S.prefs.compass || {};
+    return { goals: (c.goals || []).slice(0, 6), why: c.why || '', season: c.season || '', rituals: { m: (c.rituals?.m || []).slice(0, 8), e: (c.rituals?.e || []).slice(0, 8) } };
+  };
+  const mdSaveSoon = () => { clearTimeout(MD.saveT); MD.saveT = setTimeout(savePrefs, 700); };
+  function mdDay(k = dayKey()) {
+    const all = (S.prefs.mydays ||= {});
+    if (!all[k]) {
+      all[k] = {};
+      const cut = dayKey(new Date(Date.now() - 21 * DAY)); // three weeks is enough for the Weekly Preview
+      for (const d of Object.keys(all)) if (d < cut) delete all[d];
+    }
+    const d = all[k];
+    d.big3 ||= []; d.rm ||= []; d.re ||= []; d.notes ||= []; d.cap ||= {}; d.h ||= {};
+    return d;
+  }
+  const mdPeek = k => S.prefs.mydays?.[k] || null; // a day without making it
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const tomorrowKey = () => dayKey(addDays(new Date(), 1));
+  const mdEvening = () => MD.mode === 'evening' || (MD.mode !== 'day' && MD.mode !== 'week' && new Date().getHours() >= 18);
+  function mdMorningStart() { return S.prefs.mydayMorning !== false; }
+  // The week a Weekly Preview is about: Monday to Sunday, this week's (last week's on a Monday morning)
+  function mdWeek() {
+    const now = new Date(), back = now.getDay() === 1 && now.getHours() < 12 ? 7 : 0;
+    const mon = addDays(now, -((now.getDay() + 6) % 7) - back); mon.setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+    return { key: dayKey(days[6]), days, mon, sun: days[6] };
+  }
+  function mdWk(key = mdWeek().key) {
+    const all = (S.prefs.weeks ||= {});
+    if (!all[key]) {
+      all[key] = {};
+      const keys = Object.keys(all).sort();
+      while (keys.length > 8) delete all[keys.shift()];
+    }
+    const w = all[key]; w.steps ||= {}; w.reads ||= null; w.share ||= { wins: true, made: true, read: true, next: false };
+    return w;
+  }
+  const prevWkKey = key => dayKey(addDays(new Date(key + 'T12:00:00'), -7));
+  const fmtRange = (a, b) => {
+    const m = d => d.toLocaleDateString(undefined, { month: 'short' });
+    return m(a) === m(b) ? `${m(a)} ${a.getDate()}–${b.getDate()}` : `${m(a)} ${a.getDate()} – ${m(b)} ${b.getDate()}`;
+  };
+
+  // ---- goals: how far along each is
+  const curWeekDays = () => { const now = new Date(), mon = addDays(now, -((now.getDay() + 6) % 7)); mon.setHours(0, 0, 0, 0); return Array.from({ length: 7 }, (_, i) => addDays(mon, i)); };
+  function goalProgress(g, days = curWeekDays()) {
+    if (g.kind === 'books') {
+      const target = Number(g.target) || goalCfg().books || 12, n = finishedThisYear();
+      return { n, target, text: `${n} of ${target}`, pct: Math.min(1, n / target) };
+    }
+    if (g.kind === 'habit') {
+      const target = Math.min(7, Number(g.target) || 7), n = days.filter(d => mdPeek(dayKey(d))?.h?.[g.id]).length;
+      return { n, target, text: `${n} of ${target} days this week`, pct: Math.min(1, n / target) };
+    }
+    if (g.kind === 'count' && Number(g.target) > 0) {
+      const n = Number(g.done) || 0, target = Number(g.target);
+      return { n, target, text: `${n} of ${target}${g.unit ? ' ' + g.unit : ''}`, pct: Math.min(1, n / target) };
+    }
+    return { n: null, target: null, text: g.status || '', pct: null };
+  }
+  const goalLine = (g, days) => { const p = goalProgress(g, days); return `${g.title}${p.text ? `: ${p.text}` : ''}`; };
+
+  // ---- the line on Today: Big 3, the next event, three quotes
+  function glanceHtml() {
+    const d = mdPeek(dayKey()), b3 = (d?.big3 || []).filter(x => x.t);
+    const parts = [b3.length
+      ? `<span class="gl-i"><span class="gl-tick${b3.some(x => x.done) ? ' on' : ''}" aria-hidden="true">✓</span>${b3.filter(x => x.done).length} of ${b3.length} Big 3</span>`
+      : `<button class="gl-i gl-set" type="button" data-view="myday">Set today’s Big 3</button>`];
+    if (dayOn()) {
+      if (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000) setTimeout(() => loadDay(), 0);
+      const now = Date.now() / 1000, ev = (DAYB.data?.events || []).find(e => !e.all_day && e.end > now);
+      if (ev) parts.push(`<span class="gl-i">${ev.start > now ? 'Next' : 'Now'}: ${esc(ev.title || 'Event')} · ${esc(hm(ev.start))}</span>`);
+      else if (DAYB.data?.calendar === 'granted') parts.push('<span class="gl-i">Nothing else on the calendar</span>');
+    }
+    if (mkAny()) {
+      if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
+      const p = mkPicks(), q = new Map((mkData?.quotes || []).map(x => [`${x.kind}:${x.id}`, x]));
+      const three = [...p.stocks.map(s => ['stock', s, s]), ...p.coins.map(c => ['coin', c.id, c.sym])].slice(0, 3);
+      const chips = three.map(([kind, id, sym]) => {
+        const x = q.get(`${kind}:${id}`), pct = x?.pct;
+        if (pct == null) return `<span class="gl-q"><b>${esc(sym)}</b> …</span>`;
+        return `<span class="gl-q ${pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : ''}"><b>${esc(sym)}</b> ${pct > 0.005 ? '▲' : pct < -0.005 ? '▼' : ''}${Math.abs(pct).toFixed(1)}%</span>`;
+      }).join('');
+      if (chips) parts.push(`<span class="gl-i gl-qs">${chips}</span>`);
+    }
+    return `<div class="b-glance" role="group" aria-label="My Day at a glance">${parts.join('')}<button class="gl-open" type="button" data-view="myday">Open My Day →</button></div>`;
+  }
+
+  // ---- the page
+  function mdGreeting() {
+    const date = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    let wx = '';
+    try {
+      const place = wxPlace();
+      if (place && wxData && wxData.key === `${place.lat},${place.lon}`) {
+        const w = WX.find(([codes]) => codes.includes(Number(wxData.code)));
+        wx = ` · ${Math.round(wxData.temp)}°${w ? ' and ' + w[3].toLowerCase() : ''} in ${place.name}`;
+      }
+    } catch {}
+    return { date, wx };
+  }
+  function mdSummary(evening) {
+    const d = mdPeek(dayKey()), b3 = (d?.big3 || []).filter(x => x.t), done = b3.filter(x => x.done).length;
+    const now = Date.now() / 1000, left = (DAYB.data?.events || []).filter(e => !e.all_day && e.end > now).length;
+    const parts = [];
+    if (!b3.length) parts.push(evening ? 'No Big 3 today. Pick tomorrow’s while the day is fresh.' : 'Pick today’s Big 3: the three things that would make today a good day.');
+    else if (done === b3.length) parts.push(`All ${b3.length === 3 ? 'three' : b3.length} of your Big 3 done.`);
+    else parts.push(`${done === 0 ? 'None' : done === 1 ? 'One' : 'Two'} of your Big 3 done.`);
+    if (DAYB.data?.calendar === 'granted' && !evening) parts.push(left ? `${left === 1 ? 'One thing' : left === 2 ? 'Two things' : `${left} things`} left on the calendar.` : 'Nothing else on the calendar.');
+    if (evening && b3.length) parts.push('Close out the day and set up tomorrow.');
+    return parts.join(' ');
+  }
+  function mydayHtml() {
+    if (MD.mode === 'week') return weeklyHtml();
+    const evening = mdEvening(), g = mdGreeting(), w = mdWk(), sunday = new Date().getDay() === 0;
+    const head = `<div class="md-top"><div class="md-top-row"><h2>${esc(greeting())}</h2>
+        <div class="md-modes" role="group" aria-label="My Day view"><button type="button" class="linkish" data-md="mode" data-mode="${evening ? 'day' : 'evening'}">${evening ? 'Daytime view' : 'Evening view'}</button>
+        <button type="button" class="linkish" data-md="week">Weekly Preview</button></div></div>
+      <p class="b-date">${esc(g.date)}${esc(g.wx)}</p><p class="b-line">${esc(mdSummary(evening))}</p></div>`;
+    const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
+    const body = evening
+      ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
+      : `${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}${mkAny() ? `<div class="md-wide">${mkHtml()}</div>` : marketsInvite()}</div>`;
+    const people = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY).length;
+    const foot = evening
+      ? `<p class="md-foot">Done for the day? <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">Read something good before bed</button></p>`
+      : `<p class="md-foot">Then go read: <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">${people ? `${people} new from people you read` : 'Today'}</button></p>`;
+    return `<section class="brief myday" aria-label="My Day">${head}${weekCard}${body}${foot}</section>`;
+  }
+  const marketsInvite = () => '';
+  // Your day's panel without its own heading text change: the same as on Today
+  function myDayDayHtml() {
+    const h = dayHtml();
+    if (h) return h;
+    return `<section class="b-panel b-day" aria-label="Your day"><div class="bp-head"><h3 class="b-sub">Your day</h3></div>
+      <p class="day-note">Your events and reminders can show here, read from Calendar and Reminders on this device. They never leave it.</p>
+      <p class="day-note"><button class="btn" type="button" data-dayedit>Set up Your day</button></p></section>`;
+  }
+
+  // ---- quick capture
+  function captureHtml() {
+    const d = mdPeek(dayKey()), c = d?.cap || {};
+    const n = (k, one, many) => c[k] ? `<span>${c[k]} ${c[k] === 1 ? one : many}</span>` : '';
+    const caught = [n('note', 'note for tonight', 'notes for tonight'), n('task', 'task', 'tasks'), n('link', 'link saved', 'links saved'), n('big3', 'to the Big 3', 'to the Big 3')].filter(Boolean);
+    const to = [['task', 'Task → Reminders'], ['note', 'Note → tonight’s journal'], ['big3', 'Big 3']];
+    return `<form class="md-cap" data-md="capform" autocomplete="off"><label class="md-cap-l" for="mdCapIn">Put it down</label>
+      <div class="md-cap-row"><input id="mdCapIn" class="search" type="text" maxlength="300" placeholder="A task, a thought, a link…" value="${esc(MD.cap)}"><button class="btn primary" type="submit">Add</button></div>
+      <div class="md-cap-to" role="radiogroup" aria-label="Where it goes">${to.map(([k, label]) => `<button type="button" role="radio" class="md-to${MD.capTo === k ? ' on' : ''}" aria-checked="${MD.capTo === k}" data-md="capto" data-to="${k}">${label}</button>`).join('')}<span class="md-cap-tip">Paste a link and it goes to Read later.</span></div>
+      ${caught.length ? `<p class="md-caught">Today: ${caught.join(' · ')}</p>` : ''}</form>`;
+  }
+  async function mdCapture() {
+    const t = ($('mdCapIn')?.value || '').trim(); if (!t) return;
+    const d = mdDay(), bump = k => { d.cap[k] = (d.cap[k] || 0) + 1; };
+    MD.cap = '';
+    try {
+      if (/^https?:\/\/\S+$/i.test(t)) {
+        await invoke('save_url', { url: t, title: null });
+        bump('link'); status('Saved to Read later.'); load();
+      } else if (MD.capTo === 'note') {
+        d.notes.push({ t, at: Date.now() }); bump('note'); status('Kept for tonight’s journal.');
+      } else if (MD.capTo === 'big3') {
+        const open = d.big3.findIndex(x => !x?.t);
+        if (open < 0 && d.big3.length >= 3) { MD.cap = t; status('Today’s Big 3 is full. Finish or clear one first.', true); }
+        else { if (open >= 0) d.big3[open] = { t, done: false }; else d.big3.push({ t, done: false }); bump('big3'); }
+      } else {
+        await invoke('reminder_add', { title: t });
+        bump('task'); status('Added to Reminders.'); DAYB.data = null;
+      }
+    } catch (e) { MD.cap = t; status(msg(e), true); }
+    savePrefs(); MD.refocus = 'mdCapIn'; mdRender();
+  }
+
+  // ---- your compass
+  function compassHtml() {
+    const c = cmp(), d = mdPeek(dayKey()), b3 = d?.big3 || [];
+    const rows = [0, 1, 2].map(n => {
+      const x = b3[n];
+      if (x?.t) return `<div class="cp-row"><button class="cp-task${x.done ? ' done' : ''}" type="button" aria-pressed="${!!x.done}" data-md="b3" data-n="${n}"><span class="cp-box" aria-hidden="true">${x.done ? '✓' : ''}</span><span class="cp-t">${esc(x.t)}</span></button><button class="icon cp-x" type="button" data-md="b3x" data-n="${n}" aria-label="Clear ${esc(x.t)}" title="Clear">×</button></div>`;
+      return `<input class="n-field cp-in" type="text" maxlength="140" data-md="b3in" data-n="${n}" placeholder="${['The one thing that matters most today', 'A second thing', 'And a third'][n]}" aria-label="Big 3, number ${n + 1}">`;
+    }).join('');
+    const morning = c.rituals.m.length ? (() => {
+      const done = d?.rm || [], all = c.rituals.m.every((_, i) => done[i]);
+      return `<div class="cp-lab">Morning ritual${all ? ' · done' : ''}</div><div class="cp-list">${c.rituals.m.map((t, i) => `<button class="cp-task sm${done[i] ? ' done' : ''}" type="button" aria-pressed="${!!done[i]}" data-md="rit" data-r="rm" data-n="${i}"><span class="cp-box" aria-hidden="true">${done[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>`;
+    })() : '';
+    const goals = c.goals.length ? c.goals.map(goalHtml).join('') : `<p class="day-note">Add the few things this season is about, each under a part of your life, and see them here every day. <button class="b-link" type="button" data-md="edit">Set your goals</button></p>`;
+    return `<section class="b-panel b-cp" aria-label="Your compass">
+      <div class="bp-head"><h3 class="b-sub">Your compass</h3><span class="bp-meta">${esc(c.season || 'This season')}</span><button class="linkish bp-edit" type="button" data-md="edit">Change</button></div>
+      <div class="cp-lab">Today’s Big 3</div><div class="cp-list">${rows}</div>
+      ${morning}
+      <div class="cp-lab cp-lab-goals">Goals</div>${goals}
+      ${c.why ? `<p class="cp-why">Why it matters: <em>${esc(c.why)}</em></p>` : ''}
+    </section>`;
+  }
+  function goalHtml(g) {
+    const p = goalProgress(g), today = mdPeek(dayKey())?.h?.[g.id];
+    const act = g.kind === 'habit' ? `<button class="cp-act${today ? ' on' : ''}" type="button" data-md="habit" data-id="${esc(g.id)}" aria-pressed="${!!today}">${today ? '✓ Today' : 'Did it today'}</button>`
+      : g.kind === 'count' && p.target ? `<button class="cp-act" type="button" data-md="count" data-id="${esc(g.id)}" aria-label="Add one to ${esc(g.title)}">+1</button>` : '';
+    return `<div class="cp-goal"><div class="cp-gl"><span class="cp-gt">${g.acct ? `<span class="cp-acct">${esc(g.acct)}</span>` : ''}${esc(g.title)}</span><span class="cp-n">${esc(p.text)}</span>${act}</div>
+      ${p.pct != null ? `<div class="cp-bar" role="img" aria-label="${esc(p.text)}"><i style="width:${Math.round(p.pct * 100)}%"></i></div>` : ''}</div>`;
+  }
+
+  // ---- evening
+  function eveningTodayHtml() {
+    const c = cmp(), d = mdPeek(dayKey()) || {}, b3 = (d.big3 || []).map((x, n) => ({ ...x, n })).filter(x => x.t), tm = mdPeek(tomorrowKey())?.big3 || [];
+    const done = b3.filter(x => x.done).length;
+    const rows = b3.length ? b3.map(x => `<div class="ev-row${x.done ? ' done' : ''}"><button class="cp-task flat${x.done ? ' done' : ''}" type="button" aria-pressed="${!!x.done}" data-md="b3" data-n="${x.n}"><span class="cp-box" aria-hidden="true">${x.done ? '✓' : ''}</span><span class="cp-t">${esc(x.t)}</span></button>
+        ${!x.done ? (x.moved || tm.some(y => y?.t === x.t) ? '<span class="ev-moved">On tomorrow’s list</span>' : `<button class="linkish ev-move" type="button" data-md="move" data-n="${x.n}">Move to tomorrow</button>`) : ''}</div>`).join('')
+      : '<p class="day-note">No Big 3 today.</p>';
+    const rit = c.rituals.e.length ? `<div class="cp-lab">Evening ritual</div><div class="cp-list">${c.rituals.e.map((t, i) => `<button class="cp-task sm${d.re?.[i] ? ' done' : ''}" type="button" aria-pressed="${!!d.re?.[i]}" data-md="rit" data-r="re" data-n="${i}"><span class="cp-box" aria-hidden="true">${d.re?.[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>`
+      : `<p class="day-note">An evening ritual is a few small things you do to close the day. <button class="b-link" type="button" data-md="edit">Add yours</button></p>`;
+    const notes = d.notes?.length ? `<div class="cp-lab">For tonight’s journal</div><ul class="ev-notes">${d.notes.map(x => `<li>${esc(x.t)} <time>${esc(new Date(x.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</time></li>`).join('')}</ul>` : '';
+    const dayone = doPrefs().on ? `<div class="day-foot"><button class="btn day-one" type="button" data-md="dayone-today">${DAYONE_ICON}Write today’s page in Day One</button></div>` : '';
+    return `<section class="b-panel b-cp" aria-label="How today went">
+      <div class="bp-head"><h3 class="b-sub">How today went</h3><span class="bp-meta">${b3.length ? `${done} of ${b3.length} done` : ''}</span></div>
+      <div class="cp-list">${rows}</div>${rit}${notes}${dayone}</section>`;
+  }
+  function planTomorrowHtml() {
+    const c = cmp(), tm = mdPeek(tomorrowKey())?.big3 || [], today = mdPeek(dayKey())?.big3 || [];
+    const t = addDays(new Date(), 1);
+    if (!MD.tmr || MD.tmr.day !== dayKey(t) || Date.now() - MD.tmr.at > 15 * 60 * 1000) setTimeout(loadTomorrow, 0);
+    const ideas = c.goals.filter(g => !tm.some(x => x?.t === g.title)).slice(0, 3);
+    const ev = MD.tmr?.events || [];
+    return `<section class="b-panel b-tm" aria-label="Plan tomorrow">
+      <div class="bp-head"><h3 class="b-sub">Plan tomorrow</h3><span class="bp-meta">${esc(t.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}</span></div>
+      <div class="cp-lab">Tomorrow’s Big 3</div>
+      <div class="tm-list">${[0, 1, 2].map(n => {
+        const x = tm[n], moved = x?.t && today.some(y => y?.t === x.t && !y.done);
+        return `<label class="tm-in"><span class="tm-n" aria-hidden="true">${n + 1}</span><input class="search" type="text" maxlength="140" data-md="tmin" data-n="${n}" value="${esc(x?.t || '')}" placeholder="${n === 0 ? 'The one thing that matters most' : n === 1 ? 'A second thing' : 'One more thing that matters'}" aria-label="Tomorrow’s Big 3, number ${n + 1}">${moved ? '<small>moved from today</small>' : ''}</label>`;
+      }).join('')}</div>
+      ${ideas.length ? `<p class="tm-tip">Ideas from your goals: ${ideas.map(g => `<button class="b-link" type="button" data-md="idea" data-t="${esc(g.title)}">${esc(g.title)}</button>`).join(' · ')}</p>` : ''}
+      ${dayOn() && dayPrefs().cal ? `<div class="cp-lab">Tomorrow’s calendar</div>${ev.length ? `<ul class="day-ev">${ev.slice(0, 6).map(e => `<li><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>` : `<p class="day-note">${MD.tmr ? 'Nothing on the calendar tomorrow.' : 'Looking at tomorrow…'}</p>`}` : ''}
+      <div class="day-foot"><button class="btn primary" type="button" data-md="savetm">Save tomorrow’s plan</button></div></section>`;
+  }
+  async function loadTomorrow() {
+    if (!dayOn() || !dayPrefs().cal || MD.tmrBusy) return;
+    const a = addDays(new Date(), 1); a.setHours(0, 0, 0, 0);
+    MD.tmrBusy = true;
+    try {
+      const r = await invoke('day_today', { from: a.getTime() / 1000, to: addDays(a, 1).getTime() / 1000, calendar: true, reminders: false, ask: false, done: false });
+      MD.tmr = { day: dayKey(a), at: Date.now(), events: r?.events || [] };
+      if (S.view === 'myday') mdRender();
+    } catch { MD.tmr = { day: dayKey(a), at: Date.now(), events: [] }; }
+    finally { MD.tmrBusy = false; }
+  }
+  // The evening's journal page: today's date, what you put down, what you read, and room to write
+  function eveningPage() {
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const out = [`# ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
+    const d = mdPeek(dayKey());
+    if (d?.notes?.length) out.push('## Notes from the day\n' + d.notes.map(x => `- ${x.t}`).join('\n'));
+    if (dayPrefs().cal && DAYB.data?.events?.length) out.push('## On the calendar\n' + DAYB.data.events.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}`).join('\n'));
+    const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= t0.getTime() && isWeb(i.link) && !isEmailItem(i)).slice(0, 8);
+    if (read.length) out.push('## What I read\n' + read.map(i => `- [${headline(i)}](${i.link}) — ${cardWriter(i)}`).join('\n'));
+    out.push('## How the day went\n');
+    return out.join('\n\n');
+  }
+
+  // ---- Weekly Preview
+  const WK_STEPS = ['Look back', 'Goals', 'What you read', 'Next week', 'Save and share'];
+  function weeklyHtml() {
+    const wk = mdWeek(), w = mdWk(wk.key), step = Math.max(0, Math.min(4, MD.step));
+    const head = `<div class="md-top"><div class="md-top-row"><h2>Weekly Preview</h2><div class="md-modes"><button type="button" class="linkish" data-md="mode" data-mode="day">Back to My Day</button></div></div>
+      <p class="b-date">${esc(fmtRange(wk.mon, wk.sun))}${w.done ? ' · done' : ''}</p>
+      <p class="b-line">${step === 4 ? 'One review, two pages: a private one for your journal, a public one for your blog.' : 'Ten minutes to see where the week went and point the next one.'}</p>
+      <ol class="wk-steps" aria-label="Steps">${WK_STEPS.map((s, i) => `<li><button type="button" class="${i === step ? 'on' : ''}" data-md="step" data-step="${i}"${i === step ? ' aria-current="step"' : ''}>${i + 1} ${s}</button></li>`).join('')}</ol></div>`;
+    const panes = [wkLookBack, wkGoals, wkReading, wkNext, wkShare];
+    const nav = `<div class="wk-nav">${step > 0 ? '<button class="btn" type="button" data-md="prev">Back</button>' : ''}${step < 4 ? '<button class="btn primary" type="button" data-md="next">Next</button>' : '<button class="btn primary" type="button" data-md="finish">Done: start the week</button>'}</div>`;
+    return `<section class="brief myday md-week" aria-label="Weekly Preview">${head}${panes[step](wk, w)}${nav}</section>`;
+  }
+  function wkStats(wk) {
+    let b = 0, bt = 0, r = 0, rt = 0;
+    const c = cmp(), perDay = wk.days.map(d => {
+      const x = mdPeek(dayKey(d)), b3 = (x?.big3 || []).filter(y => y?.t), n = b3.filter(y => y.done).length;
+      b += n; bt += b3.length;
+      const rits = c.rituals.m.length + c.rituals.e.length;
+      if (rits && d <= new Date()) { rt += rits; r += (x?.rm || []).filter(Boolean).length + (x?.re || []).filter(Boolean).length; }
+      return { d, n, planned: b3.length };
+    });
+    return { perDay, b, bt, r, rt };
+  }
+  function wkLookBack(wk, w) {
+    const s = wkStats(wk);
+    const bars = s.perDay.map(x => `<span class="wk-day" title="${esc(x.d.toLocaleDateString(undefined, { weekday: 'long' }))}: ${x.n} of ${x.planned} done"><i style="height:${Math.max(x.planned ? 4 : 0, x.n * 16)}px"></i><b>${esc(x.d.toLocaleDateString(undefined, { weekday: 'narrow' }))}</b></span>`).join('');
+    return `<div class="md-grid"><section class="b-panel" aria-label="Look back">
+        <div class="bp-head"><h3 class="b-sub">Look back</h3><span class="bp-meta">Big 3: ${s.b} of ${s.bt} done${s.rt ? ` · rituals ${s.r} of ${s.rt}` : ''}</span></div>
+        <div class="wk-days" role="img" aria-label="Big 3 done each day">${bars}</div>
+        <label class="cp-lab" for="wkWins">Wins this week</label>
+        <textarea id="wkWins" class="search wk-ta" rows="4" data-md="wk" data-k="wins" placeholder="Big or small. What went right?">${esc(w.wins || '')}</textarea>
+        <label class="cp-lab" for="wkHard">What got in the way</label>
+        <textarea id="wkHard" class="search wk-ta" rows="3" data-md="wk" data-k="hard" placeholder="Be honest; this stays private.">${esc(w.hard || '')}</textarea>
+      </section>
+      <section class="b-panel" aria-label="Notes you put down">
+        <div class="bp-head"><h3 class="b-sub">From your week</h3></div>
+        ${(() => {
+          const notes = wk.days.flatMap(d => (mdPeek(dayKey(d))?.notes || []).map(x => ({ ...x, d })));
+          const big = wk.days.flatMap(d => (mdPeek(dayKey(d))?.big3 || []).filter(x => x?.t && x.done).map(x => ({ ...x, d })));
+          return (big.length ? `<div class="cp-lab">Big 3 you finished</div><ul class="ev-notes">${big.slice(0, 12).map(x => `<li>${esc(x.t)} <time>${esc(x.d.toLocaleDateString(undefined, { weekday: 'short' }))}</time></li>`).join('')}</ul>` : '')
+            + (notes.length ? `<div class="cp-lab">Notes you put down</div><ul class="ev-notes">${notes.slice(-12).map(x => `<li>${esc(x.t)} <time>${esc(x.d.toLocaleDateString(undefined, { weekday: 'short' }))}</time></li>`).join('')}</ul>` : '')
+            || '<p class="day-note">The Big 3 you finish and the notes you put down on My Day gather here, to jog your memory.</p>';
+        })()}
+      </section></div>`;
+  }
+  function wkGoals(wk, w) {
+    const c = cmp(), prev = S.prefs.weeks?.[prevWkKey(wk.key)]?.snap || {};
+    const rows = c.goals.length ? c.goals.map(g => {
+      const p = goalProgress(g, wk.days), before = prev[g.id];
+      const delta = g.kind === 'habit' ? (before != null ? (p.n > before ? `up from ${before}` : p.n < before ? `down from ${before}` : 'same as last week') : '')
+        : p.n != null && before != null ? (p.n - before > 0 ? `+${p.n - before} this week` : 'no change this week') : '';
+      return `<div class="cp-goal"><div class="cp-gl"><span class="cp-gt">${g.acct ? `<span class="cp-acct">${esc(g.acct)}</span>` : ''}${esc(g.title)}</span><span class="cp-n">${esc(p.text)}${delta ? ` <em class="wk-d">${esc(delta)}</em>` : ''}</span></div>
+        ${p.pct != null ? `<div class="cp-bar"><i style="width:${Math.round(p.pct * 100)}%"></i></div>` : ''}</div>`;
+    }).join('') : `<p class="day-note">No goals yet. <button class="b-link" type="button" data-md="edit">Set your goals</button></p>`;
+    const tr = [['yes', 'Yes'], ['mostly', 'Mostly'], ['change', 'Needs a change']];
+    return `<div class="md-grid"><section class="b-panel b-cp md-wide" aria-label="Goals">
+        <div class="bp-head"><h3 class="b-sub">Goals</h3><span class="bp-meta">${esc(c.season || 'This season')}</span><button class="linkish bp-edit" type="button" data-md="edit">Change</button></div>
+        ${rows}
+        <div class="wk-track" role="radiogroup" aria-label="On track?"><span>On track?</span>${tr.map(([k, l]) => `<button type="button" role="radio" class="md-to${w.track === k ? ' on' : ''}" aria-checked="${w.track === k}" data-md="track" data-v="${k}">${l}</button>`).join('')}</div>
+        ${c.why ? `<p class="cp-why">Why it matters: <em>${esc(c.why)}</em></p>` : ''}
+      </section></div>`;
+  }
+  function wkPicks() {
+    const picks = roundupPicks(), w = mdWk();
+    if (!w.reads) {
+      const on = picks.filter(p => p.score >= 2).slice(0, 5);
+      for (const p of picks) if (on.length < Math.min(5, picks.length) && !on.includes(p)) on.push(p);
+      w.reads = Object.fromEntries(on.map(p => [p.it.id, '']));
+    }
+    return picks;
+  }
+  function wkReading(wk, w) {
+    const picks = wkPicks();
+    const list = picks.length ? picks.slice(0, 20).map(p => {
+      const on = p.it.id in w.reads;
+      return `<div class="ru-item${on ? ' on' : ''}"><label class="ru-row"><input type="checkbox" data-md="pick" data-id="${esc(p.it.id)}"${on ? ' checked' : ''}><span><b>${esc(headline(p.it))}</b><small>${esc(cardWriter(p.it))} · ${esc(hostOfU(p.it.link))}${p.hl ? ' · highlighted' : p.it.saved ? ' · saved' : ''}</small></span></label>
+        ${p.hl ? `<blockquote class="wk-hlq">${esc(p.hl.text.replace(/\s+/g, ' ').trim().slice(0, 280))}</blockquote>` : ''}
+        ${on ? `<input class="n-field ru-why" type="text" maxlength="280" data-md="why" data-id="${esc(p.it.id)}" value="${esc(w.reads[p.it.id] || '')}" placeholder="Your one-line take (optional)">` : ''}</div>`;
+    }).join('') : '<p class="day-note">Nothing read, saved or highlighted this week yet.</p>';
+    return `<div class="md-grid"><section class="b-panel md-wide" aria-label="What you read">
+      <div class="bp-head"><h3 class="b-sub">What you read that mattered</h3><span class="bp-meta">The ones you tick go into your Weeknotes, with a line from you</span></div>
+      <div class="ru-list">${list}</div></section></div>`;
+  }
+  function wkNext(wk, w) {
+    const c = cmp();
+    if (!MD.wkCal || MD.wkCal.key !== wk.key) setTimeout(loadNextWeek, 0);
+    const ev = MD.wkCal?.events || [];
+    const big = ev.filter(e => e.all_day || e.end - e.start >= 3 * 3600).slice(0, 8);
+    return `<div class="md-grid"><section class="b-panel md-wide" aria-label="Next week">
+      <div class="bp-head"><h3 class="b-sub">Next week</h3><span class="bp-meta">${esc(fmtRange(addDays(wk.mon, 7), addDays(wk.sun, 7)))}</span></div>
+      <div class="day-cols">
+        <div class="day-col"><label class="cp-lab" for="wkFocus">One focus for the week</label>
+          <input id="wkFocus" class="search wk-in" type="text" maxlength="160" data-md="wk" data-k="focus" value="${esc(w.focus || '')}" placeholder="What would make next week a good one?">
+          ${dayOn() && dayPrefs().cal ? (big.length ? `<p class="tm-tip">Big dates: ${big.map(e => `<b>${esc(new Date(e.start * 1000).toLocaleDateString(undefined, { weekday: 'short' }))}</b> ${esc(e.title || 'Event')}`).join(' · ')}</p>` : `<p class="tm-tip">${MD.wkCal ? 'No all-day or long events next week.' : 'Looking at next week…'}</p>`) : ''}</div>
+        <div class="day-col"><div class="cp-lab">A step for each goal</div>
+          ${c.goals.length ? `<div class="tm-list">${c.goals.map(g => `<label class="tm-in"><span class="tm-n tm-a" aria-hidden="true">${esc((g.acct || g.title || '?').trim()[0].toUpperCase())}</span><input class="search" type="text" maxlength="160" data-md="step-in" data-id="${esc(g.id)}" value="${esc(w.steps[g.id] || '')}" placeholder="${esc(g.title)}: one step" aria-label="${esc(g.title)}: one step next week"></label>`).join('')}</div>` : '<p class="day-note">Set your goals to plan a step for each.</p>'}</div>
+      </div></section></div>`;
+  }
+  async function loadNextWeek() {
+    const wk = mdWeek(); if (!dayOn() || !dayPrefs().cal) { MD.wkCal = { key: wk.key, events: [] }; return; }
+    if (MD.wkBusy) return; MD.wkBusy = true;
+    try {
+      const a = addDays(wk.mon, 7);
+      const r = await invoke('day_today', { from: a.getTime() / 1000, to: addDays(a, 7).getTime() / 1000, calendar: true, reminders: false, ask: false, done: false });
+      MD.wkCal = { key: wk.key, events: r?.events || [] };
+    } catch { MD.wkCal = { key: wk.key, events: [] }; }
+    finally { MD.wkBusy = false; if (S.view === 'myday' && MD.mode === 'week') mdRender(); }
+  }
+  function wkDayOneText(wk, w) {
+    const c = cmp(), s = wkStats(wk);
+    const out = [`# Week of ${wk.mon.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`];
+    if (w.wins?.trim()) out.push('## Wins\n' + w.wins.trim());
+    if (w.hard?.trim()) out.push('## What got in the way\n' + w.hard.trim());
+    if (c.goals.length) out.push('## Goals\n' + c.goals.map(g => `- ${goalLine(g, wk.days)}`).join('\n') + (w.track ? `\n\nOn track: ${{ yes: 'yes', mostly: 'mostly', change: 'needs a change' }[w.track]}` : ''));
+    if (s.bt) out.push(`## Big 3\n${s.b} of ${s.bt} done`);
+    const steps = c.goals.filter(g => w.steps[g.id]?.trim());
+    if (w.focus?.trim() || steps.length) out.push('## Next week\n' + [w.focus?.trim() ? `Focus: ${w.focus.trim()}` : '', ...steps.map(g => `- ${g.title}: ${w.steps[g.id].trim()}`)].filter(Boolean).join('\n'));
+    return out.join('\n\n');
+  }
+  function wkMade(wk) {
+    const mine = myFeed(); if (!mine) return [];
+    const a = wk.mon.getTime(), b = addDays(wk.sun, 1).getTime();
+    return S.items.filter(i => isOwn(i.feed_id) && isWeb(i.link) && Date.parse(i.date) >= a && Date.parse(i.date) < b).sort((x, y) => x.date.localeCompare(y.date)).slice(0, 10);
+  }
+  const wkLabel = t => { t = (t || '').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim(); return [...t].length > 78 ? [...t].slice(0, 77).join('').trimEnd() + '…' : t; };
+  // Weeknotes for your site: "## " headings, [Title](link) lines (links and Webmentions), never goals or "what got in the way"
+  function weeknotes(wk, w, forSite) {
+    const sh = w.share, parts = [];
+    if (sh.wins && w.wins?.trim()) parts.push('## This week\n\n' + w.wins.trim());
+    const made = wkMade(wk);
+    if (sh.made && made.length) parts.push('## Things I made\n\n' + made.map(i => forSite ? `[${wkLabel(headline(i))}](${i.link})` : `${headline(i)}\n${i.link}`).join('\n\n'));
+    const picks = wkPicks().filter(p => p.it.id in (w.reads || {}));
+    if (sh.read && picks.length) parts.push('## Good things I read\n\n' + picks.map(p => { const why = (w.reads[p.it.id] || '').trim(); return forSite ? `[${wkLabel(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}` : `${headline(p.it)} — ${cardWriter(p.it)}\n${p.it.link}${why ? '\n' + why : ''}`; }).join('\n\n'));
+    if (sh.next && w.focus?.trim()) parts.push('## Next week\n\n' + w.focus.trim());
+    return parts.join('\n\n');
+  }
+  const wkTitle = wk => `Weeknotes: ${fmtRange(wk.mon, wk.sun)}`;
+  function wkShare(wk, w) {
+    const wp = SOC.accounts?.wordpress, notes = weeknotes(wk, w, false), sh = w.share;
+    const box = (k, l) => `<label><input type="checkbox" data-md="share" data-k="${k}"${sh[k] ? ' checked' : ''}> ${l}</label>`;
+    return `<div class="md-grid">
+      <section class="b-panel" aria-label="Your journal">
+        <div class="bp-head"><h3 class="b-sub">Your journal</h3><span class="bp-meta">Private · Day One</span></div>
+        <pre class="wo-doc">${esc(wkDayOneText(wk, w))}</pre>
+        <p class="tm-tip">Tagged <b>Weekly Review</b> in Day One. Everything here stays private.</p>
+        <div class="day-foot">${doPrefs().on ? `<button class="btn primary day-one" type="button" data-md="wk-dayone">${DAYONE_ICON}Save to Day One</button>` : `<button class="btn" type="button" data-md="wk-copy-dayone">${IOS ? 'Share…' : 'Copy'}</button><span class="tm-tip"> To send it to Day One, turn on Day One in Settings › Your day.</span>`}</div>
+      </section>
+      <section class="b-panel" aria-label="Weeknotes">
+        <div class="bp-head"><h3 class="b-sub">Weeknotes</h3><span class="bp-meta">Public · a draft for your site</span></div>
+        <pre class="wo-doc">${esc(wkTitle(wk) + '\n\n' + (notes || 'Tick what goes in below. Wins come from Look back, your reading from What you read.'))}</pre>
+        <div class="wo-pick" role="group" aria-label="What goes in">${box('wins', 'Wins')}${box('made', 'Things I made')}${box('read', 'What I read')}${box('next', 'Next week')}<span class="wo-off">Goals and what got in the way always stay private.</span></div>
+        <p class="acct-note" id="wkNote" aria-live="polite"></p>
+        <div class="day-foot">${wp ? '<button class="btn primary" type="button" data-md="wk-draft">Save as draft on your site</button> ' : ''}<button class="btn" type="button" data-md="wk-copy">${IOS ? 'Share…' : 'Copy'}</button>${wp ? '' : '<span class="tm-tip"> Connect your site in Settings › Your site to save a draft there.</span>'}</div>
+      </section></div>`;
+  }
+  async function wkCopy(text, title) {
+    if (IOS && navigator.share) { try { await navigator.share({ title, text }); } catch {} return; }
+    try { await navigator.clipboard.writeText(text); status('Copied.'); } catch { status('Couldn’t copy it here.', true); }
+  }
+
+  // ---- render, without wiping what you're typing
+  const mdTyping = () => { const a = document.activeElement; return !!a && $('list')?.contains(a) && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio'].includes(a.type))); };
+  function mdRender() { MD.force = true; renderList(); }
+  function paintMyDay() {
+    if (!MD.force && mdTyping()) return;
+    MD.force = false;
+    const y = $('main').scrollTop, ly = $('listView').scrollTop;
+    $('list').innerHTML = mydayHtml();
+    $('main').scrollTop = y; $('listView').scrollTop = ly;
+    if (MD.refocus) { const el = $(MD.refocus); MD.refocus = ''; if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch {} } }
+  }
+
+  // ---- what the page's buttons and fields do
+  function mdSetBig3(k, n, t) {
+    const d = mdDay(k); t = (t || '').trim();
+    while (d.big3.length < n) d.big3.push({ t: '', done: false });
+    if (t) d.big3[n] = { ...(d.big3[n] || {}), t, done: d.big3[n]?.t === t ? !!d.big3[n].done : false };
+    else d.big3[n] = { t: '', done: false };
+    while (d.big3.length && !d.big3[d.big3.length - 1].t) d.big3.pop();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-md]'); if (!b || !b.closest('.myday, #compassPanel')) return;
+    const k = b.dataset.md, d = () => mdDay(), n = Number(b.dataset.n);
+    if (k === 'mode') { MD.mode = b.dataset.mode; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'week') { MD.mode = 'week'; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'edit') { openCompass(); return; }
+    if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
+    if (k === 'b3') { const x = d().big3[n]; if (x) { x.done = !x.done; savePrefs(); mdRender(); } return; }
+    if (k === 'b3x') { d().big3[n] = { t: '', done: false }; mdSetBig3(dayKey(), n, ''); savePrefs(); mdRender(); return; }
+    if (k === 'rit') { const arr = d()[b.dataset.r]; arr[n] = !arr[n]; savePrefs(); mdRender(); return; }
+    if (k === 'habit') { const h = d().h; h[b.dataset.id] = !h[b.dataset.id]; savePrefs(); mdRender(); return; }
+    if (k === 'count') { const g = (S.prefs.compass?.goals || []).find(x => x.id === b.dataset.id); if (g) { g.done = (Number(g.done) || 0) + 1; savePrefs(); mdRender(); } return; }
+    if (k === 'move') {
+      const x = d().big3[n]; if (!x?.t) return;
+      const tm = mdDay(tomorrowKey()).big3, open = tm.findIndex(y => !y?.t);
+      if (open < 0 && tm.length >= 3) { status('Tomorrow’s Big 3 is already full.', true); return; }
+      if (open >= 0) tm[open] = { t: x.t, done: false }; else tm.push({ t: x.t, done: false });
+      x.moved = true; savePrefs(); mdRender(); return;
+    }
+    if (k === 'idea') {
+      const tm = mdDay(tomorrowKey()).big3, open = [0, 1, 2].find(i => !tm[i]?.t);
+      if (open == null) { status('Tomorrow’s Big 3 is already full.', true); return; }
+      mdSetBig3(tomorrowKey(), open, b.dataset.t); savePrefs(); mdRender(); return;
+    }
+    if (k === 'savetm') {
+      document.querySelectorAll('#list [data-md="tmin"]').forEach(i => mdSetBig3(tomorrowKey(), Number(i.dataset.n), i.value));
+      savePrefs(); status('Tomorrow’s plan is saved. It’ll be your Big 3 when you open My Day tomorrow.'); mdRender(); return;
+    }
+    if (k === 'dayone-today') { dayOne(eveningPage(), 'Evening'); return; }
+    // Weekly Preview
+    const wk = mdWeek(), w = mdWk(wk.key);
+    if (k === 'step') { MD.step = Number(b.dataset.step); mdRender(); return; }
+    if (k === 'next' || k === 'prev') { MD.step += k === 'next' ? 1 : -1; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
+    if (k === 'track') { w.track = b.dataset.v; savePrefs(); mdRender(); return; }
+    if (k === 'wk-dayone') { dayOne(wkDayOneText(wk, w), 'Weekly Review'); w.dayone = Date.now(); savePrefs(); return; }
+    if (k === 'wk-copy-dayone') { wkCopy(wkDayOneText(wk, w), `Week of ${wk.mon.toLocaleDateString()}`); return; }
+    if (k === 'wk-copy') { wkCopy(wkTitle(wk) + '\n\n' + weeknotes(wk, w, false), wkTitle(wk)); return; }
+    if (k === 'wk-draft') {
+      const text = weeknotes(wk, w, true), note = t => { const el = $('wkNote'); if (el) el.textContent = t; };
+      if (!text) { note('Tick at least one part, and write a win or pick a post to read.'); return; }
+      b.disabled = true; note('Saving the draft…');
+      invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: '', alt: '', draft: true, linkImage: '', linkSite: '' })
+        .then(() => { w.drafted = Date.now(); savePrefs(); note(''); status('Saved your Weeknotes as a draft on your site. Finish and publish it in WordPress.'); })
+        .catch(err => { note(msg(err)); b.disabled = false; });
+      return;
+    }
+    if (k === 'finish') {
+      w.done = Date.now(); w.snap = Object.fromEntries(cmp().goals.map(g => [g.id, goalProgress(g, wk.days).n]).filter(([, v]) => v != null));
+      savePrefs(); MD.mode = null; MD.step = 0; status('Week reviewed. Have a good one.'); mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 });
+    }
+  });
+  document.addEventListener('submit', e => { if (e.target.closest('[data-md="capform"]')) { e.preventDefault(); mdCapture(); } });
+  document.addEventListener('change', e => {
+    const el = e.target.closest('[data-md]'); if (!el || !el.closest('.myday')) return;
+    const k = el.dataset.md;
+    if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(dayKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
+    if (k === 'tmin') { mdSetBig3(tomorrowKey(), Number(el.dataset.n), el.value); savePrefs(); return; }
+    const w = mdWk();
+    if (k === 'pick') { if (el.checked) w.reads[el.dataset.id] = w.reads[el.dataset.id] || ''; else delete w.reads[el.dataset.id]; savePrefs(); mdRender(); return; }
+    if (k === 'share') { w.share[el.dataset.k] = el.checked; savePrefs(); mdRender(); return; }
+  });
+  document.addEventListener('input', e => {
+    const el = e.target.closest('[data-md]'); if (!el || !el.closest('.myday')) return;
+    const k = el.dataset.md;
+    if (el.id === 'mdCapIn') { MD.cap = el.value; return; }
+    const w = mdWk();
+    if (k === 'wk') { w[el.dataset.k] = el.value; mdSaveSoon(); return; }
+    if (k === 'why') { if (el.dataset.id in w.reads) { w.reads[el.dataset.id] = el.value; mdSaveSoon(); } return; }
+    if (k === 'step-in') { w.steps[el.dataset.id] = el.value; mdSaveSoon(); }
+  });
+  document.addEventListener('keydown', e => {
+    const el = e.target.closest?.('[data-md="b3in"]');
+    if (el && e.key === 'Enter') { e.preventDefault(); el.blur(); }
+  });
+  $('listView')?.addEventListener('focusout', () => { if (S.view === 'myday') setTimeout(() => { if (!mdTyping() && MD.stale) { MD.stale = false; mdRender(); } }, 0); });
+
+  // ---- setting your goals, your why and your rituals
+  function openCompass() {
+    const c = cmp();
+    let goals = c.goals.map(g => ({ ...g }));
+    const kinds = [['', 'Just the goal'], ['count', 'Count toward a number'], ['habit', 'Days a week'], ['books', 'Books finished this year']];
+    const row = (g, i) => `<div class="cm-goal" data-i="${i}">
+        <input class="n-field cm-acct" type="text" list="cmAccts" maxlength="24" value="${esc(g.acct || '')}" placeholder="Part of life" aria-label="Part of life, like Physical">
+        <input class="n-field cm-title" type="text" maxlength="80" value="${esc(g.title || '')}" placeholder="The goal, like Read 12 books" aria-label="Goal">
+        <select class="cm-kind" aria-label="How it’s counted">${kinds.map(([k, l]) => `<option value="${k}"${(g.kind || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <input class="n-field cm-target" type="number" min="1" max="10000" value="${esc(g.target || '')}" placeholder="Target" aria-label="Target"${['count', 'habit', 'books'].includes(g.kind) ? '' : ' hidden'}>
+        <input class="n-field cm-done" type="number" min="0" max="100000" value="${esc(g.done || 0)}" aria-label="Done so far"${g.kind === 'count' ? '' : ' hidden'}>
+        <button class="icon cm-x" type="button" data-cm="del" aria-label="Remove this goal" title="Remove">×</button></div>`;
+    const el = sheet('compassPanel', `<h2>Your compass</h2>
+      <p>A few goals for this season, each under a part of your life, and why they matter. They show on My Day with today’s Big 3, and the Weekly Preview looks at them every week. They stay in the app and in your iCloud; nothing here goes on your site.</p>
+      <datalist id="cmAccts">${MD_ACCTS.map(a => `<option value="${a}">`).join('')}</datalist>
+      <div class="row"><input class="n-field" id="cmSeason" type="text" maxlength="40" value="${esc(c.season)}" placeholder="This season (or Q4, or 2027)" style="flex:1"></div>
+      <h3 class="mk-h">Goals</h3>
+      <div id="cmGoals"></div>
+      <p><button class="btn" type="button" data-cm="add">Add a goal</button> <small class="note">Up to six. “Books finished this year” counts the books you finish in Books.</small></p>
+      <h3 class="mk-h">Why it matters</h3>
+      <textarea id="cmWhy" rows="2" maxlength="300" placeholder="One line you want to read every day">${esc(c.why)}</textarea>
+      <h3 class="mk-h">Rituals</h3>
+      <p class="note">A few small things you do every morning and evening, one per line. You tick them off on My Day.</p>
+      <div class="cm-rits"><label><span>Morning</span><textarea id="cmRm" rows="4" placeholder="10-minute routine&#10;Look at today’s Big 3">${esc(c.rituals.m.join('\n'))}</textarea></label>
+        <label><span>Evening</span><textarea id="cmRe" rows="4" placeholder="Clear the inbox&#10;Plan tomorrow’s Big 3">${esc(c.rituals.e.join('\n'))}</textarea></label></div>
+      <h3 class="mk-h">Starting the day</h3>
+      <label class="c-net"><input type="checkbox" id="cmMorning"${mdMorningStart() ? ' checked' : ''}>Open on My Day before 10 am</label>
+      <div class="row sheet-foot"><button class="btn" type="button" id="cmCancel">Cancel</button><button class="btn primary" type="button" id="cmSave">Save</button></div>`, 'Your compass');
+    const paint = () => { $('cmGoals').innerHTML = goals.length ? goals.map(row).join('') : '<p class="note">No goals yet.</p>'; };
+    const read = () => {
+      goals = [...el.querySelectorAll('.cm-goal')].map(r => {
+        const g = goals[Number(r.dataset.i)] || {};
+        return { id: g.id || Math.random().toString(36).slice(2, 9), acct: r.querySelector('.cm-acct').value.trim(), title: r.querySelector('.cm-title').value.trim(), kind: r.querySelector('.cm-kind').value, target: Number(r.querySelector('.cm-target').value) || '', done: Number(r.querySelector('.cm-done').value) || 0 };
+      });
+    };
+    paint();
+    el.onclick = e => {
+      const a = e.target.closest('[data-cm]');
+      if (a?.dataset.cm === 'add') { read(); if (goals.length < 6) goals.push({ id: Math.random().toString(36).slice(2, 9), acct: '', title: '', kind: '' }); paint(); el.querySelector('.cm-goal:last-child .cm-acct')?.focus(); }
+      if (a?.dataset.cm === 'del') { read(); goals.splice(Number(a.closest('.cm-goal').dataset.i), 1); paint(); }
+    };
+    el.onchange = e => { if (e.target.classList.contains('cm-kind')) { read(); paint(); } };
+    $('cmCancel').onclick = () => { el.hidden = true; };
+    $('cmSave').onclick = () => {
+      read();
+      const lines = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8);
+      S.prefs.compass = { season: $('cmSeason').value.trim(), why: $('cmWhy').value.trim(), goals: goals.filter(g => g.title).slice(0, 6).map(g => ({ ...g, target: g.kind === 'books' && !g.target ? (goalCfg().books || 12) : g.target })), rituals: { m: lines('cmRm'), e: lines('cmRe') } };
+      S.prefs.mydayMorning = $('cmMorning').checked;
+      savePrefs(); el.hidden = true; if (S.view === 'myday') mdRender();
+      status('Your compass is saved.');
+    };
+  }
+  $('mydayBtn')?.addEventListener('click', () => { closeSettings(); openCompass(); });
+
+  // ---- starting the day on My Day (before 10 am; the setting turns it off)
+  let mdHiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { mdHiddenAt = Date.now(); return; }
+    if (mdHiddenAt && Date.now() - mdHiddenAt > 3 * 3600e3 && new Date().getHours() < 10 && mdMorningStart() && myDayOn() && S.view === 'today' && !S.readerId) selectView('myday');
+    if (S.view === 'myday') mdRender();
+  });
+  setInterval(() => { if (S.view === 'myday' && !document.hidden && !MD.mode) renderList(); }, 10 * 60 * 1000);
+
+  // ------------------------------------------------------------ Trending in your neighborhood
+  // What several of the people and blogs you follow wrote about this week: the same names, hashtags, topics or
+  // links turning up in posts from different writers, more than usual for them. Worked out here on the device
+  // from the stories you already have; nothing is sent anywhere, and nothing is ranked by clicks.
+  const TR_STOP = new Set(('a an and are as at be been but by can could did do does for from had has have he her here his how i if in into is it its '
+    + 'just like me more most my new no not now of on one or our out over so some than that the their them then there these they this those to '
+    + 'too up us very was we well were what when where which who why will with would you your yours about after again all also any because before '
+    + 'being both each few first get got just last let made make many much never next only other own same see should since still such take '
+    + 'thing things think through time today two way week weekly year years day days back best big good great little long really right '
+    + 'monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december '
+    + 'mr mrs ms dr st part read reading post posts blog blogs note notes link links newsletter episode issue update updates thoughts '
+    + 'world people life work home new news video videos photo photos podcast show here’s it’s i’m i’ve don’t can’t that’s what’s there’s let’s '
+    + 'yes oh ok okay hello hi thanks thank via re fwd').split(/\s+/));
+  let TRX = null;
+  function trendTopics() {
+    if (TRX && TRX.n === S.items.length && TRX.f === S.feeds.length && Date.now() - TRX.at < 15 * 60e3) return TRX.list;
+    const now = Date.now(), WEEK = 7 * DAY;
+    const writerOf = i => personId(i.feed_id);
+    const recent = [], older = [];
+    for (const i of S.items) {
+      if (isEmailItem(i) || isJobItem(i) || isOwn(i.feed_id) || isMuted(i) || (videosOn() && isVideoItem(i))) continue;
+      const age = now - Date.parse(i.date);
+      if (age < 0 || !Number.isFinite(age)) continue;
+      if (age < WEEK) recent.push(i); else if (age < 5 * WEEK) older.push(i);
+    }
+    const norm = t => t.toLowerCase().replace(/[’']s$/, '').replace(/[^\p{L}\p{N}#+ ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+    const okWord = w => w.length > 2 && !TR_STOP.has(w) && !/^\d+$/.test(w);
+    // A story's subjects: its own topic tags, #hashtags, Names Like This in its words, and the outside pages it links to
+    function subjects(i) {
+      const out = new Map();
+      const add = (key, label, kind) => { if (!out.has(key)) out.set(key, { label, kind }); };
+      for (const t of tagsOf(i)) { const k = norm(t); if (k && k.split(' ').every(okWord) && k.length <= 40) add('t:' + k, t.trim(), 'topic'); }
+      const title = i.title || '', words = title.split(/\s+/).filter(Boolean);
+      const titleCase = words.length > 3 && words.filter(w => /^[A-Z]/.test(w)).length / words.length > 0.6;
+      const text = `${titleCase ? '' : title}. ${(i.summary || '').slice(0, 700)}`;
+      for (const m of text.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]{2,30})/gu)) add('t:' + m[1].toLowerCase(), '#' + m[1], 'topic');
+      // Names: one to three Capitalized Words in a row, not at the start of a sentence (or longer than one word)
+      for (const m of text.matchAll(/(^|[.!?:;"“]\s+|\s)((?:[A-Z][\p{L}\p{N}’'&-]+)(?:\s+(?:[A-Z][\p{L}\p{N}’'&-]+|of|de|and)){0,3})/gu)) {
+        const lead = m[1], name = m[2].replace(/\s+(of|de|and)$/, '').replace(/[’']s$/, '');
+        const parts = name.split(/\s+/);
+        if (parts.length === 1 && /[.!?:;"“]/.test(lead)) continue; // a capital that only starts a sentence
+        const k = norm(name);
+        if (!k || !k.split(' ').some(okWord) || TR_STOP.has(k) || k.length < 3) continue;
+        add('n:' + k, name, 'name');
+      }
+      for (const l of (i.links || '').split(' ')) {
+        if (!isWeb(l)) continue;
+        const h = bareHost(hostOfU(l)), path = normU(l).slice(h.length);
+        if (!h || path.length < 4 || /\.(social|bsky)|youtube|youtu\.be|twitter|x\.com|instagram|facebook|wikipedia/.test(h)) continue;
+        add('l:' + normU(l), l, 'link');
+      }
+      return out;
+    }
+    const count = (list, keep) => {
+      const m = new Map();
+      for (const i of list) for (const [k, v] of subjects(i)) {
+        if (!m.has(k)) m.set(k, { key: k, ...v, writers: new Set(), items: [] });
+        const x = m.get(k); x.writers.add(writerOf(i)); if (keep) x.items.push(i);
+      }
+      return m;
+    };
+    const now7 = count(recent, true), before = count(older, false);
+    const people = new Set(recent.map(writerOf)).size;
+    const need = people < 25 ? 2 : 3;
+    let list = [...now7.values()].filter(x => {
+      if (x.writers.size < need) return false;
+      const usual = (before.get(x.key)?.writers.size || 0) / 4; // writers in an ordinary week, over the four before
+      x.score = x.writers.size - usual * 1.5 + (x.kind === 'link' ? 0.5 : 0);
+      return x.writers.size >= usual * 2 + 1 && x.score >= need - 0.5;
+    }).sort((a, b) => b.score - a.score || b.items.length - a.items.length);
+    // Keep the clearest of overlapping subjects ("Vision Pro" over "Vision" when the same people wrote both)
+    const out = [];
+    for (const x of list) {
+      const lx = x.label.toLowerCase();
+      if (out.some(y => { const ly = y.label.toLowerCase(); return (ly.includes(lx) || lx.includes(ly)) && [...x.writers].filter(w => y.writers.has(w)).length >= x.writers.size - 1; })) continue;
+      out.push(x);
+      if (out.length >= 5) break;
+    }
+    for (const x of out) {
+      const one = new Map();
+      for (const i of x.items.sort((a, b) => b.date.localeCompare(a.date))) if (!one.has(writerOf(i))) one.set(writerOf(i), i);
+      x.items = [...one.values()];
+      if (x.kind === 'link') { const page = S.items.find(i => normU(i.link) === x.key.slice(2)); x.label = page ? headline(page) : `${bareHost(hostOfU(x.label))}${new URL(x.label).pathname.replace(/\/$/, '').slice(0, 40)}`; x.url = x.key.slice(2); }
+    }
+    TRX = { n: S.items.length, f: S.feeds.length, at: Date.now(), list: out };
+    return out;
+  }
+  function trendHtml() {
+    const list = trendTopics(); if (!list.length) return '';
+    return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></h3>
+      <div class="tr-row">${list.map((t, n) => `<button class="tr-chip" type="button" data-trend="${n}"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span>
+        <span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button>`).join('')}</div></div>`;
+  }
+  function openTrend(n) {
+    const t = TRX?.list?.[n]; if (!t) return;
+    const el = sheet('trendPanel', `<h2>${esc(t.label)}</h2>
+      <p>${t.writers.size} people you read wrote about this in the last week${t.kind === 'link' ? ', all linking to the same page' : ''}. Their posts, side by side:</p>
+      <div class="tr-posts">${t.items.map(i => `<button class="tr-post" type="button" data-open="${esc(i.id)}">
+        <span class="tr-who">${nbFace(nbWho(i), 'nb-av sm')}<b>${nbName(i)}</b><time>${esc(fmtWhen(i.date))}</time></span>
+        <span class="tr-title">${esc(headline(i))}</span>${i.summary ? `<span class="tr-sum">${esc(i.summary.slice(0, 220))}${i.summary.length > 220 ? '…' : ''}</span>` : ''}</button>`).join('')}</div>
+      ${t.url ? `<p><button class="btn" type="button" data-talk="open" data-url="${esc('https://' + t.url)}">Open the page they link to</button></p>` : ''}
+      <div class="row sheet-foot"><button class="btn primary" type="button" id="trDone">Done</button></div>`, t.label);
+    el.onclick = e => { if (e.target.id === 'trDone' || e.target.closest('[data-open], [data-talk]')) el.hidden = true; };
+  }
+  document.addEventListener('click', e => { const t = e.target.closest('[data-trend]'); if (t) openTrend(Number(t.dataset.trend)); });
 
 
   // ------------------------------------------------------------ Your year in reading

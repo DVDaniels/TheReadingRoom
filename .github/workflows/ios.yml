@@ -40,6 +40,12 @@ jobs:
           done
           if [ -n "$missing" ]; then echo "::error::Add these repository secrets first:$missing"; exit 1; fi
 
+      - name: Use Xcode 27
+        run: |
+          # Apple needs apps built with the iOS 27 / macOS 27 SDK (Xcode 27) from April 2027.
+          X=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$X" ]; then sudo xcode-select -s "$X/Contents/Developer"; else echo "::warning title=Xcode 27::Xcode 27 isn't on this runner yet; using $(xcode-select -p)"; fi
+          echo "::notice title=Xcode::$(xcodebuild -version | tr '\n' ' ')"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }

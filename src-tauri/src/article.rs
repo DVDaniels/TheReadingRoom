@@ -154,6 +154,38 @@ pub fn clean(html: &str, base: &str) -> String {
     b.clean(&mark_videos(html)).to_string()
 }
 
+/// An email's own HTML, cleaned like an article, but first marked where its styles carried meaning that cleaning
+/// takes away: text hidden for inbox previews (`data-rr-hide`) and links drawn as buttons (`data-rr-btn`).
+pub fn clean_mail(html: &str) -> String {
+    static TAG: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let tag = TAG.get_or_init(|| regex::Regex::new(r#"(?is)<([a-z][a-z0-9]*)\b([^>]*?)\bstyle\s*=\s*("[^"]*"|'[^']*')([^>]*)>"#).unwrap());
+    let marked = tag.replace_all(html, |c: &regex::Captures| {
+        let name = c[1].to_ascii_lowercase();
+        let style = c[3].to_ascii_lowercase().replace(' ', "");
+        let hidden = style.contains("display:none")
+            || style.contains("visibility:hidden")
+            || style.contains("mso-hide:all")
+            || style.contains("max-height:0")
+            || (style.contains("opacity:0") && !style.contains("opacity:0."))
+            || (style.contains("font-size:0") && !style.contains("font-size:0."))
+            || style.contains("height:0;") && style.contains("overflow:hidden");
+        let button = name == "a" && style.contains("padding") && (style.contains("background") || style.contains("border"));
+        let mark = if hidden { " data-rr-hide=\"1\"" } else if button { " data-rr-btn=\"1\"" } else { "" };
+        format!("<{}{}style={}{}{}>", &c[1], &c[2], &c[3], &c[4], mark)
+    });
+    let mut b = ammonia::Builder::default();
+    b.add_tags(["figure", "figcaption", "picture", "source", "time", "aside"])
+        .add_tag_attributes("img", ["srcset", "sizes", "loading"])
+        .add_tag_attributes("source", ["srcset", "type", "media"])
+        .add_tag_attributes("time", ["datetime"])
+        .add_generic_attributes(["data-rr-hide", "data-rr-btn", "data-rr-sig"])
+        .rm_tags(["mark"])
+        .link_rel(Some("noopener noreferrer"))
+        .url_schemes(HashSet::from(["http", "https", "mailto"]))
+        .url_relative(ammonia::UrlRelative::Deny);
+    b.clean(&mark_videos(&marked)).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -214,5 +246,13 @@ mod tests {
     #[test]
     fn refuses_thin_pages() {
         assert!(super::extract("<html><body><p>Subscribe to read.</p></body></html>", "https://ex.com/a").is_err());
+    }
+
+    #[test]
+    fn marks_hidden_preheaders_and_buttons() {
+        let h = super::clean_mail(r#"<div style="display:none;max-height:0">Preview text</div><p>Hello</p><a href="https://ex.com/go" style="padding:12px 20px;background:#333">Read more</a>"#);
+        assert!(h.contains("data-rr-hide"), "{h}");
+        assert!(h.contains("data-rr-btn"), "{h}");
+        assert!(!h.contains("style="), "{h}");
     }
 }

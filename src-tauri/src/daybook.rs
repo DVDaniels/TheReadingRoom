@@ -219,10 +219,26 @@ mod apple {
             store.saveReminder_commit_error(&r, true).map_err(|e| format!("Reminders didn't save that ({}).", e.localizedDescription()))
         }
     }
+
+    /// Add a new reminder to the default Reminders list (quick capture on My Day).
+    pub fn add(title: &str) -> Result<String, String> {
+        if status(EKEntityType::Reminder) != "granted" {
+            return Err("Allow Reminders first (My Day › Your day › Allow).".into());
+        }
+        unsafe {
+            let store = EKEventStore::new();
+            let cal = store.defaultCalendarForNewReminders().ok_or("Reminders has no default list to add to.")?;
+            let r = EKReminder::reminderWithEventStore(&store);
+            r.setTitle(Some(&NSString::from_str(title.trim())));
+            r.setCalendar(Some(&cal));
+            store.saveReminder_commit_error(&r, true).map_err(|e| format!("Reminders didn't save that ({}).", e.localizedDescription()))?;
+            Ok(ns(&r.calendarItemIdentifier()))
+        }
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use apple::{set_done, today};
+pub use apple::{add, set_done, today};
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _want_done: bool) -> Day {
@@ -232,5 +248,10 @@ pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn set_done(_id: &str, _done: bool) -> Result<(), String> {
+    Err("Reminders are only on Apple devices.".into())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn add(_title: &str) -> Result<String, String> {
     Err("Reminders are only on Apple devices.".into())
 }

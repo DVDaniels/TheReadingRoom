@@ -435,7 +435,18 @@ fn squash(s: &str) -> String {
     static TAGS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let tags = TAGS.get_or_init(|| regex::Regex::new(r"(?s)<style.*?</style>|<[^>]+>").unwrap());
     let plain = html_escape::decode_html_entities(&tags.replace_all(s, " ")).to_string();
-    plain.lines().filter(|l| !l.trim_start().starts_with('>')).collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut kept = Vec::new();
+    for l in plain.lines() {
+        let t = l.trim();
+        // the email being answered starts here ("On Tue, Nov 17, Sam wrote:" / "-----Original Message-----")
+        if (t.starts_with("On ") && t.ends_with("wrote:")) || t.contains("Original Message-----") || t == "--" {
+            break;
+        }
+        if !t.starts_with('>') {
+            kept.push(l);
+        }
+    }
+    kept.join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn text_to_html(text: &str) -> String {
@@ -443,10 +454,25 @@ pub fn text_to_html(text: &str) -> String {
     let link = LINK.get_or_init(|| regex::Regex::new(r#"https?://[^\s<]+[^\s<.,;:!?)\]'"]"#).unwrap());
     let esc = html_escape::encode_text(text).replace("\r\n", "\n");
     let linked = link.replace_all(&esc, |c: &regex::Captures| format!(r#"<a href="{0}">{0}</a>"#, &c[0]));
+    let mut sig = false;
     linked
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
-        .map(|p| format!("<p>{}</p>", p.trim().replace('\n', "<br>")))
+        .map(|p| {
+            let p = p.trim_matches('\n');
+            let lines: Vec<&str> = p.lines().collect();
+            // "> " lines are the email being answered: a quote, not this email's own words
+            if lines.iter().all(|l| l.trim_start().starts_with("&gt;")) {
+                let inner = lines.iter().map(|l| l.trim_start().trim_start_matches("&gt;").trim_start()).collect::<Vec<_>>().join("<br>");
+                return format!("<blockquote><p>{inner}</p></blockquote>");
+            }
+            // "-- " on its own line starts the signature
+            if lines.first().map(|l| l.trim_end() == "--").unwrap_or(false) {
+                sig = true;
+            }
+            let attr = if sig { " data-rr-sig=\"1\"" } else { "" };
+            format!("<p{attr}>{}</p>", p.trim().replace('\n', "<br>"))
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

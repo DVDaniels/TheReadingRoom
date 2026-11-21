@@ -716,7 +716,7 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
             // the story may have come first through sync from another device, under its own id
             let id: Option<String> = conn.query_row("SELECT id FROM items WHERE link=?1 LIMIT 1", [&m.link], |r| r.get(0)).ok();
             if let Some(id) = id {
-                db::cache_article(&conn, &id, &article::clean(&m.html, ""), &m.from_name).map_err(err)?;
+                db::cache_article(&conn, &id, &article::clean_mail(&m.html), &m.from_name).map_err(err)?;
             }
             conn.execute(
                 "INSERT OR REPLACE INTO email_meta(link, uid, from_name, from_addr, reply_to, message_id, refs, subject) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
@@ -733,6 +733,21 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
 }
 
 /// Who a reply to this email goes to, and its subject.
+/// Who sent an email (for the header above it in the reader).
+#[tauri::command]
+fn email_from(state: State<'_, Shared>, item_id: String) -> Result<serde_json::Value, String> {
+    let conn = state.db.lock().unwrap();
+    email_table(&conn).map_err(err)?;
+    let r = conn
+        .query_row(
+            "SELECT m.from_name, m.from_addr, m.reply_to FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+        )
+        .map_err(|_| "Not an email.".to_string())?;
+    Ok(serde_json::json!({ "name": r.0, "address": r.1, "replyTo": r.2, "to": email_account_saved().map(|a| a.address) }))
+}
+
 #[tauri::command]
 fn email_reply_to(state: State<'_, Shared>, item_id: String) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().unwrap();
@@ -1810,6 +1825,17 @@ async fn reminder_done(id: String, done: bool) -> Result<(), String> {
         .map_err(|_| "Couldn't reach Reminders.".to_string())?
 }
 
+/// Add a reminder to the default Reminders list (quick capture on My Day). Returns its id.
+#[tauri::command]
+async fn reminder_add(title: String) -> Result<String, String> {
+    if title.trim().is_empty() {
+        return Err("Type the reminder first.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || daybook::add(&title))
+        .await
+        .map_err(|_| "Couldn't reach Reminders.".to_string())?
+}
+
 /// Open Day One with a new entry filled in (its dayone://post link). Day One must be installed.
 #[tauri::command]
 fn day_one(app: AppHandle, text: String, journal: String, tags: String) -> Result<(), String> {
@@ -2566,6 +2592,8 @@ pub fn run() {
             markets_now,
             day_today,
             reminder_done,
+            reminder_add,
+            email_from,
             day_one,
             coin_search,
             markets_key_status,

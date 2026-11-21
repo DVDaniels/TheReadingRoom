@@ -2051,6 +2051,11 @@ fn note_html(text: &str) -> String {
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
         .flat_map(|p| {
+            // "## Heading" on a line of its own (Weeknotes' sections)
+            let t = p.trim();
+            if let Some(h) = t.strip_prefix("## ").filter(|h| !h.contains('\n') && !h.trim().is_empty()) {
+                return vec![format!("<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">{}</h2>\n<!-- /wp:heading -->", esc_html(h.trim()))];
+            }
             // lines starting with ">" are a quote from the post you're answering
             if p.lines().all(|l| l.trim_start().starts_with('>')) {
                 let q: Vec<&str> = p.lines().map(|l| l.trim_start().trim_start_matches('>').trim_start()).collect();

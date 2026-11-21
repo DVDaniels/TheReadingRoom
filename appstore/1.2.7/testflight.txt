@@ -1,35 +1,22 @@
-Thanks for testing The Reading Room! This build (1.2.7) adds YouTube video descriptions and fixes how notes about a post look on Bluesky and Mastodon. It has everything from 1.2.6 too.
+Thanks for testing The Reading Room! This build (1.2.7) adds My Day, Trending in your neighborhood and a cleaner Email tab, on top of everything from 1.2.6.
 
-YOUTUBE DESCRIPTIONS
-• Open a YouTube video from a channel you follow: its description now shows under the player, with its paragraphs and line breaks.
-• Web addresses in the description are links. Tap one to open it.
-• Tap a chapter time (like 1:23) to play the video from that point.
-• Videos already in the app get their description at the next refresh.
+MY DAY (new, in the sidebar under Today)
+• A page to start the day on: today's Big 3, your goals for the season, your calendar and reminders, and your stocks and coins. Before 10 am the app opens on it (turn that off in Settings › My Day).
+• Settings › My Day: type your goals, each under a part of your life, and how each counts (a number, days a week, or books finished). Add morning and evening rituals and a line about why it matters.
+• Put it down: add a task to Reminders, a note for tonight's journal, or a Big 3 item. Paste a link and it goes to Read later.
+• After 6 pm it turns to the evening: how today went, your evening ritual, Move to tomorrow, and Plan tomorrow's Big 3.
+• Weekly Preview (on Sundays, or any time): look back, check your goals, pick what you read that mattered, plan next week. It ends with a private page for Day One and a Weeknotes draft for your site. Goals and what got in the way never go public.
+• Today keeps one line: your Big 3, the next event and three quotes, with Open My Day.
 
-NOTES ABOUT A POST, ON BLUESKY AND MASTODON
-• When you write a note about someone's post and share copies, the copy now shows their post (title, site and picture) instead of a second copy of your own words, with the link to your note underneath.
+TRENDING IN YOUR NEIGHBORHOOD
+• On Today: names, topics and links that several people you read wrote about this week. Tap one to see their posts side by side. Worked out on your device.
 
-VIDEOS
-• Your channels: a row at the top of Videos with every channel you follow, its newest video and how many you haven't watched. Tap one to see only its videos; tap it again (or Show every channel) for all.
-• Tap the star on a channel to make it a favorite. Favorites stay first, and also show in the sidebar under Videos, under a Favorite channels heading you can fold away. The arrow beside Videos folds them into Videos. One tap opens just that channel.
-• On the Mac, the empty side now says Pick a video to watch it here (and Pick an email in Email).
-• The bar now speaks of watching: Unwatched, All videos, Mark all watched, Search videos. Free to read is gone from Videos.
+EMAIL
+• Who it's from shows above each email. The email being answered folds away, signatures are set apart, and plain text reads as paragraphs.
+• Newsletters: hidden preview text and tracking pixels are gone, buttons look like buttons, columns stay apart and the footer is small. (Newly arrived email gets all of this.)
 
-Please tell us if a description looks wrong, or if tapping a chapter time doesn't start the video where it should (Mac and iPhone/iPad).
-• A channel or blog that posts rarely could look empty when you follow lots of busy feeds (the app only loaded the newest 2,000 stories overall). Now every feed's newest 20 always show.
+ALSO IN 1.2.7
+• Your day and Markets (now on My Day): Calendar, Reminders and Day One; stocks and crypto in their own rows.
+• Quote cards, What I read this week, YouTube descriptions with chapter times, Your channels and favorites in Videos, Mark all as read in Conversations.
 
-CONVERSATIONS
-• Mark all as read is now at the top, next to Since you were here. On Everything it clears the Conversations number in the sidebar.
-• The Conversations chip counts only conversations you haven't read.
-• If Mastodon won't favorite or follow, the app now says why, and only asks you to reconnect when the permission is really missing. Tap a red message to clear it.
-
-YOUR DAY ON TODAY
-• Settings › Your day on Today: today's events from Calendar, and reminders due today, overdue or with no date, read on your device (nothing leaves it). Tick reminders off right on Today. Each device asks your OK once.
-• Day One: turn on Day One buttons there to get a Day One button on Today that writes yesterday's page (or today's, your choice) and "Journal in Day One" in a story's Share menu (with your highlights and notes).
-
-MARKETS ON TODAY
-• Settings › Markets on Today: up to five stocks or funds and five coins at the top of Today, stocks and crypto in their own rows, with the day's change. Crypto works right away (CoinGecko). Stocks need a free Finnhub key (finnhub.io, no credit card), kept in your Keychain. Prices may be delayed.
-
-SHARE WHAT YOU READ
-• Quote cards: select words in a story and tap Quote card (or Quote card under any highlight). You get a picture of the passage with the writer's name and site, to send in WhatsApp, Messages or anywhere. Paper or Night.
-• What I read this week: in Recently read (or from Today), pick your favorites, add a line about each, then post the roundup to your site, email it or copy it.
+Please tell us how My Day feels after a few days, and if an email looks wrong.
