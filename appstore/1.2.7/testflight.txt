@@ -6,7 +6,7 @@ MY DAY (new, in the sidebar under Today)
 • Put it down: add a task to Reminders or an event to Calendar, a note for tonight's journal, or a Big 3 item. Type the time the way you'd say it ("tomorrow 9am", "Tuesday 12:30", "Nov 25 at 3pm for 2 hours"); the date and time show underneath so you can check them first. Paste a link and it goes to Read later.
 • After 6 pm it turns to the evening: how today went, your evening ritual, Move to tomorrow, and Plan tomorrow's Big 3.
 • Weekly Preview (on Sundays, or any time): look back, check your goals, pick what you read that mattered, plan next week. It ends with a private page for Day One and a Weeknotes draft for your site. Goals and what got in the way never go public.
-• Today keeps one line: your Big 3, the next event and three quotes, with Open My Day.
+• Today keeps one line: your Big 3 and the next event, with Open My Day. Your stocks and coins sit in one row under the top story (turn that off in Markets), and people you read show three across.
 
 TRENDING IN YOUR NEIGHBORHOOD
 • On Today: names, topics and links that several people you read wrote about this week. Tap one to see their posts side by side. Worked out on your device.

@@ -737,7 +737,7 @@
     const own = withPic.filter(i => !viaNews(i));
     const personLead = people.find(i => isWeb(i.image) && Date.now() - Date.parse(i.date) < 3 * DAY);
     const lead = personLead || own[0] || withPic[0] || unread[0];
-    const peopleShown = people.filter(i => i !== lead).slice(0, isHome() ? 4 : 3);
+    const peopleShown = people.filter(i => i !== lead).slice(0, 3); // one row
     const seen = new Set([lead?.feed_id]);
     const more = [];
     const want = isHome() ? 4 : 3;
@@ -765,12 +765,13 @@
       if (h < 30) return d.getHours() >= 17 ? 'since last night' : 'since yesterday';
       return `since ${d.toLocaleDateString(undefined, { weekday: 'long' })}`;
     })();
+    // One line: what's new, and how much of it is from people (point to the people, not to whoever posted the most)
     let line;
     if (!unread.length) line = 'Nothing new waiting. You’re caught up for today.';
-    else if (fresh && since) line = `${fresh} new ${fresh === 1 ? 'story' : 'stories'} ${since}, ${unread.length} unread today.`;
-    else line = `${unread.length} unread ${unread.length === 1 ? 'story' : 'stories'} from the last day.`;
-    // Point to the people, not to whoever posted the most
-    if (peopleAll.length) line += ` <button class="b-link" data-view="people">${peopleAll.length} new from people you read</button>.`;
+    else {
+      line = fresh && since ? `${fresh} new ${since}` : `${unread.length} unread from the last day`;
+      line += peopleAll.length ? `, <button class="b-link" data-view="people">${peopleAll.length} from people you read</button>.` : '.';
+    }
 
     const date = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
     const src = it => esc(srcLabel(it));
@@ -813,8 +814,8 @@
       <div class="b-top"><h2>${esc(greeting())}</h2><p class="b-date">${esc(date)}</p>
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
-      ${myDayOn() ? glanceHtml() : mkHtml() + dayHtml()}
-      ${inBriefHtml}${leadHtml}${peopleHtml}${trendHtml()}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
+      ${myDayOn() ? glanceHtml() : ''}
+      ${inBriefHtml}${leadHtml}${mkToday() ? mkLineHtml() : ''}${trendHtml()}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
 
@@ -6627,6 +6628,24 @@
     finally { MK.busy = false; }
   }
   const mkPrice = n => n == null ? '—' : n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n >= 1 ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toPrecision(3);
+  // Markets on Today, under the top story (Markets › Show on Today; on unless turned off)
+  const mkToday = () => mkAny() && S.prefs.mkToday !== false;
+  // Today's version: one line of small tiles, stocks then crypto (the full panel stays on My Day)
+  function mkLineHtml() {
+    if (!mkAny()) return '';
+    if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
+    const p = mkPicks(), q = new Map((mkData?.quotes || []).map(x => [`${x.kind}:${x.id}`, x]));
+    const chip = (kind, id, sym) => {
+      const x = q.get(`${kind}:${id}`), pct = x?.pct;
+      const dir = pct == null ? '' : pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : 'flat';
+      const url = kind === 'coin' ? `https://www.coingecko.com/en/coins/${encodeURIComponent(id)}` : `https://finance.yahoo.com/quote/${encodeURIComponent(id)}`;
+      return `<button class="ml-q ${dir}" type="button" data-mkurl="${esc(url)}"><b>${esc(sym)}</b> ${x ? esc(mkPrice(x.price)) : '…'}${pct == null ? '' : ` <span class="ml-c">${pct > 0.005 ? '▲' : pct < -0.005 ? '▼' : ''}${Math.abs(pct).toFixed(1)}%</span>`}</button>`;
+    };
+    const st = p.stocks.map(s => chip('stock', s, s)).join(''), co = p.coins.map(c => chip('coin', c.id, c.sym)).join('');
+    const when = mkData?.at ? new Date(mkData.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<div class="b-mkline" role="group" aria-label="Markets"><h3 class="b-sub">Markets</h3>${st}${st && co ? '<span class="ml-sep" aria-hidden="true"></span>' : ''}${co}
+      <span class="ml-meta" title="Prices may be delayed">${mkData?.problem ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? esc(when) : 'Getting prices…'} · <button class="linkish" type="button" data-mkedit>Change</button></span></div>`;
+  }
   function mkHtml() {
     if (!mkAny()) return '';
     if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
@@ -6650,7 +6669,8 @@
     let hasKey = false; try { hasKey = await invoke('markets_key_status'); } catch {}
     let stocks = [...p.stocks], coins = [...p.coins], found = [];
     const el = sheet('mkPanel', `<h2>Markets</h2>
-      <p>Up to five stocks or funds and five coins, on My Day (the first three also show on Today). The app sends only the ticker symbols. Prices may be delayed; this isn't investment advice.</p>
+      <p>Up to five stocks or funds and five coins, on My Day and on Today. The app sends only the ticker symbols. Prices may be delayed; this isn't investment advice.</p>
+      <label class="c-net"><input type="checkbox" id="mkTodayIn"${S.prefs.mkToday !== false ? ' checked' : ''}>Show on Today, under the top story</label>
       <h3 class="mk-h">Stocks and funds</h3>
       <div class="mk-picked" id="mkStocks"></div>
       <form class="row" id="mkStockForm"><input class="search" id="mkStockIn" type="text" placeholder="Ticker, like AAPL" autocomplete="off" autocapitalize="characters" style="flex:1;min-width:120px"><button class="btn" type="submit">Add</button></form>
@@ -6678,6 +6698,7 @@
       const pick = e.target.closest('[data-mkcoin]');
       if (pick) { const c = found[Number(pick.dataset.mkcoin)]; if (c && !coins.some(x => x.id === c.id)) { if (coins.length >= 5) { say('Five coins at most. Remove one first.', true); return; } coins.push(c); paint(); save(); say(`Added ${c.name}.`); } $('mkCoinRes').innerHTML = ''; $('mkCoinIn').value = ''; return; }
       if (e.target.id === 'mkKeyDel') { try { await invoke('markets_key_set', { key: '' }); } catch {} hasKey = false; paint(); say('Removed the key.'); return; }
+      if (e.target.id === 'mkTodayIn') { S.prefs.mkToday = e.target.checked; savePrefs(); renderList(); return; }
       if (e.target.id === 'mkDone') { el.hidden = true; return; }
       if (e.target.id === 'mkRemove') { stocks = []; coins = []; save(); el.hidden = true; return; }
     });
@@ -6939,7 +6960,7 @@
   }
   const goalLine = (g, days) => { const p = goalProgress(g, days); return `${g.title}${p.text ? `: ${p.text}` : ''}`; };
 
-  // ---- the line on Today: Big 3, the next event, three quotes
+  // ---- the line on Today: Big 3, the next event (and three quotes when Markets isn't on Today itself)
   function glanceHtml() {
     const d = mdPeek(dayKey()), b3 = (d?.big3 || []).filter(x => x.t);
     const parts = [b3.length
@@ -6951,7 +6972,7 @@
       if (ev) parts.push(`<span class="gl-i">${ev.start > now ? 'Next' : 'Now'}: ${esc(ev.title || 'Event')} · ${esc(hm(ev.start))}</span>`);
       else if (DAYB.data?.calendar === 'granted') parts.push('<span class="gl-i">Nothing else on the calendar</span>');
     }
-    if (mkAny()) {
+    if (mkAny() && !mkToday()) {
       if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
       const p = mkPicks(), q = new Map((mkData?.quotes || []).map(x => [`${x.kind}:${x.id}`, x]));
       const three = [...p.stocks.map(s => ['stock', s, s]), ...p.coins.map(c => ['coin', c.id, c.sym])].slice(0, 3);
@@ -7646,6 +7667,8 @@
   }
   function trendHtml() {
     const list = trendTopics(); if (!list.length) return '';
+    // Just one topic: a single line, no section
+    if (list.length === 1) { const t = list[0]; return `<div class="b-trend one"><span class="b-sub">Trending</span><button class="tr-chip" type="button" data-trend="0"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span><span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button><button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></div>`; }
     return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></h3>
       <div class="tr-row">${list.map((t, n) => `<button class="tr-chip" type="button" data-trend="${n}"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span>
         <span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button>`).join('')}</div></div>`;

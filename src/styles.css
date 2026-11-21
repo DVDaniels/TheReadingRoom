@@ -577,11 +577,16 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
 
   /* The briefing: greeting and notes on the left, the lead story big on the right, four more beneath */
   body.home .brief { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.55fr); column-gap: 28px; row-gap: 12px; padding: 24px 24px 20px;
-    grid-template-areas: "top lead" "line lead" "mk lead" "day lead" "inbrief lead" "foot lead" "people people" "more more"; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto auto; }
-  body.home .b-mk { grid-area: mk; margin: 0; }
-  body.home .b-day { grid-area: day; margin: 0; }
+    grid-template-areas: "top lead" "line lead" "glance lead" "inbrief lead" "foot lead" "mk mk" "trend trend" "people people" "more more"; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto auto; }
+  body.home .brief > .b-glance { grid-area: glance; margin: 0; }
+  body.home .brief > .b-mk, body.home .brief > .b-mkline { grid-area: mk; margin: 4px 0 0; }
+  body.home .brief > .b-trend { grid-area: trend; margin: 4px 0 0; }
+  /* Stocks and Crypto side by side when Markets runs the full width under the top story */
+  body.home .brief > .b-mk { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); column-gap: 28px; align-items: start; }
+  body.home .brief > .b-mk .bp-head { grid-column: 1 / -1; }
+  body.home .brief > .b-mk .mk-grp + .mk-grp { margin-top: 0; }
   body.home .b-people { grid-area: people; }
-  body.home .b-pgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  body.home .b-pgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body.home .b-top { grid-area: top; flex-direction: column; align-items: flex-start; gap: 4px; }
   body.home .brief h2 { font-size: 38px; }
   body.home .b-line { grid-area: line; font-size: 16px; }
@@ -2292,3 +2297,22 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
 .myday .md-when input, .myday .md-when select { min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, var(--bg)); color: var(--ink); font: inherit; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .brief .md-when .linkish { font-size: 13px; color: var(--accent); padding-bottom: 8px; }
 .myday .md-when .md-cap-tip { padding-bottom: 8px; }
+
+/* Markets on Today: one line of small tiles */
+.b-mkline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 2px; margin: 12px 0 4px; padding: 8px 12px; border: 1px solid var(--b-line, var(--line)); border-radius: 10px; font-variant-numeric: tabular-nums; }
+.b-mkline .b-sub { margin: 0 6px 0 0; }
+.brief .ml-q { border: 0; background: none; padding: 3px 6px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px; color: var(--b-ink, var(--ink)); cursor: pointer; white-space: nowrap; }
+.brief .ml-q:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ml-q b { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--b-soft, var(--muted)); margin-right: 2px; }
+.ml-q .ml-c { font-size: 11.5px; }
+.ml-q.up .ml-c { color: #1f8a5b; } .ml-q.down .ml-c { color: #c2413a; }
+.ml-sep { width: 1px; height: 16px; background: var(--b-line, var(--line)); margin: 0 4px; }
+.ml-meta { margin-left: auto; font-size: 12px; color: var(--b-soft, var(--muted)); white-space: nowrap; }
+/* Trending with one topic: a single line */
+.b-trend.one { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.b-trend.one .b-sub { margin: 0; }
+@media (max-width: 760px) {
+  .b-mkline { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .b-mkline::-webkit-scrollbar { display: none; }
+  .ml-meta { margin-left: 8px; }
+}
