@@ -1059,7 +1059,6 @@
   const STARTERS = [
     ['blog.jim-nielsen.com', 'Jim Nielsen', 'Short, thoughtful posts about the web, design and making things.'],
     ['kevquirk.com', 'Kev Quirk', 'A personal blog about the small web, technology and life.'],
-    ['manuelmoreale.com', 'Manuel Moreale', 'Home of People and Blogs, a weekly interview with someone who writes online.'],
     ['tracydurnell.com', 'Tracy Durnell', 'Weeknotes and a “mind garden” of ideas, books and making.'],
     ['rknight.me', 'Robb Knight', 'Small tools and notes for the independent web.'],
     ['daviddaniels.com', 'David Daniels', 'Personal essays since 2001.'],
