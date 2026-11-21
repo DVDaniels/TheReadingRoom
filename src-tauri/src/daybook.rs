@@ -51,8 +51,8 @@ mod apple {
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2::{sel, ClassType};
-    use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEventStore, EKReminder};
-    use objc2_foundation::{NSArray, NSCalendar, NSDate, NSError, NSString};
+    use objc2_event_kit::{EKAlarm, EKAuthorizationStatus, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
+    use objc2_foundation::{NSArray, NSCalendar, NSCalendarUnit, NSDate, NSError, NSString};
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -220,8 +220,9 @@ mod apple {
         }
     }
 
-    /// Add a new reminder to the default Reminders list (quick capture on My Day).
-    pub fn add(title: &str) -> Result<String, String> {
+    /// Add a new reminder to the default Reminders list (quick capture on My Day). With `due` (seconds since 1970)
+    /// it gets a due date; `timed` adds the time of day and an alert then, otherwise it's due that day.
+    pub fn add(title: &str, due: Option<f64>, timed: bool) -> Result<String, String> {
         if status(EKEntityType::Reminder) != "granted" {
             return Err("Allow Reminders first (My Day › Your day › Allow).".into());
         }
@@ -231,14 +232,47 @@ mod apple {
             let r = EKReminder::reminderWithEventStore(&store);
             r.setTitle(Some(&NSString::from_str(title.trim())));
             r.setCalendar(Some(&cal));
+            if let Some(t) = due {
+                let date = NSDate::dateWithTimeIntervalSince1970(t);
+                let mut units = NSCalendarUnit::Year | NSCalendarUnit::Month | NSCalendarUnit::Day;
+                if timed {
+                    units = units | NSCalendarUnit::Hour | NSCalendarUnit::Minute;
+                }
+                let parts = NSCalendar::currentCalendar().components_fromDate(units, &date);
+                r.setDueDateComponents(Some(&parts));
+                if timed {
+                    r.addAlarm(&EKAlarm::alarmWithAbsoluteDate(&date));
+                }
+            }
             store.saveReminder_commit_error(&r, true).map_err(|e| format!("Reminders didn't save that ({}).", e.localizedDescription()))?;
             Ok(ns(&r.calendarItemIdentifier()))
+        }
+    }
+
+    /// Add an event to the default calendar. `start` and `end` are seconds since 1970.
+    pub fn add_event(title: &str, start: f64, end: f64, all_day: bool) -> Result<String, String> {
+        if status(EKEntityType::Event) != "granted" {
+            return Err("Allow Calendar first (My Day › Your day › Allow).".into());
+        }
+        unsafe {
+            let store = EKEventStore::new();
+            let cal = store.defaultCalendarForNewEvents().ok_or("Calendar has no default calendar to add to.")?;
+            let e = EKEvent::eventWithEventStore(&store);
+            e.setTitle(Some(&NSString::from_str(title.trim())));
+            e.setStartDate(Some(&NSDate::dateWithTimeIntervalSince1970(start)));
+            e.setEndDate(Some(&NSDate::dateWithTimeIntervalSince1970(end.max(start + 60.0))));
+            e.setAllDay(all_day);
+            e.setCalendar(Some(&cal));
+            store
+                .saveEvent_span_commit_error(&e, EKSpan::ThisEvent, true)
+                .map_err(|err| format!("Calendar didn't save that ({}).", err.localizedDescription()))?;
+            Ok(e.eventIdentifier().map(|i| ns(&i)).unwrap_or_default())
         }
     }
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use apple::{add, set_done, today};
+pub use apple::{add, add_event, set_done, today};
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _want_done: bool) -> Day {
@@ -252,6 +286,11 @@ pub fn set_done(_id: &str, _done: bool) -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-pub fn add(_title: &str) -> Result<String, String> {
+pub fn add(_title: &str, _due: Option<f64>, _timed: bool) -> Result<String, String> {
     Err("Reminders are only on Apple devices.".into())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn add_event(_title: &str, _start: f64, _end: f64, _all_day: bool) -> Result<String, String> {
+    Err("Calendar is only on Apple devices.".into())
 }

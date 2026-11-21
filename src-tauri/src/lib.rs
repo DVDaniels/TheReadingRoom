@@ -1827,13 +1827,24 @@ async fn reminder_done(id: String, done: bool) -> Result<(), String> {
 
 /// Add a reminder to the default Reminders list (quick capture on My Day). Returns its id.
 #[tauri::command]
-async fn reminder_add(title: String) -> Result<String, String> {
+async fn reminder_add(title: String, due: Option<f64>, timed: Option<bool>) -> Result<String, String> {
     if title.trim().is_empty() {
         return Err("Type the reminder first.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || daybook::add(&title))
+    tauri::async_runtime::spawn_blocking(move || daybook::add(&title, due, timed.unwrap_or(false)))
         .await
         .map_err(|_| "Couldn't reach Reminders.".to_string())?
+}
+
+/// Add an event to the default calendar (Put it down on My Day). Times are seconds since 1970.
+#[tauri::command]
+async fn event_add(title: String, start: f64, end: f64, all_day: bool) -> Result<String, String> {
+    if title.trim().is_empty() {
+        return Err("Type the event first.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || daybook::add_event(&title, start, end, all_day))
+        .await
+        .map_err(|_| "Couldn't reach Calendar.".to_string())?
 }
 
 /// Open Day One with a new entry filled in (its dayone://post link). Day One must be installed.
@@ -2593,6 +2604,7 @@ pub fn run() {
             day_today,
             reminder_done,
             reminder_add,
+            event_add,
             email_from,
             day_one,
             coin_search,

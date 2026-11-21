@@ -2286,3 +2286,9 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
 .prose.mail-body .mail-foot, .prose.mail-body .mail-foot * { font-size: 12px !important; line-height: 1.45; color: var(--muted) !important; }
 .prose.mail-body .mail-foot:first-child, .prose.mail-body .mail-foot:not(.mail-foot + .mail-foot) { margin-top: 2em; padding-top: 1em; border-top: 1px solid var(--line); }
 .prose.mail-body td, .prose.mail-body th { padding: 0 10px 6px 0; }
+
+.myday .md-when { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 10px; }
+.myday .md-when label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--b-soft, var(--muted)); }
+.myday .md-when input, .myday .md-when select { min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, var(--bg)); color: var(--ink); font: inherit; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.brief .md-when .linkish { font-size: 13px; color: var(--accent); padding-bottom: 8px; }
+.myday .md-when .md-cap-tip { padding-bottom: 8px; }

@@ -7017,13 +7017,95 @@
   }
 
   // ---- quick capture
+  // ---- "tomorrow 9am", "Tuesday 12:30", "Nov 25 at 3pm for 2 hours": a date and time read from what you typed
+  const MD_WD = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const MD_MO = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  function mdParseWhen(text, now = new Date()) {
+    let t = ' ' + text + ' ', date = null, hh = null, mm = 0, dur = null;
+    const cut = re => { const m = re.exec(t); if (m) t = t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length); return m; };
+    const day0 = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    let m;
+    // duration: "for 2 hours", "for 30 min"
+    if ((m = cut(/\s(?:for\s)(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minutes)\b/i))) dur = Math.round(parseFloat(m[1]) * (/^h/i.test(m[2]) ? 60 : 1));
+    // a time range: "12:30-1:30pm", "2-4pm"
+    let end = null;
+    if ((m = cut(/\s(?:at\s|from\s)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*(?:-|–|to)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)\b/i))) {
+      const ap2 = m[6].toLowerCase()[0], ap1 = (m[3] || m[6]).toLowerCase()[0];
+      hh = (Number(m[1]) % 12) + (ap1 === 'p' ? 12 : 0); mm = Number(m[2] || 0);
+      end = [(Number(m[4]) % 12) + (ap2 === 'p' ? 12 : 0), Number(m[5] || 0)];
+      if (end[0] * 60 + end[1] <= hh * 60 + mm && !m[3]) hh -= 12;
+      if (hh < 0) hh += 12;
+    }
+    // a time: "9am", "9:30 pm", "at 5", "at 17:00", "noon", "midnight"
+    if (hh == null) {
+      if ((m = cut(/\s(?:at\s)?(noon|midday)\b/i))) hh = 12;
+      else if ((m = cut(/\s(?:at\s)?midnight\b/i))) hh = 0;
+      else if ((m = cut(/\s(?:at\s)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?=[\s,.!?]|$)/i))) { hh = (Number(m[1]) % 12) + (/^p/i.test(m[3]) ? 12 : 0); mm = Number(m[2] || 0); }
+      else if ((m = cut(/\sat\s(\d{1,2})(?::(\d{2}))?(?=[\s,.!?]|$)/i))) { hh = Number(m[1]); mm = Number(m[2] || 0); if (hh >= 1 && hh <= 7) hh += 12; } // "at 5" is 5 pm
+      else if ((m = cut(/\s(\d{1,2}):(\d{2})(?=[\s,.!?]|$)/))) { hh = Number(m[1]); mm = Number(m[2]); if (hh >= 1 && hh <= 7) hh += 12; }
+    }
+    if (hh != null && (hh > 23 || mm > 59)) { hh = null; mm = 0; }
+    // the day
+    if ((m = cut(/\s(today)\b/i))) date = day0(now);
+    else if ((m = cut(/\s(tonight)\b/i))) { date = day0(now); if (hh == null) hh = 19; else if (hh < 12) hh += 12; }
+    else if ((m = cut(/\s(tomorrow|tmrw|tmw)\b/i))) date = day0(new Date(now.getTime() + 864e5));
+    else if ((m = cut(/\s(?:on\s)?(next\s)?(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|rsday|urday|sday)?\b/i))) {
+      const want = MD_WD.indexOf(m[2].toLowerCase().slice(0, 3)); let add = (want - now.getDay() + 7) % 7;
+      // "next Tuesday": Tuesday of next week (weeks run Monday to Sunday)
+      if (m[1]) add = (((8 - now.getDay()) % 7) || 7) + (want + 6) % 7;
+      date = day0(new Date(now.getTime() + add * 864e5));
+    }
+    else if ((m = cut(/\s(?:on\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s(\d{1,2})(?:st|nd|rd|th)?(?:,?\s(\d{4}))?\b/i))) {
+      const mo = MD_MO.indexOf(m[1].toLowerCase().slice(0, 3)); date = new Date(m[3] ? Number(m[3]) : now.getFullYear(), mo, Number(m[2]));
+      if (!m[3] && date < day0(now)) date.setFullYear(date.getFullYear() + 1);
+    }
+    else if ((m = cut(/\s(?:on\s)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))) {
+      const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : now.getFullYear();
+      date = new Date(y, Number(m[1]) - 1, Number(m[2])); if (!m[3] && date < day0(now)) date.setFullYear(date.getFullYear() + 1);
+    }
+    else if ((m = cut(/\sin\s(\d+)\s(day|days|week|weeks)\b/i))) date = day0(new Date(now.getTime() + Number(m[1]) * (/^w/i.test(m[2]) ? 7 : 1) * 864e5));
+    else if ((m = cut(/\snext\sweek\b/i))) { const add = ((1 - now.getDay() + 7) % 7) || 7; date = day0(new Date(now.getTime() + add * 864e5)); }
+    if (!date && hh != null) { date = day0(now); if (hh * 60 + mm <= now.getHours() * 60 + now.getMinutes()) date = day0(new Date(now.getTime() + 864e5)); }
+    if (!date) return { title: text.trim(), found: false };
+    if (end && hh != null) dur = Math.max(15, (end[0] * 60 + end[1]) - (hh * 60 + mm));
+    const title = t.replace(/\s(on|at|by|for|from)\s*$/i, ' ').replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').trim().replace(/[,\s]+$/, '');
+    const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return { title: title || text.trim(), found: true, date: ymd, time: hh != null ? `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}` : '', dur };
+  }
+  // The date and time under Put it down: filled in from what you typed; change them before you Add
+  function whenHtml() {
+    const ev = MD.capTo === 'event', w = MD.when;
+    if (!ev && MD.capTo !== 'task') return '';
+    if (!ev && !w?.found && !MD.wantDate) return `<div class="md-when" id="mdWhen"><button class="linkish" type="button" data-md="wantdate">Add a due date</button><span class="md-cap-tip">or type it, like “tomorrow 9am”</span></div>`;
+    const now = new Date(), next = new Date(now.getTime() + 3600e3);
+    const date = w?.date || dayKey(ev ? now : now), time = w?.found ? w.time : ev ? `${String(next.getHours()).padStart(2, '0')}:00` : '';
+    const dur = w?.dur || 60;
+    const lens = [[15, '15 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour'], [90, '1½ hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [480, 'All day']];
+    if (!lens.some(([v]) => v === dur)) lens.push([dur, `${dur} min`]);
+    return `<div class="md-when" id="mdWhen">
+      <label><span>${ev ? 'When' : 'Due'}</span><input type="date" id="mdWhenDate" data-md="when" value="${esc(date)}"></label>
+      <label><span>Time</span><input type="time" id="mdWhenTime" data-md="when" value="${esc(time)}"${ev && MD.allDay ? ' disabled' : ''}></label>
+      ${ev ? `<label><span>Length</span><select id="mdWhenDur" data-md="when">${lens.map(([v, l]) => `<option value="${v}"${(MD.allDay ? 480 : dur) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`
+        : `<button class="linkish" type="button" data-md="nodate">No due date</button>`}
+      ${w?.found && w.title !== (MD.cap || '').trim() ? `<span class="md-cap-tip">Saves as “${esc(w.title)}”</span>` : ''}</div>`;
+  }
+  function mdWhenRead() {
+    const d = $('mdWhenDate')?.value, tm = $('mdWhenTime')?.value, dur = Number($('mdWhenDur')?.value || 60);
+    if (!d) return null;
+    const [y, mo, da] = d.split('-').map(Number), [h, mi] = (tm || '0:0').split(':').map(Number);
+    const allDay = MD.capTo === 'event' && (dur >= 480 || !tm);
+    const start = new Date(y, mo - 1, da, allDay || !tm ? 0 : h, allDay || !tm ? 0 : mi);
+    return { start, timed: !!tm && !allDay, allDay, end: allDay ? new Date(y, mo - 1, da + 1) : new Date(start.getTime() + dur * 60e3) };
+  }
+  const mdFmtWhen = (w, ev) => w.start.toLocaleString(undefined, w.timed ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' } : { weekday: 'short', month: 'short', day: 'numeric' }) + (ev && w.allDay ? ' (all day)' : '');
   function captureHtml() {
     const d = mdPeek(dayKey()), c = d?.cap || {};
     const n = (k, one, many) => c[k] ? `<span>${c[k]} ${c[k] === 1 ? one : many}</span>` : '';
-    const caught = [n('note', 'note for tonight', 'notes for tonight'), n('task', 'task', 'tasks'), n('link', 'link saved', 'links saved'), n('big3', 'to the Big 3', 'to the Big 3')].filter(Boolean);
-    const to = [['task', 'Task → Reminders'], ['note', 'Note → tonight’s journal'], ['big3', 'Big 3']];
+    const caught = [n('note', 'note for tonight', 'notes for tonight'), n('task', 'task', 'tasks'), n('event', 'event', 'events'), n('link', 'link saved', 'links saved'), n('big3', 'to the Big 3', 'to the Big 3')].filter(Boolean);
+    const to = [['task', 'Task → Reminders'], ['event', 'Event → Calendar'], ['note', 'Note → tonight’s journal'], ['big3', 'Big 3']];
     return `<form class="md-cap" data-md="capform" autocomplete="off"><label class="md-cap-l" for="mdCapIn">Put it down</label>
-      <div class="md-cap-row"><input id="mdCapIn" class="search" type="text" maxlength="300" placeholder="A task, a thought, a link…" value="${esc(MD.cap)}"><button class="btn primary" type="submit">Add</button></div>
+      <div class="md-cap-row"><input id="mdCapIn" class="search" type="text" maxlength="300" placeholder="${MD.capTo === 'event' ? 'Lunch with Sam Tuesday 12:30' : MD.capTo === 'task' ? 'Call the leasing office tomorrow 9am' : 'A task, a thought, a link…'}" value="${esc(MD.cap)}"><button class="btn primary" type="submit">${MD.capTo === 'event' ? 'Add to Calendar' : 'Add'}</button></div>
+      ${whenHtml()}
       <div class="md-cap-to" role="radiogroup" aria-label="Where it goes">${to.map(([k, label]) => `<button type="button" role="radio" class="md-to${MD.capTo === k ? ' on' : ''}" aria-checked="${MD.capTo === k}" data-md="capto" data-to="${k}">${label}</button>`).join('')}<span class="md-cap-tip">Paste a link and it goes to Read later.</span></div>
       ${caught.length ? `<p class="md-caught">Today: ${caught.join(' · ')}</p>` : ''}</form>`;
   }
@@ -7041,10 +7123,17 @@
         const open = d.big3.findIndex(x => !x?.t);
         if (open < 0 && d.big3.length >= 3) { MD.cap = t; status('Today’s Big 3 is full. Finish or clear one first.', true); }
         else { if (open >= 0) d.big3[open] = { t, done: false }; else d.big3.push({ t, done: false }); bump('big3'); }
+      } else if (MD.capTo === 'event') {
+        const w = mdWhenRead(); if (!w) { MD.cap = t; status('Pick a date for the event.', true); mdRender(); return; }
+        const title = MD.when?.found ? MD.when.title : t;
+        await invoke('event_add', { title, start: w.start.getTime() / 1000, end: w.end.getTime() / 1000, allDay: w.allDay });
+        bump('event'); status(`Added to Calendar: ${title}, ${mdFmtWhen(w, true)}.`); DAYB.data = null; MD.tmr = null; setTimeout(() => loadDay(), 300);
       } else {
-        await invoke('reminder_add', { title: t });
-        bump('task'); status('Added to Reminders.'); DAYB.data = null;
+        const w = MD.when?.found || MD.wantDate ? mdWhenRead() : null, title = MD.when?.found ? MD.when.title : t;
+        await invoke('reminder_add', { title, due: w ? w.start.getTime() / 1000 : null, timed: !!w?.timed });
+        bump('task'); status(w ? `Added to Reminders, due ${mdFmtWhen(w)}.` : 'Added to Reminders.'); DAYB.data = null; setTimeout(() => loadDay(), 300);
       }
+      MD.when = null; MD.wantDate = false; MD.allDay = false; MD.whenEdited = false;
     } catch (e) { MD.cap = t; status(msg(e), true); }
     savePrefs(); MD.refocus = 'mdCapIn'; mdRender();
   }
@@ -7320,7 +7409,9 @@
     if (k === 'mode') { MD.mode = b.dataset.mode; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'week') { MD.mode = 'week'; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'edit') { openCompass(); return; }
-    if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
+    if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; if (!MD.whenEdited) MD.when = MD.cap ? mdParseWhen(MD.cap) : null; MD.refocus = 'mdCapIn'; mdRender(); return; }
+    if (k === 'wantdate') { MD.wantDate = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
+    if (k === 'nodate') { MD.wantDate = false; MD.when = null; MD.whenEdited = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
     if (k === 'b3') { const x = d().big3[n]; if (x) { x.done = !x.done; savePrefs(); mdRender(); } return; }
     if (k === 'b3x') { d().big3[n] = { t: '', done: false }; mdSetBig3(dayKey(), n, ''); savePrefs(); mdRender(); return; }
     if (k === 'rit') { const arr = d()[b.dataset.r]; arr[n] = !arr[n]; savePrefs(); mdRender(); return; }
@@ -7369,6 +7460,14 @@
   document.addEventListener('change', e => {
     const el = e.target.closest('[data-md]'); if (!el || !el.closest('.myday')) return;
     const k = el.dataset.md;
+    if (k === 'when') {
+      MD.whenEdited = true;
+      const dur = Number($('mdWhenDur')?.value || MD.when?.dur || 60);
+      MD.allDay = dur >= 480;
+      MD.when = { ...(MD.when || {}), found: true, title: MD.when?.found ? MD.when.title : (MD.cap || '').trim(), date: $('mdWhenDate')?.value || '', time: $('mdWhenTime')?.value || '', dur };
+      if (el.id === 'mdWhenDur') { MD.cap = $('mdCapIn')?.value || MD.cap; mdRender(); }
+      return;
+    }
     if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(dayKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
     if (k === 'tmin') { mdSetBig3(tomorrowKey(), Number(el.dataset.n), el.value); savePrefs(); return; }
     const w = mdWk();
@@ -7376,9 +7475,14 @@
     if (k === 'share') { w.share[el.dataset.k] = el.checked; savePrefs(); mdRender(); return; }
   });
   document.addEventListener('input', e => {
+    if (e.target.id === 'mdCapIn') {
+      const el = e.target;
+      MD.cap = el.value;
+      if (!MD.whenEdited && (MD.capTo === 'task' || MD.capTo === 'event')) { MD.when = mdParseWhen(el.value); const box = $('mdWhen'); if (box) box.outerHTML = whenHtml(); }
+      return;
+    }
     const el = e.target.closest('[data-md]'); if (!el || !el.closest('.myday')) return;
     const k = el.dataset.md;
-    if (el.id === 'mdCapIn') { MD.cap = el.value; return; }
     const w = mdWk();
     if (k === 'wk') { w[el.dataset.k] = el.value; mdSaveSoon(); return; }
     if (k === 'why') { if (el.dataset.id in w.reads) { w.reads[el.dataset.id] = el.value; mdSaveSoon(); } return; }
