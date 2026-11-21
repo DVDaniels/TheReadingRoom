@@ -6,7 +6,7 @@ MY DAY (new, in the sidebar under Today)
 • Put it down: add a task to Reminders (in its own list, The Reading Room; pick another in Settings › Your day) or an event to Calendar, a note for tonight's journal, or a Big 3 item. Type the time the way you'd say it ("tomorrow 9am", "Tuesday 12:30", "Nov 25 at 3pm for 2 hours"); the date and time show underneath so you can check them first. Paste a link and it goes to Read later.
 • After 6 pm it turns to the evening: how today went, your evening ritual, Move to tomorrow, and Plan tomorrow's Big 3.
 • Weekly Preview (on Sundays, or any time): look back, check your goals, pick what you read that mattered, plan next week. It ends with a private page for Day One and Weeknotes for your site, in a Weeknotes category: publish now (with a featured image) or save a draft. Goals and what got in the way never go public.
-• Write yesterday's page in Day One: your own journal questions (set them in Settings › Your day), with what happened, your wins, what you read or heard and what's next filled in.
+• Write yesterday's page in Day One: your own journal questions (set them in Settings › Your day), with what happened, what you read or heard and what's next filled in.
 • Today keeps one line: the next event and any birthday in the next five days. My Day in the sidebar shows how many events are left today, and a cake when a birthday is coming. Your stocks and coins sit in one row under the top story (turn that off in Markets), and people you read show three across.
 
 TRENDING IN YOUR NEIGHBORHOOD

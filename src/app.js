@@ -6851,19 +6851,18 @@
   // Your journal questions: the page about a day you've lived (yesterday's page in the morning, today's in the
   // evening) is these questions as headings, in your order, set in Your day › Day One. Under a few of them the app
   // puts what it already knows, matched by the words in the question so they still fill in when you reword them:
-  // "happen" gets the calendar and the notes you put down, "win" the reminders you finished, "read / hear / listen /
+  // "happen" gets the calendar and the notes you put down, "read / hear / listen /
   // watch" what you read, watched and highlighted, "next / goal / tomorrow" the next day's Big 3 and your goals.
   // The rest stay empty for you. That day's Big 3 isn't put on the page (David's call, Nov 20).
   const DAYONE_Q = ['What happened in the past day?', 'What were my biggest wins?', 'What lessons did I learn?', 'What am I thankful for right now?', 'How am I feeling right now?', 'What did I read or hear?', 'What stood out?', 'What can I do next to move forward on my goals?'];
   const doQuestions = () => { const q = (doPrefs().questions || []).map(x => String(x).trim()).filter(Boolean); return q.length ? q.slice(0, 20) : DAYONE_Q; };
-  const qKind = q => /happen/i.test(q) ? 'happened' : /\bwins?\b/i.test(q) ? 'wins' : /\b(read|hear|heard|listen|watch)/i.test(q) ? 'read' : /\b(next|goals?|tomorrow)\b/i.test(q) ? 'next' : '';
+  const qKind = q => /happen/i.test(q) ? 'happened' : /\bwins?\b/i.test(q) ? '' : /\b(read|hear|heard|listen|watch)/i.test(q) ? 'read' : /\b(next|goals?|tomorrow)\b/i.test(q) ? 'next' : '';
   // d = midnight of the day the page is about; day = that day's Calendar/Reminders answer (or null)
   function questionPage(d, day) {
     const from = d.getTime(), to = addDays(d, 1).getTime(), inDay = t => { const x = Date.parse(t || ''); return x >= from && x < to; };
     const notes = mdPeek(dayKey(d))?.notes || [];
     const ev = dayPrefs().cal ? (day?.events || []) : [];
     const happened = [...ev.map(e => `- ${e.all_day ? 'All day' : hm(e.start)}: ${e.title}${e.location ? ` (${e.location})` : ''}`), ...notes.map(x => `- ${x.t}`)];
-    const wins = dayPrefs().rem ? (day?.done || []).map(r => `- [x] ${r.title}`) : [];
     const seen = S.items.filter(i => inDay(i.read_at) && isWeb(i.link) && !isEmailItem(i));
     const how = i => isVideoItem(i) ? 'Watched: ' : i.audio ? 'Listened to: ' : '';
     const read = seen.slice(0, 10).map(i => `- ${how(i)}[${headline(i)}](${i.link}) — ${cardWriter(i)}`);
@@ -6871,7 +6870,7 @@
     const nextB3 = (mdPeek(dayKey(addDays(d, 1)))?.big3 || []).filter(x => x?.t).map((x, n) => `${n + 1}. ${x.t}`);
     const goals = cmp().goals.map(g => `- ${goalLine(g)}`);
     const next = [...(nextB3.length ? [`${dayKey(addDays(d, 1)) === dayKey() ? 'Today' : 'Tomorrow'}’s Big 3:`, ...nextB3] : []), ...(goals.length ? [(nextB3.length ? '\n' : '') + 'Goals:', ...goals] : [])];
-    const fill = { happened, wins, read, next };
+    const fill = { happened, read, next }; // wins are yours to write: finished reminders aren't listed (David, Nov 21)
     const out = [`# ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
     for (const q of doQuestions()) { const k = qKind(q), body = k ? fill[k] : []; out.push(`## ${q}` + (body.length ? '\n' + body.join('\n') : '\n')); if (k) fill[k] = []; }
     return out.join('\n\n');
@@ -6929,9 +6928,9 @@
       <p class="note">If you journal in Day One, the app can start entries for you: a page from My Day, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
       <label class="c-net"><input type="checkbox" id="doOn"${o.on ? ' checked' : ''}>Show Day One buttons</label>
       <p class="note" style="margin-bottom:4px">The morning page from My Day is about:</p>
-      <div class="day-pick" role="radiogroup" aria-label="The Day One page is about"><label><input type="radio" name="doPage" value="yesterday"${o.page !== 'today' ? ' checked' : ''}>Yesterday <small>for writing the next morning: your questions, with yesterday’s events, wins and reading filled in</small></label><label><input type="radio" name="doPage" value="today"${o.page === 'today' ? ' checked' : ''}>Today <small>today’s weather, events, what’s due, markets and what you read yesterday</small></label></div>
+      <div class="day-pick" role="radiogroup" aria-label="The Day One page is about"><label><input type="radio" name="doPage" value="yesterday"${o.page !== 'today' ? ' checked' : ''}>Yesterday <small>for writing the next morning: your questions, with yesterday’s events and reading filled in</small></label><label><input type="radio" name="doPage" value="today"${o.page === 'today' ? ' checked' : ''}>Today <small>today’s weather, events, what’s due, markets and what you read yesterday</small></label></div>
       <p class="note">Day One dates the entry when it’s made, so for yesterday’s page change the date in Day One.</p>
-      <label class="do-q" for="doQ">Your journal questions <span class="hint">(one per line; they head yesterday’s page and the evening page, and the app fills in what happened, your wins, what you read or heard, and what’s next)</span></label>
+      <label class="do-q" for="doQ">Your journal questions <span class="hint">(one per line; they head yesterday’s page and the evening page, and the app fills in what happened, what you read or heard, and what’s next)</span></label>
       <textarea id="doQ" rows="8">${esc(doQuestions().join('\n'))}</textarea>
       <p class="note"><button class="b-link" type="button" id="doQReset">Use the starting questions</button></p>
       <div class="row"><input class="n-field" id="doJournal" type="text" placeholder="Journal (blank: your default journal)" value="${esc(o.journal || '')}" autocomplete="off" style="flex:1;min-width:160px"><input class="n-field" id="doTags" type="text" placeholder="Tags, like reading" value="${esc(o.tags || '')}" autocomplete="off" style="flex:1;min-width:120px"></div>
