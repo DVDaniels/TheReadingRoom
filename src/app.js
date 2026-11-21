@@ -7187,7 +7187,7 @@
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
       ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
-      : `${quadHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
+      : `${quadHtml()}${blogHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
     const people = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY).length;
     const foot = evening
       ? `<p class="md-foot">Done for the day? <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">Read something good before bed</button></p>`
@@ -7325,6 +7325,51 @@
     return `<section class="b-panel md-q md-mq" aria-label="${title}"><div class="bp-head"><h3 class="b-sub">${title}</h3>
       <span class="bp-meta">${mkData?.problem && kind === 'stock' ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? `As of ${esc(when)}` : 'Getting prices…'}</span><button class="linkish bp-edit" type="button" data-mkedit>Change</button></div>
       <div class="mq-grid">${tiles}</div><p class="mc-tip">${kind === 'stock' ? 'Finnhub; may be delayed.' : 'CoinGecko.'} Not investment advice.</p></section>`;
+  }
+  // ---- Your blog: visitors, RSS readers and search traffic for your own site (Rust blog_stats → the site's
+  // /wp-json/reading-room/v1/stats, from "The Reading Room stats" snippet). Shape: { site, at,
+  //   visitors: { total, prev, window, through, days: [{d, n}] }, top: [{title, url, n}],
+  //   rss: { total, prev, since, apps: [{name, n}] }, search: { clicks, prevClicks, impressions, position, window, through, queries: [{q, clicks, pos}] } }
+  // Any part can be missing; a site without the snippet gives null and the panel isn't shown.
+  const BLOG = { data: null, at: 0, busy: false, failed: false };
+  async function loadBlog() {
+    if (BLOG.busy || (BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
+    BLOG.busy = true;
+    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); }
+    catch { BLOG.failed = true; }
+    finally { BLOG.busy = false; }
+  }
+  const nfmt = n => n == null ? '—' : n >= 10000 ? `${(n / 1000).toFixed(0)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+  function delta(now, before, unit) {
+    if (now == null || !before) return '';
+    const pct = (now - before) / before * 100, dir = pct > 0.5 ? 'up' : pct < -0.5 ? 'down' : 'flat';
+    return `<span class="bl-d ${dir}">${dir === 'up' ? '▲' : dir === 'down' ? '▼' : ''} ${Math.abs(pct).toFixed(0)}%</span> <span class="bl-vs">${esc(unit)}</span>`;
+  }
+  const blDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  function blogHtml() {
+    if (!BLOG.data && !BLOG.failed) setTimeout(() => loadBlog(), 0);
+    const b = BLOG.data;
+    if (!b || !(b.visitors || b.rss || b.search)) return '';
+    const v = b.visitors, days = v?.days || [], max = Math.max(1, ...days.map(x => x.n));
+    const bars = days.map((x, i) => { const h = Math.max(2, Math.round(x.n / max * 46));
+      return `<rect x="${i * 10 + 1}" y="${48 - h}" width="7" height="${h}" rx="1.5" class="${i === days.length - 1 ? 'now' : ''}"><title>${esc(blDay(x.d))}: ${x.n} visits</title></rect>`; }).join('');
+    const apps = b.rss?.apps || [], amax = Math.max(1, ...apps.map(a => a.n));
+    const appRows = apps.map(a => `<li><span class="bl-app">${esc(a.name)}</span><span class="bl-hbar"><i style="width:${Math.round(a.n / amax * 100)}%"></i></span><span class="bl-n">${a.n}</span></li>`).join('');
+    const q = (b.search?.queries || []).slice(0, 4).map(x => `<li><span class="bl-q">${esc(x.q)}</span><span class="bl-n">${x.clicks}</span><span class="bl-pos" title="Average spot in Google">#${Math.round(x.pos)}</span></li>`).join('');
+    const top = (b.top || []).slice(0, 3).map(t => `<li><button class="b-link" type="button" data-mkurl="${esc(t.url)}">${esc(t.title)}</button><span class="bl-n">${t.n}</span></li>`).join('');
+    const rssDiff = b.rss?.prev != null ? b.rss.total - b.rss.prev : null;
+    const vcol = v ? `<div class="bl-col"><h4>Visitors</h4><p class="bl-big">${nfmt(v.total)} <small>people, ${v.window || 28} days</small></p><p class="bl-sub">${delta(v.total, v.prev, `vs. the ${v.window || 28} days before`)}</p>
+          ${bars ? `<svg class="bl-bars" viewBox="0 0 ${days.length * 10} 48" preserveAspectRatio="none" role="img" aria-label="Visits each day, the last ${days.length} days">${bars}</svg><p class="bl-cap">Visits each day${v.through ? `, through ${esc(blDay(v.through))}` : ''}. From Google Analytics.</p>` : ''}
+          ${top ? `<h5>Read most</h5><ul class="bl-list">${top}</ul>` : ''}</div>` : '';
+    const rcol = b.rss ? `<div class="bl-col"><h4>RSS readers</h4><p class="bl-big">${nfmt(b.rss.total)} <small>following</small></p><p class="bl-sub">${rssDiff != null ? `<span class="bl-d ${rssDiff > 0 ? 'up' : rssDiff < 0 ? 'down' : 'flat'}">${rssDiff > 0 ? '+' : rssDiff < 0 ? '−' : '±'}${Math.abs(rssDiff)}</span> <span class="bl-vs">since a week ago</span>` : ''}</p>
+          ${appRows ? `<ul class="bl-apps">${appRows}</ul>` : ''}<p class="bl-cap">An estimate from what feed readers tell your site when they check your feed${b.rss.since ? `, counting since ${esc(blDay(b.rss.since))}` : ''}.</p></div>` : '';
+    const s = b.search, scol = s ? `<div class="bl-col"><h4>Search</h4><p class="bl-big">${nfmt(s.clicks)} <small>clicks, ${s.window || 28} days</small></p><p class="bl-sub">${delta(s.clicks, s.prevClicks, `vs. the ${s.window || 28} days before`)}</p>
+          <p class="bl-sub">${nfmt(s.impressions)} times in results · average spot #${(s.position || 0).toFixed(1)}</p>
+          ${q ? `<h5>Searches you show up for</h5><ul class="bl-list bl-qs">${q}</ul>` : ''}<p class="bl-cap">From Google Search Console${s.through ? `, through ${esc(blDay(s.through))}` : ''}.</p></div>` : '';
+    const when = b.at ? new Date(b.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<section class="b-panel md-blog" aria-label="Your blog">
+      <div class="bp-head"><h3 class="b-sub">Your blog</h3><span class="bp-meta">${esc(b.site || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
+      <div class="bl-cols">${vcol}${rcol}${scol}</div></section>`;
   }
   function quadHtml() {
     if (dayPrefs().cal && (!MCAL.data || Date.now() - MCAL.at > 5 * 60 * 1000 || MCAL.key !== (() => { const [a, b] = mcalRange(); return `${dayKey(a)}:${dayKey(b)}`; })())) setTimeout(() => loadMonthCal(), 0);

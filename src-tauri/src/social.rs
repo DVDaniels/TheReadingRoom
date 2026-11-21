@@ -1540,6 +1540,30 @@ fn wp_fail(e: Fail) -> String {
     }
 }
 
+/// Your blog's numbers for My Day: visitors, RSS readers and search traffic, from your own WordPress site
+/// (the one connected for Notes). The site answers at /wp-json/reading-room/v1/stats when it has the small
+/// "The Reading Room stats" snippet; a site without it (or no site connected) gives null, and My Day hides the panel.
+#[tauri::command]
+pub async fn blog_stats() -> Result<Value, String> {
+    let Some(s) = secret_get("wordpress") else { return Ok(Value::Null) };
+    let site = st(&s, "site");
+    let req = wp_auth(client().get(format!("{site}/wp-json/reading-room/v1/stats")), &st(&s, "user"), &st(&s, "password"));
+    match call(req).await {
+        Ok(mut v) => {
+            if !v.is_object() {
+                return Ok(Value::Null);
+            }
+            let host = url::Url::parse(&site).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default();
+            if st(&v, "site").is_empty() {
+                v["site"] = json!(host);
+            }
+            Ok(v)
+        }
+        Err(e) if e.0 == 404 => Ok(Value::Null),
+        Err(e) => Err(wp_fail(e)),
+    }
+}
+
 /// The sign-in, also sent as X-Reading-Room-Auth: some hosts (IONOS among them) drop the Authorization header
 /// before WordPress sees it. A small snippet on the site hands this one to WordPress instead.
 fn wp_auth(req: reqwest::RequestBuilder, user: &str, pass: &str) -> reqwest::RequestBuilder {

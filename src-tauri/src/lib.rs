@@ -2589,6 +2589,7 @@ pub fn run() {
             webmention::wm_counts,
             webmention::wm_mentions,
             social::site_note,
+            social::blog_stats,
             social::site_post_gone,
             offline::offline_save,
             youtube::video_channels,
