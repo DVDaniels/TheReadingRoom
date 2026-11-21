@@ -4398,6 +4398,7 @@
         ${isMine ? '' : `<button class="btn" data-talk="groups" data-feed="${esc(f.id)}" aria-haspopup="dialog">Groups${groupsOf().filter(g => inGroup(g, f)).length ? ` · ${groupsOf().filter(g => inGroup(g, f)).map(g => esc(g.name)).join(', ')}` : ''}</button>`}
         ${isMine ? '' : `<button class="btn pp-friend${isFriend(f) ? ' on' : ''}" data-talk="friend" data-feed="${esc(f.id)}" aria-pressed="${isFriend(f)}" title="${isFriend(f) ? 'Stop pinning their posts' : 'Pin their new posts to the top of the Neighborhood'}">${NB_STAR}Close friend</button>`}
         ${isMine ? '' : followButtons(f)}
+        ${isMine ? '' : `<button class="btn pp-unfollow" data-talk="unfollow" data-feed="${esc(f.id)}" title="Stop following ${esc(f.title)} in The Reading Room">Unfollow</button>`}
       </div>
       ${isFriend(f) ? `<p class="pp-sub pp-friend-note">Their new posts sit at the top of the Neighborhood. ${alertsBtn('friend', S.prefs.friendAlerts !== false, 'Alerts when close friends post')}</p>` : ''}
       ${sec('Talks with', talks.length ? `<div class="pp-faces">${talks.map(t => `<button class="pp-face" data-talk="nbwho" data-feed="${esc(t.f.id)}">${nbFace(t.f, 'nb-av md')}<span><b>${esc(t.f.title)}</b><small>${t.n} ${t.n === 1 ? 'reply or mention' : 'replies and mentions'}</small></span></button>`).join('')}</div>` : '')}
@@ -4915,6 +4916,29 @@
       $('repSend').onclick = () => { el.hidden = true; done($('repText').value.trim() || 'Reported from The Reading Room'); };
     });
   }
+  // Unfollow from a person's page: every feed that's theirs (their blog, plus any extra feeds shown under the same face)
+  function confirmUnfollowPerson(f) {
+    const pid = personId(f.id);
+    const feeds = S.feeds.filter(g => g.id === pid || personId(g.id) === pid);
+    if (!feeds.length) return;
+    const extra = feeds.length - 1;
+    showBanner(`<span>Unfollow ${esc(f.title)}?${extra ? ` That’s their ${extra + 1} feeds.` : ''} Their posts leave your reader too, including ones saved for later.</span><button class="btn danger" id="yesUnfollowPerson">Unfollow</button><button class="btn" id="noUnfollowPerson">Cancel</button>`, false, 'confirm');
+    $('noUnfollowPerson').onclick = hideBanner;
+    $('yesUnfollowPerson').onclick = async () => {
+      hideBanner();
+      const wasFriend = isFriend(f), ids = new Set(feeds.map(g => g.id));
+      try {
+        for (const g of feeds) await invoke('remove_feed', { id: g.id });
+        if (wasFriend) { const k = friendKey(f); S.prefs.friends = (S.prefs.friends || []).filter(x => x !== k); savePrefs(); }
+        // Back to where you were, unless that was one of the feeds just removed
+        const from = SOC.personFrom || {};
+        if (from.view !== undefined && ids.has(String(from.view))) SOC.personFrom = { tab: 'blogs' };
+        personBack();
+        status(`Unfollowed ${f.title}.`);
+        load();
+      } catch (e) { status(msg(e), true); load(); }
+    };
+  }
   // Back from a person's page to where you were: the feed you opened it from, or the same place in Conversations
   function personBack() {
     const from = SOC.personFrom || {}; SOC.personFrom = null; SOC.person = null;
@@ -4953,6 +4977,7 @@
     if (k === 'nbreply') { const it = item(b.dataset.id); if (it) openReply(b, it); return; }
     if (k === 'nbrbox') { const it = item(b.dataset.id); if (!it) return; if (QUOTE && QUOTE.id === it.id && Date.now() - QUOTE.at < 120e3) { const q = QUOTE.text; QUOTE = null; paintQuoteBtn(); quoteReply(it, q); } else nbReplyBox(b, it); return; }
     if (k === 'friend') { const f = feedById(b.dataset.feed); if (f) setFriend(f, !isFriend(f)); return; }
+    if (k === 'unfollow') { const f = feedById(b.dataset.feed); if (f) confirmUnfollowPerson(f); return; }
     if (k === 'alerts') { const key = b.dataset.k === 'friend' ? 'friendAlerts' : 'youAlerts'; S.prefs[key] = S.prefs[key] === false; savePrefs(); renderList();
       status(S.prefs[key] ? (key === 'youAlerts' ? 'You’ll get an alert for new replies, comments and links to your blog.' : 'You’ll get an alert when a close friend posts.') : 'Those alerts are off.');
       if (S.prefs[key]) invoke('notify', { title: 'Alerts are on', body: key === 'youAlerts' ? 'Replies, comments and mentions show up like this.' : 'New posts from close friends show up like this.', id: 'alerts-' + key }).catch(() => {});
