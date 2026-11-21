@@ -2316,3 +2316,8 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
   .b-mkline::-webkit-scrollbar { display: none; }
   .ml-meta { margin-left: 8px; }
 }
+
+/* Day One: your journal questions (Your day sheet) */
+#dayPanel .do-q { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 14px; }
+#dayPanel .do-q .hint { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
+#doQ { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; }
