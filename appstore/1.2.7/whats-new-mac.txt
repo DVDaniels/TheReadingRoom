@@ -1,0 +1,9 @@
+• My Day (new, experimental): start the day with your Big 3, your goals, your calendar and reminders, and a few stocks and coins. Put it down adds a task to Reminders (in its own list), an event to Calendar or a note for tonight's journal. After 6 pm it turns to the evening and helps you plan tomorrow.
+• Weekly Preview on Sundays: look back, check your goals and pick what you read that mattered. It ends with a private page for Day One and Weeknotes for your blog, published or saved as a draft, with a featured image.
+• Day One: write yesterday's page with your own journal questions, with what happened and what you read already filled in. Journal in Day One from any story's Share menu.
+• Today: a row with your stocks and coins under the top story, the next thing on your calendar, birthdays five days ahead, and Trending in your neighborhood: what several of your writers are writing about this week.
+• Email reads better: who it's from up top, earlier emails folded away, signatures set apart, and newsletters without hidden text or tracking pixels.
+• Quote cards: turn a passage you highlight into a picture to copy or save. What I read this week: a short list to post on your site or send.
+• Videos: your channels in a row with favorites, and YouTube descriptions with chapter times.
+• Conversations: Mark all as read at the top, and copies of your notes show the post they're about.
+• Settings › Experimental: turn My Day, Email, Morning Edition and Help Wanted off, and The Reading Room is simply your feed reader.
