@@ -2453,6 +2453,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_iap::init())
         .plugin(tauri_plugin_icloud_folder::init())
         .setup(|app| {
             // tell the window about a crash last time, once

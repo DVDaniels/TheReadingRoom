@@ -2428,3 +2428,13 @@ body.rail-slim .nav .md-bday { position: absolute; bottom: 1px; right: 0; margin
 .wk-photo-in { display: flex; flex-direction: column; gap: 6px; flex: 1 1 220px; min-width: 0; }
 .wk-photo-in .b-link { align-self: flex-start; }
 #expList { margin-top: 12px; }
+
+/* The Reading Room Plus */
+#plusPanel .plus-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+#plusPanel .plus-list li { display: flex; flex-direction: column; gap: 2px; padding-left: 26px; position: relative; }
+#plusPanel .plus-list li::before { content: "✓"; position: absolute; left: 4px; top: 0; color: var(--accent); font-weight: 700; }
+#plusPanel .plus-list b { font-size: 15px; } #plusPanel .plus-list span { font-size: 13px; color: var(--muted); }
+#plusPanel .plus-buy { margin: 14px 0 4px; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-soft); text-align: center; }
+#plusPanel .plus-price { margin: 0 0 10px; font-size: 15px; }
+#plusPanel .plus-go { min-width: 220px; }
+#plusPanel .plus-fine { font-size: 11.5px; line-height: 1.45; }

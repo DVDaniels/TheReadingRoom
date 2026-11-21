@@ -1,6 +1,9 @@
 // The Reading Room — the window's behaviour. Talks to the Rust side through Tauri commands.
 (() => {
-  const { invoke } = window.__TAURI__.core;
+  const { invoke: tauriInvoke } = window.__TAURI__.core;
+  // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read)
+  // and liking (taking a like back stays free). Everything else goes straight through.
+  const invoke = (cmd, args) => (cmd === 'site_note' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -948,6 +951,7 @@
       const s = await invoke('get_state');
       S.folders = s.folders; S.feeds = s.feeds; S.items = s.items; S.highlights = s.highlights; S.refreshing = s.refreshing; S.lastRefresh = s.lastRefresh;
       S.mutes = s.mutes || []; S.lists = s.lists || []; S.prefs = s.prefs && typeof s.prefs === 'object' ? s.prefs : {};
+      PLUS.prefsReady = true; plusGraceCheck();
       buildKinds(); buildPersons(); buildMutes(); renderMutes();
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
@@ -2697,9 +2701,121 @@
   }
 
 
+  // ------------------------------------------------------------ The Reading Room Plus
+  // A yearly subscription (StoreKit 2 through tauri-plugin-iap) for people who write: posting to your own site
+  // (Notes, reposts, replies, likes, Weeknotes, What I read this week) and Your blog's stats on My Day. Reading,
+  // Conversations and the Experimental extras stay free. PLUS_LIVE stays false until the subscription exists in
+  // App Store Connect; while it's false nothing is locked and nothing is shown. (localStorage plusLive=1 turns it on
+  // for testing.) People who already had a site connected when Plus went live keep posting free for 91 days.
+  const PLUS_LIVE = false;
+  const PLUS_ID = 'com.daviddaniels.readingroom.plus.yearly';
+  const plusLive = () => PLUS_LIVE || store.get('plusLive') === '1';
+  const PLUS = { owned: false, exp: 0, product: null, busy: false, prefsReady: false, accountsReady: false };
+  try { const c = JSON.parse(store.get('plusState') || 'null'); if (c) { PLUS.owned = !!c.owned; PLUS.exp = c.exp || 0; } } catch {}
+  const plusSubscribed = () => PLUS.owned && (!PLUS.exp || PLUS.exp > Date.now());
+  const plusGraceUntil = () => { const g = S.prefs.plusGrace; return g && g >= dayKey() ? g : ''; };
+  function plusOk() { return !plusLive() || plusSubscribed() || !!plusGraceUntil(); }
+  // The first time a Plus-live version runs: if a site is already connected, posting stays free for three months
+  function plusGraceCheck() {
+    if (!plusLive() || !PLUS.prefsReady || !PLUS.accountsReady || S.prefs.plusSince) return;
+    S.prefs.plusSince = dayKey();
+    if (SOC.accounts?.wordpress) { const d = new Date(); d.setDate(d.getDate() + 91); S.prefs.plusGrace = dayKey(d); }
+    savePrefs();
+  }
+  const plusDate = k => new Date(k + 'T12:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  function plusBlocked() {
+    setTimeout(() => openPlus('post'), 0);
+    return Promise.reject(new Error('Posting to your site is part of The Reading Room Plus.'));
+  }
+  async function plusRefresh() {
+    if (!plusLive()) return;
+    try {
+      const st = await tauriInvoke('plugin:iap|get_product_status', { payload: { productId: PLUS_ID, productType: 'subs' } });
+      PLUS.owned = !!st?.isOwned && (st.purchaseState == null || st.purchaseState === 0);
+      PLUS.exp = st?.expirationTime || 0;
+      store.set('plusState', JSON.stringify({ owned: PLUS.owned, exp: PLUS.exp, at: Date.now() }));
+      if (S.view === 'myday') mdRender();
+      paintPlusRow();
+    } catch { /* offline or no StoreKit: keep what we knew */ }
+  }
+  async function plusProduct() {
+    if (PLUS.product) return PLUS.product;
+    const r = await tauriInvoke('plugin:iap|get_products', { payload: { productIds: [PLUS_ID], productType: 'subs' } });
+    PLUS.product = (r?.products || []).find(p => p.productId === PLUS_ID) || null;
+    return PLUS.product;
+  }
+  // A free introductory period shows as a first pricing phase that costs nothing
+  function plusTrial(p) {
+    for (const o of p?.subscriptionOfferDetails || []) for (const ph of o.pricingPhases || []) if (!ph.priceAmountMicros) return ph.billingPeriod || 'P1W';
+    return '';
+  }
+  const PLUS_FEATURES = [
+    ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site, with copies to Mastodon and Bluesky.'],
+    ['Weeknotes', 'Publish your Weeknotes and What I read this week as posts, with a featured image.'],
+    ['Your blog', 'Visitors, RSS readers and search traffic for your blog, on My Day.'],
+  ];
+  function paintPlusRow() {
+    const row = $('plusRow'); if (!row) return;
+    row.hidden = !plusLive();
+    const note = $('plusNote'); if (!note) return;
+    note.textContent = plusSubscribed() ? (PLUS.exp ? `You have Plus. It renews or ends ${plusDate(dayKey(new Date(PLUS.exp)))}.` : 'You have Plus.')
+      : plusGraceUntil() ? `Posting to your site is free for you until ${plusDate(plusGraceUntil())}.`
+      : 'Post to your site, Weeknotes and your blog’s stats';
+  }
+  async function openPlus(why) {
+    const el = sheet('plusPanel', `<h2>The Reading Room Plus</h2>
+      <p>${why === 'post' ? 'Posting to your own site is part of Plus.' : 'For people who write on their own site.'} Reading, Conversations and My Day stay free.</p>
+      <ul class="plus-list">${PLUS_FEATURES.map(([t, d]) => `<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`).join('')}</ul>
+      <div id="plusBuy" class="plus-buy"><p class="note">Getting the price from the App Store…</p></div>
+      <p class="acct-note" id="plusMsg" aria-live="polite"></p>
+      <p class="note plus-fine">A yearly subscription. It renews automatically each year until you cancel, which you can do anytime in your Apple Account’s Subscriptions, at least a day before it renews. Payment goes through your Apple Account.
+        <button class="linkish" type="button" data-mkurl="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of Use</button> · <button class="linkish" type="button" data-mkurl="https://readingroomapp.com/privacy/">Privacy</button></p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="plusRestore">Restore purchases</button><button class="btn primary" type="button" id="plusDone">Done</button></div>`, 'The Reading Room Plus');
+    const say = (t, err) => { $('plusMsg').textContent = t; $('plusMsg').classList.toggle('err', !!err); };
+    const paint = async () => {
+      const box = $('plusBuy');
+      if (plusSubscribed()) {
+        box.innerHTML = `<p><b>You have Plus.</b> Thank you for supporting The Reading Room.${PLUS.exp ? ` It renews or ends ${esc(plusDate(dayKey(new Date(PLUS.exp))))}.` : ''}</p>
+          <button class="btn" type="button" data-mkurl="https://apps.apple.com/account/subscriptions">Manage subscription</button>`;
+        return;
+      }
+      let p = null; try { p = await plusProduct(); } catch {}
+      const grace = plusGraceUntil() ? `<p class="note">You already post to your site, so it stays free for you until ${esc(plusDate(plusGraceUntil()))}.</p>` : '';
+      if (!p) { box.innerHTML = `${grace}<p class="note">The App Store isn’t answering right now. Try again in a little while.</p>`; return; }
+      const trial = plusTrial(p), price = p.formattedPrice || '';
+      box.innerHTML = `${grace}<p class="plus-price">${trial ? `Free for a week, then <b>${esc(price)}</b> a year` : `<b>${esc(price)}</b> a year`}</p>
+        <button class="btn primary plus-go" type="button" id="plusGo">${trial ? 'Try it free for a week' : `Subscribe for ${esc(price)} a year`}</button>`;
+    };
+    el.onclick = async e => {
+      if (e.target.id === 'plusDone') { el.hidden = true; return; }
+      if (e.target.id === 'plusGo' && !PLUS.busy) {
+        PLUS.busy = true; say('Opening the App Store…');
+        try {
+          const r = await tauriInvoke('plugin:iap|purchase', { payload: { productId: PLUS_ID, productType: 'subs' } });
+          if (r?.purchaseState === 2) say('Waiting for approval. Plus turns on once it’s approved.');
+          await plusRefresh();
+          if (plusSubscribed()) { say('Welcome to Plus.'); paint(); renderList(); }
+          else if (r?.purchaseState !== 2) say('');
+        } catch (err) { say(/cancel/i.test(msg(err)) ? '' : msg(err), !/cancel/i.test(msg(err))); }
+        finally { PLUS.busy = false; }
+        return;
+      }
+      if (e.target.id === 'plusRestore' && !PLUS.busy) {
+        PLUS.busy = true; say('Checking with the App Store…');
+        try { await tauriInvoke('plugin:iap|restore_purchases', { payload: { productType: 'subs' } }); await plusRefresh(); say(plusSubscribed() ? 'Plus is back on.' : 'No Plus subscription found for this Apple Account.', !plusSubscribed()); paint(); }
+        catch (err) { say(msg(err), true); }
+        finally { PLUS.busy = false; }
+      }
+    };
+    paint();
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) plusRefresh(); });
+  document.addEventListener('click', e => { if (e.target.closest('[data-plus]')) openPlus(); });
+  setTimeout(() => { paintPlusRow(); plusRefresh(); }, 1500);
+
   // ------------------------------------------------------------ Mastodon and Bluesky: share with a note, and talk
   // Accounts belong to the person: they sign in to their own server, and the sign-in stays in this device's Keychain.
-  async function loadAccounts() { try { SOC.accounts = await invoke('social_accounts'); } catch { SOC.accounts = {}; } }
+  async function loadAccounts() { try { SOC.accounts = await invoke('social_accounts'); } catch { SOC.accounts = {}; } PLUS.accountsReady = true; plusGraceCheck(); }
   async function loadConversations(quiet) {
     if (!anySocial() || SOC.loading) return;
     SOC.loading = true; if (!quiet && S.view === 'talk') renderList();
@@ -2787,6 +2903,7 @@
     });
   }
   $('socialBtn').onclick = openAccounts;
+  $('plusBtn').onclick = () => { closeSettings(); openPlus(); };
 
   // ------------------------------------------------------------ Settings
   // The links that used to fill the bottom of the sidebar live here now. Each keeps its own handler;
@@ -7347,6 +7464,8 @@
   }
   const blDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   function blogHtml() {
+    if (!plusOk()) return SOC.accounts?.wordpress ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
+      <p class="day-note">See your blog’s visitors, RSS readers and search traffic here every day with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.data && !BLOG.failed) setTimeout(() => loadBlog(), 0);
     const b = BLOG.data;
     if (!b || !(b.visitors || b.rss || b.search)) return '';
