@@ -7106,7 +7106,9 @@
     try {
       const a = new Date(); a.setHours(0, 0, 0, 0);
       const r = await invoke('day_today', { from: a.getTime() / 1000, to: addDays(a, 6).getTime() / 1000, calendar: true, reminders: false, ask: false });
-      BDAY.list = (r?.events || []).filter(e => /birthday/i.test(e.calendar || '') || /birthday/i.test(e.title || ''));
+      // A birthday is an event on the Birthdays calendar (from Contacts) or one whose own title says birthday.
+      // Not everything on a calendar that happens to have "birthday" in its name (David, Nov 21: "Dad flying in").
+      BDAY.list = (r?.events || []).filter(e => e.birthday || /birthday|bday/i.test(e.title || ''));
       BDAY.at = Date.now(); BDAY.day = new Date().toDateString();
       if (S.view === 'today') renderList();
       renderRail();

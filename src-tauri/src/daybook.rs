@@ -14,6 +14,8 @@ pub struct Event {
     pub all_day: bool,
     pub location: String,
     pub calendar: String,
+    /// On the Birthdays calendar the system makes from Contacts
+    pub birthday: bool,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -51,7 +53,7 @@ mod apple {
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2::{sel, ClassType};
-    use objc2_event_kit::{EKAlarm, EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
+    use objc2_event_kit::{EKAlarm, EKAuthorizationStatus, EKCalendar, EKCalendarType, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
     use objc2_foundation::{NSArray, NSCalendar, NSCalendarUnit, NSDate, NSError, NSString};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -108,6 +110,7 @@ mod apple {
                     all_day: e.isAllDay(),
                     location: e.location().map(|l| ns(&l)).unwrap_or_default(),
                     calendar: e.calendar().map(|c| ns(&c.title())).unwrap_or_default(),
+                    birthday: e.calendar().map(|c| c.r#type() == EKCalendarType::Birthday).unwrap_or(false),
                 })
                 .collect();
             out.sort_by(|a, b| (!a.all_day).cmp(&!b.all_day).then(a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal)));
