@@ -9,6 +9,9 @@ ONE CARD PER POST
 BIRTHDAYS ON MY DAY
 • The cake only shows for real birthdays: the Birthdays calendar from Contacts, or an event with "birthday" in its name. Other events no longer count.
 
+MY DAY IN FOUR PARTS
+• My Day now opens with four boxes: Coming up (the next two weeks from your calendar), the month (tap a day to see it in Coming up), Stocks and Crypto. Each price has the day's low and high and a trend line. Stock lines build up from the prices the app saves each day, so they appear after a few days.
+
 STARTER WRITERS
 • The writers the app suggests when you're just starting out have changed a little.
 
@@ -16,5 +19,6 @@ Please try:
 • Unfollow someone from their page, then check they're gone from the Neighborhood and the sidebar.
 • Unfollow someone who was a close friend.
 • Post a link to both Mastodon and Bluesky and check Your posts shows it once.
+• On My Day, page through the months, tap a day, and check your events and prices look right.
 
 Please tell us if anything about unfollowing surprises you.
