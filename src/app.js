@@ -6737,6 +6737,12 @@
   const DAYB = { data: null, at: 0, busy: false, day: '' };
   const dayPrefs = () => S.prefs.day || {};
   const dayOn = () => !!(dayPrefs().cal || dayPrefs().rem);
+  // Which Reminders list My Day uses: its own list "The Reading Room" (made the first time you put a task down),
+  // another list you pick, or "*" = all your lists (new tasks go to your default list). Kept by name, so it's the
+  // same list on every device (iCloud gives a list a different id on each one).
+  const RR_LIST = 'The Reading Room';
+  const remList = () => { const l = dayPrefs().list; return l == null || l === '' ? RR_LIST : l; };
+  const remListName = () => remList() === '*' ? 'your lists' : `your “${remList()}” list`;
   const doPrefs = () => S.prefs.dayone || {};
   const dayBounds = () => { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(a); b.setDate(b.getDate() + 1); return [a.getTime() / 1000, b.getTime() / 1000]; };
   async function loadDay(ask) {
@@ -6746,7 +6752,7 @@
     DAYB.busy = true;
     try {
       const [from, to] = dayBounds();
-      DAYB.data = await invoke('day_today', { from, to, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: !!ask });
+      DAYB.data = await invoke('day_today', { from, to, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: !!ask, list: remList() });
       DAYB.at = Date.now(); DAYB.day = today;
       if (S.view === 'today' || S.view === 'myday') renderList();
     } catch { /* leave the last day */ }
@@ -6780,7 +6786,7 @@
     if (p.rem && d?.reminders === 'granted') {
       const und = showUndated() ? (d.undated || []).slice(0, 5) : [], more = showUndated() ? Math.max(0, (d.undated_total || 0) - und.length) : 0;
       rem = `<div class="day-col"><h4>Reminders</h4>`
-        + (d.todo.length ? `<ul class="day-rem">${d.todo.map(remLi).join('')}</ul>` : `<p class="day-note">Nothing due today.</p>`)
+        + (d.todo.length ? `<ul class="day-rem">${d.todo.map(remLi).join('')}</ul>` : `<p class="day-note">${!d.undated?.length && remList() !== '*' ? `Nothing in ${esc(remListName())} yet. Tasks you put down on My Day go there.` : 'Nothing due today.'}</p>`)
         + (und.length ? `<p class="day-subh">No date</p><ul class="day-rem">${und.map(remLi).join('')}</ul>` : '')
         + (more ? `<p class="day-note">${more} more without a date in Reminders.</p>` : '')
         + `</div>`;
@@ -6850,7 +6856,7 @@
     if (yday) {
       const d = addDays(t0, -1);
       let day = null;
-      if (dayOn()) { try { day = await invoke('day_today', { from: d.getTime() / 1000, to: t0.getTime() / 1000, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: false, done: true }); } catch { day = null; } }
+      if (dayOn()) { try { day = await invoke('day_today', { from: d.getTime() / 1000, to: t0.getTime() / 1000, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: false, done: true, list: remList() }); } catch { day = null; } }
       return questionPage(d, day);
     }
     const out = [`# ${t0.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
@@ -6887,6 +6893,8 @@
       <label class="c-net"><input type="checkbox" id="dayCal"${p.cal ? ' checked' : ''}>Today’s events from Calendar</label>
       <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today and overdue (tick them off right on My Day)</label>
       <label class="c-net"><input type="checkbox" id="dayUnd"${p.undated !== false ? ' checked' : ''}>Also reminders with no date (the newest five)</label>
+      <label class="do-q" for="dayList">Reminders list <span class="hint">My Day shows this list, and tasks you put down go into it. “The Reading Room” is a list just for the app, made in Reminders the first time you add a task.</span></label>
+      <select id="dayList" class="n-field"><option value="">The Reading Room (its own list)</option>${remList() !== RR_LIST && remList() !== '*' ? `<option value="${esc(remList())}" selected>${esc(remList())}</option>` : ''}<option value="*"${remList() === '*' ? ' selected' : ''}>All my lists (new tasks go to the default list)</option></select>
       <h3 class="mk-h">Day One</h3>
       <p class="note">If you journal in Day One, the app can start entries for you: a page from My Day, and “Journal in Day One” in a story’s Share menu (with your highlights and notes). Day One opens with the entry filled in; you finish it there.</p>
       <label class="c-net"><input type="checkbox" id="doOn"${o.on ? ' checked' : ''}>Show Day One buttons</label>
@@ -6900,11 +6908,18 @@
       <p class="acct-note" id="dayNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day');
     const save = () => {
-      S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked, undated: $('dayUnd').checked };
+      S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked, undated: $('dayUnd').checked, list: $('dayList').value || undefined };
       S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim(), page: el.querySelector('input[name="doPage"]:checked')?.value || 'yesterday', questions: (() => { const q = $('doQ').value.split('\n').map(x => x.trim()).filter(Boolean); return q.length && q.join('\n') !== DAYONE_Q.join('\n') ? q.slice(0, 20) : undefined; })() };
       savePrefs(); applyDayOne(); DAYB.data = null; renderList();
     };
     el.addEventListener('change', save);
+    // the device's own lists, once Reminders is allowed (names only)
+    invoke('reminder_lists').then(names => {
+      const sel = $('dayList'); if (!sel || !Array.isArray(names)) return;
+      const have = new Set([...sel.options].map(o => o.value));
+      const star = sel.querySelector('option[value="*"]');
+      for (const n of names) if (n && n.trim().toLowerCase() !== RR_LIST.toLowerCase() && !have.has(n)) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.insertBefore(o, star); }
+    }).catch(() => {});
     $('doQReset').onclick = () => { $('doQ').value = DAYONE_Q.join('\n'); save(); };
     $('doTry').onclick = () => { save(); dayOne('Hello from The Reading Room.', ''); $('dayNote').textContent = 'If Day One opened with a new entry, it works. You can delete that entry.'; };
     $('dayDone').onclick = () => { save(); el.hidden = true; if (dayOn()) loadDay(true); };
@@ -7203,8 +7218,8 @@
         bump('event'); status(`Added to Calendar: ${title}, ${mdFmtWhen(w, true)}.`); DAYB.data = null; MD.tmr = null; setTimeout(() => loadDay(), 300);
       } else {
         const w = MD.when?.found || MD.wantDate ? mdWhenRead() : null, title = MD.when?.found ? MD.when.title : t;
-        await invoke('reminder_add', { title, due: w ? w.start.getTime() / 1000 : null, timed: !!w?.timed });
-        bump('task'); status(w ? `Added to Reminders, due ${mdFmtWhen(w)}.` : 'Added to Reminders.'); DAYB.data = null; setTimeout(() => loadDay(), 300);
+        await invoke('reminder_add', { title, due: w ? w.start.getTime() / 1000 : null, timed: !!w?.timed, list: remList() });
+        bump('task'); { const where = remList() === '*' ? 'Reminders' : `“${remList()}” in Reminders`; status(w ? `Added to ${where}, due ${mdFmtWhen(w)}.` : `Added to ${where}.`); } DAYB.data = null; setTimeout(() => loadDay(), 300);
       }
       MD.when = null; MD.wantDate = false; MD.allDay = false; MD.whenEdited = false;
     } catch (e) { MD.cap = t; status(msg(e), true); }

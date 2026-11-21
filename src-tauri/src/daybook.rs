@@ -51,7 +51,7 @@ mod apple {
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2::{sel, ClassType};
-    use objc2_event_kit::{EKAlarm, EKAuthorizationStatus, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
+    use objc2_event_kit::{EKAlarm, EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
     use objc2_foundation::{NSArray, NSCalendar, NSCalendarUnit, NSDate, NSError, NSString};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -116,6 +116,41 @@ mod apple {
         }
     }
 
+    /// The Reminders list with this name, if there is one. "*" (or empty) means every list.
+    fn find_list(store: &EKEventStore, title: &str) -> Option<Retained<EKCalendar>> {
+        let title = title.trim();
+        if title.is_empty() || title == "*" {
+            return None;
+        }
+        unsafe { store.calendarsForEntityType(EKEntityType::Reminder).iter().find(|c| ns(&c.title()).trim().eq_ignore_ascii_case(title)) }
+    }
+
+    /// The list with this name, made (next to the default list, so it syncs the same way) when it isn't there yet.
+    fn ensure_list(store: &EKEventStore, title: &str) -> Result<Retained<EKCalendar>, String> {
+        if let Some(c) = find_list(store, title) {
+            return Ok(c);
+        }
+        unsafe {
+            let def = store.defaultCalendarForNewReminders().ok_or("Reminders has no default list to make a new list next to.")?;
+            let src = def.source().ok_or("Reminders didn't say where its lists are kept.")?;
+            let cal = EKCalendar::calendarForEntityType_eventStore(EKEntityType::Reminder, store);
+            cal.setTitle(&NSString::from_str(title.trim()));
+            cal.setSource(Some(&src));
+            store
+                .saveCalendar_commit_error(&cal, true)
+                .map_err(|e| format!("Reminders didn't make the list \"{}\" ({}).", title.trim(), e.localizedDescription()))?;
+            Ok(cal)
+        }
+    }
+
+    /// The names of the Reminders lists on this device, in Reminders' order.
+    pub fn lists() -> Vec<String> {
+        if status(EKEntityType::Reminder) != "granted" {
+            return Vec::new();
+        }
+        unsafe { EKEventStore::new().calendarsForEntityType(EKEntityType::Reminder).iter().map(|c| ns(&c.title())).collect() }
+    }
+
     fn fetch(store: &EKEventStore, pred: &objc2_foundation::NSPredicate, finished: bool) -> Vec<Reminder> {
         let (tx, rx) = mpsc::channel::<Vec<Reminder>>();
         unsafe {
@@ -146,8 +181,9 @@ mod apple {
     /// Every open reminder, split into the ones due by `to` (overdue too; soonest first) and the ones with no
     /// due date (newest first). Reminders due after today are left out. (Asking Reminders for "due before the
     /// end of today" leaves out every reminder without a date, so this asks for all open ones and sorts here.)
-    fn open_reminders(store: &EKEventStore, to: f64) -> (Vec<Reminder>, Vec<Reminder>, usize) {
-        let pred = unsafe { store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(None, None, None) };
+    fn open_reminders(store: &EKEventStore, to: f64, only: Option<&EKCalendar>) -> (Vec<Reminder>, Vec<Reminder>, usize) {
+        let cals = only.map(|c| NSArray::from_slice(&[c]));
+        let pred = unsafe { store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(None, None, cals.as_deref()) };
         let all = fetch(store, &pred, false);
         let (mut dated, mut undated): (Vec<Reminder>, Vec<Reminder>) = all.into_iter().partition(|r| r.due.is_some());
         dated.retain(|r| r.due.unwrap_or(f64::MAX) < to);
@@ -173,7 +209,9 @@ mod apple {
     }
 
     /// Today's events and reminders. With `ask`, the system prompt is shown for whatever hasn't been answered yet.
-    pub fn today(from: f64, to: f64, want_cal: bool, want_rem: bool, ask: bool, want_done: bool) -> Day {
+    /// `list`: show only the open reminders in the Reminders list with that name ("*" or none: every list; a list
+    /// that doesn't exist yet: nothing). Finished reminders (`want_done`) come from every list: a win is a win.
+    pub fn today(from: f64, to: f64, want_cal: bool, want_rem: bool, ask: bool, want_done: bool, list: Option<String>) -> Day {
         let store = unsafe { EKEventStore::new() };
         let mut day = Day { calendar: "off".into(), reminders: "off".into(), ..Default::default() };
         if want_cal {
@@ -196,7 +234,9 @@ mod apple {
             day.events = events(&store, from, to);
         }
         if day.reminders == "granted" {
-            let (todo, undated, total) = open_reminders(&store, to);
+            let want = list.as_deref().map(str::trim).filter(|t| !t.is_empty() && *t != "*");
+            let only = want.and_then(|t| find_list(&store, t));
+            let (todo, undated, total) = if want.is_some() && only.is_none() { (Vec::new(), Vec::new(), 0) } else { open_reminders(&store, to, only.as_deref()) };
             day.todo = todo;
             day.undated = undated;
             day.undated_total = total;
@@ -220,15 +260,19 @@ mod apple {
         }
     }
 
-    /// Add a new reminder to the default Reminders list (quick capture on My Day). With `due` (seconds since 1970)
-    /// it gets a due date; `timed` adds the time of day and an alert then, otherwise it's due that day.
-    pub fn add(title: &str, due: Option<f64>, timed: bool) -> Result<String, String> {
+    /// Add a new reminder (quick capture on My Day) to the list named `list` (made when it isn't there yet), or to
+    /// the default Reminders list ("*" or none). With `due` (seconds since 1970) it gets a due date; `timed` adds
+    /// the time of day and an alert then, otherwise it's due that day.
+    pub fn add(title: &str, due: Option<f64>, timed: bool, list: Option<&str>) -> Result<String, String> {
         if status(EKEntityType::Reminder) != "granted" {
             return Err("Allow Reminders first (My Day › Your day › Allow).".into());
         }
         unsafe {
             let store = EKEventStore::new();
-            let cal = store.defaultCalendarForNewReminders().ok_or("Reminders has no default list to add to.")?;
+            let cal = match list.map(str::trim).filter(|t| !t.is_empty() && *t != "*") {
+                Some(t) => ensure_list(&store, t)?,
+                None => store.defaultCalendarForNewReminders().ok_or("Reminders has no default list to add to.")?,
+            };
             let r = EKReminder::reminderWithEventStore(&store);
             r.setTitle(Some(&NSString::from_str(title.trim())));
             r.setCalendar(Some(&cal));
@@ -272,10 +316,10 @@ mod apple {
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use apple::{add, add_event, set_done, today};
+pub use apple::{add, add_event, lists, set_done, today};
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _want_done: bool) -> Day {
+pub fn today(_from: f64, _to: f64, want_cal: bool, want_rem: bool, _ask: bool, _want_done: bool, _list: Option<String>) -> Day {
     let off = |w: bool| if w { "unavailable" } else { "off" }.to_string();
     Day { calendar: off(want_cal), reminders: off(want_rem), ..Default::default() }
 }
@@ -286,11 +330,16 @@ pub fn set_done(_id: &str, _done: bool) -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-pub fn add(_title: &str, _due: Option<f64>, _timed: bool) -> Result<String, String> {
+pub fn add(_title: &str, _due: Option<f64>, _timed: bool, _list: Option<&str>) -> Result<String, String> {
     Err("Reminders are only on Apple devices.".into())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn add_event(_title: &str, _start: f64, _end: f64, _all_day: bool) -> Result<String, String> {
     Err("Calendar is only on Apple devices.".into())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn lists() -> Vec<String> {
+    Vec::new()
 }

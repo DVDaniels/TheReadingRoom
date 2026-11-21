@@ -57,7 +57,7 @@ objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCen
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 security-framework = { version = "3", features = ["OSX_10_15"] }
 # Today's calendar and reminders (daybook.rs): the Calendar and Reminders data already on the device
-objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKEventStore", "EKEvent", "EKCalendarItem", "EKCalendar", "EKReminder", "EKObject", "EKTypes", "EKAlarm"] }
+objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKEventStore", "EKEvent", "EKCalendarItem", "EKCalendar", "EKReminder", "EKObject", "EKTypes", "EKAlarm", "EKSource"] }
 
 [profile.release]
 codegen-units = 1

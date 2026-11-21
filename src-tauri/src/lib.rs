@@ -1811,10 +1811,16 @@ async fn weather_now(state: State<'_, Shared>, lat: f64, lon: f64, fahrenheit: b
 /// Today's events and reminders from this device. `ask` shows the system's OK prompt for anything not yet answered.
 #[tauri::command]
 /// `done` also lists the reminders finished between `from` and `to` (for a journal page about yesterday).
-async fn day_today(from: f64, to: f64, calendar: bool, reminders: bool, ask: bool, done: Option<bool>) -> Result<daybook::Day, String> {
-    tauri::async_runtime::spawn_blocking(move || daybook::today(from, to, calendar, reminders, ask, done.unwrap_or(false)))
+async fn day_today(from: f64, to: f64, calendar: bool, reminders: bool, ask: bool, done: Option<bool>, list: Option<String>) -> Result<daybook::Day, String> {
+    tauri::async_runtime::spawn_blocking(move || daybook::today(from, to, calendar, reminders, ask, done.unwrap_or(false), list))
         .await
         .map_err(|_| "Couldn't read Calendar and Reminders.".to_string())
+}
+
+/// The names of the Reminders lists on this device (for picking which list My Day uses).
+#[tauri::command]
+async fn reminder_lists() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(daybook::lists).await.unwrap_or_default()
 }
 
 /// Tick a reminder off in Reminders (or untick it).
@@ -1827,11 +1833,11 @@ async fn reminder_done(id: String, done: bool) -> Result<(), String> {
 
 /// Add a reminder to the default Reminders list (quick capture on My Day). Returns its id.
 #[tauri::command]
-async fn reminder_add(title: String, due: Option<f64>, timed: Option<bool>) -> Result<String, String> {
+async fn reminder_add(title: String, due: Option<f64>, timed: Option<bool>, list: Option<String>) -> Result<String, String> {
     if title.trim().is_empty() {
         return Err("Type the reminder first.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || daybook::add(&title, due, timed.unwrap_or(false)))
+    tauri::async_runtime::spawn_blocking(move || daybook::add(&title, due, timed.unwrap_or(false), list.as_deref()))
         .await
         .map_err(|_| "Couldn't reach Reminders.".to_string())?
 }
@@ -2603,6 +2609,7 @@ pub fn run() {
             markets_now,
             day_today,
             reminder_done,
+            reminder_lists,
             reminder_add,
             event_add,
             email_from,
