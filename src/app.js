@@ -365,7 +365,7 @@
     $('views').innerHTML =
       group('read', 'Read', [
         { view: 'today', label: 'Today', count: unreadIn('today'), icon: ICONS.today },
-        { view: 'myday', label: 'My Day', count: '', icon: ICONS.myday },
+        mydayNavItem(),
         { view: 'people', label: 'People', count: unreadIn('people'), icon: ICONS.people },
         videosNavItem(),
         ...favChannelNav(),
@@ -2303,6 +2303,26 @@
   // The Videos row itself folds its favorites away too (a chevron at its right end, remembered on this device)
   const vidFolded = () => store.get('vidFolded') === '1';
   const favChannelFeeds = () => favChannels().map(u => S.feeds.find(f => f.url === u)).filter(Boolean);
+  // My Day in the sidebar: how many events are still ahead today, and a 🎂 when a birthday is within five days
+  // (David, Nov 21: "a notification to look"). Calendar's own alerts still ring at the time; this is just a nudge.
+  function mydayNavItem() {
+    const it = { view: 'myday', label: 'My Day', count: '', icon: ICONS.myday };
+    if (!dayPrefs().cal) return it;
+    const today = new Date().toDateString();
+    if (!DAYB.data || DAYB.day !== today) setTimeout(() => loadDay(), 0);
+    if (!BDAY.list || BDAY.day !== today || Date.now() - BDAY.at > 60 * 60 * 1000) setTimeout(() => loadBirthdays(), 0);
+    const now = Date.now() / 1000;
+    const left = DAYB.day === today && DAYB.data?.calendar === 'granted' ? (DAYB.data.events || []).filter(e => !e.all_day && e.end > now).length : 0;
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const bdays = BDAY.day === today ? (BDAY.list || []) : [];
+    const soon = bdays.map(e => { const d = new Date(e.start * 1000); d.setHours(0, 0, 0, 0); return { e, n: Math.round((d - t0) / DAY) }; }).filter(x => x.n >= 0 && x.n <= 5).sort((a, b) => a.n - b.n);
+    if (!left && !soon.length) return it;
+    const tip = [left ? `${left} ${left === 1 ? 'event' : 'events'} still to come today` : '',
+      ...soon.slice(0, 3).map(({ e, n }) => `${e.title || 'A birthday'} ${n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`}`)].filter(Boolean).join(' · ');
+    const mark = soon.length ? `<span class="md-bday" aria-label="Birthday coming up">🎂</span>` : '';
+    it.html = navButton('myday', 'My Day', left || '', { icon: ICONS.myday, title: `My Day: ${tip}`, mark });
+    return it;
+  }
   function videosNavItem() {
     const it = { view: 'videos', label: 'Videos', count: unreadIn('videos'), icon: ICONS.videos };
     if (!videosOn() || !favChannelFeeds().length) return it;
@@ -6755,6 +6775,7 @@
       DAYB.data = await invoke('day_today', { from, to, calendar: !!dayPrefs().cal, reminders: !!dayPrefs().rem, ask: !!ask, list: remList() });
       DAYB.at = Date.now(); DAYB.day = today;
       if (S.view === 'today' || S.view === 'myday') renderList();
+      renderRail();
     } catch { /* leave the last day */ }
     finally { DAYB.busy = false; }
   }
@@ -7013,7 +7034,8 @@
       BDAY.list = (r?.events || []).filter(e => /birthday/i.test(e.calendar || '') || /birthday/i.test(e.title || ''));
       BDAY.at = Date.now(); BDAY.day = new Date().toDateString();
       if (S.view === 'today') renderList();
-    } catch { BDAY.list = BDAY.list || []; }
+      renderRail();
+    } catch { BDAY.list = BDAY.list || []; BDAY.at = Date.now(); BDAY.day = new Date().toDateString(); }
     finally { BDAY.busy = false; }
   }
   function birthdayLine() {
@@ -7452,7 +7474,7 @@
         <div class="day-foot">${doPrefs().on ? `<button class="btn primary day-one" type="button" data-md="wk-dayone">${DAYONE_ICON}Save to Day One</button>` : `<button class="btn" type="button" data-md="wk-copy-dayone">${IOS ? 'Share…' : 'Copy'}</button><span class="tm-tip"> To send it to Day One, turn on Day One in Settings › Your day.</span>`}</div>
       </section>
       <section class="b-panel" aria-label="Weeknotes">
-        <div class="bp-head"><h3 class="b-sub">Weeknotes</h3><span class="bp-meta">Public · a draft for your site</span></div>
+        <div class="bp-head"><h3 class="b-sub">Weeknotes</h3><span class="bp-meta">Public · a draft blog post, in Weeknotes</span></div>
         <pre class="wo-doc">${esc(wkTitle(wk) + '\n\n' + (notes || 'Tick what goes in below. Wins come from Look back, your reading from What you read.'))}</pre>
         <div class="wo-pick" role="group" aria-label="What goes in">${box('wins', 'Wins')}${box('made', 'Things I made')}${box('read', 'What I read')}${box('next', 'Next week')}<span class="wo-off">Goals and what got in the way always stay private.</span></div>
         <p class="acct-note" id="wkNote" aria-live="polite"></p>
@@ -7527,8 +7549,8 @@
       const text = weeknotes(wk, w, true), note = t => { const el = $('wkNote'); if (el) el.textContent = t; };
       if (!text) { note('Tick at least one part, and write a win or pick a post to read.'); return; }
       b.disabled = true; note('Saving the draft…');
-      invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: '', alt: '', draft: true, linkImage: '', linkSite: '' })
-        .then(() => { w.drafted = Date.now(); savePrefs(); note(''); status('Saved your Weeknotes as a draft on your site. Finish and publish it in WordPress.'); })
+      invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: '', alt: '', draft: true, linkImage: '', linkSite: '', category: 'weeknotes' })
+        .then(() => { w.drafted = Date.now(); savePrefs(); note(''); status('Saved your Weeknotes as a draft post in Weeknotes on your site. Finish and publish it in WordPress.'); })
         .catch(err => { note(msg(err)); b.disabled = false; });
       return;
     }

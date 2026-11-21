@@ -2118,12 +2118,17 @@ fn para(p: &str, re: &regex::Regex) -> String {
 
 /// The Notes category's id, made the first time.
 async fn notes_category() -> Result<i64, String> {
-    let found = wp(reqwest::Method::GET, "/wp/v2/categories?slug=notes", None).await?;
+    site_category("notes", "Notes", "Short notes, posted from The Reading Room.").await
+}
+
+/// A category on your site by its slug, made when it isn't there yet.
+async fn site_category(slug: &str, name: &str, description: &str) -> Result<i64, String> {
+    let found = wp(reqwest::Method::GET, &format!("/wp/v2/categories?slug={slug}"), None).await?;
     if let Some(id) = found.as_array().and_then(|a| a.first()).and_then(|c| c["id"].as_i64()) {
         return Ok(id);
     }
-    let made = wp(reqwest::Method::POST, "/wp/v2/categories", Some(json!({ "name": "Notes", "slug": "notes", "description": "Short notes, posted from The Reading Room." }))).await?;
-    made["id"].as_i64().ok_or_else(|| "Couldn't make the Notes category on your site.".to_string())
+    let made = wp(reqwest::Method::POST, "/wp/v2/categories", Some(json!({ "name": name, "slug": slug, "description": description }))).await?;
+    made["id"].as_i64().ok_or_else(|| format!("Couldn't make the {name} category on your site."))
 }
 
 fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
@@ -2133,9 +2138,11 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
-/// description), and an optional link. Notes go in the Notes category. A draft stays on your site, unpublished.
+/// description), and an optional link. Notes go in the Notes category; `category: "weeknotes"` puts a post in a
+/// Weeknotes category instead (made when missing), so weeknotes sit with the blog's posts. A draft stays on your
+/// site, unpublished.
 #[tauri::command]
-pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>) -> Result<SiteNote, String> {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>, category: Option<String>) -> Result<SiteNote, String> {
     let repost = repost.unwrap_or(false) && link.starts_with("http");
     // a reply answers the post's author (u-in-reply-to); a repost passes it along; otherwise the note is about it (a bookmark)
     let card_kind = if repost { CardKind::Repost } else if reply.unwrap_or(false) && link.starts_with("http") { CardKind::Reply } else { CardKind::Bookmark };
@@ -2143,7 +2150,10 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
         return Err("Write something first.".into());
     }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
-    let cat = notes_category().await?;
+    let cat = match category.as_deref().map(str::trim) {
+        Some("weeknotes") => site_category("weeknotes", "Weeknotes", "What happened, what I made and what I read each week.").await?,
+        _ => notes_category().await?,
+    };
     let mut html = note_html(&text);
     let (mut media_id, mut image) = (0i64, String::new());
     if !photo.is_empty() {
