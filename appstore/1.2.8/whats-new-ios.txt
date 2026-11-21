@@ -1,0 +1,6 @@
+• My Day in four parts: Coming up lists the next two weeks from your calendar, the month shows your events at a glance (tap a day to see it), and Stocks and Crypto show each price with the day's low and high and a trend line.
+• Your compass shows one day's Big 3 at a time. Look back to see how a day went, or plan a day ahead.
+• To do: My Day now shows just your reminders, since Coming up has your calendar. Write yesterday's page in Day One is still there.
+• Unfollow a writer right from their page.
+• Something you posted to both Mastodon and Bluesky now shows as one card in Your posts.
+• The birthday cake on My Day only shows for real birthdays.
