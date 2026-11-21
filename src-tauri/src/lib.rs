@@ -1898,6 +1898,11 @@ fn clean_symbol(s: &str) -> String {
 }
 
 async fn stock_quote(state: &Shared, key: &str, sym: &str) -> Result<(f64, f64), String> {
+    stock_full(state, key, sym).await.map(|q| (q.0, q.1))
+}
+
+/// A stock's price, change in percent, and the day's open, high, low and the close before.
+async fn stock_full(state: &Shared, key: &str, sym: &str) -> Result<(f64, f64, f64, f64, f64, f64), String> {
     let mut u = url::Url::parse("https://finnhub.io/api/v1/quote").expect("static url");
     u.query_pairs_mut().append_pair("symbol", sym).append_pair("token", key);
     let v = market_json(state, u.as_str(), "Finnhub").await?;
@@ -1907,7 +1912,8 @@ async fn stock_quote(state: &Shared, key: &str, sym: &str) -> Result<(f64, f64),
         return Err(format!("Finnhub doesn't know {sym}. Free keys cover U.S. stocks and funds."));
     }
     let pct = v.get("dp").and_then(|x| x.as_f64()).unwrap_or(if prev > 0.0 { (price - prev) / prev * 100.0 } else { 0.0 });
-    Ok((price, pct))
+    let f = |k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    Ok((price, pct, f("o"), f("h"), f("l"), prev))
 }
 
 /// Today's prices: each stock and coin with its price and the day's change in percent.
@@ -1921,8 +1927,9 @@ async fn markets_now(state: State<'_, Shared>, stocks: Vec<String>, coins: Vec<S
             None => problem = "Add a free Finnhub key in Settings › Markets on Today to see stocks.".into(),
             Some(key) => {
                 for s in &stocks {
-                    match stock_quote(state.inner(), &key, s).await {
-                        Ok((price, pct)) => out.push(serde_json::json!({ "kind": "stock", "id": s, "sym": s, "price": price, "pct": pct })),
+                    match stock_full(state.inner(), &key, s).await {
+                        Ok((price, pct, open, high, low, prev)) => out.push(serde_json::json!({ "kind": "stock", "id": s, "sym": s, "price": price, "pct": pct,
+                            "open": open, "high": high, "low": low, "prev": prev })),
                         Err(e) => {
                             out.push(serde_json::json!({ "kind": "stock", "id": s, "sym": s, "price": null, "pct": null }));
                             if problem.is_empty() { problem = e; }
@@ -1934,15 +1941,23 @@ async fn markets_now(state: State<'_, Shared>, stocks: Vec<String>, coins: Vec<S
     }
     let coins: Vec<String> = coins.iter().map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')).take(5).collect();
     if !coins.is_empty() {
-        let mut u = url::Url::parse("https://api.coingecko.com/api/v3/simple/price").expect("static url");
-        u.query_pairs_mut().append_pair("ids", &coins.join(",")).append_pair("vs_currencies", "usd").append_pair("include_24hr_change", "true");
+        // coins/markets: price, 24-hour change and range, and the last 7 days (hourly) for the trend line
+        let mut u = url::Url::parse("https://api.coingecko.com/api/v3/coins/markets").expect("static url");
+        u.query_pairs_mut().append_pair("vs_currency", "usd").append_pair("ids", &coins.join(","))
+            .append_pair("sparkline", "true").append_pair("price_change_percentage", "7d");
         match market_json(state.inner(), u.as_str(), "CoinGecko").await {
             Ok(v) => {
+                let list = v.as_array().cloned().unwrap_or_default();
                 for c in &coins {
-                    let e = v.get(c.as_str());
+                    let e = list.iter().find(|x| x.get("id").and_then(|i| i.as_str()) == Some(c.as_str()));
+                    let n = |k: &str| e.and_then(|x| x.get(k)).and_then(|x| x.as_f64());
+                    // every 4th hourly price is plenty for a small line
+                    let spark: Vec<f64> = e.and_then(|x| x.get("sparkline_in_7d")).and_then(|x| x.get("price")).and_then(|x| x.as_array())
+                        .map(|a| a.iter().filter_map(|p| p.as_f64()).step_by(4).collect()).unwrap_or_default();
                     out.push(serde_json::json!({ "kind": "coin", "id": c,
-                        "price": e.and_then(|x| x.get("usd")).and_then(|x| x.as_f64()),
-                        "pct": e.and_then(|x| x.get("usd_24h_change")).and_then(|x| x.as_f64()) }));
+                        "price": n("current_price"), "pct": n("price_change_percentage_24h"),
+                        "high": n("high_24h"), "low": n("low_24h"), "pct7": n("price_change_percentage_7d_in_currency"),
+                        "cap": n("market_cap"), "spark": spark }));
                 }
             }
             Err(e) => {

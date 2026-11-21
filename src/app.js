@@ -6719,6 +6719,7 @@
       const p = mkPicks();
       const r = await invoke('markets_now', { stocks: p.stocks, coins: p.coins.map(c => c.id) });
       mkData = { ...r, sig: mkSig(), at: Date.now() }; store.set('marketsNow', JSON.stringify(mkData));
+      mkSaveCloses(r.quotes);
       if (S.view === 'today' || S.view === 'myday') renderList();
     } catch { /* keep the last prices */ }
     finally { MK.busy = false; }
@@ -7186,7 +7187,7 @@
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
       ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
-      : `${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}${mkAny() ? `<div class="md-wide">${mkHtml()}</div>` : marketsInvite()}</div>`;
+      : `${quadHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
     const people = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY).length;
     const foot = evening
       ? `<p class="md-foot">Done for the day? <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">Read something good before bed</button></p>`
@@ -7194,6 +7195,141 @@
     return `<section class="brief myday" aria-label="My Day">${head}${weekCard}${body}${foot}</section>`;
   }
   const marketsInvite = () => '';
+
+  // ---- the four quadrants at the top of My Day: Coming up (a list), the month, Stocks, Crypto
+  // The calendar is read on the device (EventKit, the same call as Your day) for the month shown and the next two weeks.
+  const MCAL = { month: null, sel: '', data: null, key: '', at: 0, busy: false };
+  const mcalMonth = () => { if (!MCAL.month) { const m = new Date(); m.setDate(1); m.setHours(0, 0, 0, 0); MCAL.month = m; } return MCAL.month; };
+  // The month's grid runs Sunday to Saturday, whole weeks
+  function mcalGrid() {
+    const m = mcalMonth(), a = addDays(m, -m.getDay()), last = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+    const b = addDays(last, 7 - last.getDay()); return [a, b];
+  }
+  function mcalRange() {
+    const [a, b] = mcalGrid(), t = new Date(); t.setHours(0, 0, 0, 0);
+    return [a < t ? a : t, b > addDays(t, 15) ? b : addDays(t, 15)];
+  }
+  async function loadMonthCal(force) {
+    if (!dayPrefs().cal || MCAL.busy) return;
+    const [a, b] = mcalRange(), key = `${dayKey(a)}:${dayKey(b)}`;
+    if (!force && MCAL.data && MCAL.key === key && Date.now() - MCAL.at < 5 * 60 * 1000) return;
+    MCAL.busy = true;
+    try {
+      const r = await invoke('day_today', { from: a.getTime() / 1000, to: b.getTime() / 1000, calendar: true, reminders: false, ask: false, done: false });
+      MCAL.data = r; MCAL.key = key; MCAL.at = Date.now();
+      if (S.view === 'myday') mdRender();
+    } catch { /* keep the last month */ }
+    finally { MCAL.busy = false; }
+  }
+  // Each calendar gets one of six colors, the same one every time (from its name)
+  const CAL_COLORS = ['#127A62', '#2F6FD0', '#C2413A', '#B7791F', '#7B4FC0', '#2C8C9B'];
+  const calColor = name => { let h = 0; for (const c of String(name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CAL_COLORS[h % CAL_COLORS.length]; };
+  // Events on a day (an all-day event that spans days shows on each of them)
+  function eventsOn(day) {
+    const a = new Date(day); a.setHours(0, 0, 0, 0); const b = addDays(a, 1), A = a.getTime() / 1000, B = b.getTime() / 1000;
+    return (MCAL.data?.events || []).filter(e => e.start < B && (e.end > A || e.start >= A))
+      .sort((x, y) => (y.all_day - x.all_day) || x.start - y.start);
+  }
+  const evIsBday = e => e.birthday || /birthday|bday/i.test(e.title || '');
+  function quadCalSetup(title, line) {
+    return `<section class="b-panel md-q" aria-label="${esc(title)}"><div class="bp-head"><h3 class="b-sub">${esc(title)}</h3></div>
+      <p class="day-note">${esc(line)}</p><p class="day-note"><button class="btn" type="button" data-dayedit>Show my calendar</button></p></section>`;
+  }
+  // Quadrant 1: what's coming up, as a list, two weeks from today (or from the day picked in the month)
+  function agendaHtml() {
+    if (!dayPrefs().cal) return quadCalSetup('Coming up', 'Your events for the next two weeks show here, read from Calendar on this device. They never leave it.');
+    if (!MCAL.data) return `<section class="b-panel md-q" aria-label="Coming up"><div class="bp-head"><h3 class="b-sub">Coming up</h3></div><p class="day-note">Looking at your calendar…</p></section>`;
+    if (MCAL.data.calendar && MCAL.data.calendar !== 'granted') return quadCalSetup('Coming up', `The app needs your OK to read Calendar. Turn it on in ${where} › Calendars.`);
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const start = MCAL.sel ? new Date(MCAL.sel + 'T00:00') : t, now = Date.now() / 1000;
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(start, i), evs = eventsOn(d).filter(e => dayKey(d) !== dayKey(t) || e.all_day || e.end > now);
+      if (evs.length || i === 0) days.push([d, evs]);
+    }
+    const label = d => { const k = dayKey(d); return k === dayKey(t) ? 'Today' : k === dayKey(addDays(t, 1)) ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };
+    const row = e => `<li class="ag-ev" style="--cal:${calColor(e.calendar)}"><span class="ag-time">${e.all_day ? 'All day' : esc(hm(e.start))}</span>
+      <span class="ag-t">${evIsBday(e) ? '🎂 ' : ''}${esc(e.title || 'Untitled')}${e.location ? `<small>${esc(e.location)}</small>` : ''}</span></li>`;
+    const list = days.map(([d, evs]) => `<li class="ag-day"><h4>${esc(label(d))}</h4>${evs.length ? `<ul>${evs.map(row).join('')}</ul>` : `<p class="day-note">${dayKey(d) === dayKey(t) ? 'Nothing else today.' : 'Nothing on the calendar.'}</p>`}</li>`).join('');
+    const sel = MCAL.sel && MCAL.sel !== dayKey(t) ? `<button class="linkish bp-edit" type="button" data-md="calsel" data-day="">Back to today</button>` : '';
+    return `<section class="b-panel md-q md-agenda" aria-label="Coming up"><div class="bp-head"><h3 class="b-sub">Coming up</h3><span class="bp-meta">${MCAL.sel && MCAL.sel !== dayKey(t) ? 'From ' + esc(start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) : 'Next two weeks'}</span>${sel}</div>
+      <ul class="ag-list">${list}</ul></section>`;
+  }
+  // Quadrant 2: the month, with each day's events as small colored bars (dots on a narrow screen)
+  function monthHtml() {
+    if (!dayPrefs().cal) return quadCalSetup('This month', 'A month of your calendar shows here.');
+    const m = mcalMonth(), [a, b] = mcalGrid(), today = dayKey(), cells = [];
+    for (let d = new Date(a); d < b; d = addDays(d, 1)) {
+      const k = dayKey(d), out = d.getMonth() !== m.getMonth(), evs = MCAL.data ? eventsOn(d) : [];
+      const bars = evs.slice(0, 3).map(e => `<span class="mc-ev" style="--cal:${calColor(e.calendar)}">${evIsBday(e) ? '🎂 ' : ''}${esc(e.title || '')}</span>`).join('');
+      cells.push(`<button type="button" class="mc-day${out ? ' out' : ''}${k === today ? ' now' : ''}${k === MCAL.sel ? ' sel' : ''}" data-md="calsel" data-day="${k}"
+        aria-label="${esc(d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}${evs.length ? `, ${evs.length} ${evs.length === 1 ? 'event' : 'events'}` : ''}">
+        <span class="mcal-n">${d.getDate()}</span>${bars}${evs.length > 3 ? `<span class="mc-more">+${evs.length - 3}</span>` : ''}
+        ${evs.length ? `<span class="mc-dots">${evs.slice(0, 3).map(e => `<i style="--cal:${calColor(e.calendar)}"></i>`).join('')}</span>` : ''}</button>`);
+    }
+    const wd = Array.from({ length: 7 }, (_, i) => addDays(a, i).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, IOS ? 1 : 3));
+    const thisMonth = m.getMonth() === new Date().getMonth() && m.getFullYear() === new Date().getFullYear();
+    return `<section class="b-panel md-q md-month" aria-label="This month"><div class="bp-head"><h3 class="b-sub">${esc(m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</h3>
+      <span class="mc-nav">${thisMonth ? '' : '<button class="linkish" type="button" data-md="calmon" data-n="0">Today</button>'}<button class="mc-arrow" type="button" data-md="calmon" data-n="-1" aria-label="Previous month">‹</button><button class="mc-arrow" type="button" data-md="calmon" data-n="1" aria-label="Next month">›</button></span></div>
+      <div class="mc-grid" role="group" aria-label="Days">${wd.map(x => `<span class="mc-wd">${esc(x)}</span>`).join('')}${cells.join('')}</div>
+      <p class="mc-tip">Pick a day to see it in Coming up.</p></section>`;
+  }
+  // Markets: closes saved on this device each day, so a stock's line grows over a month (Finnhub's free key has no history)
+  const mkCloses = () => { try { return JSON.parse(store.get('mkCloses') || '{}'); } catch { return {}; } };
+  function mkSaveCloses(quotes) {
+    const c = mkCloses(), k = dayKey();
+    for (const q of quotes || []) if (q.kind === 'stock' && q.price != null) { const h = c[q.id] || (c[q.id] = {}); h[k] = q.price; const ks = Object.keys(h).sort(); while (ks.length > 30) delete h[ks.shift()]; }
+    store.set('mkCloses', JSON.stringify(c));
+  }
+  function sparkSvg(pts, label) {
+    pts = (pts || []).filter(Number.isFinite); if (pts.length < 2) return '';
+    const W = 120, H = 34, lo = Math.min(...pts), hi = Math.max(...pts), r = hi - lo || 1;
+    const d = pts.map((v, i) => `${i ? 'L' : 'M'}${(1 + i * (W - 2) / (pts.length - 1)).toFixed(1)},${(H - 2 - (v - lo) / r * (H - 4)).toFixed(1)}`).join('');
+    return `<svg class="mq-spark ${pts[pts.length - 1] >= pts[0] ? 'up' : 'down'}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><path d="${d}"/></svg>`;
+  }
+  // Where today's price sits between the day's low and high
+  function rangeBar(lo, hi, at, label) {
+    if (!(lo > 0 && hi > 0 && hi >= lo) || at == null) return '';
+    const pos = hi === lo ? 50 : Math.max(0, Math.min(100, (at - lo) / (hi - lo) * 100));
+    return `<div class="mq-range" title="${esc(label)}"><span>${esc(mkPrice(lo))}</span><span class="mq-bar"><i style="left:${pos.toFixed(0)}%"></i></span><span>${esc(mkPrice(hi))}</span></div>`;
+  }
+  const mkPct = pct => pct == null ? '' : `${pct > 0.005 ? '▲ +' : pct < -0.005 ? '▼ ' : ''}${Math.abs(pct) < 0.005 ? '0.0' : (pct > 0 ? pct : -pct).toFixed(2)}%`;
+  const mkDir = pct => pct == null ? '' : pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : 'flat';
+  const mkCap = n => n == null ? '' : n >= 1e12 ? `$${(n / 1e12).toFixed(2)}T` : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : `$${(n / 1e6).toFixed(0)}M`;
+  function mkQuadHtml(kind) {
+    const title = kind === 'stock' ? 'Stocks' : 'Crypto', p = mkPicks(), ids = kind === 'stock' ? p.stocks.map(s => [s, s, '']) : p.coins.map(c => [c.id, c.sym, c.name || '']);
+    if (!ids.length) return `<section class="b-panel md-q" aria-label="${title}"><div class="bp-head"><h3 class="b-sub">${title}</h3></div>
+      <p class="day-note">${kind === 'stock' ? 'Up to five stocks or funds: the price, the day’s range and a line of the last month.' : 'Up to five coins: the price, the last 24 hours and a line of the last 7 days.'}</p>
+      <p class="day-note"><button class="btn" type="button" data-mkedit>${kind === 'stock' ? 'Pick stocks' : 'Pick coins'}</button></p></section>`;
+    if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
+    const q = new Map((mkData?.quotes || []).map(x => [`${x.kind}:${x.id}`, x])), closes = mkCloses();
+    const tiles = ids.map(([id, sym, name]) => {
+      const x = q.get(`${kind}:${id}`), url = kind === 'coin' ? `https://www.coingecko.com/en/coins/${encodeURIComponent(id)}` : `https://finance.yahoo.com/quote/${encodeURIComponent(id)}`;
+      let line = '', foot = '';
+      if (kind === 'stock') {
+        const h = closes[id] || {}, pts = Object.keys(h).sort().map(k => h[k]);
+        line = pts.length >= 3 ? sparkSvg(pts, `${sym}, the last ${pts.length} days`) : '<p class="mq-wait">The line fills in as the days go by.</p>';
+        foot = x?.open ? `Open ${esc(mkPrice(x.open))} · Prev close ${esc(mkPrice(x.prev))}` : '';
+        if (pts.length >= 3) foot = `${pts.length} days${foot ? ' · ' + foot : ''}`;
+      } else {
+        line = sparkSvg(x?.spark, `${sym}, the last 7 days`);
+        foot = [x?.pct7 != null ? `7 days ${mkPct(x.pct7)}` : '', x?.cap ? `Market cap ${mkCap(x.cap)}` : ''].filter(Boolean).join(' · ');
+      }
+      return `<button class="mq-tile ${mkDir(x?.pct)}" type="button" data-mkurl="${esc(url)}">
+        <span class="mq-name"><b>${esc(sym)}</b>${name ? `<span>${esc(name)}</span>` : ''}</span>
+        <span class="mq-price">${x?.price != null ? '$' + esc(mkPrice(x.price)) : '…'}</span><span class="mq-chg">${esc(mkPct(x?.pct))}${kind === 'coin' && x?.pct != null ? ' <small>24 h</small>' : ''}</span>
+        ${line}${rangeBar(x?.low, x?.high, x?.price, kind === 'stock' ? 'Today’s low and high' : 'The last 24 hours’ low and high')}
+        ${foot ? `<span class="mq-foot">${foot}</span>` : ''}</button>`;
+    }).join('');
+    const when = mkData?.at ? new Date(mkData.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<section class="b-panel md-q md-mq" aria-label="${title}"><div class="bp-head"><h3 class="b-sub">${title}</h3>
+      <span class="bp-meta">${mkData?.problem && kind === 'stock' ? `<span class="err">${esc(mkData.problem)}</span> · ` : ''}${when ? `As of ${esc(when)}` : 'Getting prices…'}</span><button class="linkish bp-edit" type="button" data-mkedit>Change</button></div>
+      <div class="mq-grid">${tiles}</div><p class="mc-tip">${kind === 'stock' ? 'Finnhub; may be delayed.' : 'CoinGecko.'} Not investment advice.</p></section>`;
+  }
+  function quadHtml() {
+    if (dayPrefs().cal && (!MCAL.data || Date.now() - MCAL.at > 5 * 60 * 1000 || MCAL.key !== (() => { const [a, b] = mcalRange(); return `${dayKey(a)}:${dayKey(b)}`; })())) setTimeout(() => loadMonthCal(), 0);
+    return `<div class="md-quad">${agendaHtml()}${monthHtml()}${mkQuadHtml('stock')}${mkQuadHtml('coin')}</div>`;
+  }
   // Your day's panel without its own heading text change: the same as on Today
   function myDayDayHtml() {
     const h = dayHtml();
@@ -7314,7 +7450,7 @@
         const w = mdWhenRead(); if (!w) { MD.cap = t; status('Pick a date for the event.', true); mdRender(); return; }
         const title = MD.when?.found ? MD.when.title : t;
         await invoke('event_add', { title, start: w.start.getTime() / 1000, end: w.end.getTime() / 1000, allDay: w.allDay });
-        bump('event'); status(`Added to Calendar: ${title}, ${mdFmtWhen(w, true)}.`); DAYB.data = null; MD.tmr = null; setTimeout(() => loadDay(), 300);
+        bump('event'); status(`Added to Calendar: ${title}, ${mdFmtWhen(w, true)}.`); DAYB.data = null; MD.tmr = null; MCAL.at = 0; setTimeout(() => loadDay(), 300);
       } else {
         const w = MD.when?.found || MD.wantDate ? mdWhenRead() : null, title = MD.when?.found ? MD.when.title : t;
         await invoke('reminder_add', { title, due: w ? w.start.getTime() / 1000 : null, timed: !!w?.timed, list: remList() });
@@ -7594,6 +7730,8 @@
     if (k === 'mode') { MD.mode = b.dataset.mode; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'week') { MD.mode = 'week'; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'edit') { openCompass(); return; }
+    if (k === 'calmon') { const m = mcalMonth(); MCAL.month = n === 0 ? null : new Date(m.getFullYear(), m.getMonth() + n, 1); if (n === 0) MCAL.sel = ''; mdRender(); loadMonthCal(); return; }
+    if (k === 'calsel') { MCAL.sel = b.dataset.day === dayKey() ? '' : b.dataset.day || ''; mdRender(); return; }
     if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; if (!MD.whenEdited) MD.when = MD.cap ? mdParseWhen(MD.cap) : null; MD.refocus = 'mdCapIn'; mdRender(); return; }
     if (k === 'wantdate') { MD.wantDate = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
     if (k === 'nodate') { MD.wantDate = false; MD.when = null; MD.whenEdited = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
