@@ -2139,10 +2139,11 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 
 /// Post a note to your own site: the words, an optional photo (in the note and as its featured image, with its
 /// description), and an optional link. Notes go in the Notes category; `category: "weeknotes"` puts a post in a
-/// Weeknotes category instead (made when missing), so weeknotes sit with the blog's posts. A draft stays on your
+/// Weeknotes category instead (made when missing), so weeknotes sit with the blog's posts; `featured_only` keeps a
+/// photo as the featured image only. A draft stays on your
 /// site, unpublished.
 #[tauri::command]
-pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>, category: Option<String>) -> Result<SiteNote, String> {
+pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>, category: Option<String>, featured_only: Option<bool>) -> Result<SiteNote, String> {
     let repost = repost.unwrap_or(false) && link.starts_with("http");
     // a reply answers the post's author (u-in-reply-to); a repost passes it along; otherwise the note is about it (a bookmark)
     let card_kind = if repost { CardKind::Repost } else if reply.unwrap_or(false) && link.starts_with("http") { CardKind::Reply } else { CardKind::Bookmark };
@@ -2170,7 +2171,8 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
         if media_id > 0 && !alt.trim().is_empty() {
             let _ = wp(reqwest::Method::POST, &format!("/wp/v2/media/{media_id}"), Some(json!({ "alt_text": alt.trim() }))).await;
         }
-        if !image.is_empty() {
+        // `featured_only`: the photo is just the post's featured image (weeknotes), not also in the words
+        if !image.is_empty() && !featured_only.unwrap_or(false) {
             // an image block with "click to enlarge" on, so readers can see the photo full size
             html.push_str(&format!(
                 "\n<!-- wp:image {{\"id\":{media_id},\"sizeSlug\":\"large\",\"linkDestination\":\"none\",\"lightbox\":{{\"enabled\":true}},\"className\":\"note-photo\"}} -->\n<figure class=\"wp-block-image size-large note-photo\"><img src=\"{}\" alt=\"{}\" class=\"wp-image-{media_id}\"/></figure>\n<!-- /wp:image -->",

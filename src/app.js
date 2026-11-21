@@ -6956,7 +6956,7 @@
   // keeps one glance line), an evening mode for closing the day and planning tomorrow, and a Weekly Preview that
   // saves a private review to Day One and a Weeknotes draft for your site. Goals and "what got in the way" never
   // go into anything public.
-  const MD = { mode: null, step: 0, cap: '', capTo: 'task', force: false, refocus: '', tmr: null, wkCal: null, saveT: 0 };
+  const MD = { wkPhoto: null, mode: null, step: 0, cap: '', capTo: 'task', force: false, refocus: '', tmr: null, wkCal: null, saveT: 0 };
   function myDayOn() { return !hiddenViews().has('myday'); }
   const MD_ACCTS = ['Spiritual', 'Vocational', 'Intellectual', 'Physical', 'Social', 'Avocational', 'Financial'];
   const cmp = () => {
@@ -7478,7 +7478,12 @@
         <pre class="wo-doc">${esc(wkTitle(wk) + '\n\n' + (notes || 'Tick what goes in below. Wins come from Look back, your reading from What you read.'))}</pre>
         <div class="wo-pick" role="group" aria-label="What goes in">${box('wins', 'Wins')}${box('made', 'Things I made')}${box('read', 'What I read')}${box('next', 'Next week')}<span class="wo-off">Goals and what got in the way always stay private.</span></div>
         <p class="acct-note" id="wkNote" aria-live="polite"></p>
-        <div class="day-foot">${wp ? '<button class="btn primary" type="button" data-md="wk-draft">Save as draft on your site</button> ' : ''}<button class="btn" type="button" data-md="wk-copy">${IOS ? 'Share…' : 'Copy'}</button>${wp ? '' : '<span class="tm-tip"> Connect your site in Settings › Your site to save a draft there.</span>'}</div>
+        ${wp && !w.published ? `<div class="wk-photo">${MD.wkPhoto
+          ? `<img src="${MD.wkPhoto.data}" alt=""><div class="wk-photo-in"><span class="cp-lab">Featured image</span><input class="n-field" id="wkAlt" data-md="wk-alt" placeholder="Describe the picture for people who can’t see it" maxlength="1000" value="${esc(MD.wkPhoto.alt || '')}"><button class="b-link" type="button" data-md="wk-photo-x">Remove</button></div>`
+          : `<button class="b-link" type="button" data-md="wk-photo">+ Add a featured image</button><span class="tm-tip"> It shows at the top of the post and when the post is shared.</span>`}<input id="wkPhotoIn" data-md="wk-photo-in" type="file" accept="image/*" hidden></div>` : ''}
+        <div class="day-foot">${w.published
+          ? `<span class="tm-tip">Published ${esc(new Date(w.published).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }))}.</span>${w.pubUrl ? ` <button class="b-link" type="button" data-md="wk-view">See the post</button>` : ''} `
+          : wp ? '<button class="btn primary" type="button" data-md="wk-publish">Publish now</button> <button class="btn" type="button" data-md="wk-draft">Save as draft</button> ' : ''}<button class="btn" type="button" data-md="wk-copy">${IOS ? 'Share…' : 'Copy'}</button>${wp ? '' : '<span class="tm-tip"> Connect your site in Settings › Your site to post it there.</span>'}</div>
       </section></div>`;
   }
   async function wkCopy(text, title) {
@@ -7545,13 +7550,24 @@
     if (k === 'wk-dayone') { dayOne(wkDayOneText(wk, w), 'Weekly Review'); w.dayone = Date.now(); savePrefs(); return; }
     if (k === 'wk-copy-dayone') { wkCopy(wkDayOneText(wk, w), `Week of ${wk.mon.toLocaleDateString()}`); return; }
     if (k === 'wk-copy') { wkCopy(wkTitle(wk) + '\n\n' + weeknotes(wk, w, false), wkTitle(wk)); return; }
-    if (k === 'wk-draft') {
-      const text = weeknotes(wk, w, true), note = t => { const el = $('wkNote'); if (el) el.textContent = t; };
+    if (k === 'wk-photo') { $('wkPhotoIn')?.click(); return; }
+    if (k === 'wk-photo-x') { MD.wkPhoto = null; mdRender(); return; }
+    if (k === 'wk-view') { if (w.pubUrl) invoke('open_external', { url: w.pubUrl }).catch(() => {}); return; }
+    if (k === 'wk-draft' || k === 'wk-publish') {
+      const draft = k === 'wk-draft', text = weeknotes(wk, w, true), note = t => { const el = $('wkNote'); if (el) el.textContent = t; };
       if (!text) { note('Tick at least one part, and write a win or pick a post to read.'); return; }
-      b.disabled = true; note('Saving the draft…');
-      invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: '', alt: '', draft: true, linkImage: '', linkSite: '', category: 'weeknotes' })
-        .then(() => { w.drafted = Date.now(); savePrefs(); note(''); status('Saved your Weeknotes as a draft post in Weeknotes on your site. Finish and publish it in WordPress.'); })
-        .catch(err => { note(msg(err)); b.disabled = false; });
+      if (!draft && !confirm(`Publish “${wkTitle(wk)}” on your site now? Everyone who follows your blog will see it.`)) return;
+      const ph = MD.wkPhoto;
+      if (ph && !(ph.alt || '').trim()) { note('Describe the featured image first (for people who can’t see it).'); $('wkAlt')?.focus(); return; }
+      document.querySelectorAll('[data-md="wk-draft"], [data-md="wk-publish"]').forEach(x => { x.disabled = true; });
+      note(draft ? 'Saving the draft…' : 'Publishing…');
+      invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: ph?.data || '', alt: ph?.alt || '', draft, linkImage: '', linkSite: '', category: 'weeknotes', featuredOnly: true })
+        .then(r => {
+          if (draft) { w.drafted = Date.now(); status('Saved your Weeknotes as a draft post in Weeknotes on your site. Finish and publish it in WordPress.'); }
+          else { w.published = Date.now(); w.pubUrl = r?.url || ''; MD.wkPhoto = null; status('Your Weeknotes are on your site.'); }
+          savePrefs(); note(''); mdRender();
+        })
+        .catch(err => { note(msg(err)); document.querySelectorAll('[data-md="wk-draft"], [data-md="wk-publish"]').forEach(x => { x.disabled = false; }); });
       return;
     }
     if (k === 'finish') {
@@ -7573,6 +7589,12 @@
     }
     if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(dayKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
     if (k === 'tmin') { mdSetBig3(tomorrowKey(), Number(el.dataset.n), el.value); savePrefs(); return; }
+    if (k === 'wk-photo-in') {
+      const file = el.files?.[0]; if (!file) return;
+      shrinkPhoto(file).then(data => { MD.wkPhoto = { data, alt: '' }; mdRender(); setTimeout(() => $('wkAlt')?.focus(), 50); })
+        .catch(() => status('That picture couldn’t be read. Try a JPEG or PNG.', true));
+      el.value = ''; return;
+    }
     const w = mdWk();
     if (k === 'pick') { if (el.checked) w.reads[el.dataset.id] = w.reads[el.dataset.id] || ''; else delete w.reads[el.dataset.id]; savePrefs(); mdRender(); return; }
     if (k === 'share') { w.share[el.dataset.k] = el.checked; savePrefs(); mdRender(); return; }
@@ -7587,6 +7609,7 @@
     const el = e.target.closest('[data-md]'); if (!el || !el.closest('.myday')) return;
     const k = el.dataset.md;
     const w = mdWk();
+    if (k === 'wk-alt') { if (MD.wkPhoto) MD.wkPhoto.alt = el.value; return; }
     if (k === 'wk') { w[el.dataset.k] = el.value; mdSaveSoon(); return; }
     if (k === 'why') { if (el.dataset.id in w.reads) { w.reads[el.dataset.id] = el.value; mdSaveSoon(); } return; }
     if (k === 'step-in') { w.steps[el.dataset.id] = el.value; mdSaveSoon(); }
