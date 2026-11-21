@@ -3,10 +3,11 @@ Thanks for testing The Reading Room! This build (1.2.7) adds My Day, Trending in
 MY DAY (new, in the sidebar under Today)
 • A page to start the day on: today's Big 3, your goals for the season, your calendar and reminders, and your stocks and coins. Before 10 am the app opens on it (turn that off in Settings › My Day).
 • Settings › My Day: type your goals, each under a part of your life, and how each counts (a number, days a week, or books finished). Add morning and evening rituals and a line about why it matters.
-• Put it down: add a task to Reminders or an event to Calendar, a note for tonight's journal, or a Big 3 item. Type the time the way you'd say it ("tomorrow 9am", "Tuesday 12:30", "Nov 25 at 3pm for 2 hours"); the date and time show underneath so you can check them first. Paste a link and it goes to Read later.
+• Put it down: add a task to Reminders (in its own list, The Reading Room; pick another in Settings › Your day) or an event to Calendar, a note for tonight's journal, or a Big 3 item. Type the time the way you'd say it ("tomorrow 9am", "Tuesday 12:30", "Nov 25 at 3pm for 2 hours"); the date and time show underneath so you can check them first. Paste a link and it goes to Read later.
 • After 6 pm it turns to the evening: how today went, your evening ritual, Move to tomorrow, and Plan tomorrow's Big 3.
-• Weekly Preview (on Sundays, or any time): look back, check your goals, pick what you read that mattered, plan next week. It ends with a private page for Day One and a Weeknotes draft for your site. Goals and what got in the way never go public.
-• Today keeps one line: your Big 3 and the next event, with Open My Day. Your stocks and coins sit in one row under the top story (turn that off in Markets), and people you read show three across.
+• Weekly Preview (on Sundays, or any time): look back, check your goals, pick what you read that mattered, plan next week. It ends with a private page for Day One and a Weeknotes draft post for your site, in a Weeknotes category. Goals and what got in the way never go public.
+• Write yesterday's page in Day One: your own journal questions (set them in Settings › Your day), with what happened, your wins, what you read or heard and what's next filled in.
+• Today keeps one line: the next event and any birthday in the next five days. My Day in the sidebar shows how many events are left today, and a cake when a birthday is coming. Your stocks and coins sit in one row under the top story (turn that off in Markets), and people you read show three across.
 
 TRENDING IN YOUR NEIGHBORHOOD
 • On Today: names, topics and links that several people you read wrote about this week. Tap one to see their posts side by side. Worked out on your device.
