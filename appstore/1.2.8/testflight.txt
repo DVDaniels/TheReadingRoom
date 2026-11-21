@@ -11,6 +11,8 @@ BIRTHDAYS ON MY DAY
 
 MY DAY IN FOUR PARTS
 • My Day now opens with four boxes: Coming up (the next two weeks from your calendar), the month (tap a day to see it in Coming up), Stocks and Crypto. Each price has the day's low and high and a trend line. Stock lines build up from the prices the app saves each day, so they appear after a few days.
+• Your compass shows one day's Big 3 at a time; use ‹ › to look back or plan ahead. Goals moved out of it (still under Rituals and goals).
+• Your day is now To do: just your reminders, since Coming up has the calendar.
 
 STARTER WRITERS
 • The writers the app suggests when you're just starting out have changed a little.

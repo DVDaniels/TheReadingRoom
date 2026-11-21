@@ -6861,11 +6861,11 @@
   const showUndated = () => dayPrefs().undated !== false;
   const pageDay = () => doPrefs().page === 'today' ? 'today' : 'yesterday';
   const DAYONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>';
-  function dayHtml() {
+  function dayHtml(noEvents) {
     if (!dayOn() && !doPrefs().on) return '';
     if (dayOn() && (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000)) setTimeout(() => loadDay(), 0);
     const d = DAYB.data, dev = IOS ? 'this iPhone or iPad' : 'this Mac';
-    const head = `<div class="bp-head"><h3 class="b-sub">Your day</h3><button class="linkish bp-edit" type="button" data-dayedit>Change</button></div>`;
+    const head = `<div class="bp-head"><h3 class="b-sub">${noEvents ? 'To do' : 'Your day'}</h3>${noEvents && remList() !== '*' ? `<span class="bp-meta">${esc(remList())} in Reminders</span>` : ''}<button class="linkish bp-edit" type="button" data-dayedit>Change</button></div>`;
     const dayone = doPrefs().on ? `<div class="day-foot"><button class="btn day-one" type="button" data-dayone-page>${DAYONE_ICON}Write ${pageDay() === 'yesterday' ? 'yesterday’s' : 'today’s'} page in Day One</button></div>` : '';
     if (dayOn() && !d) return `<section class="b-panel b-day">${head}<p class="day-note">Looking at your calendar…</p>${dayone}</section>`;
     const p = dayPrefs(), ask = [], denied = [];
@@ -6874,7 +6874,7 @@
       if (d.calendar === 'denied') denied.push('Calendars'); if (d.reminders === 'denied') denied.push('Reminders');
     }
     const now = Date.now() / 1000, [start] = dayBounds();
-    const ev = p.cal && d?.calendar === 'granted' ? `<div class="day-col"><h4>Calendar</h4>${d.events.length
+    const ev = !noEvents && p.cal && d?.calendar === 'granted' ? `<div class="day-col"><h4>Calendar</h4>${d.events.length
       ? `<ul class="day-ev">${d.events.map(e => `<li class="${!e.all_day && e.end < now ? 'past' : ''}"><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>`
       : '<p class="day-note">Nothing on your calendar today.</p>'}</div>` : '';
     const remLi = r => `<li><label><input type="checkbox" data-remdone="${esc(r.id)}"><span>${esc(r.title || 'Reminder')}${r.due != null
@@ -7332,11 +7332,11 @@
   }
   // Your day's panel without its own heading text change: the same as on Today
   function myDayDayHtml() {
-    const h = dayHtml();
+    const h = dayHtml(true);
     if (h) return h;
-    return `<section class="b-panel b-day" aria-label="Your day"><div class="bp-head"><h3 class="b-sub">Your day</h3></div>
-      <p class="day-note">Your events and reminders can show here, read from Calendar and Reminders on this device. They never leave it.</p>
-      <p class="day-note"><button class="btn" type="button" data-dayedit>Set up Your day</button></p></section>`;
+    return `<section class="b-panel b-day" aria-label="To do"><div class="bp-head"><h3 class="b-sub">To do</h3></div>
+      <p class="day-note">Your reminders can show here, read from Reminders on this device. They never leave it.</p>
+      <p class="day-note"><button class="btn" type="button" data-dayedit>Show my reminders</button></p></section>`;
   }
 
   // ---- quick capture
@@ -7462,24 +7462,33 @@
   }
 
   // ---- your compass
+  // Your compass shows one day's Big 3: today, or a day you page to with ‹ › (three weeks back, two weeks ahead)
+  const cpKey = () => (!mdEvening() && MD.cpDay) || dayKey();
+  function cpLabel(k) {
+    const t = dayKey(), d = new Date(k + 'T00:00');
+    if (k === t) return 'Today’s Big 3';
+    if (k === dayKey(addDays(new Date(), 1))) return 'Tomorrow’s Big 3';
+    if (k === dayKey(addDays(new Date(), -1))) return 'Yesterday’s Big 3';
+    return 'Big 3 for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
   function compassHtml() {
-    const c = cmp(), d = mdPeek(dayKey()), b3 = d?.big3 || [];
+    const c = cmp(), k = cpKey(), isToday = k === dayKey(), past = k < dayKey(), d = mdPeek(k), b3 = d?.big3 || [];
     const rows = [0, 1, 2].map(n => {
       const x = b3[n];
       if (x?.t) return `<div class="cp-row"><button class="cp-task${x.done ? ' done' : ''}" type="button" aria-pressed="${!!x.done}" data-md="b3" data-n="${n}"><span class="cp-box" aria-hidden="true">${x.done ? '✓' : ''}</span><span class="cp-t">${esc(x.t)}</span></button><button class="icon cp-x" type="button" data-md="b3x" data-n="${n}" aria-label="Clear ${esc(x.t)}" title="Clear">×</button></div>`;
-      return `<input class="n-field cp-in" type="text" maxlength="140" data-md="b3in" data-n="${n}" placeholder="${['The one thing that matters most today', 'A second thing', 'And a third'][n]}" aria-label="Big 3, number ${n + 1}">`;
-    }).join('');
-    const morning = c.rituals.m.length ? (() => {
+      if (past) return '';
+      return `<input class="n-field cp-in" type="text" maxlength="140" data-md="b3in" data-n="${n}" placeholder="${[isToday ? 'The one thing that matters most today' : 'The one thing that matters most that day', 'A second thing', 'And a third'][n]}" aria-label="Big 3, number ${n + 1}">`;
+    }).join('') || '<p class="day-note">No Big 3 that day.</p>';
+    const morning = isToday && c.rituals.m.length ? (() => {
       const done = d?.rm || [], all = c.rituals.m.every((_, i) => done[i]);
       return `<div class="cp-lab">Morning ritual${all ? ' · done' : ''}</div><div class="cp-list">${c.rituals.m.map((t, i) => `<button class="cp-task sm${done[i] ? ' done' : ''}" type="button" aria-pressed="${!!done[i]}" data-md="rit" data-r="rm" data-n="${i}"><span class="cp-box" aria-hidden="true">${done[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>`;
     })() : '';
-    const goals = c.goals.length ? c.goals.map(goalHtml).join('') : `<p class="day-note">Add the few things this season is about, each under a part of your life, and see them here every day. <button class="b-link" type="button" data-md="edit">Set your goals</button></p>`;
+    const lo = dayKey(addDays(new Date(), -20)), hi = dayKey(addDays(new Date(), 14));
     return `<section class="b-panel b-cp" aria-label="Your compass">
-      <div class="bp-head"><h3 class="b-sub">Your compass</h3><span class="bp-meta">${esc(c.season || 'This season')}</span><button class="linkish bp-edit" type="button" data-md="edit">Change</button></div>
-      <div class="cp-lab">Today’s Big 3</div><div class="cp-list">${rows}</div>
+      <div class="bp-head"><h3 class="b-sub">Your compass</h3><span class="mc-nav">${isToday ? '' : '<button class="linkish" type="button" data-md="cpday" data-n="0">Today</button>'}<button class="mc-arrow" type="button" data-md="cpday" data-n="-1" aria-label="Day before"${k <= lo ? ' disabled' : ''}>‹</button><button class="mc-arrow" type="button" data-md="cpday" data-n="1" aria-label="Day after"${k >= hi ? ' disabled' : ''}>›</button></span></div>
+      <div class="cp-lab">${esc(cpLabel(k))}</div><div class="cp-list">${rows}</div>
       ${morning}
-      <div class="cp-lab cp-lab-goals">Goals</div>${goals}
-      ${c.why ? `<p class="cp-why">Why it matters: <em>${esc(c.why)}</em></p>` : ''}
+      <p class="cp-foot"><button class="linkish" type="button" data-md="edit">Rituals and goals</button></p>
     </section>`;
   }
   function goalHtml(g) {
@@ -7735,8 +7744,9 @@
     if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; if (!MD.whenEdited) MD.when = MD.cap ? mdParseWhen(MD.cap) : null; MD.refocus = 'mdCapIn'; mdRender(); return; }
     if (k === 'wantdate') { MD.wantDate = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
     if (k === 'nodate') { MD.wantDate = false; MD.when = null; MD.whenEdited = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
-    if (k === 'b3') { const x = d().big3[n]; if (x) { x.done = !x.done; savePrefs(); mdRender(); } return; }
-    if (k === 'b3x') { d().big3[n] = { t: '', done: false }; mdSetBig3(dayKey(), n, ''); savePrefs(); mdRender(); return; }
+    if (k === 'b3') { const x = mdDay(b.closest('.b-cp[aria-label="Your compass"]') ? cpKey() : dayKey()).big3[n]; if (x) { x.done = !x.done; savePrefs(); mdRender(); } return; }
+    if (k === 'cpday') { MD.cpDay = n === 0 ? '' : dayKey(addDays(new Date(cpKey() + 'T00:00'), n)); if (MD.cpDay === dayKey()) MD.cpDay = ''; mdRender(); return; }
+    if (k === 'b3x') { const ck = b.closest('.b-cp[aria-label="Your compass"]') ? cpKey() : dayKey(); mdDay(ck).big3[n] = { t: '', done: false }; mdSetBig3(ck, n, ''); savePrefs(); mdRender(); return; }
     if (k === 'rit') { const arr = d()[b.dataset.r]; arr[n] = !arr[n]; savePrefs(); mdRender(); return; }
     if (k === 'habit') { const h = d().h; h[b.dataset.id] = !h[b.dataset.id]; savePrefs(); mdRender(); return; }
     if (k === 'count') { const g = (S.prefs.compass?.goals || []).find(x => x.id === b.dataset.id); if (g) { g.done = (Number(g.done) || 0) + 1; savePrefs(); mdRender(); } return; }
@@ -7802,7 +7812,7 @@
       if (el.id === 'mdWhenDur') { MD.cap = $('mdCapIn')?.value || MD.cap; mdRender(); }
       return;
     }
-    if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(dayKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
+    if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(cpKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
     if (k === 'tmin') { mdSetBig3(tomorrowKey(), Number(el.dataset.n), el.value); savePrefs(); return; }
     if (k === 'wk-photo-in') {
       const file = el.files?.[0]; if (!file) return;

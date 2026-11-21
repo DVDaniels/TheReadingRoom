@@ -2170,7 +2170,11 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
 /* the four quadrants: Coming up, the month, Stocks, Crypto (two across when there's room) */
 .brief.myday { container: myday / inline-size; }
 .myday .md-quad { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 0 0 16px; }
-@container myday (min-width: 760px) { .myday .md-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container myday (min-width: 580px) { .myday .md-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.myday .md-month, .myday .md-mq { container: mdq / inline-size; }
+.brief .mc-arrow:disabled { opacity: .35; cursor: default; border-color: var(--b-line, var(--line)); color: var(--b-soft, var(--muted)); }
+.b-cp .mc-nav { margin-left: auto; }
+.b-cp .cp-foot { margin: 12px 0 0; font-size: 13px; }
 .myday .md-quad .b-panel { margin: 0; padding: 14px 16px; display: flex; flex-direction: column; min-width: 0; }
 .myday .md-q .bp-head { flex-wrap: wrap; }
 .myday .md-agenda { max-height: 460px; }
@@ -2202,12 +2206,12 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
 .myday .mc-dots { display: none; gap: 2px; justify-content: center; }
 .myday .mc-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--cal); }
 .myday .mc-tip { margin: 8px 0 0; font-size: 12px; color: var(--b-soft, var(--muted)); }
-@container myday (max-width: 520px) {
+@container mdq (max-width: 380px) {
   .brief .mc-day { min-height: 40px; align-items: center; }
   .myday .mc-ev, .myday .mc-more { display: none; }
   .myday .mc-dots { display: flex; }
 }
-.myday .mq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.myday .mq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
 .brief .mq-tile { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; padding: 10px 11px; border: 1px solid var(--b-line, var(--line)); border-radius: 10px; background: var(--b-bg, var(--bg)); font: inherit; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .brief .mq-tile:hover { border-color: var(--accent); }
 .myday .mq-name { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--b-soft, var(--muted)); min-width: 0; }
@@ -2224,6 +2228,13 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
 .myday .mq-range { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 10.5px; color: var(--b-soft, var(--muted)); font-variant-numeric: tabular-nums; }
 .myday .mq-bar { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--b-line, var(--line)); }
 .myday .mq-bar i { position: absolute; top: -3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
+.brief .mq-tile { overflow: hidden; }
+.myday .mq-price { min-width: 0; }
+@container mdq (max-width: 470px) {
+  .myday .mq-chg { grid-column: 1 / -1; }
+  .myday .mq-price { font-size: 17px; }
+}
+.myday .mc-nav .linkish { font-size: 13px; color: var(--accent); margin-right: 4px; }
 .myday .mq-foot { grid-column: 1 / -1; margin-top: 3px; font-size: 11px; color: var(--b-soft, var(--muted)); }
 @media (prefers-color-scheme: dark) { .mq-tile.up .mq-chg, .mq-spark.up path { color: #4cc38a; stroke: #4cc38a; } .mq-tile.down .mq-chg, .mq-spark.down path { color: #f97066; stroke: #f97066; } }
 .myday .md-foot { margin: 16px 0 0; font-size: 14px; color: var(--b-soft, var(--muted)); }
