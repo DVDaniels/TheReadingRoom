@@ -6986,17 +6986,42 @@
   }
   const goalLine = (g, days) => { const p = goalProgress(g, days); return `${g.title}${p.text ? `: ${p.text}` : ''}`; };
 
-  // ---- the line on Today: Big 3, the next event (and three quotes when Markets isn't on Today itself)
+  // ---- the line on Today: the next thing on the calendar, any birthday in the next five days (and three quotes
+  // when Markets isn't on Today itself). The Big 3 stays on My Day (David, Nov 21: no My Day reminders on Today).
+  const BDAY = { list: null, at: 0, day: '', busy: false };
+  async function loadBirthdays() {
+    if (!dayPrefs().cal || BDAY.busy) return;
+    BDAY.busy = true;
+    try {
+      const a = new Date(); a.setHours(0, 0, 0, 0);
+      const r = await invoke('day_today', { from: a.getTime() / 1000, to: addDays(a, 6).getTime() / 1000, calendar: true, reminders: false, ask: false });
+      BDAY.list = (r?.events || []).filter(e => /birthday/i.test(e.calendar || '') || /birthday/i.test(e.title || ''));
+      BDAY.at = Date.now(); BDAY.day = new Date().toDateString();
+      if (S.view === 'today') renderList();
+    } catch { BDAY.list = BDAY.list || []; }
+    finally { BDAY.busy = false; }
+  }
+  function birthdayLine() {
+    if (!dayPrefs().cal) return '';
+    if (!BDAY.list || BDAY.day !== new Date().toDateString() || Date.now() - BDAY.at > 60 * 60 * 1000) setTimeout(() => loadBirthdays(), 0);
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const seen = new Set(), list = (BDAY.list || []).filter(e => { const k = e.title + '|' + dayKey(new Date(e.start * 1000)); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!list.length) return '';
+    const when = e => {
+      const d = new Date(e.start * 1000); d.setHours(0, 0, 0, 0);
+      const n = Math.round((d - t0) / DAY);
+      return n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `${d.toLocaleDateString(undefined, { weekday: 'long' })} (in ${n} days)`;
+    };
+    const name = e => (e.title || 'A birthday').replace(/[’']s birthday$/i, '’s birthday');
+    return `<span class="gl-i gl-bday"><span aria-hidden="true">🎂</span>Coming up: ${list.slice(0, 3).map(e => `${esc(name(e))} ${esc(when(e))}`).join(' · ')}</span>`;
+  }
   function glanceHtml() {
-    const d = mdPeek(dayKey()), b3 = (d?.big3 || []).filter(x => x.t);
-    const parts = [b3.length
-      ? `<span class="gl-i"><span class="gl-tick${b3.some(x => x.done) ? ' on' : ''}" aria-hidden="true">✓</span>${b3.filter(x => x.done).length} of ${b3.length} Big 3</span>`
-      : `<button class="gl-i gl-set" type="button" data-view="myday">Set today’s Big 3</button>`];
+    const parts = [];
     if (dayOn()) {
       if (!DAYB.data || DAYB.day !== new Date().toDateString() || Date.now() - DAYB.at > 5 * 60 * 1000) setTimeout(() => loadDay(), 0);
       const now = Date.now() / 1000, ev = (DAYB.data?.events || []).find(e => !e.all_day && e.end > now);
       if (ev) parts.push(`<span class="gl-i">${ev.start > now ? 'Next' : 'Now'}: ${esc(ev.title || 'Event')} · ${esc(hm(ev.start))}</span>`);
-      else if (DAYB.data?.calendar === 'granted') parts.push('<span class="gl-i">Nothing else on the calendar</span>');
+      const bd = birthdayLine(); if (bd) parts.push(bd);
     }
     if (mkAny() && !mkToday()) {
       if (!mkData || mkData.sig !== mkSig() || Date.now() - mkData.at > 10 * 60 * 1000) setTimeout(() => loadMarkets(), 0);
@@ -7009,6 +7034,7 @@
       }).join('');
       if (chips) parts.push(`<span class="gl-i gl-qs">${chips}</span>`);
     }
+    if (!parts.length) return '';
     return `<div class="b-glance" role="group" aria-label="My Day at a glance">${parts.join('')}<button class="gl-open" type="button" data-view="myday">Open My Day →</button></div>`;
   }
 
