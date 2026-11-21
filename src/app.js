@@ -4704,7 +4704,50 @@
   }
   function postsHtml() {
     const c = SOC.conv; if (!c) return '<p class="note">Checking Mastodon and Bluesky…</p>';
-    return c.posts.length ? c.posts.map(postHtml).join('') : '<p class="note">Nothing posted yet. Open a story and choose Share › Post to Bluesky or Mastodon, or press New post.</p>';
+    return c.posts.length ? samePosts(c.posts).map(g => g.length > 1 ? postPairHtml(g) : postHtml(g[0])).join('') : '<p class="note">Nothing posted yet. Open a story and choose Share › Post to Bluesky or Mastodon, or press New post.</p>';
+  }
+  // The same post sent to Mastodon and Bluesky shows once: same link (YouTube by video id), same link title,
+  // or the same opening words, posted within a few hours of each other on different networks.
+  const postLinkKey = u => {
+    if (!u) return '';
+    const yt = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i);
+    if (yt) return 'yt:' + yt[1];
+    return u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[?&](si|utm_[a-z]+|ref|fbclid)=[^&#]*/g, '').replace(/[?#]$/, '').replace(/#.*$/, '').replace(/\/$/, '');
+  };
+  const postWords = t => (t || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 60);
+  function samePosts(posts) {
+    const groups = [];
+    for (const p of posts) {
+      const lk = postLinkKey(p.link), lt = (p.link_title || '').trim().toLowerCase(), w = postWords(p.text), at = Date.parse(p.created_at);
+      const g = groups.find(g => !g.some(q => q.network === p.network) && g.some(q => Math.abs(Date.parse(q.created_at) - at) < 6 * 3600e3 &&
+        ((lk && lk === postLinkKey(q.link)) || (lt && lt === (q.link_title || '').trim().toLowerCase()) || (w.length >= 20 && w === postWords(q.text)))));
+      if (g) g.push(p); else groups.push([p]);
+    }
+    return groups;
+  }
+  // One card for a post on both networks: the longest text, each network's replies and counts, both Open links
+  function postPairHtml(g) {
+    const p = g.reduce((a, b) => (b.text || '').length > (a.text || '').length ? b : a);
+    const lp = g.find(q => q.link) || p;
+    const it = lp.link && S.items.find(i => i.link && i.link.replace(/\/$/, '') === lp.link.replace(/\/$/, ''));
+    const replies = g.reduce((s, q) => s + (q.replies || 0), 0);
+    const per = q => {
+      const open = SOC.open.has(q.id);
+      return [q.replies ? `<button class="t-count linkish" data-talk="thread" data-net="${q.network}" data-id="${esc(q.id)}">${q.replies} ${q.replies === 1 ? 'reply' : 'replies'} on ${NET[q.network]}${open ? ' ▴' : ' ▾'}</button>` : '',
+        q.reposts ? `<span>${q.reposts} ${q.network === 'mastodon' ? (q.reposts === 1 ? 'boost' : 'boosts') : (q.reposts === 1 ? 'repost' : 'reposts')}</span>` : '',
+        q.likes ? `<span>${q.likes} ${q.network === 'mastodon' ? (q.likes === 1 ? 'favorite' : 'favorites') : (q.likes === 1 ? 'like' : 'likes')} on ${NET[q.network]}</span>` : ''].join('');
+    };
+    const threads = g.filter(q => SOC.open.has(q.id)).map(q => { const t = SOC.threads.get(q.id);
+      return `<div class="t-thread">${t === undefined ? '<p class="note">Loading the replies…</p>' : t.length ? t.map(n => noteHtml(n, { reply: true, rootId: q.id, rootCid: q.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>`; }).join('');
+    return `<article class="t-post">
+      <div class="t-story">${!lp.link ? `<span class="t-plain">${g.map(q => ICON_NET[q.network]).join('')}</span>` : ''}${lp.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(lp.link)}"`}>${esc(lp.link_title || lp.link.replace(/^https?:\/\//, ''))}</button>` : ''}
+        <span class="t-when" title="Posted to ${g.map(q => NET[q.network]).join(' and ')}">${g.map(q => ICON_NET[q.network]).join('')} ${esc(fmtWhen(p.created_at))}</span></div>
+      ${p.text ? `<p class="t-note">${esc(p.text)}</p>` : ''}
+      <div class="t-meta">${replies ? '' : '<span>No replies yet</span>'}${g.map(per).join('')}
+        ${g.map(q => `<button class="linkish" data-talk="open" data-url="${esc(q.url)}">Open on ${NET[q.network]}</button>`).join('')}</div>
+      ${g.map(q => `<div class="n-box" data-box="${esc(q.id)}"></div>`).join('')}
+      ${threads}
+    </article>`;
   }
   function blogHtml(limit) {
     const d = myDomain();
