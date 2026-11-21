@@ -19,9 +19,9 @@ Optional features and what they contact (nothing goes to the developer):
 - Newsletters (Add a feed > Read newsletters here): only when the user asks for an address. Made by kill-the-newsletter.com.
 - Rules & alerts: local notifications only. Translate: Google Translate.
 
-- Videos (optional): asks YouTube's public oEmbed endpoint who made videos found in posts; if a channel's feed fails, reads its public Videos page. Save for offline downloads podcast episodes and video files from feeds (never YouTube/Vimeo). Comment on YouTube copies the text and opens the video; nothing is posted to YouTube.
+- Videos (optional): asks YouTube's public oEmbed endpoint who made videos found in posts; if a channel's feed fails, reads its public Videos page. Save for offline downloads podcast and video files from feeds (never YouTube/Vimeo). Nothing is posted to YouTube.
 
-- My Day (sidebar, optional; Settings > Experimental): Calendar and Reminders are read on the device through EventKit after the system asks (Allow button on My Day). The app writes only what the user adds there: an event, a reminder, and a Reminders list named "The Reading Room". Day One entries open through Day One's own dayone:// link. Markets: stocks use the user's own free Finnhub key; coins use CoinGecko (coin ids only). In 1.2.8 My Day also reads up to six weeks of Calendar events (the month view and the next two weeks), still only on the device, and keeps each stock's daily price on the device for its trend line.
+- My Day (sidebar, optional; Settings > Experimental): Calendar and Reminders are read on the device through EventKit after the system asks (Allow button on My Day). The app writes only what the user adds there: an event, a reminder, and a Reminders list named "The Reading Room". Day One entries open through Day One's own dayone:// link. Markets: stocks use the user's own free Finnhub key; coins use CoinGecko (coin ids only). 1.2.8: My Day reads up to six weeks of Calendar (month view), on the device only.
 
 Sync between devices is optional and uses a folder in the user's own iCloud Drive.
 
