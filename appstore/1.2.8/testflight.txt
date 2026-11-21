@@ -1,0 +1,13 @@
+Thanks for testing The Reading Room! This build (1.2.8) is small, on top of everything from 1.2.7.
+
+UNFOLLOW FROM SOMEONE'S PAGE
+• Open a writer's page (tap their name in Conversations). Unfollow is now at the end of the row of buttons. It asks first, then removes all of that person's feeds, takes them off Close friends, and takes you back to where you were.
+
+STARTER WRITERS
+• The writers the app suggests when you're just starting out have changed a little.
+
+Please try:
+• Unfollow someone from their page, then check they're gone from the Neighborhood and the sidebar.
+• Unfollow someone who was a close friend.
+
+Please tell us if anything about unfollowing surprises you.
