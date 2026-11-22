@@ -19,6 +19,7 @@
   // Discover's results (see the Discover section)
   const D = { report: null, running: false, done: 0, total: 0, open: new Set(), busy: new Set(), q: '', searching: false, res: null, added: new Map(), imgs: new Map(), small: null, smallErr: '', smallMore: false };
   const ICONS = {
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
     email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>',
     site: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="18" height="18"><path d="M4 11l8-6.5 8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
@@ -970,8 +971,8 @@
       const valid = ['today', 'myday', 'write', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
-      // Mornings start on My Day (Your compass › Open on My Day before 10 am turns this off)
-      if (!loadedOnce && S.view === 'today' && myDayOn() && mdMorningStart() && new Date().getHours() < 10) S.view = 'myday';
+      // Mornings start on My Day (My Day settings › Starting the day turns this off)
+      if (!loadedOnce && S.view === 'today' && myDayOn() && mdMorningStart() && new Date().getHours() < mdUntil()) { S.view = 'myday'; MD.auto = true; }
       loadedOnce = true;
       render(); welcome(); processNew();
     } catch (e) { status(msg(e), true); }
@@ -3357,6 +3358,10 @@
     bluesky: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>',
     mastodon: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M21.3 13.8c-.3 1.5-2.6 3.1-5.3 3.4-1.4.2-2.8.3-4.3.3-2.4-.1-4.3-.6-4.3-.6v.7c.3 2.4 2.4 2.5 4.3 2.6 2 .1 3.7-.5 3.7-.5l.1 1.8s-1.4.7-3.8.9c-1.4.1-3.1-.1-5.1-.6-4.3-1.1-5-5.5-5.2-10V7.6C1.4 3 4.4 1.7 4.4 1.7 5.9 1 8.6.7 11.3.7h.1c2.7 0 5.4.3 6.9 1 0 0 3 1.3 3 5.9 0 0 .1 3.4-.4 5.7zM18.2 8.4c0-1.2-.3-2.1-.9-2.8-.6-.7-1.4-1-2.4-1-1.2 0-2 .4-2.6 1.3l-.6 1-.6-1c-.6-.9-1.4-1.3-2.6-1.3-1 0-1.8.4-2.4 1-.6.7-.9 1.6-.9 2.8v5.6h2.2V8.6c0-1.1.5-1.7 1.4-1.7 1 0 1.6.7 1.6 2v3h2.2v-3c0-1.3.5-2 1.6-2 .9 0 1.4.6 1.4 1.7V14h2.2z"/></svg>',
   };
+  // A text box in a sheet grows with what's in it, so a list of questions or rituals is all in view (David, Nov 22:
+  // "the reminders list and journal questions input fields are small and do not adjust")
+  function growArea(t) { if (!t || t.offsetParent === null) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, Math.round(window.innerHeight * 0.6)) + 'px'; }
+  document.addEventListener('input', e => { if (e.target.matches?.('.sheet textarea')) growArea(e.target); });
   function sheet(id, html, label) {
     let el = $(id);
     if (!el) {
@@ -3365,7 +3370,9 @@
       document.body.appendChild(el);
     }
     el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}</div>`;
-    el.hidden = false; return el;
+    el.hidden = false; el.querySelector('.sheet').scrollTop = 0;
+    requestAnimationFrame(() => el.querySelectorAll('textarea').forEach(growArea));
+    return el;
   }
   async function openAccounts() {
     await loadAccounts();
@@ -3421,7 +3428,7 @@
     if (!confirm(`Remove all ${u.count} saved episodes and videos (${mb(u.bytes)}) from this ${deviceName()}? You can save them again any time.`)) return;
     await invoke('offline_clear').catch(e => status(msg(e), true)); OFF.map = {}; OFF.save(); renderList(); status('Removed everything saved for offline.');
   });
-  $('settingsBtn').onclick = () => { paintShowSettings(); paintOfflineSetting(); $('setVer').textContent = APP.version ? `The Reading Room ${APP.version}` : ''; $('settingsPanel').hidden = false; $('settingsDone').focus(); };
+  $('settingsBtn').onclick = () => { paintShowSettings(); paintOfflineSetting(); $('setVer').textContent = APP.version ? `The Reading Room ${APP.version}` : ''; $('settingsPanel').hidden = false; $('settingsPanel').querySelector('.sheet').scrollTop = 0; $('settingsDone').focus({ preventScroll: true }); };
   $('settingsPanel').addEventListener('mousedown', e => { if (e.target.id === 'settingsPanel') closeSettings(); });
   $('settingsDone').onclick = e => { e.stopPropagation(); closeSettings(); };
   // Help and feedback: GitHub issues (the app has no server or mail of its own), the App Store's review page, the support page
@@ -7617,7 +7624,7 @@
 
   function openDaySettings() {
     const p = dayPrefs(), o = doPrefs();
-    const el = sheet('dayPanel', `<h2>Your day</h2>
+    const el = sheet('dayPanel', `<h2>Calendar, reminders and Day One</h2>
       <p>My Day can show your events and the reminders due today, read from Calendar and Reminders on each of your devices. They never leave the device. Each device asks your OK once.</p>
       <label class="c-net"><input type="checkbox" id="dayCal"${p.cal ? ' checked' : ''}>Today’s events from Calendar</label>
       <label class="c-net"><input type="checkbox" id="dayRem"${p.rem ? ' checked' : ''}>Reminders due today and overdue (tick them off right on My Day)</label>
@@ -7635,7 +7642,7 @@
       <p class="note"><button class="b-link" type="button" id="doQReset">Use the starting questions</button></p>
       <div class="row"><input class="n-field" id="doJournal" type="text" placeholder="Journal (blank: your default journal)" value="${esc(o.journal || '')}" autocomplete="off" style="flex:1;min-width:160px"><input class="n-field" id="doTags" type="text" placeholder="Tags, like reading" value="${esc(o.tags || '')}" autocomplete="off" style="flex:1;min-width:120px"></div>
       <p class="acct-note" id="dayNote" aria-live="polite"></p>
-      <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Your day');
+      <div class="row sheet-foot"><button class="btn" type="button" id="doTry">Try Day One</button><button class="btn primary" type="button" id="dayDone">Done</button></div>`, 'Calendar, reminders and Day One');
     const save = () => {
       S.prefs.day = { cal: $('dayCal').checked, rem: $('dayRem').checked, undated: $('dayUnd').checked, list: $('dayList').value || undefined };
       S.prefs.dayone = { on: $('doOn').checked, journal: $('doJournal').value.trim(), tags: $('doTags').value.trim(), page: el.querySelector('input[name="doPage"]:checked')?.value || 'yesterday', questions: (() => { const q = $('doQ').value.split('\n').map(x => x.trim()).filter(Boolean); return q.length && q.join('\n') !== DAYONE_Q.join('\n') ? q.slice(0, 20) : undefined; })() };
@@ -7664,7 +7671,7 @@
   // keeps one glance line), an evening mode for closing the day and planning tomorrow, and a Weekly Preview that
   // saves a private review to Day One and a Weeknotes draft for your site. Goals and "what got in the way" never
   // go into anything public.
-  const MD = { wkPhoto: null, mode: null, step: 0, cap: '', capTo: 'task', force: false, refocus: '', tmr: null, wkCal: null, saveT: 0 };
+  const MD = { auto: false, wkPhoto: null, mode: null, step: 0, cap: '', capTo: 'task', force: false, refocus: '', tmr: null, wkCal: null, saveT: 0 };
   function myDayOn() { return !hiddenViews().has('myday'); }
   const MD_ACCTS = ['Spiritual', 'Vocational', 'Intellectual', 'Physical', 'Social', 'Avocational', 'Financial'];
   const cmp = () => {
@@ -7688,6 +7695,9 @@
   const tomorrowKey = () => dayKey(addDays(new Date(), 1));
   const mdEvening = () => MD.mode === 'evening' || (MD.mode !== 'day' && MD.mode !== 'week' && new Date().getHours() >= 18);
   function mdMorningStart() { return S.prefs.mydayMorning !== false; }
+  // until when mornings open on My Day (My Day settings › Starting the day); 10 am unless you pick another hour
+  const mdUntil = () => [9, 10, 11, 12].includes(S.prefs.mydayUntil) ? S.prefs.mydayUntil : 10;
+  const mdHourName = h => h === 12 ? 'noon' : `${h} am`;
   // The week a Weekly Preview is about: Monday to Sunday, this week's (last week's on a Monday morning)
   function mdWeek() {
     const now = new Date(), back = now.getDay() === 1 && now.getHours() < 12 ? 7 : 0;
@@ -7809,8 +7819,10 @@
     const evening = mdEvening(), g = mdGreeting(), w = mdWk(), sunday = new Date().getDay() === 0;
     const head = `<div class="md-top"><div class="md-top-row"><h2>${esc(greeting())}</h2>
         <div class="md-modes" role="group" aria-label="My Day view"><button type="button" class="linkish" data-md="mode" data-mode="${evening ? 'day' : 'evening'}">${evening ? 'Daytime view' : 'Evening view'}</button>
-        <button type="button" class="linkish" data-md="week">Weekly Preview</button>${cmp().rituals.m.length ? '' : '<button type="button" class="linkish" data-md="edit">Rituals and goals</button>'}</div></div>
-      <p class="b-date">${esc(g.date)}${esc(g.wx)}</p><p class="b-line">${esc(mdSummary(evening))}</p></div>`;
+        <button type="button" class="linkish" data-md="week">Weekly Preview</button>${cmp().rituals.m.length ? '' : '<button type="button" class="linkish" data-md="edit">Rituals and goals</button>'}
+        <button type="button" class="linkish md-set" data-md="settings" title="Starting the day, goals and rituals, calendar and reminders, Day One and markets">${ICONS.gear || ''}My Day settings</button></div></div>
+      <p class="b-date">${esc(g.date)}${esc(g.wx)}</p><p class="b-line">${esc(mdSummary(evening))}</p>
+      ${MD.auto ? `<p class="md-auto" role="note">It’s before ${esc(mdHourName(mdUntil()))}, so The Reading Room opened on My Day. <button type="button" class="b-link" data-md="settings">Change this</button> <button type="button" class="b-link" data-md="autook" aria-label="Hide this note">OK</button></p>` : ''}</div>`;
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
       ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
@@ -8370,6 +8382,8 @@
     if (k === 'mode') { MD.mode = b.dataset.mode; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'week') { MD.mode = 'week'; MD.step = 0; mdRender(); $('listView').scrollTo({ top: 0 }); $('main').scrollTo({ top: 0 }); return; }
     if (k === 'edit') { openCompass(); return; }
+    if (k === 'settings') { openMydaySettings(); return; }
+    if (k === 'autook') { MD.auto = false; mdRender(); return; }
     if (k === 'calmon') { const m = mcalMonth(); MCAL.month = n === 0 ? null : new Date(m.getFullYear(), m.getMonth() + n, 1); if (n === 0) MCAL.sel = ''; mdRender(); loadMonthCal(); return; }
     if (k === 'calsel') { MCAL.sel = b.dataset.day === dayKey() ? '' : b.dataset.day || ''; mdRender(); return; }
     if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; if (!MD.whenEdited) MD.when = MD.cap ? mdParseWhen(MD.cap) : null; MD.refocus = 'mdCapIn'; mdRender(); return; }
@@ -8463,7 +8477,7 @@
         <input class="n-field cm-target" type="number" min="1" max="10000" value="${esc(g.target || '')}" placeholder="Target" aria-label="Target"${['count', 'habit', 'books'].includes(g.kind) ? '' : ' hidden'}>
         <input class="n-field cm-done" type="number" min="0" max="100000" value="${esc(g.done || 0)}" aria-label="Done so far"${g.kind === 'count' ? '' : ' hidden'}>
         <button class="icon cm-x" type="button" data-cm="del" aria-label="Remove this goal" title="Remove">×</button></div>`;
-    const el = sheet('compassPanel', `<h2>Your compass</h2>
+    const el = sheet('compassPanel', `<h2>Goals and rituals</h2>
       <p>A few goals for this season, each under a part of your life, and why they matter. The Weekly Preview looks at them every week, and they end your Day One page. They stay in the app and in your iCloud; nothing here goes on your site.</p>
       <datalist id="cmAccts">${MD_ACCTS.map(a => `<option value="${a}">`).join('')}</datalist>
       <div class="row"><input class="n-field" id="cmSeason" type="text" maxlength="40" value="${esc(c.season)}" placeholder="This season (or Q4, or 2027)" style="flex:1"></div>
@@ -8476,9 +8490,8 @@
       <p class="note">A few small things you do every morning and evening, one per line. You tick them off on My Day.</p>
       <div class="cm-rits"><label><span>Morning</span><textarea id="cmRm" rows="4" placeholder="10-minute routine&#10;Look at today’s calendar">${esc(c.rituals.m.join('\n'))}</textarea></label>
         <label><span>Evening</span><textarea id="cmRe" rows="4" placeholder="Clear the inbox&#10;Look at tomorrow’s calendar">${esc(c.rituals.e.join('\n'))}</textarea></label></div>
-      <h3 class="mk-h">Starting the day</h3>
-      <label class="c-net"><input type="checkbox" id="cmMorning"${mdMorningStart() ? ' checked' : ''}>Open on My Day before 10 am</label>
-      <div class="row sheet-foot"><button class="btn" type="button" id="cmCancel">Cancel</button><button class="btn primary" type="button" id="cmSave">Save</button></div>`, 'Your compass');
+      <p class="note">Opening on My Day in the morning is in <button class="b-link" type="button" data-cm="hub">My Day settings</button>.</p>
+      <div class="row sheet-foot"><button class="btn" type="button" id="cmCancel">Cancel</button><button class="btn primary" type="button" id="cmSave">Save</button></div>`, 'Goals and rituals');
     const paint = () => { $('cmGoals').innerHTML = goals.length ? goals.map(row).join('') : '<p class="note">No goals yet.</p>'; };
     const read = () => {
       goals = [...el.querySelectorAll('.cm-goal')].map(r => {
@@ -8490,6 +8503,7 @@
     el.onclick = e => {
       const a = e.target.closest('[data-cm]');
       if (a?.dataset.cm === 'add') { read(); if (goals.length < 6) goals.push({ id: Math.random().toString(36).slice(2, 9), acct: '', title: '', kind: '' }); paint(); el.querySelector('.cm-goal:last-child .cm-acct')?.focus(); }
+      if (a?.dataset.cm === 'hub') { el.hidden = true; openMydaySettings(); return; }
       if (a?.dataset.cm === 'del') { read(); goals.splice(Number(a.closest('.cm-goal').dataset.i), 1); paint(); }
     };
     el.onchange = e => { if (e.target.classList.contains('cm-kind')) { read(); paint(); } };
@@ -8498,18 +8512,49 @@
       read();
       const lines = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8);
       S.prefs.compass = { season: $('cmSeason').value.trim(), why: $('cmWhy').value.trim(), goals: goals.filter(g => g.title).slice(0, 6).map(g => ({ ...g, target: g.kind === 'books' && !g.target ? (goalCfg().books || 12) : g.target })), rituals: { m: lines('cmRm'), e: lines('cmRe') } };
-      S.prefs.mydayMorning = $('cmMorning').checked;
       savePrefs(); el.hidden = true; if (S.view === 'myday') mdRender();
-      status('Your compass is saved.');
+      status('Your goals and rituals are saved.');
     };
   }
-  $('mydayBtn')?.addEventListener('click', () => { closeSettings(); openCompass(); });
+  $('mydayBtn')?.addEventListener('click', () => { closeSettings(); openMydaySettings(); });
+  // ---- My Day settings: one place for everything about My Day (David, Nov 22: "there is no way to know that there
+  // are additional settings to adjust"). Reached from My Day's own "My Day settings" link, from the morning note,
+  // and from Settings › Experimental › My Day.
+  function openMydaySettings() {
+    const u = mdUntil();
+    const el = sheet('mydaySetPanel', `<h2>My Day settings</h2>
+      <p>My Day is the page for your day: what’s coming up, your to-dos, goals and rituals, and the markets.</p>
+      <h3 class="mk-h">Starting the day</h3>
+      <label class="c-net"><input type="checkbox" id="mhMorning"${mdMorningStart() ? ' checked' : ''}>Open on My Day in the morning</label>
+      <label class="mh-until">Until <select id="mhUntil" class="n-field"${mdMorningStart() ? '' : ' disabled'}>${[9, 10, 11, 12].map(h => `<option value="${h}"${h === u ? ' selected' : ''}>${mdHourName(h)}</option>`).join('')}</select></label>
+      <p class="note">Open the app before then and it starts on My Day. Later in the day it starts on Today, as usual.</p>
+      <h3 class="mk-h">What’s on My Day</h3>
+      <ul class="set-list">
+        <li><button class="set-item" type="button" data-mh="compass">Goals and rituals</button><span>Your goals for this season, why they matter, and your morning and evening rituals</span></li>
+        <li><button class="set-item" type="button" data-mh="day">Calendar, reminders and Day One</button><span>Events and reminders from this device, which reminders list, Day One and your journal questions</span></li>
+        <li><button class="set-item" type="button" data-mh="markets">Markets</button><span>The stocks and coins you follow</span></li>
+      </ul>
+      <p class="note">Don’t need My Day? Turn it off in Settings › Show in the sidebar. Nothing is deleted. <button class="b-link" type="button" data-mh="settings">Open Settings</button></p>
+      <div class="row sheet-foot"><button class="btn primary" type="button" id="mhDone">Done</button></div>`, 'My Day settings');
+    const save = () => { S.prefs.mydayMorning = $('mhMorning').checked; S.prefs.mydayUntil = Number($('mhUntil').value) || 10; $('mhUntil').disabled = !$('mhMorning').checked; savePrefs(); if (S.view === 'myday') mdRender(); };
+    el.onchange = save;
+    el.onclick = e => {
+      const b = e.target.closest('[data-mh]'); if (!b) return;
+      el.hidden = true;
+      if (b.dataset.mh === 'compass') openCompass();
+      if (b.dataset.mh === 'day') openDaySettings();
+      if (b.dataset.mh === 'markets') openMarkets();
+      if (b.dataset.mh === 'settings') $('settingsBtn').click();
+    };
+    $('mhDone').onclick = () => { save(); el.hidden = true; MD.auto = false; if (S.view === 'myday') mdRender(); };
+    $('mhDone').focus({ preventScroll: true });
+  }
 
   // ---- starting the day on My Day (before 10 am; the setting turns it off)
   let mdHiddenAt = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { mdHiddenAt = Date.now(); return; }
-    if (mdHiddenAt && Date.now() - mdHiddenAt > 3 * 3600e3 && new Date().getHours() < 10 && mdMorningStart() && myDayOn() && S.view === 'today' && !S.readerId) selectView('myday');
+    if (mdHiddenAt && Date.now() - mdHiddenAt > 3 * 3600e3 && new Date().getHours() < mdUntil() && mdMorningStart() && myDayOn() && S.view === 'today' && !S.readerId) { MD.auto = true; selectView('myday'); }
     if (S.view === 'myday') mdRender();
   });
   setInterval(() => { if (S.view === 'myday' && !document.hidden && !MD.mode) renderList(); }, 10 * 60 * 1000);

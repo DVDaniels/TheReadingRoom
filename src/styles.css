@@ -2578,3 +2578,20 @@ html.ios .nav .wr-navhead { padding-left: 46px; }
   .writing .wr-facts .btn { flex: 1 1 calc(50% - 4px); }
   .writing .wr-acts .note { flex-basis: 100%; }
 }
+/* Sheets: nothing in a sheet gets squeezed to fit the window (the journal questions box shrank to one line);
+   the sheet scrolls instead. Text boxes look like the other fields and grow with what's in them. */
+.sheet > * { flex-shrink: 0; }
+.sheet textarea { width: 100%; box-sizing: border-box; min-height: 88px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink); font: inherit; font-size: 15px; line-height: 1.5; resize: vertical; }
+.sheet textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.sheet select.n-field { min-height: 40px; font-size: 15px; }
+/* My Day settings */
+.mh-until { display: flex; align-items: center; gap: 8px; margin-left: 28px; font-size: 14px; color: var(--muted); }
+.mh-until select { width: auto; min-width: 110px; }
+.brief.myday .md-set { display: inline-flex; align-items: center; gap: 5px; }
+.brief.myday .md-set svg { width: 14px; height: 14px; flex: none; }
+.brief.myday .md-auto { margin: 10px 0 0; padding: 8px 12px; border-radius: 9px; background: var(--accent-soft); font-size: 14px; }
+.brief.myday .md-auto .b-link { margin-left: 6px; }
+.myday .md-modes { flex-wrap: wrap; row-gap: 6px; }
+.brief .md-modes .linkish { white-space: nowrap; }
+.brief.myday .md-auto { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
