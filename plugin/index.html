@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Reading Room stats: a free WordPress plugin</title>
+  <meta name="description" content="See your blog's visitors, RSS readers and search traffic in The Reading Room. A free WordPress plugin that counts without cookies or stored IP addresses.">
+  <link rel="canonical" href="https://readingroomapp.com/plugin/">
+  <link rel="icon" href="../assets/img/icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <style>
+    .plug { max-width: 820px; }
+    .plug .lede { margin-top: 32px; }
+    .plug .get { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 40px; }
+    .plug section { margin-top: 64px; }
+    .plug .rule-h2 { margin-bottom: 16px; }
+    .plug h3 { margin-top: 24px; margin-bottom: 4px; font-size: 18px; font-weight: 600; }
+    .plug ol, .plug ul { padding-left: 1.2em; }
+    .plug li { margin: 6px 0; }
+    .plug .plug-shot { width: min(1100px, calc(100vw - 48px)); margin: 48px 0 0; }
+    .plug .plug-shot picture { display: block; }
+    .plug .plug-shot img { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10); }
+    .plug .plug-shot figcaption { margin-top: 12px; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../assets/img/icon.png" alt="" width="32" height="32">The Reading Room</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="../">Home</a>
+        <a href="../lists/">Lists</a>
+        <a href="../beta/">Beta</a>
+        <a href="../support/">Support</a>
+      </nav>
+    </header>
+  </div>
+
+  <main class="page wrap">
+    <div class="plug">
+      <h1 class="display">See how your <span class="mark">blog</span> is doing.</h1>
+      <p class="lede">The Reading Room stats is a free WordPress plugin. With it, My Day in The Reading Room shows your blog’s visitors, the RSS readers that follow you, and your search traffic, next to your calendar. It counts on your own site, without cookies, and never stores your visitors’ IP addresses.</p>
+      <div class="get">
+        <a class="button" href="the-reading-room-stats.zip" download>Download the plugin</a>
+        <span class="muted">Version 1.0, 10 KB. For WordPress 6.0 or later. Free and open source (GPL).</span>
+      </div>
+
+      <figure class="plug-shot">
+        <picture><source media="(max-width: 700px)" srcset="../assets/img/plugin-myday-phone.jpg" width="780" height="1886"><img src="../assets/img/plugin-myday.jpg" width="1844" height="686" loading="lazy" alt="Your blog on My Day in The Reading Room: 685 visits in 28 days with a bar for each day and the posts read most; 63 RSS readers, by reader app from Feedly to NetNewsWire; and 128 clicks from Google search with the searches the blog shows up for."></picture>
+        <figcaption class="muted">Your blog on My Day. The site and numbers are an example.</figcaption>
+      </figure>
+
+      <section>
+        <h2 class="rule-h2">Install it</h2>
+        <ol class="muted">
+          <li>In your WordPress dashboard, go to <strong>Plugins › Add New Plugin › Upload Plugin</strong>, choose the file you downloaded, and press <strong>Install Now</strong>, then <strong>Activate</strong>.</li>
+          <li>In <strong>Users › Profile</strong>, make an <strong>application password</strong> called “The Reading Room”. Copy it.</li>
+          <li>In The Reading Room, open <strong>Settings › Your site, Mastodon &amp; Bluesky</strong> and connect your site with your username and that password. If you already post notes from the app, it’s connected.</li>
+          <li>Open <strong>My Day</strong>. Your blog’s numbers show under the calendar and markets. Counting starts the day you turn the plugin on, so the comparisons fill in over the following weeks.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2 class="rule-h2">What it counts</h2>
+        <h3>Visits</h3>
+        <p class="muted">A small script at the end of each page tells your site that someone read it. Each visitor counts once a day. It works with page caching, and robots that don’t run scripts aren’t counted. You aren’t counted either, when you’re signed in. The app also shows the posts read most in the last 28 days.</p>
+        <h3>RSS readers</h3>
+        <p class="muted">When a feed reader checks your feed, it says which reader it is. Online readers such as Feedly and Inoreader also say how many people follow you there. Apps on someone’s own phone or computer count as one reader each. It’s an estimate, shown by reader app.</p>
+        <h3>Search traffic</h3>
+        <p class="muted">If your site uses <strong>Site Kit by Google</strong> with Search Console connected, the app also shows your clicks from Google, how often you showed up in results, your average spot, and the searches you show up for. Without Site Kit, this part is left out.</p>
+      </section>
+
+      <section>
+        <h2 class="rule-h2">Your readers’ privacy</h2>
+        <p class="muted">No cookies, and nothing is stored in your visitors’ browsers. To count each visitor once a day, the plugin mixes their IP address and browser name with a secret that changes every day into a one-way code. The address itself is never stored, and the codes are deleted the next day. The numbers stay in your own WordPress database and are never sent to The Reading Room or anyone else; only people who can edit posts on your site can read them. The plugin adds a suggested paragraph for your privacy policy under <strong>Settings › Privacy</strong>.</p>
+        <p class="muted">Turn any part off in <strong>Settings › The Reading Room stats</strong>. Deleting the plugin removes everything it kept.</p>
+      </section>
+
+      <section>
+        <h2 class="rule-h2">Questions</h2>
+        <h3>Does it work without WordPress?</h3>
+        <p class="muted">Not yet. The plugin is for WordPress sites, including WordPress.com plans that allow plugins.</p>
+        <h3>Where’s the code?</h3>
+        <p class="muted">In the app’s <a href="https://github.com/DVDaniels/TheReadingRoom/tree/main/wordpress/the-reading-room-stats">GitHub repository</a>. Problems or ideas? <a href="https://github.com/DVDaniels/TheReadingRoom/issues">Open an issue</a>.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Made by David Daniels</span>
+      <nav aria-label="Footer">
+        <a href="../privacy/">Privacy</a>
+        <a href="../support/">Support</a>
+        <a href="https://github.com/DVDaniels/TheReadingRoom">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
