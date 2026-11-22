@@ -2681,3 +2681,23 @@ html[data-theme="dark"] .brief.writing { box-shadow: 0 12px 32px -12px rgba(0,0,
 }
 html.ios .brief.writing .wr-title { font-size: 26px !important; }
 html.ios .brief.writing .wr-body { font-size: 18px !important; line-height: 1.7; }
+
+/* ---- Writing on a ruled notebook page (David, Nov 22: "a very opaque background that looks like I am writing in a
+   notepad"; picked the notebook over the legal pad: "not as bright and overwhelming"). Solid cream paper, faint blue
+   rules the text sits on, a red margin line. Lines are 34px apart; the text box's line-height must match. */
+.writing .wr-new.b-panel { --nb-paper: #FFFDF4; --nb-edge: #E8E1CC; --nb-rule: rgba(80,120,190,.30); --nb-margin: rgba(214,92,92,.45); --nb-ink: #2A2620;
+  position: relative; background: var(--nb-paper); border-color: var(--nb-edge);
+  box-shadow: 0 1px 2px rgba(60,50,20,.08), 0 14px 30px -14px rgba(60,50,20,.28); }
+.writing .wr-new.b-panel::before { content: ""; position: absolute; top: 0; bottom: 0; left: max(10px, calc((100% - 720px) / 2 - 16px)); width: 2px;
+  background: var(--nb-margin); box-shadow: 4px 0 0 color-mix(in srgb, var(--nb-margin) 55%, transparent); pointer-events: none; }
+.brief.writing .wr-title { border-bottom-color: var(--nb-rule); color: var(--nb-ink); }
+.brief.writing .wr-body { line-height: 34px; padding: 7px 0 0; color: var(--nb-ink);
+  background: repeating-linear-gradient(to bottom, transparent 0 33px, var(--nb-rule) 33px 34px); background-position: 0 7px; background-attachment: local; }
+html.ios .brief.writing .wr-body { line-height: 34px; }
+.writing .wr-help { border-top-color: var(--nb-rule); }
+.writing .wr-new:focus-within { border-color: color-mix(in srgb, var(--accent) 35%, var(--nb-edge)); }
+@media (max-width: 760px) { .writing .wr-new.b-panel { padding-left: 30px; } .writing .wr-new.b-panel::before { left: 18px; } }
+/* dark: a dark page with faint rules */
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]):not([data-theme="sepia"]) .writing .wr-new.b-panel {
+  --nb-paper: #1C1F24; --nb-edge: #2E333B; --nb-rule: rgba(140,170,220,.16); --nb-margin: rgba(230,110,110,.35); --nb-ink: var(--ink); box-shadow: 0 12px 30px -12px rgba(0,0,0,.7); } }
+html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edge: #2E333B; --nb-rule: rgba(140,170,220,.16); --nb-margin: rgba(230,110,110,.35); --nb-ink: var(--ink); box-shadow: 0 12px 30px -12px rgba(0,0,0,.7); }
