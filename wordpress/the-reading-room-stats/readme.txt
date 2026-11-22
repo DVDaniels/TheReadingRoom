@@ -1,4 +1,5 @@
 === The Reading Room stats ===
+Contributors: dvdaniels
 Tags: stats, rss, feed readers, analytics, privacy
 Requires at least: 6.2
 Tested up to: 7.2
