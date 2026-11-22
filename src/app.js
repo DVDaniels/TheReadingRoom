@@ -3292,7 +3292,7 @@
   // Conversations and the Experimental extras stay free. PLUS_LIVE stays false until the subscription exists in
   // App Store Connect; while it's false nothing is locked and nothing is shown. (localStorage plusLive=1 turns it on
   // for testing.) People who already had a site connected when Plus went live keep posting free for 91 days.
-  const PLUS_LIVE = false;
+  const PLUS_LIVE = true;
   const PLUS_ID = 'com.daviddaniels.readingroom.plus.yearly';
   const plusLive = () => PLUS_LIVE || store.get('plusLive') === '1';
   const PLUS = { owned: false, exp: 0, product: null, busy: false, prefsReady: false, accountsReady: false };

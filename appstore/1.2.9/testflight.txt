@@ -1,10 +1,13 @@
 Thanks for testing The Reading Room! This is a test build of 1.2.9, on top of everything in 1.2.8.
 
+PLUS (new)
+• Writing, posting to your own site and Your blog are now part of The Reading Room Plus, with a free first week. Reading stays free.
+• In TestFlight, buying Plus costs nothing: it's Apple's test mode, and the test subscription runs out quickly.
+• If your site was already connected, posting stays free for you for three months. Plus is in Settings › Connections.
+
 MY DAY, WIDER AND SIMPLER
 • On a big screen (like a 24-inch iMac) My Day now spreads out to use the window. On a MacBook-size window it looks the same as before.
 • The Big 3 is gone. My Day is now your calendar (Coming up and the month), the markets, Put it down, To do, and your morning ritual if you've set one. Your blog's numbers moved to Writing.
-• In the evening, How today went has your evening ritual, your notes and the Day One button. Tomorrow shows tomorrow's calendar.
-• The Weekly Preview and the Day One pages no longer mention the Big 3.
 • My Day settings: a link at the top of My Day puts every My Day option in one place, including until what time the app opens on My Day in the morning. When it does, it says so.
 • The journal questions and reminders boxes are full size and grow as you type.
 
@@ -39,12 +42,11 @@ ALSO
 • The Mac app now needs macOS 13 Ventura or later.
 
 Please try:
+• Open Plus (Writing, or Settings › Connections), try it free, then Restore purchases.
 • In Writing, save a post as a draft, open it again with Keep writing, then post it. Check it lands on your site with its category and picture.
 • Preview a draft, switch an old draft to Note, and tap a day on the calendar.
 • Open each folder under Writing and check the lists match your site. Delete a draft, then Undo.
 • On a big Mac screen, open My Day and check it fills the window, and that prices and changes don't overlap.
-• On a MacBook, check My Day still looks the way it did.
 • On iPhone, open Library › Books, fold Library, go back, and check nothing is left under it.
 • Open Conversations › You › Your posts and check the pictures match your posts.
-• Look for any leftover mention of the Big 3.
 • Write in Focus, open a draft and tap Writing in the sidebar, and try My Day settings.
