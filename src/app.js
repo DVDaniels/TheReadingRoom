@@ -326,7 +326,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your Big 3, goals, calendar and markets, and a weekly review'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -492,7 +492,7 @@
       : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
-      : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your Big 3, your goals, your calendar and the markets')
+      : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -7037,8 +7037,8 @@
   // evening) is these questions as headings, in your order, set in Your day › Day One. Under a few of them the app
   // puts what it already knows, matched by the words in the question so they still fill in when you reword them:
   // "happen" gets the calendar and the notes you put down, "read / hear / listen /
-  // watch" what you read, watched and highlighted, "next / goal / tomorrow" the next day's Big 3 and your goals.
-  // The rest stay empty for you. That day's Big 3 isn't put on the page (David's call, Nov 20).
+  // watch" what you read, watched and highlighted, "next / goal / tomorrow" your goals.
+  // The rest stay empty for you. (No Big 3 anywhere on My Day since Nov 21.)
   const DAYONE_Q = ['What happened in the past day?', 'What were my biggest wins?', 'What lessons did I learn?', 'What am I thankful for right now?', 'How am I feeling right now?', 'What did I read or hear?', 'What stood out?', 'What can I do next to move forward on my goals?'];
   const doQuestions = () => { const q = (doPrefs().questions || []).map(x => String(x).trim()).filter(Boolean); return q.length ? q.slice(0, 20) : DAYONE_Q; };
   const qKind = q => /happen/i.test(q) ? 'happened' : /\bwins?\b/i.test(q) ? '' : /\b(read|hear|heard|listen|watch)/i.test(q) ? 'read' : /\b(next|goals?|tomorrow)\b/i.test(q) ? 'next' : '';
@@ -7052,9 +7052,8 @@
     const how = i => isVideoItem(i) ? 'Watched: ' : i.audio ? 'Listened to: ' : '';
     const read = seen.slice(0, 10).map(i => `- ${how(i)}[${headline(i)}](${i.link}) — ${cardWriter(i)}`);
     for (const h of S.highlights.filter(h => inDay(h.created_at)).slice(0, 5)) read.push(`> ${h.text.replace(/\s+/g, ' ').trim()}${(() => { const it = S.items.find(i => i.id === h.item_id); return it ? ` — ${cardWriter(it)}` : ''; })()}`);
-    const nextB3 = (mdPeek(dayKey(addDays(d, 1)))?.big3 || []).filter(x => x?.t).map((x, n) => `${n + 1}. ${x.t}`);
     const goals = cmp().goals.map(g => `- ${goalLine(g)}`);
-    const next = [...(nextB3.length ? [`${dayKey(addDays(d, 1)) === dayKey() ? 'Today' : 'Tomorrow'}’s Big 3:`, ...nextB3] : []), ...(goals.length ? [(nextB3.length ? '\n' : '') + 'Goals:', ...goals] : [])];
+    const next = goals.length ? ['Goals:', ...goals] : [];
     const fill = { happened, read, next }; // wins are yours to write: finished reminders aren't listed (David, Nov 21)
     const out = [`# ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`];
     for (const q of doQuestions()) { const k = qKind(q), body = k ? fill[k] : []; out.push(`## ${q}` + (body.length ? '\n' + body.join('\n') : '\n')); if (k) fill[k] = []; }
@@ -7144,7 +7143,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadDay(); });
 
   // ------------------------------------------------------------ My Day: your compass, your day and the markets
-  // A page to start the day on and check in with during it: today's Big 3 and the season's goals (typed in here,
+  // A page to start the day on and check in with during it: the season's goals (typed in here,
   // synced with the other prefs), a quick place to put things down, Your day and Markets (moved off Today, which
   // keeps one glance line), an evening mode for closing the day and planning tomorrow, and a Weekly Preview that
   // saves a private review to Day One and a Weeknotes draft for your site. Goals and "what got in the way" never
@@ -7216,7 +7215,7 @@
   const goalLine = (g, days) => { const p = goalProgress(g, days); return `${g.title}${p.text ? `: ${p.text}` : ''}`; };
 
   // ---- the line on Today: the next thing on the calendar, any birthday in the next five days (and three quotes
-  // when Markets isn't on Today itself). The Big 3 stays on My Day (David, Nov 21: no My Day reminders on Today).
+  // when Markets isn't on Today itself). (David, Nov 21: no My Day reminders on Today.)
   const BDAY = { list: null, at: 0, day: '', busy: false };
   async function loadBirthdays() {
     if (!dayPrefs().cal || BDAY.busy) return;
@@ -7284,22 +7283,17 @@
     return { date, wx };
   }
   function mdSummary(evening) {
-    const d = mdPeek(dayKey()), b3 = (d?.big3 || []).filter(x => x.t), done = b3.filter(x => x.done).length;
     const now = Date.now() / 1000, left = (DAYB.data?.events || []).filter(e => !e.all_day && e.end > now).length;
-    const parts = [];
-    if (!b3.length) parts.push(evening ? 'No Big 3 today. Pick tomorrow’s while the day is fresh.' : 'Pick today’s Big 3: the three things that would make today a good day.');
-    else if (done === b3.length) parts.push(`All ${b3.length === 3 ? 'three' : b3.length} of your Big 3 done.`);
-    else parts.push(`${done === 0 ? 'None' : done === 1 ? 'One' : 'Two'} of your Big 3 done.`);
-    if (DAYB.data?.calendar === 'granted' && !evening) parts.push(left ? `${left === 1 ? 'One thing' : left === 2 ? 'Two things' : `${left} things`} left on the calendar.` : 'Nothing else on the calendar.');
-    if (evening && b3.length) parts.push('Close out the day and set up tomorrow.');
-    return parts.join(' ');
+    if (evening) return 'Close out the day and take a look at tomorrow.';
+    if (DAYB.data?.calendar === 'granted') return left ? `${left === 1 ? 'One thing' : left === 2 ? 'Two things' : `${left} things`} left on the calendar today.` : 'Nothing else on the calendar today.';
+    return 'Your day at a glance: what’s coming up, your goals and the markets.';
   }
   function mydayHtml() {
     if (MD.mode === 'week') return weeklyHtml();
     const evening = mdEvening(), g = mdGreeting(), w = mdWk(), sunday = new Date().getDay() === 0;
     const head = `<div class="md-top"><div class="md-top-row"><h2>${esc(greeting())}</h2>
         <div class="md-modes" role="group" aria-label="My Day view"><button type="button" class="linkish" data-md="mode" data-mode="${evening ? 'day' : 'evening'}">${evening ? 'Daytime view' : 'Evening view'}</button>
-        <button type="button" class="linkish" data-md="week">Weekly Preview</button></div></div>
+        <button type="button" class="linkish" data-md="week">Weekly Preview</button>${cmp().rituals.m.length ? '' : '<button type="button" class="linkish" data-md="edit">Rituals and goals</button>'}</div></div>
       <p class="b-date">${esc(g.date)}${esc(g.wx)}</p><p class="b-line">${esc(mdSummary(evening))}</p></div>`;
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
@@ -7588,8 +7582,8 @@
   function captureHtml() {
     const d = mdPeek(dayKey()), c = d?.cap || {};
     const n = (k, one, many) => c[k] ? `<span>${c[k]} ${c[k] === 1 ? one : many}</span>` : '';
-    const caught = [n('note', 'note for tonight', 'notes for tonight'), n('task', 'task', 'tasks'), n('event', 'event', 'events'), n('link', 'link saved', 'links saved'), n('big3', 'to the Big 3', 'to the Big 3')].filter(Boolean);
-    const to = [['task', 'Task → Reminders'], ['event', 'Event → Calendar'], ['note', 'Note → tonight’s journal'], ['big3', 'Big 3']];
+    const caught = [n('note', 'note for tonight', 'notes for tonight'), n('task', 'task', 'tasks'), n('event', 'event', 'events'), n('link', 'link saved', 'links saved')].filter(Boolean);
+    const to = [['task', 'Task → Reminders'], ['event', 'Event → Calendar'], ['note', 'Note → tonight’s journal']];
     return `<form class="md-cap" data-md="capform" autocomplete="off"><label class="md-cap-l" for="mdCapIn">Put it down</label>
       <div class="md-cap-row"><input id="mdCapIn" class="search" type="text" maxlength="300" placeholder="${MD.capTo === 'event' ? 'Lunch with Sam Tuesday 12:30' : MD.capTo === 'task' ? 'Call the leasing office tomorrow 9am' : 'A task, a thought, a link…'}" value="${esc(MD.cap)}"><button class="btn primary" type="submit">${MD.capTo === 'event' ? 'Add to Calendar' : 'Add'}</button></div>
       ${whenHtml()}
@@ -7606,10 +7600,6 @@
         bump('link'); status('Saved to Read later.'); load();
       } else if (MD.capTo === 'note') {
         d.notes.push({ t, at: Date.now() }); bump('note'); status('Kept for tonight’s journal.');
-      } else if (MD.capTo === 'big3') {
-        const open = d.big3.findIndex(x => !x?.t);
-        if (open < 0 && d.big3.length >= 3) { MD.cap = t; status('Today’s Big 3 is full. Finish or clear one first.', true); }
-        else { if (open >= 0) d.big3[open] = { t, done: false }; else d.big3.push({ t, done: false }); bump('big3'); }
       } else if (MD.capTo === 'event') {
         const w = mdWhenRead(); if (!w) { MD.cap = t; status('Pick a date for the event.', true); mdRender(); return; }
         const title = MD.when?.found ? MD.when.title : t;
@@ -7626,32 +7616,15 @@
   }
 
   // ---- your compass
-  // Your compass shows one day's Big 3: today, or a day you page to with ‹ › (three weeks back, two weeks ahead)
-  const cpKey = () => (!mdEvening() && MD.cpDay) || dayKey();
-  function cpLabel(k) {
-    const t = dayKey(), d = new Date(k + 'T00:00');
-    if (k === t) return 'Today’s Big 3';
-    if (k === dayKey(addDays(new Date(), 1))) return 'Tomorrow’s Big 3';
-    if (k === dayKey(addDays(new Date(), -1))) return 'Yesterday’s Big 3';
-    return 'Big 3 for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-  }
+  // Your compass is now just this morning's ritual: the Big 3 came out on Nov 21 and the goals on Nov 21 too
+  // (both David's calls). No ritual set, no tile; "Rituals and goals" sits with the view links at the top.
   function compassHtml() {
-    const c = cmp(), k = cpKey(), isToday = k === dayKey(), past = k < dayKey(), d = mdPeek(k), b3 = d?.big3 || [];
-    const rows = [0, 1, 2].map(n => {
-      const x = b3[n];
-      if (x?.t) return `<div class="cp-row"><button class="cp-task${x.done ? ' done' : ''}" type="button" aria-pressed="${!!x.done}" data-md="b3" data-n="${n}"><span class="cp-box" aria-hidden="true">${x.done ? '✓' : ''}</span><span class="cp-t">${esc(x.t)}</span></button><button class="icon cp-x" type="button" data-md="b3x" data-n="${n}" aria-label="Clear ${esc(x.t)}" title="Clear">×</button></div>`;
-      if (past) return '';
-      return `<input class="n-field cp-in" type="text" maxlength="140" data-md="b3in" data-n="${n}" placeholder="${[isToday ? 'The one thing that matters most today' : 'The one thing that matters most that day', 'A second thing', 'And a third'][n]}" aria-label="Big 3, number ${n + 1}">`;
-    }).join('') || '<p class="day-note">No Big 3 that day.</p>';
-    const morning = isToday && c.rituals.m.length ? (() => {
-      const done = d?.rm || [], all = c.rituals.m.every((_, i) => done[i]);
-      return `<div class="cp-lab">Morning ritual${all ? ' · done' : ''}</div><div class="cp-list">${c.rituals.m.map((t, i) => `<button class="cp-task sm${done[i] ? ' done' : ''}" type="button" aria-pressed="${!!done[i]}" data-md="rit" data-r="rm" data-n="${i}"><span class="cp-box" aria-hidden="true">${done[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>`;
-    })() : '';
-    const lo = dayKey(addDays(new Date(), -20)), hi = dayKey(addDays(new Date(), 14));
+    const c = cmp(), d = mdPeek(dayKey());
+    if (!c.rituals.m.length) return '';
+    const done = d?.rm || [], all = c.rituals.m.every((_, i) => done[i]);
     return `<section class="b-panel b-cp" aria-label="Your compass">
-      <div class="bp-head"><h3 class="b-sub">Your compass</h3><span class="mc-nav">${isToday ? '' : '<button class="linkish" type="button" data-md="cpday" data-n="0">Today</button>'}<button class="mc-arrow" type="button" data-md="cpday" data-n="-1" aria-label="Day before"${k <= lo ? ' disabled' : ''}>‹</button><button class="mc-arrow" type="button" data-md="cpday" data-n="1" aria-label="Day after"${k >= hi ? ' disabled' : ''}>›</button></span></div>
-      <div class="cp-lab">${esc(cpLabel(k))}</div><div class="cp-list">${rows}</div>
-      ${morning}
+      <div class="bp-head"><h3 class="b-sub">Morning ritual</h3>${all ? '<span class="bp-meta">Done</span>' : ''}</div>
+      <div class="cp-list">${c.rituals.m.map((t, i) => `<button class="cp-task sm${done[i] ? ' done' : ''}" type="button" aria-pressed="${!!done[i]}" data-md="rit" data-r="rm" data-n="${i}"><span class="cp-box" aria-hidden="true">${done[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>
       <p class="cp-foot"><button class="linkish" type="button" data-md="edit">Rituals and goals</button></p>
     </section>`;
   }
@@ -7665,35 +7638,23 @@
 
   // ---- evening
   function eveningTodayHtml() {
-    const c = cmp(), d = mdPeek(dayKey()) || {}, b3 = (d.big3 || []).map((x, n) => ({ ...x, n })).filter(x => x.t), tm = mdPeek(tomorrowKey())?.big3 || [];
-    const done = b3.filter(x => x.done).length;
-    const rows = b3.length ? b3.map(x => `<div class="ev-row${x.done ? ' done' : ''}"><button class="cp-task flat${x.done ? ' done' : ''}" type="button" aria-pressed="${!!x.done}" data-md="b3" data-n="${x.n}"><span class="cp-box" aria-hidden="true">${x.done ? '✓' : ''}</span><span class="cp-t">${esc(x.t)}</span></button>
-        ${!x.done ? (x.moved || tm.some(y => y?.t === x.t) ? '<span class="ev-moved">On tomorrow’s list</span>' : `<button class="linkish ev-move" type="button" data-md="move" data-n="${x.n}">Move to tomorrow</button>`) : ''}</div>`).join('')
-      : '<p class="day-note">No Big 3 today.</p>';
+    const c = cmp(), d = mdPeek(dayKey()) || {};
     const rit = c.rituals.e.length ? `<div class="cp-lab">Evening ritual</div><div class="cp-list">${c.rituals.e.map((t, i) => `<button class="cp-task sm${d.re?.[i] ? ' done' : ''}" type="button" aria-pressed="${!!d.re?.[i]}" data-md="rit" data-r="re" data-n="${i}"><span class="cp-box" aria-hidden="true">${d.re?.[i] ? '✓' : ''}</span><span class="cp-t">${esc(t)}</span></button>`).join('')}</div>`
       : `<p class="day-note">An evening ritual is a few small things you do to close the day. <button class="b-link" type="button" data-md="edit">Add yours</button></p>`;
     const notes = d.notes?.length ? `<div class="cp-lab">For tonight’s journal</div><ul class="ev-notes">${d.notes.map(x => `<li>${esc(x.t)} <time>${esc(new Date(x.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</time></li>`).join('')}</ul>` : '';
     const dayone = doPrefs().on ? `<div class="day-foot"><button class="btn day-one" type="button" data-md="dayone-today">${DAYONE_ICON}Write today’s page in Day One</button></div>` : '';
     return `<section class="b-panel b-cp" aria-label="How today went">
-      <div class="bp-head"><h3 class="b-sub">How today went</h3><span class="bp-meta">${b3.length ? `${done} of ${b3.length} done` : ''}</span></div>
-      <div class="cp-list">${rows}</div>${rit}${notes}${dayone}</section>`;
+      <div class="bp-head"><h3 class="b-sub">How today went</h3></div>
+      ${rit}${notes}${dayone}</section>`;
   }
   function planTomorrowHtml() {
-    const c = cmp(), tm = mdPeek(tomorrowKey())?.big3 || [], today = mdPeek(dayKey())?.big3 || [];
     const t = addDays(new Date(), 1);
+    if (!dayOn() || !dayPrefs().cal) return '';
     if (!MD.tmr || MD.tmr.day !== dayKey(t) || Date.now() - MD.tmr.at > 15 * 60 * 1000) setTimeout(loadTomorrow, 0);
-    const ideas = c.goals.filter(g => !tm.some(x => x?.t === g.title)).slice(0, 3);
     const ev = MD.tmr?.events || [];
-    return `<section class="b-panel b-tm" aria-label="Plan tomorrow">
-      <div class="bp-head"><h3 class="b-sub">Plan tomorrow</h3><span class="bp-meta">${esc(t.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}</span></div>
-      <div class="cp-lab">Tomorrow’s Big 3</div>
-      <div class="tm-list">${[0, 1, 2].map(n => {
-        const x = tm[n], moved = x?.t && today.some(y => y?.t === x.t && !y.done);
-        return `<label class="tm-in"><span class="tm-n" aria-hidden="true">${n + 1}</span><input class="search" type="text" maxlength="140" data-md="tmin" data-n="${n}" value="${esc(x?.t || '')}" placeholder="${n === 0 ? 'The one thing that matters most' : n === 1 ? 'A second thing' : 'One more thing that matters'}" aria-label="Tomorrow’s Big 3, number ${n + 1}">${moved ? '<small>moved from today</small>' : ''}</label>`;
-      }).join('')}</div>
-      ${ideas.length ? `<p class="tm-tip">Ideas from your goals: ${ideas.map(g => `<button class="b-link" type="button" data-md="idea" data-t="${esc(g.title)}">${esc(g.title)}</button>`).join(' · ')}</p>` : ''}
-      ${dayOn() && dayPrefs().cal ? `<div class="cp-lab">Tomorrow’s calendar</div>${ev.length ? `<ul class="day-ev">${ev.slice(0, 6).map(e => `<li><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>` : `<p class="day-note">${MD.tmr ? 'Nothing on the calendar tomorrow.' : 'Looking at tomorrow…'}</p>`}` : ''}
-      <div class="day-foot"><button class="btn primary" type="button" data-md="savetm">Save tomorrow’s plan</button></div></section>`;
+    return `<section class="b-panel b-tm" aria-label="Tomorrow">
+      <div class="bp-head"><h3 class="b-sub">Tomorrow</h3><span class="bp-meta">${esc(t.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}</span></div>
+      ${ev.length ? `<ul class="day-ev">${ev.slice(0, 8).map(e => `<li><time>${e.all_day ? 'All day' : esc(hm(e.start))}</time><span><b>${esc(e.title || 'Event')}</b>${e.location || e.calendar ? `<small>${esc([e.location, e.calendar].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul>` : `<p class="day-note">${MD.tmr ? 'Nothing on the calendar tomorrow.' : 'Looking at tomorrow…'}</p>`}</section>`;
   }
   async function loadTomorrow() {
     if (!dayOn() || !dayPrefs().cal || MD.tmrBusy) return;
@@ -7725,22 +7686,19 @@
     return `<section class="brief myday md-week" aria-label="Weekly Preview">${head}${panes[step](wk, w)}${nav}</section>`;
   }
   function wkStats(wk) {
-    let b = 0, bt = 0, r = 0, rt = 0;
+    let r = 0, rt = 0;
     const c = cmp(), perDay = wk.days.map(d => {
-      const x = mdPeek(dayKey(d)), b3 = (x?.big3 || []).filter(y => y?.t), n = b3.filter(y => y.done).length;
-      b += n; bt += b3.length;
+      const x = mdPeek(dayKey(d));
       const rits = c.rituals.m.length + c.rituals.e.length;
       if (rits && d <= new Date()) { rt += rits; r += (x?.rm || []).filter(Boolean).length + (x?.re || []).filter(Boolean).length; }
-      return { d, n, planned: b3.length };
+      return { d };
     });
-    return { perDay, b, bt, r, rt };
+    return { perDay, r, rt };
   }
   function wkLookBack(wk, w) {
     const s = wkStats(wk);
-    const bars = s.perDay.map(x => `<span class="wk-day" title="${esc(x.d.toLocaleDateString(undefined, { weekday: 'long' }))}: ${x.n} of ${x.planned} done"><i style="height:${Math.max(x.planned ? 4 : 0, x.n * 16)}px"></i><b>${esc(x.d.toLocaleDateString(undefined, { weekday: 'narrow' }))}</b></span>`).join('');
     return `<div class="md-grid"><section class="b-panel" aria-label="Look back">
-        <div class="bp-head"><h3 class="b-sub">Look back</h3><span class="bp-meta">Big 3: ${s.b} of ${s.bt} done${s.rt ? ` · rituals ${s.r} of ${s.rt}` : ''}</span></div>
-        <div class="wk-days" role="img" aria-label="Big 3 done each day">${bars}</div>
+        <div class="bp-head"><h3 class="b-sub">Look back</h3>${s.rt ? `<span class="bp-meta">Rituals: ${s.r} of ${s.rt} done</span>` : ''}</div>
         <label class="cp-lab" for="wkWins">Wins this week</label>
         <textarea id="wkWins" class="search wk-ta" rows="4" data-md="wk" data-k="wins" placeholder="Big or small. What went right?">${esc(w.wins || '')}</textarea>
         <label class="cp-lab" for="wkHard">What got in the way</label>
@@ -7750,10 +7708,8 @@
         <div class="bp-head"><h3 class="b-sub">From your week</h3></div>
         ${(() => {
           const notes = wk.days.flatMap(d => (mdPeek(dayKey(d))?.notes || []).map(x => ({ ...x, d })));
-          const big = wk.days.flatMap(d => (mdPeek(dayKey(d))?.big3 || []).filter(x => x?.t && x.done).map(x => ({ ...x, d })));
-          return (big.length ? `<div class="cp-lab">Big 3 you finished</div><ul class="ev-notes">${big.slice(0, 12).map(x => `<li>${esc(x.t)} <time>${esc(x.d.toLocaleDateString(undefined, { weekday: 'short' }))}</time></li>`).join('')}</ul>` : '')
-            + (notes.length ? `<div class="cp-lab">Notes you put down</div><ul class="ev-notes">${notes.slice(-12).map(x => `<li>${esc(x.t)} <time>${esc(x.d.toLocaleDateString(undefined, { weekday: 'short' }))}</time></li>`).join('')}</ul>` : '')
-            || '<p class="day-note">The Big 3 you finish and the notes you put down on My Day gather here, to jog your memory.</p>';
+          return (notes.length ? `<div class="cp-lab">Notes you put down</div><ul class="ev-notes">${notes.slice(-12).map(x => `<li>${esc(x.t)} <time>${esc(x.d.toLocaleDateString(undefined, { weekday: 'short' }))}</time></li>`).join('')}</ul>` : '')
+            || '<p class="day-note">The notes you put down on My Day gather here, to jog your memory.</p>';
         })()}
       </section></div>`;
   }
@@ -7826,7 +7782,6 @@
     if (w.wins?.trim()) out.push('## Wins\n' + w.wins.trim());
     if (w.hard?.trim()) out.push('## What got in the way\n' + w.hard.trim());
     if (c.goals.length) out.push('## Goals\n' + c.goals.map(g => `- ${goalLine(g, wk.days)}`).join('\n') + (w.track ? `\n\nOn track: ${{ yes: 'yes', mostly: 'mostly', change: 'needs a change' }[w.track]}` : ''));
-    if (s.bt) out.push(`## Big 3\n${s.b} of ${s.bt} done`);
     const steps = c.goals.filter(g => w.steps[g.id]?.trim());
     if (w.focus?.trim() || steps.length) out.push('## Next week\n' + [w.focus?.trim() ? `Focus: ${w.focus.trim()}` : '', ...steps.map(g => `- ${g.title}: ${w.steps[g.id].trim()}`)].filter(Boolean).join('\n'));
     return out.join('\n\n');
@@ -7890,13 +7845,6 @@
   }
 
   // ---- what the page's buttons and fields do
-  function mdSetBig3(k, n, t) {
-    const d = mdDay(k); t = (t || '').trim();
-    while (d.big3.length < n) d.big3.push({ t: '', done: false });
-    if (t) d.big3[n] = { ...(d.big3[n] || {}), t, done: d.big3[n]?.t === t ? !!d.big3[n].done : false };
-    else d.big3[n] = { t: '', done: false };
-    while (d.big3.length && !d.big3[d.big3.length - 1].t) d.big3.pop();
-  }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-md]'); if (!b || !b.closest('.myday, #compassPanel')) return;
     const k = b.dataset.md, d = () => mdDay(), n = Number(b.dataset.n);
@@ -7908,28 +7856,9 @@
     if (k === 'capto') { MD.capTo = b.dataset.to; MD.cap = $('mdCapIn')?.value || ''; if (!MD.whenEdited) MD.when = MD.cap ? mdParseWhen(MD.cap) : null; MD.refocus = 'mdCapIn'; mdRender(); return; }
     if (k === 'wantdate') { MD.wantDate = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
     if (k === 'nodate') { MD.wantDate = false; MD.when = null; MD.whenEdited = true; MD.cap = $('mdCapIn')?.value || ''; mdRender(); return; }
-    if (k === 'b3') { const x = mdDay(b.closest('.b-cp[aria-label="Your compass"]') ? cpKey() : dayKey()).big3[n]; if (x) { x.done = !x.done; savePrefs(); mdRender(); } return; }
-    if (k === 'cpday') { MD.cpDay = n === 0 ? '' : dayKey(addDays(new Date(cpKey() + 'T00:00'), n)); if (MD.cpDay === dayKey()) MD.cpDay = ''; mdRender(); return; }
-    if (k === 'b3x') { const ck = b.closest('.b-cp[aria-label="Your compass"]') ? cpKey() : dayKey(); mdDay(ck).big3[n] = { t: '', done: false }; mdSetBig3(ck, n, ''); savePrefs(); mdRender(); return; }
     if (k === 'rit') { const arr = d()[b.dataset.r]; arr[n] = !arr[n]; savePrefs(); mdRender(); return; }
     if (k === 'habit') { const h = d().h; h[b.dataset.id] = !h[b.dataset.id]; savePrefs(); mdRender(); return; }
     if (k === 'count') { const g = (S.prefs.compass?.goals || []).find(x => x.id === b.dataset.id); if (g) { g.done = (Number(g.done) || 0) + 1; savePrefs(); mdRender(); } return; }
-    if (k === 'move') {
-      const x = d().big3[n]; if (!x?.t) return;
-      const tm = mdDay(tomorrowKey()).big3, open = tm.findIndex(y => !y?.t);
-      if (open < 0 && tm.length >= 3) { status('Tomorrow’s Big 3 is already full.', true); return; }
-      if (open >= 0) tm[open] = { t: x.t, done: false }; else tm.push({ t: x.t, done: false });
-      x.moved = true; savePrefs(); mdRender(); return;
-    }
-    if (k === 'idea') {
-      const tm = mdDay(tomorrowKey()).big3, open = [0, 1, 2].find(i => !tm[i]?.t);
-      if (open == null) { status('Tomorrow’s Big 3 is already full.', true); return; }
-      mdSetBig3(tomorrowKey(), open, b.dataset.t); savePrefs(); mdRender(); return;
-    }
-    if (k === 'savetm') {
-      document.querySelectorAll('#list [data-md="tmin"]').forEach(i => mdSetBig3(tomorrowKey(), Number(i.dataset.n), i.value));
-      savePrefs(); status('Tomorrow’s plan is saved. It’ll be your Big 3 when you open My Day tomorrow.'); mdRender(); return;
-    }
     if (k === 'dayone-today') { dayOne(eveningPage(), 'Evening'); return; }
     // Weekly Preview
     const wk = mdWeek(), w = mdWk(wk.key);
@@ -7976,8 +7905,6 @@
       if (el.id === 'mdWhenDur') { MD.cap = $('mdCapIn')?.value || MD.cap; mdRender(); }
       return;
     }
-    if (k === 'b3in') { if (el.value.trim()) { mdSetBig3(cpKey(), Number(el.dataset.n), el.value); savePrefs(); mdRender(); } return; }
-    if (k === 'tmin') { mdSetBig3(tomorrowKey(), Number(el.dataset.n), el.value); savePrefs(); return; }
     if (k === 'wk-photo-in') {
       const file = el.files?.[0]; if (!file) return;
       shrinkPhoto(file).then(data => { MD.wkPhoto = { data, alt: '' }; mdRender(); setTimeout(() => $('wkAlt')?.focus(), 50); })
@@ -8003,10 +7930,6 @@
     if (k === 'why') { if (el.dataset.id in w.reads) { w.reads[el.dataset.id] = el.value; mdSaveSoon(); } return; }
     if (k === 'step-in') { w.steps[el.dataset.id] = el.value; mdSaveSoon(); }
   });
-  document.addEventListener('keydown', e => {
-    const el = e.target.closest?.('[data-md="b3in"]');
-    if (el && e.key === 'Enter') { e.preventDefault(); el.blur(); }
-  });
   $('listView')?.addEventListener('focusout', () => { if (S.view === 'myday') setTimeout(() => { if (!mdTyping() && MD.stale) { MD.stale = false; mdRender(); } }, 0); });
 
   // ---- setting your goals, your why and your rituals
@@ -8022,7 +7945,7 @@
         <input class="n-field cm-done" type="number" min="0" max="100000" value="${esc(g.done || 0)}" aria-label="Done so far"${g.kind === 'count' ? '' : ' hidden'}>
         <button class="icon cm-x" type="button" data-cm="del" aria-label="Remove this goal" title="Remove">×</button></div>`;
     const el = sheet('compassPanel', `<h2>Your compass</h2>
-      <p>A few goals for this season, each under a part of your life, and why they matter. They show on My Day with today’s Big 3, and the Weekly Preview looks at them every week. They stay in the app and in your iCloud; nothing here goes on your site.</p>
+      <p>A few goals for this season, each under a part of your life, and why they matter. The Weekly Preview looks at them every week, and they end your Day One page. They stay in the app and in your iCloud; nothing here goes on your site.</p>
       <datalist id="cmAccts">${MD_ACCTS.map(a => `<option value="${a}">`).join('')}</datalist>
       <div class="row"><input class="n-field" id="cmSeason" type="text" maxlength="40" value="${esc(c.season)}" placeholder="This season (or Q4, or 2027)" style="flex:1"></div>
       <h3 class="mk-h">Goals</h3>
@@ -8032,8 +7955,8 @@
       <textarea id="cmWhy" rows="2" maxlength="300" placeholder="One line you want to read every day">${esc(c.why)}</textarea>
       <h3 class="mk-h">Rituals</h3>
       <p class="note">A few small things you do every morning and evening, one per line. You tick them off on My Day.</p>
-      <div class="cm-rits"><label><span>Morning</span><textarea id="cmRm" rows="4" placeholder="10-minute routine&#10;Look at today’s Big 3">${esc(c.rituals.m.join('\n'))}</textarea></label>
-        <label><span>Evening</span><textarea id="cmRe" rows="4" placeholder="Clear the inbox&#10;Plan tomorrow’s Big 3">${esc(c.rituals.e.join('\n'))}</textarea></label></div>
+      <div class="cm-rits"><label><span>Morning</span><textarea id="cmRm" rows="4" placeholder="10-minute routine&#10;Look at today’s calendar">${esc(c.rituals.m.join('\n'))}</textarea></label>
+        <label><span>Evening</span><textarea id="cmRe" rows="4" placeholder="Clear the inbox&#10;Look at tomorrow’s calendar">${esc(c.rituals.e.join('\n'))}</textarea></label></div>
       <h3 class="mk-h">Starting the day</h3>
       <label class="c-net"><input type="checkbox" id="cmMorning"${mdMorningStart() ? ' checked' : ''}>Open on My Day before 10 am</label>
       <div class="row sheet-foot"><button class="btn" type="button" id="cmCancel">Cancel</button><button class="btn primary" type="button" id="cmSave">Save</button></div>`, 'Your compass');

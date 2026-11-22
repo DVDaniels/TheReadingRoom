@@ -572,6 +572,8 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   body.discover-view .reader-empty { display: none !important; }
   body.discover-view #listView { border-right: 0; padding: 0 clamp(28px, 3.5vw, 64px) 56px; align-items: center; }
   body.discover-view #listView > * { width: 100%; max-width: 960px; }
+  /* My Day grows with a big screen: 960px up to a 13" MacBook window, then wider (a 24" iMac gets ~1560px) */
+  body.myday-view.discover-view #listView > * { max-width: clamp(960px, calc(100vw - 680px), 1600px); }
   body.home .tools .search { flex: 0 1 320px; }
   body.home .head h1 { font-size: 40px; }
 
@@ -2212,6 +2214,8 @@ body.home .myday .b-mk, body.home .myday .b-day, .myday .b-panel { grid-area: au
   .myday .mc-dots { display: flex; }
 }
 .myday .mq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+/* A wide quadrant (big screens): the tiles share the whole row, so price and change fit side by side */
+@container mdq (min-width: 640px) { .myday .mq-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
 .brief .mq-tile { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; padding: 10px 11px; border: 1px solid var(--b-line, var(--line)); border-radius: 10px; background: var(--b-bg, var(--bg)); font: inherit; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .brief .mq-tile:hover { border-color: var(--accent); }
 .myday .mq-name { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--b-soft, var(--muted)); min-width: 0; }
