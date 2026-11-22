@@ -2543,3 +2543,38 @@ html.ios .nav .wr-navhead { padding-left: 46px; }
 .writing .wr-undo { margin: 0 0 12px; padding: 9px 14px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
 .writing .wr-drafts .wr-undo { margin: 0 0 8px; font-size: 13px; }
 .writing .wr-more { margin: 10px 0 8px; text-align: center; }
+
+/* Writing › Preview: the post in the reader's type, before it's on your site */
+.sheet.wr-pv { width: min(760px, 100%); gap: 12px; padding: 18px 28px 22px; }
+.wr-pv-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet .wr-pv-k { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.wr-pv-art { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0 24px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.wr-pv-art .r-title { margin: 0; font-family: var(--font-read); font-size: clamp(24px, 4vw, 32px); line-height: 1.2; }
+.sheet .wr-pv-by { font-size: 13px; }
+.wr-pv-pic { margin: 6px 0 0; width: 100%; }
+.wr-pv-pic img { width: 100%; max-height: 420px; object-fit: cover; border-radius: 8px; display: block; }
+.wr-pv-art .prose { width: 100%; margin-top: 6px; }
+.sheet .wr-pv-art .prose p { color: var(--ink); font-size: inherit; line-height: inherit; margin: 0; }
+.sheet .wr-pv-art .prose > * + * { margin-top: 1em; }
+.sheet .wr-pv-art .prose blockquote p { color: var(--muted); }
+.sheet .wr-pv-art .prose .wr-pv-wait { color: var(--muted); font-family: var(--font-ui); font-size: 14px; }
+.sheet .wr-pv-note { font-size: 13px; }
+@media (max-width: 600px) { .sheet.wr-pv { padding: 14px 16px 18px; } .wr-pv-art .prose { font-size: 17px; } }
+/* Writing › calendar: each day is a button; the picked day lists what went on your site */
+.writing button.wr-day { background: none; font: inherit; font-size: 12px; color: inherit; cursor: pointer; padding: 0; }
+.writing button.wr-day:hover { background: var(--accent-soft); }
+.writing button.wr-day.on { background: var(--accent-soft); border-color: var(--accent); }
+.writing button.wr-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.writing .wr-dayl { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--b-line, var(--line)); border-radius: 8px; }
+.writing .wr-dayh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.writing .wr-dayl .day-note { margin: 0; }
+.writing .wr-kind.k-sched { background: none; border: 1px dashed var(--accent); }
+.wr-pv .wr-kind { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; background: var(--accent-soft); color: var(--accent); }
+/* four buttons on a draft (Delete, Preview, Keep writing, Post now) wrap instead of running off a phone screen;
+   the composer's note takes its own line there so its buttons stay together */
+.writing .wr-facts { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 700px) {
+  .writing .wr-facts { justify-content: flex-start; }
+  .writing .wr-facts .btn { flex: 1 1 calc(50% - 4px); }
+  .writing .wr-acts .note { flex-basis: 100%; }
+}

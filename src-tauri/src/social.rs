@@ -2341,17 +2341,58 @@ pub async fn site_post_get(id: i64) -> Result<Value, String> {
     Ok(item)
 }
 
+/// Preview: the words you're writing as they'll go on your site (the same HTML Post sends), cleaned like an
+/// article so the app can show them. A player block shows as a link to the video, since players don't run here.
+#[tauri::command]
+pub fn site_preview(text: String) -> String {
+    let base = secret_get("wordpress").map(|s| st(&s, "site")).unwrap_or_default();
+    preview_html(&note_html(&text), &base)
+}
+
+fn preview_html(html: &str, base: &str) -> String {
+    static EMBED: OnceLock<regex::Regex> = OnceLock::new();
+    let re = EMBED.get_or_init(|| regex::Regex::new(r#"(?s)<figure class="wp-block-embed[^"]*"><div class="wp-block-embed__wrapper">\s*(https?://[^\s<]+)\s*</div>(?:<figcaption[^>]*>.*?</figcaption>)?</figure>"#).unwrap());
+    let html = re.replace_all(html, |c: &regex::Captures| format!(r#"<p><a href="{0}">▶ {0}</a></p>"#, &c[1]));
+    crate::article::clean(&html, if base.is_empty() { "https://example.invalid/" } else { base })
+}
+
+/// Preview a post that's already on your site (a draft, usually): its title, featured image and the words and
+/// pictures as WordPress shows them, cleaned like an article.
+#[tauri::command]
+pub async fn site_post_view(id: i64) -> Result<Value, String> {
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let p = wp(reqwest::Method::GET, &format!("/wp/v2/posts/{id}?context=edit&_embed=wp:featuredmedia"), None).await?;
+    let mut item = writing_item(&p);
+    let title = st(&p, "title.raw");
+    item["title"] = json!(if title.is_empty() { html_text(&st(&p, "title.rendered")) } else { title });
+    let rendered = st(&p, "content.rendered");
+    let html = if rendered.trim().is_empty() { note_html(&html_text(&st(&p, "content.raw"))) } else { rendered };
+    item["html"] = json!(preview_html(&html, &st(&s, "site")));
+    item["edit"] = json!(format!("{}/wp-admin/post.php?post={id}&action=edit", st(&s, "site")));
+    Ok(item)
+}
+
 /// Write a full post on your site from the app: a title, the words (paragraphs, "## " headings, "> " quotes,
 /// links and players, as for notes), categories you pick and an optional featured image. A draft stays on your
 /// site unpublished; `id` updates a post you're still writing. Notes and Weeknotes go through site_note.
 #[tauri::command]
-pub async fn site_post(id: Option<i64>, title: String, text: String, categories: Vec<i64>, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
+pub async fn site_post(id: Option<i64>, title: String, text: String, categories: Vec<i64>, photo: String, alt: String, draft: bool, kind: Option<String>) -> Result<SiteNote, String> {
     if title.trim().is_empty() && text.trim().is_empty() {
         return Err("Write something first.".into());
     }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    // a draft you're finishing in the app can become a Note or Weeknotes: its category, made when missing
+    let mut categories = categories;
+    match kind.as_deref() {
+        Some("note") => categories.push(site_category("notes", "Notes", "Short notes, posted from The Reading Room.").await?),
+        Some("weeknotes") => categories.push(site_category("weeknotes", "Weeknotes", "What happened, what I made and what I read each week.").await?),
+        _ => {}
+    }
+    categories.sort_unstable();
+    categories.dedup();
     let mut post = json!({ "title": title.trim(), "content": note_html(&text), "status": if draft { "draft" } else { "publish" } });
-    if !categories.is_empty() {
+    // a draft being finished always gets its categories, so moving it out of Notes or Weeknotes sticks
+    if !categories.is_empty() || id.is_some_and(|i| i > 0) {
         post["categories"] = json!(categories);
     }
     let mut image = String::new();

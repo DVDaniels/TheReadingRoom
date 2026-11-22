@@ -2597,6 +2597,8 @@ pub fn run() {
             social::site_post,
             social::site_post_publish,
             social::site_post_trash,
+            social::site_preview,
+            social::site_post_view,
             social::site_post_restore,
             social::site_post_gone,
             offline::offline_save,

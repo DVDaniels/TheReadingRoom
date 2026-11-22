@@ -2720,7 +2720,7 @@
   // categories the app already posts into; the other categories come from WordPress, so they always match the site.
   // Likes, reposts and replies still happen on the post you're reading; they show here once they're on your site.
   const WR = { sub: '', cats: null, drafts: null, recent: null, future: null, at: 0, busy: false, err: '', folder: null, folderKey: '', folderBusy: false,
-    cal: null, calKey: '', calMonth: null, draftsMore: false, draftsPage: 1, trashed: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
+    cal: null, calKey: '', calMonth: null, calDay: '', draftsMore: false, draftsPage: 1, trashed: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
   const wrSite = () => SOC.accounts?.wordpress;
   const wrHost = () => (wrSite()?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const wrCat = slug => (WR.cats || []).find(c => c.slug === slug);
@@ -2845,7 +2845,7 @@
     const pic = WR.photo || WR.photoUrl;
     return `<section class="b-panel wr-new" aria-label="New">
       <div class="bp-head"><h3 class="b-sub">${d.editId ? 'Your draft' : 'New'}</h3>${d.editId ? `<span class="bp-meta">Saved on your site · <button class="linkish" type="button" data-wr="clear">Start something new</button></span>` : ''}
-        <div class="wr-kinds" role="group" aria-label="What you’re writing">${Object.entries(WR_KIND).map(([k, l]) => `<button type="button" data-wr="kind" data-k="${k}" aria-pressed="${k === kind}"${d.editId && k !== 'post' ? ' disabled' : ''}>${l}</button>`).join('')}</div></div>
+        <div class="wr-kinds" role="group" aria-label="What you’re writing">${Object.entries(WR_KIND).map(([k, l]) => `<button type="button" data-wr="kind" data-k="${k}" aria-pressed="${k === kind}"${d.editId ? ` title="Make this draft a ${l}"` : ''}>${l}</button>`).join('')}</div></div>
       <input class="wr-title" id="wrTitle" type="text" maxlength="200" autocomplete="off" value="${esc(d.title || '')}" placeholder="${kind === 'note' ? 'Title (optional)' : 'Title'}" aria-label="Title">
       <textarea class="wr-body" id="wrText" rows="${kind === 'note' ? 4 : 9}" placeholder="${kind === 'note' ? 'What’s on your mind?' : kind === 'weeknotes' ? 'What happened this week?' : 'Start writing…'}" aria-label="What you’re writing">${esc(d.text || '')}</textarea>
       <p class="wr-help">${esc(help)}</p>
@@ -2856,6 +2856,7 @@
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
       <div class="wr-acts"><span class="note">${d.text || d.title ? 'Kept on this device as you type' : ''}</span>
+        <button class="btn" type="button" data-wr="preview"${WR.posting ? ' disabled' : ''} title="See how it will look on your site">Preview</button>
         <button class="btn" type="button" data-wr="draft"${WR.posting ? ' disabled' : ''}>${d.editId ? 'Save the draft' : 'Save as a draft on your site'}</button>
         <button class="btn primary" type="button" data-wr="post"${WR.posting ? ' disabled' : ''}>${kind === 'post' ? 'Post now' : kind === 'weeknotes' ? 'Publish' : 'Post'}</button></div></section>`;
   }
@@ -2870,7 +2871,7 @@
   function wrDraftsHtml() {
     const list = WR.drafts;
     const body = !list ? `<p class="day-note">${WR.busy ? 'Looking at your site…' : ''}</p>` : !list.length ? '<p class="day-note">No drafts on your site right now. Save as a draft puts one here.</p>'
-      : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><span class="wr-lacts"><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="b-link wr-dl" type="button" data-wr="trash" data-id="${p.id}">Delete</button></span></li>`).join('')}</ul>
+      : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><span class="wr-lacts"><button class="b-link" type="button" data-wr="pv" data-id="${p.id}">Preview</button><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="b-link wr-dl" type="button" data-wr="trash" data-id="${p.id}">Delete</button></span></li>`).join('')}</ul>
         ${list.length > 4 ? `<p class="day-note"><button class="b-link" type="button" data-wrsub="drafts">All ${list.length} drafts</button></p>` : ''}`;
     return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length ? `${list.length}${WR.draftsMore ? '+' : ''}` : ''}</span></div>${wrUndoHtml()}${body}
       ${list?.length ? '<p class="day-note">Drafts you started here or in WordPress. Finish them in either place.</p>' : ''}</section>`;
@@ -2893,7 +2894,7 @@
   function wrCalHtml() {
     const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
     if (WR.calKey !== `${m.getFullYear()}-${m.getMonth()}` || !WR.cal) setTimeout(() => wrLoadCal(), 0);
-    const marks = new Map(), add = (p, k) => { const d = wrDate(p.date); if (!d) return; const key = dayKey(d); if (!marks.has(key)) marks.set(key, []); marks.get(key).push({ k, t: p.title || p.excerpt?.slice(0, 60) || '' }); };
+    const marks = new Map(), add = (p, k) => { const d = wrDate(p.date); if (!d) return; const key = dayKey(d); if (!marks.has(key)) marks.set(key, []); marks.get(key).push({ k, t: p.title || p.excerpt?.slice(0, 60) || '', p }); };
     for (const p of WR.cal || []) add(p, wrKindOf(p));
     for (const p of WR.future || []) add(p, 'plan');
     const a = addDays(m, -m.getDay()), last = new Date(m.getFullYear(), m.getMonth() + 1, 0), days = [];
@@ -2902,15 +2903,27 @@
     const cells = days.map(d => {
       const k = dayKey(d), ms = marks.get(k) || [], out = d.getMonth() !== m.getMonth();
       const tip = ms.map(x => `${x.k === 'plan' ? 'Scheduled' : WR_KIND[x.k]}: ${x.t}`).join('\n');
-      return `<span class="wr-day${k === today ? ' now' : ''}${out ? ' out' : ''}"${tip ? ` title="${esc(tip)}"` : ''}><i>${d.getDate()}</i>${ms.length ? `<span class="wr-dots">${ms.slice(0, 3).map(x => `<b class="k-${kinds[x.k]}"></b>`).join('')}</span>` : ''}</span>`;
+      const label = `${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}${ms.length ? `, ${ms.length} on your site` : ''}`;
+      return `<button type="button" class="wr-day${k === today ? ' now' : ''}${out ? ' out' : ''}${k === WR.calDay ? ' on' : ''}" data-wr="day" data-day="${k}" aria-pressed="${k === WR.calDay}" aria-label="${esc(label)}"${tip ? ` title="${esc(tip)}"` : ''}><i>${d.getDate()}</i>${ms.length ? `<span class="wr-dots">${ms.slice(0, 3).map(x => `<b class="k-${kinds[x.k]}"></b>`).join('')}</span>` : ''}</button>`;
     }).join('');
     const inMonth = (WR.cal || []).filter(p => { const d = wrDate(p.date); return d && d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear(); }).length;
     const thisMonth = m.getMonth() === new Date().getMonth() && m.getFullYear() === new Date().getFullYear();
     return `<section class="b-panel wr-cal" aria-label="Writing calendar"><div class="bp-head"><h3 class="b-sub">Writing calendar</h3>
         <span class="mc-nav"><button class="mc-arrow" type="button" data-wr="cal" data-n="-1" aria-label="Previous month">‹</button><span class="bp-meta">${esc(m.toLocaleDateString(undefined, { month: 'long', ...(m.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) }))}</span><button class="mc-arrow" type="button" data-wr="cal" data-n="1" aria-label="Next month"${thisMonth ? ' disabled' : ''}>›</button></span></div>
       <div class="wr-grid">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<span class="wr-wd">${x}</span>`).join('')}${cells}</div>
+      ${wrDayHtml(marks)}
       <p class="wr-key"><span><b class="k-p"></b>Post</span><span><b class="k-n"></b>Note</span><span><b class="k-w"></b>Weeknotes</span>${(WR.future || []).length ? '<span><b class="k-plan"></b>Scheduled</span>' : ''}</p>
       <p class="day-note">${!WR.cal ? 'Looking at your site…' : `${inMonth ? `${inMonth} ${inMonth === 1 ? 'thing' : 'things'} on your site ${thisMonth ? 'this month' : 'that month'}.` : `Nothing on your site ${thisMonth ? 'yet this month' : 'that month'}.`}`}</p></section>`;
+  }
+  // a day picked on the calendar: what went on your site that day (David, Nov 22)
+  function wrDayHtml(marks) {
+    if (!WR.calDay) return '';
+    const [y, mo, da] = WR.calDay.split('-').map(Number), d = new Date(y, mo - 1, da);
+    const ms = marks.get(WR.calDay) || [], future = d > new Date();
+    const when = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', ...(y === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+    return `<div class="wr-dayl" role="region" aria-label="${esc(when)}"><div class="wr-dayh"><b>${esc(when)}</b><button class="b-link" type="button" data-wr="day" data-day="">Close</button></div>
+      ${!WR.cal ? '<p class="day-note">Looking at your site…</p>' : ms.length ? `<ul class="wr-plist">${ms.map(x => `<li><span class="wr-kind k-${x.k === 'plan' ? 'sched' : x.k}">${x.k === 'plan' ? 'Scheduled' : WR_KIND[x.k]}</span><span class="wr-pt">${esc(x.t || 'Untitled')}</span><span class="wr-when">${esc((wrDate(x.p.date) || d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span>${x.p.link ? `<button class="b-link" type="button" data-mkurl="${esc(x.p.link)}">View</button>` : ''}</li>`).join('')}</ul>`
+        : `<p class="day-note">${future ? 'Nothing scheduled for that day.' : 'Nothing went on your site that day.'}</p>`}</div>`;
   }
   function wrRecentHtml() {
     const list = (WR.recent || []).slice(0, 8);
@@ -2940,13 +2953,65 @@
         : !list.length ? `<li class="wr-frow"><p class="day-note">${k === 'weeknotes' ? 'No Weeknotes yet. Your first one makes the Weeknotes category on your site.' : k === 'notes' ? 'No notes yet.' : 'Nothing here yet.'}</p></li>`
         : list.map(p => `<li class="wr-frow">${p.image ? `<img class="wr-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="wr-fmain"><b>${esc(p.title || (k === 'drafts' ? 'Untitled draft' : p.excerpt?.slice(0, 80) || ''))}</b>${p.excerpt && p.title ? `<p>${esc(p.excerpt)}</p>` : ''}
           <span class="wr-fmeta">${(p.categories || []).slice(0, 2).map(c => wrCatName(c)).filter(Boolean).map(c => `<span class="wr-kind">${esc(c)}</span>`).join('')}${k === 'drafts' ? `Edited ${esc(wrWhen(p.modified))}` : esc(wrWhen(p.date))}</span></div>
-          <div class="wr-facts">${k === 'drafts' ? `<button class="btn wr-del" type="button" data-wr="trash" data-id="${p.id}">Delete</button><button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
+          <div class="wr-facts">${k === 'drafts' ? `<button class="btn wr-del" type="button" data-wr="trash" data-id="${p.id}">Delete</button><button class="btn" type="button" data-wr="pv" data-id="${p.id}">Preview</button><button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
             : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
     }
     return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
       ${WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : ''}
       ${k === 'drafts' ? wrUndoHtml() : ''}<section class="b-panel wr-folder"><ul class="wr-flist">${rows}</ul>
       ${k === 'drafts' && WR.draftsMore ? `<p class="wr-more"><button class="btn" type="button" data-wr="moredrafts"${WR.folderBusy ? ' disabled' : ''}>${WR.folderBusy ? 'Loading…' : 'Show more drafts'}</button></p>` : ''}</section></section>`;
+  }
+
+  // ---- Preview: the post as it will look, before it's on your site (David, Nov 22). What you're writing is turned
+  // into exactly the HTML Post sends (site_preview); a draft on your site shows as WordPress has it (site_post_view).
+  // Shown in the reader's type, so it reads the way people will read it in The Reading Room.
+  function wrPreviewSheet(v) {
+    const by = [wrSite()?.name || wrHost(), v.when].filter(Boolean).join(' · ');
+    const acts = v.loading ? '' : v.id ? `<button class="btn" type="button" data-wrpv="edit">Keep writing</button><button class="btn primary" type="button" data-wrpv="publish">Post now</button>`
+      : `<button class="btn primary" type="button" data-wrpv="post">${v.kind === 'post' ? 'Post now' : v.kind === 'weeknotes' ? 'Publish' : 'Post'}</button>`;
+    return `<div class="wr-pv-top"><p class="wr-pv-k">Preview · ${esc(v.state)}</p><button class="icon" type="button" data-wrpv="close" aria-label="Close the preview" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <article class="wr-pv-art">${v.kind ? `<span class="wr-kind k-${v.kind}">${WR_KIND[v.kind]}</span>` : ''}
+        ${v.title ? `<h1 class="r-title">${esc(v.title)}</h1>` : ''}<p class="wr-pv-by">${esc(by)}</p>
+        ${v.image ? `<figure class="wr-pv-pic"><img src="${esc(v.image)}" alt="${esc(v.alt || '')}"></figure>` : ''}
+        <div class="prose">${v.loading ? '<p class="wr-pv-wait">Getting the preview…</p>' : v.html || '<p class="wr-pv-wait">Nothing written yet.</p>'}</div></article>
+      ${v.note ? `<p class="wr-pv-note">${esc(v.note)}</p>` : ''}
+      <div class="row sheet-foot"><button class="btn" type="button" data-wrpv="close">${v.id ? 'Close' : 'Back to writing'}</button>${acts}</div>`;
+  }
+  function wrShowPreview(v) {
+    const el = sheet('wrPreview', wrPreviewSheet(v), 'Preview');
+    el.querySelector('.sheet').classList.add('wr-pv');
+    el.onclick = e => {
+      const b = e.target.closest('[data-wrpv]');
+      if (!b) { const a = e.target.closest('.prose a[href]'); if (a) { e.preventDefault(); invoke('open_external', { url: a.href }).catch(() => {}); } return; }
+      const k = b.dataset.wrpv; el.hidden = true;
+      if (k === 'post') wrPost(false);
+      if (k === 'edit') wrEdit(v.id);
+      if (k === 'publish') wrPublishDraft(v.id);
+    };
+    el.onkeydown = e => { if (e.key === 'Escape') { e.stopPropagation(); el.hidden = true; } };
+    if (!v.loading) el.querySelector('[data-wrpv="close"]')?.focus();
+    return el;
+  }
+  async function wrPreviewNew() {
+    const d = wrDraftGet(), kind = wrKind(), text = (d.text || '').trim();
+    let title = (d.title || '').trim();
+    const note = kind === 'note' && !title && text ? 'Without a title, your note’s first words are used as its title on your site.' : kind !== 'note' && !title ? 'Give it a title before you post it.' : '';
+    const base = { kind, title, image: WR.photo || WR.photoUrl, alt: WR.alt, state: d.editId ? `your draft on ${wrHost()}, with your latest changes` : 'not on your site yet', when: 'today', note };
+    const el = wrShowPreview({ ...base, loading: true });
+    try {
+      const html = text ? await invoke('site_preview', { text }) : '';
+      if (!el.hidden) { wrShowPreview({ ...base, html }); }
+    } catch (e) { if (!el.hidden) wrShowPreview({ ...base, html: `<p class="wr-pv-wait">${esc(msg(e))}</p>` }); }
+  }
+  async function wrPreviewDraft(id) {
+    if (wrDraftGet().editId === id) return wrPreviewNew(); // the draft open here: show it with your latest changes
+    const p0 = (WR.drafts || []).find(x => x.id === id) || {};
+    const base = { id, kind: '', title: p0.title || 'Untitled draft', image: p0.image, state: `a draft on ${wrHost()}`, when: p0.modified ? `edited ${wrWhen(p0.modified)}` : '' };
+    const el = wrShowPreview({ ...base, loading: true });
+    try {
+      const p = await invoke('site_post_view', { id });
+      if (!el.hidden) wrShowPreview({ ...base, kind: wrKindOf(p), title: p.title || 'Untitled draft', image: p.image || '', html: p.html, note: p.categories?.length ? `In ${p.categories.map(wrCatName).filter(Boolean).join(', ')} once it’s posted.` : '' });
+    } catch (e) { if (!el.hidden) wrShowPreview({ ...base, html: `<p class="wr-pv-wait">${esc(msg(e))}</p>` }); }
   }
 
   // ---- doing things
@@ -2984,27 +3049,43 @@
   }
   function wrClear() { wrDraftSet({ kind: wrKind() === 'weeknotes' ? 'post' : wrKind() }); WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; }
   function wrToTop() { WR.sub = ''; WR.trashed = null; renderHead(); renderRail(); wrPaint(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); }
-  function wrStartWeeknotes() {
+  // A draft from your site that's open here is saved back to your site before something else takes its place,
+  // so nothing you changed is lost (David, Nov 22: "I was not able to click Weeknotes while in a draft").
+  async function wrPutAside() {
+    const d = wrDraftGet(); if (!d.editId) return true;
+    const kind = wrKind();
+    try {
+      status('Saving your draft on your site…');
+      await invoke('site_post', { id: d.editId, title: (d.title || '').trim(), text: (d.text || '').trim(), categories: kind === 'post' && d.cat ? [Number(d.cat)] : [], photo: WR.photo, alt: WR.alt.trim(), draft: true, kind });
+      status(`Saved “${(d.title || '').trim() || 'your draft'}” in your drafts.`); wrLoad(true); return true;
+    } catch (e) { status(`Couldn’t save your draft first: ${msg(e)}`, true); return false; }
+  }
+  async function wrStartWeeknotes() {
     const wk = mdWeek(), w = mdWk(wk.key), d = wrDraftGet();
-    if (d.editId || ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.'))) { if (d.editId) { status('Save or finish your draft first, then start your Weeknotes.'); return; } else return; }
-    const text = d.kind === 'weeknotes' && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || '## What happened\n\n\n\n## What I made\n\n\n\n## What I read\n\n');
+    if (d.editId) { if (!(await wrPutAside())) return; }
+    else if ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.')) return;
+    const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || '## What happened\n\n\n\n## What I made\n\n\n\n## What I read\n\n');
     wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
     wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
   }
   async function wrEdit(id) {
-    if ((wrDraftGet().text || '').trim() && wrDraftGet().editId !== id && !confirm('Put aside what you’re writing and open this draft? Save what you have as a draft first if you want to keep it.')) return;
+    const o = wrDraftGet();
+    if (o.editId && o.editId !== id) { if (!(await wrPutAside())) return; }
+    else if (!o.editId && (o.text || '').trim() && !confirm('Put aside what you’re writing and open this draft? Save what you have as a draft first if you want to keep it.')) return;
     status('Opening your draft…');
     try {
       const p = await invoke('site_post_get', { id });
       if (!p.simple) { invoke('open_external', { url: p.edit }).catch(() => {}); status('This draft has pictures or other blocks, so it opens in WordPress, where nothing in it gets lost.'); return; }
       const nid = wrCat('notes')?.id, wid = wrCat('weeknotes')?.id;
       const cat = (p.categories || []).find(c => c !== nid && c !== wid) || '';
-      wrDraftSet({ kind: 'post', title: p.title || '', text: p.text || '', cat, editId: id, keepCats: (p.categories || []).filter(c => c === nid || c === wid) });
+      const kind = nid && (p.categories || []).includes(nid) ? 'note' : wid && (p.categories || []).includes(wid) ? 'weeknotes' : 'post';
+      wrDraftSet({ kind, title: p.title || '', text: p.text || '', cat, editId: id });
       WR.photo = ''; WR.photoUrl = p.image || ''; WR.alt = ''; wrSay('');
       status(''); wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
     } catch (e) { status(msg(e), true); }
   }
   async function wrPublishDraft(id) {
+    if (wrDraftGet().editId === id) return wrPost(false); // the draft open here: post it with your latest changes
     const p = (WR.drafts || []).find(x => x.id === id);
     if (!confirm(`Publish “${p?.title || 'this draft'}” on your site now? Everyone who follows your blog will see it.`)) return;
     try {
@@ -3025,13 +3106,13 @@
     WR.posting = true; wrSay(draft ? 'Saving the draft…' : `Posting to ${wrHost()}…`); wrPaint();
     try {
       let r;
-      if (kind === 'post') {
-        const cats = [...new Set([...(d.keepCats || []), ...(d.cat ? [Number(d.cat)] : [])])];
-        r = await invoke('site_post', { id: d.editId || null, title, text: words, categories: cats, photo: WR.photo, alt: WR.alt.trim(), draft });
+      if (kind === 'post' || d.editId) {
+        const cats = kind === 'post' && d.cat ? [Number(d.cat)] : [];
+        r = await invoke('site_post', { id: d.editId || null, title, text: words, categories: cats, photo: WR.photo, alt: WR.alt.trim(), draft, kind });
       } else {
         r = await invoke('site_note', { title, text: words, link: '', linkTitle: '', photo: WR.photo, alt: WR.alt.trim(), draft, linkImage: '', linkSite: '', category: kind === 'weeknotes' ? 'weeknotes' : null, featuredOnly: kind === 'weeknotes' });
       }
-      if (draft && kind === 'post') {
+      if (draft && (kind === 'post' || d.editId)) {
         // a post saved as a draft stays open here, so the next save updates the same draft
         wrDraftSet({ ...d, editId: r.id }); if (r.image) { WR.photoUrl = r.image; WR.photo = ''; }
         wrSay('Saved to your drafts on your site. Keep writing, or finish it later here or in WordPress.');
@@ -3068,25 +3149,35 @@
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
     if (k === 'back') { wrToTop(); return; }
     if (k === 'reload') { WR.err = ''; WR.folderKey = ''; wrLoad(true); return; }
-    if (k === 'kind') { const d = wrDraftGet(); if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet({ ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
+    if (k === 'kind') { const d = wrDraftGet(); if (d.editId) { wrDraftSet({ ...d, kind: b.dataset.k }); wrSay(`Saves as ${b.dataset.k === 'note' ? 'a Note' : b.dataset.k === 'weeknotes' ? 'Weeknotes' : 'a Post'} on your site.`); wrPaint(); return; } if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet({ ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }
     if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
     if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
+    if (k === 'preview') { wrPreviewNew(); return; }
+    if (k === 'pv') { wrPreviewDraft(id); return; }
     if (k === 'post' || k === 'draft') { wrPost(k === 'draft'); return; }
     if (k === 'edit') { wrEdit(id); return; }
     if (k === 'publish') { wrPublishDraft(id); return; }
     if (k === 'trash') { wrTrash(id); return; }
     if (k === 'untrash') { wrUntrash(); return; }
     if (k === 'moredrafts') { wrMoreDrafts(); return; }
-    if (k === 'cal') { const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })(); WR.calMonth = new Date(m.getFullYear(), m.getMonth() + Number(b.dataset.n), 1); WR.cal = null; wrPaint(); return; }
+    if (k === 'day') {
+      const day = b.dataset.day && b.dataset.day !== WR.calDay ? b.dataset.day : '';
+      // a grey day from the month before or after: go to that month, with the day picked
+      if (day) { const [y, mo] = day.split('-').map(Number), m = WR.calMonth || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        if (y !== m.getFullYear() || mo - 1 !== m.getMonth()) { const t = new Date(y, mo - 1, 1), now = new Date(); if (t > now) return; WR.calMonth = t; WR.cal = null; } }
+      WR.calDay = day; wrPaint(); return;
+    }
+    if (k === 'cal') { WR.calDay = ''; const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })(); WR.calMonth = new Date(m.getFullYear(), m.getMonth() + Number(b.dataset.n), 1); WR.cal = null; wrPaint(); return; }
     if (k === 'idea-x') { S.prefs.ideas = wrIdeas().filter(i => i.id !== b.dataset.id); savePrefs(); wrPaint(); renderRail(); return; }
     if (k === 'idea-write') {
       const idea = wrIdeas().find(i => i.id === b.dataset.id); if (!idea) return;
       const d = wrDraftGet();
-      if (d.editId || ((d.text || '').trim() && !confirm('Put aside what you’re writing and start this idea? Save what you have as a draft first if you want to keep it.'))) { if (d.editId) status('Save or finish your draft first, then start this idea.'); return; }
-      wrDraftSet({ kind: 'post', title: idea.t, text: '', idea: idea.id }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
-      wrToTop(); setTimeout(() => $('wrText')?.focus(), 0); return;
+      const go = () => { wrDraftSet({ kind: 'post', title: idea.t, text: '', idea: idea.id }); WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; wrToTop(); setTimeout(() => $('wrText')?.focus(), 0); };
+      if (d.editId) { wrPutAside().then(ok => ok && go()); return; }
+      if ((d.text || '').trim() && !confirm('Put aside what you’re writing and start this idea? Save what you have as a draft first if you want to keep it.')) return;
+      go(); return;
     }
   });
   document.addEventListener('submit', e => {
