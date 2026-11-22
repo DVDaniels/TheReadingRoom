@@ -6,8 +6,8 @@ MY DAY, WIDER AND SIMPLER
 • In the evening, How today went has your evening ritual, your notes and the Day One button. Tomorrow shows tomorrow's calendar.
 • The Weekly Preview and the Day One pages no longer mention the Big 3.
 
-YOUR BLOG (if you post to your own WordPress site from the app)
-• A new row on My Day with your visitors, RSS readers and search traffic. It only shows when your site has The Reading Room's stats installed; otherwise you won't see it.
+YOUR BLOG (if you connect your own WordPress site)
+• A new row on My Day with your visitors, RSS readers and search traffic. It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Without it, My Day shows where to get it. Counting starts the day you turn the plugin on.
 
 IPHONE SIDEBAR
 • Folding a section (Read, Explore, Library or Feeds) now hides everything in it, even the page you were just on.

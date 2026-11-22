@@ -7439,15 +7439,15 @@
       <div class="mq-grid">${tiles}</div><p class="mc-tip">${kind === 'stock' ? 'Finnhub; may be delayed.' : 'CoinGecko.'} Not investment advice.</p></section>`;
   }
   // ---- Your blog: visitors, RSS readers and search traffic for your own site (Rust blog_stats → the site's
-  // /wp-json/reading-room/v1/stats, from "The Reading Room stats" snippet). Shape: { site, at,
-  //   visitors: { total, prev, window, through, days: [{d, n}] }, top: [{title, url, n}],
+  // /wp-json/reading-room/v1/stats, from the free "The Reading Room stats" plugin, or David's older snippet). Shape: { site, at,
+  //   visitors: { total, prev, window, through, days: [{d, n}], label ('visits' from the plugin; people otherwise), source (a caption) }, top: [{title, url, n}],
   //   rss: { total, prev, since, apps: [{name, n}] }, search: { clicks, prevClicks, impressions, position, window, through, queries: [{q, clicks, pos}] } }
-  // Any part can be missing; a site without the snippet gives null and the panel isn't shown.
-  const BLOG = { data: null, at: 0, busy: false, failed: false };
+  // Any part can be missing. A connected site without the plugin gives null: the panel offers the plugin instead.
+  const BLOG = { data: null, at: 0, busy: false, failed: false, loaded: false };
   async function loadBlog() {
     if (BLOG.busy || (BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
     BLOG.busy = true;
-    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); }
+    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.loaded = true; BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); }
     catch { BLOG.failed = true; }
     finally { BLOG.busy = false; }
   }
@@ -7463,6 +7463,9 @@
       <p class="day-note">See your blog’s visitors, RSS readers and search traffic here every day with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.data && !BLOG.failed) setTimeout(() => loadBlog(), 0);
     const b = BLOG.data;
+    // Connected to a WordPress site that doesn't have the plugin: say where to get it
+    if (!b && BLOG.loaded && SOC.accounts?.wordpress) return `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
+      <p class="day-note">Your blog’s visitors, RSS readers and search traffic can show here. Add the free plugin The Reading Room stats to your WordPress site. <button class="b-link" type="button" data-mkurl="https://readingroomapp.com/plugin/">Get the plugin</button></p></section>`;
     if (!b || !(b.visitors || b.rss || b.search)) return '';
     const v = b.visitors, days = v?.days || [], max = Math.max(1, ...days.map(x => x.n));
     const bars = days.map((x, i) => { const h = Math.max(2, Math.round(x.n / max * 46));
@@ -7472,8 +7475,8 @@
     const q = (b.search?.queries || []).slice(0, 4).map(x => `<li><span class="bl-q">${esc(x.q)}</span><span class="bl-n">${x.clicks}</span><span class="bl-pos" title="Average spot in Google">#${Math.round(x.pos)}</span></li>`).join('');
     const top = (b.top || []).slice(0, 3).map(t => `<li><button class="b-link" type="button" data-mkurl="${esc(t.url)}">${esc(t.title)}</button><span class="bl-n">${t.n}</span></li>`).join('');
     const rssDiff = b.rss?.prev != null ? b.rss.total - b.rss.prev : null;
-    const vcol = v ? `<div class="bl-col"><h4>Visitors</h4><p class="bl-big">${nfmt(v.total)} <small>people, ${v.window || 28} days</small></p><p class="bl-sub">${delta(v.total, v.prev, `vs. the ${v.window || 28} days before`)}</p>
-          ${bars ? `<svg class="bl-bars" viewBox="0 0 ${days.length * 10} 48" preserveAspectRatio="none" role="img" aria-label="Visits each day, the last ${days.length} days">${bars}</svg><p class="bl-cap">Visits each day${v.through ? `, through ${esc(blDay(v.through))}` : ''}. From Google Analytics.</p>` : ''}
+    const vcol = v ? `<div class="bl-col"><h4>Visitors</h4><p class="bl-big">${nfmt(v.total)} <small>${v.label === 'visits' ? 'visits' : 'people'}, ${v.window || 28} days</small></p><p class="bl-sub">${delta(v.total, v.prev, `vs. the ${v.window || 28} days before`)}</p>
+          ${bars ? `<svg class="bl-bars" viewBox="0 0 ${days.length * 10} 48" preserveAspectRatio="none" role="img" aria-label="Visits each day, the last ${days.length} days">${bars}</svg><p class="bl-cap">Visits each day${v.through ? `, through ${esc(blDay(v.through))}` : ''}. ${v.source ? esc(v.source) : 'From Google Analytics'}.</p>` : ''}
           ${top ? `<h5>Read most</h5><ul class="bl-list">${top}</ul>` : ''}</div>` : '';
     const rcol = b.rss ? `<div class="bl-col"><h4>RSS readers</h4><p class="bl-big">${nfmt(b.rss.total)} <small>following</small></p><p class="bl-sub">${rssDiff != null ? `<span class="bl-d ${rssDiff > 0 ? 'up' : rssDiff < 0 ? 'down' : 'flat'}">${rssDiff > 0 ? '+' : rssDiff < 0 ? '−' : '±'}${Math.abs(rssDiff)}</span> <span class="bl-vs">since a week ago</span>` : ''}</p>
           ${appRows ? `<ul class="bl-apps">${appRows}</ul>` : ''}<p class="bl-cap">An estimate from what feed readers tell your site when they check your feed${b.rss.since ? `, counting since ${esc(blDay(b.rss.since))}` : ''}.</p></div>` : '';
