@@ -628,7 +628,7 @@
   function emptyText() {
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'email') return MAIL.account ? (S.unreadOnly ? ['No unread email', 'Switch to “All” to see email you’ve read, or press Refresh.'] : ['No email yet', 'Press Refresh to check your inbox.']) : ['', ''];
-    if (S.view === 'videos') return S.vchan && S.unreadOnly ? ['You’ve watched everything from this channel', 'Switch to “All videos” to see them again.'] : S.unreadOnly && S.items.some(isVideoItem) ? ['You’ve watched everything', 'Switch to “All videos” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a YouTube channel: paste its address, or a link to any of its videos, into Add feed. Channels the people you read share show up above.'];
+    if (S.view === 'videos') return S.vchan && S.unreadOnly ? ['You’ve watched everything from this channel', 'Switch to “All videos” to see them again.'] : S.unreadOnly && S.items.some(isVideoItem) ? ['You’ve watched everything', 'Switch to “All videos” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a channel to start with above, or paste any YouTube channel’s address, or a link to one of its videos, into Add feed. Channels the people you read share show up above too.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
     if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
@@ -876,7 +876,7 @@
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? myChannelsHtml() + (S.q || S.vchan ? '' : sharedChannelsHtml()) : briefHtml();
+    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? myChannelsHtml() + (S.q || S.vchan ? '' : starterChannelsHtml() + sharedChannelsHtml()) : briefHtml();
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
@@ -2303,6 +2303,23 @@
         <div class="vchan-body"><b>${esc(c.name)}</b><span>Shared by ${esc(who(c))}</span>
         <div class="t-acts"><button class="btn" type="button" data-vfollow="${esc(c.url)}" data-vname="${esc(c.name)}">Follow</button>${VID.err[c.url] ? `<span class="fol-err">${esc(VID.err[c.url])}</span>` : ''}</div></div></article>`;
     }).join('')}</div></section>`;
+  }
+  // Channels to start with: shown in Videos while you follow only a few YouTube channels, so a new Videos view isn't
+  // empty (David, Nov 22: add iJustine and Chris Pirillo "to the video blogroll for new users downloading the app").
+  const VIDEO_STARTERS = [
+    ['UCey_c7U86mJGz1VJWH5CYPA', 'iJustine', 'Tech, Apple gear and everyday life, with a lot of joy.'],
+    ['UChQl2YkLt3dj-KDyGUBzcHw', 'Chris Pirillo', 'Decades of tech talk: gadgets, computers and the people who love them.'],
+  ];
+  const ytFeed = id => `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`;
+  const followsChannel = id => S.feeds.some(f => (f.url || '').includes(id) || (f.site || '').includes(id));
+  function starterChannelsHtml() {
+    if (S.feeds.filter(isYouTubeFeed).length >= 5) return '';
+    const list = VIDEO_STARTERS.filter(([id]) => !followsChannel(id) || VID.added.has(ytFeed(id)));
+    if (!list.length) return '';
+    return `<section class="vchans vstarts"><h3>Channels to start with</h3><p class="note">A few people who've been making videos for years. Follow one and its new videos show up here.</p>
+      <div class="g-starts">${list.map(([id, name, about]) => { const on = followsChannel(id);
+        return `<div class="g-start"><span class="fav" style="background:hsl(${hueFor(ytFeed(id))} 45% 42%)">${esc(name[0])}</span><div><strong>${esc(name)}</strong><span>${esc(about)}</span></div>
+        <button class="btn${on ? '' : ' primary'}" type="button" data-vfollow="${esc(ytFeed(id))}" data-vname="${esc(name)}"${on ? ' disabled' : ''}>${on ? 'Following' : 'Follow'}</button></div>`; }).join('')}</div></section>`;
   }
   async function followChannel(b) {
     const url = b.dataset.vfollow; b.disabled = true; b.textContent = 'Following…';
