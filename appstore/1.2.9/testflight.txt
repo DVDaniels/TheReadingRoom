@@ -28,6 +28,9 @@ SIDEBAR
 • iPhone: folding a section (Read, Explore, Library or Feeds) now hides everything in it, even the page you were just on.
 • Only the folder you pick is highlighted, and folding a folder keeps the feed you're reading in view.
 
+VIDEOS
+• New to Videos? Channels to start with: follow iJustine or Chris Pirillo in one tap.
+
 FIXES
 • Books opens again on iPhone and Mac.
 • Discover's search box searches topics again.
