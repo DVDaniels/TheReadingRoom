@@ -9,6 +9,9 @@ MY DAY, WIDER AND SIMPLER
 YOUR BLOG (if you connect your own WordPress site)
 • A new row on My Day with your visitors, RSS readers and search traffic. It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Without it, My Day shows where to get it. Counting starts the day you turn the plugin on.
 
+CONVERSATIONS
+• Your posts (Conversations › You › Your posts) now show each post's featured image beside it. Tap the picture to open the post.
+
 IPHONE SIDEBAR
 • Folding a section (Read, Explore, Library or Feeds) now hides everything in it, even the page you were just on.
 
@@ -23,4 +26,5 @@ Please try:
 • On a big Mac screen, open My Day and check it fills the window, and that prices and changes don't overlap.
 • On a MacBook, check My Day still looks the way it did.
 • On iPhone, open Library › Books, fold Library, go back, and check nothing is left under it.
+• Open Conversations › You › Your posts and check the pictures match your posts.
 • Look for any leftover mention of the Big 3.
