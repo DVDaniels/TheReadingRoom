@@ -3121,6 +3121,14 @@
     wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text, tpl: d.kind === 'weeknotes' && d.tpl ? d.tpl : text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
     wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
   }
+  // Your site shows one blank line between paragraphs however many you leave, so the page does too (David, Nov 22):
+  // runs of blank lines become one. An empty section between two "## " headings (the Weeknotes template) keeps its room.
+  function wrTidy(s) {
+    return (s || '').replace(/\r\n?/g, '\n').replace(/\n(?:[ \t]*\n){2,}/g, (m, at, all) => {
+      const before = all.slice(0, at), line = before.slice(before.lastIndexOf('\n') + 1);
+      return /^##\s/.test(line) && /^##\s/.test(all.slice(at + m.length)) ? m : '\n\n';
+    });
+  }
   async function wrEdit(id) {
     const o = wrDraftGet();
     if (o.editId && o.editId !== id) { if (!(await wrPutAside())) return; }
@@ -3132,7 +3140,7 @@
       const nid = wrCat('notes')?.id, wid = wrCat('weeknotes')?.id;
       const cat = (p.categories || []).find(c => c !== nid && c !== wid) || '';
       const kind = nid && (p.categories || []).includes(nid) ? 'note' : wid && (p.categories || []).includes(wid) ? 'weeknotes' : 'post';
-      wrDraftSet({ kind, title: p.title || '', text: p.text || '', cat, editId: id });
+      wrDraftSet({ kind, title: p.title || '', text: wrTidy(p.text || '').trim(), cat, editId: id });
       WR.photo = ''; WR.photoUrl = p.image || ''; WR.alt = ''; wrSay('');
       status(''); wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
     } catch (e) { status(msg(e), true); }
@@ -3271,6 +3279,10 @@
   });
   document.addEventListener('input', e => {
     const t = e.target; if (!t.closest?.('.writing')) return;
+    if (t.id === 'wrText' && /\n[ \t]*\n[ \t]*\n/.test(t.value)) { // a third Enter, or pasted text with gaps: one blank line, like the site
+      const v = wrTidy(t.value), at = wrTidy(t.value.slice(0, t.selectionStart)).length;
+      if (v !== t.value) { t.value = v; try { t.setSelectionRange(Math.min(at, v.length), Math.min(at, v.length)); } catch {} }
+    }
     if (t.id === 'wrTitle' || t.id === 'wrText') { const d = wrDraftGet(); d.kind = wrKind(); d[t.id === 'wrTitle' ? 'title' : 'text'] = t.value; wrDraftSet(d); const c = $('wrCount'); if (c) c.textContent = wrCount(d.text); if (t.id === 'wrText') wrGrow(t); }
     if (t.id === 'wrAlt') WR.alt = t.value;
   });
