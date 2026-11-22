@@ -21,7 +21,7 @@ WRITING (new, under Read in the sidebar)
 • A new look: you write on a ruled notebook page, with a word count, and Focus to hide everything else (Esc or Done to come back).
 • Writing in the sidebar always gives you a blank page. Anything you'd written is saved as a draft on your site first.
 • One blank line between paragraphs, like on your site.
-• Weeknotes no longer needs My Day: it starts from your week's posts and reading.
+• Weeknotes no longer needs My Day: it starts from your week's posts and reading. Saving keeps it on the page; Weeknotes or Keep writing brings back the same draft, links intact.
 
 YOUR BLOG (if you connect your own WordPress site)
 • Your visitors, RSS readers and search traffic, now in Writing (no longer on My Day). It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Counting starts the day you turn the plugin on.
@@ -49,5 +49,4 @@ Please try:
 • Preview a draft, switch an old draft to Note, and tap a day on the calendar.
 • Open each folder under Writing and check the lists match your site. Delete a draft, then Undo.
 • On a big Mac screen, open My Day and check it fills the window, and that prices and changes don't overlap.
-• Open Conversations › You › Your posts and check the pictures match your posts.
-• Write in Focus, open a draft and tap Writing in the sidebar, and try My Day settings.
+• Write Weeknotes, save, tap Writing, then Weeknotes: your draft comes back, and only one is in Drafts.

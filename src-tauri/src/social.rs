@@ -2328,7 +2328,18 @@ pub async fn site_post_get(id: i64) -> Result<Value, String> {
     let q = Q.get_or_init(|| regex::Regex::new(r"(?is)<blockquote[^>]*>(.*?)</blockquote>").unwrap());
     static A: OnceLock<regex::Regex> = OnceLock::new();
     let a = A.get_or_init(|| regex::Regex::new(r#"(?is)<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap());
-    let t = a.replace_all(&raw, |c: &regex::Captures| if html_text(&c[2]) == c[1] { c[1].to_string() } else { format!("{} ({})", &c[2], &c[1]) }).to_string();
+    // a link with its own words comes back as [words](address), the way it was written, so it stays a link when saved
+    // again (David, Nov 22: Weeknotes' links turned into "title (https://…)" after Keep writing)
+    let t = a.replace_all(&raw, |c: &regex::Captures| {
+        let (href, words) = (html_escape::decode_html_entities(&c[1]).to_string(), html_text(&c[2]));
+        if words == href {
+            href
+        } else if !words.is_empty() && words.chars().count() <= 80 && !words.contains(['[', ']', '\n']) && !href.contains(['(', ')']) {
+            format!("[{}]({})", html_escape::encode_text(&words), href)
+        } else {
+            format!("{} ({})", &c[2], href)
+        }
+    }).to_string();
     let t = h.replace_all(&t, |c: &regex::Captures| format!("<p>## {}</p>", html_text(&c[1]))).to_string();
     let t = q.replace_all(&t, |c: &regex::Captures| format!("<p>{}</p>", html_text(&c[1]).lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n"))).to_string();
     let text = html_text(&t);

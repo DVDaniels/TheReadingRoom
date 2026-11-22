@@ -2940,6 +2940,7 @@
     const bits = [`${read} ${read === 1 ? 'post' : 'posts'} read`, notes ? `${notes} ${notes === 1 ? 'note' : 'notes'}` : '', hls ? `${hls} ${hls === 1 ? 'highlight' : 'highlights'}` : ''].filter(Boolean);
     return `<section class="b-panel wr-week" aria-label="This week"><div class="bp-head"><h3 class="b-sub">This week</h3><span class="bp-meta">${esc(fmtRange(wk.mon, wk.sun))}</span></div>
       <div class="wr-wk"><b>Weeknotes</b>${done ? `<span>Posted ${esc(wrWhen(done.date))}: “${esc(done.title)}”</span><button class="btn" type="button" data-mkurl="${esc(done.link)}">Open on your site</button>`
+        : wrWeekDraftOnSite(wk) ? `<span>Your Weeknotes draft is saved on your site. Pick up where you left off.</span><button class="btn primary" type="button" data-wr="weeknotes">Keep writing</button>`
         : `<span>From your week so far: ${esc(bits.join(', '))}. Counted from your reading here and your site, since Monday. Write Weeknotes starts a post with what you put on your site and the posts you read, saved or highlighted; add a line to each.</span><button class="btn primary" type="button" data-wr="weeknotes">Write Weeknotes</button>`}</div>
       <div class="wr-wk"><b>What I read this week</b><span>${picks ? `${picks} ${picks === 1 ? 'post' : 'posts'} you read, saved or highlighted. Pick your favorites and add a line about each.` : 'Read, save or highlight a few posts, then make your roundup.'}</span>
         <button class="btn" type="button" data-roundup${picks ? '' : ' disabled'}>Make the post</button></div></section>`;
@@ -3125,8 +3126,16 @@
     const room = '\n\n\n\n';
     return `## What happened${room}## What I made${made.length ? '\n\n' + made.join('\n\n') + '\n\n' : room}## What I read${read.length ? '\n\n' + read.join('\n\n') : '\n\n'}`;
   }
+  // this week's Weeknotes draft on your site, if there is one (same title, in Weeknotes)
+  function wrWeekDraftOnSite(wk) {
+    const wid = wrCat('weeknotes')?.id, title = wkTitle(wk);
+    return (WR.drafts || []).find(p => (p.title || '').trim() === title && (!wid || !(p.categories || []).length || (p.categories || []).includes(wid)));
+  }
   async function wrStartWeeknotes() {
     const wk = mdWeek(), d = wrDraftGet();
+    // this week's Weeknotes already started and saved: open that draft, so there's only ever one
+    const mine = !(d.kind === 'weeknotes' && !d.editId && (d.text || '').trim()) && wrWeekDraftOnSite(wk);
+    if (mine) { if (d.editId === mine.id) { wrToTop(); return; } await wrEdit(mine.id); return; }
     if (d.editId) { if (!(await wrPutAside())) return; }
     else if ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.')) return;
     const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : wrWeekDraft(wk);
@@ -3185,8 +3194,9 @@
       } else {
         r = await invoke('site_note', { title, text: words, link: '', linkTitle: '', photo: WR.photo, alt: WR.alt.trim(), draft, linkImage: '', linkSite: '', category: kind === 'weeknotes' ? 'weeknotes' : null, featuredOnly: kind === 'weeknotes' });
       }
-      if (draft && (kind === 'post' || d.editId)) {
-        // a post saved as a draft stays open here, so the next save updates the same draft
+      if (draft && (kind !== 'note' || d.editId)) {
+        // a post or Weeknotes saved as a draft stays open here, so the next save updates the same draft
+        // (David, Nov 22: Weeknotes used to vanish from the page after Save, and Weeknotes then started over)
         wrDraftSet({ ...d, editId: r.id }); if (r.image) { WR.photoUrl = r.image; WR.photo = ''; }
         wrSay('Saved to your drafts on your site. Keep writing, or finish it later here or in WordPress.');
         WR.posting = false; wrLoad(true); wrPaint(); return;
@@ -3200,12 +3210,13 @@
       if (picks.length && r?.url) {
         wrSay('Posted on your site. Sharing the copies…'); wrPaint();
         const copy = kind === 'note' ? (title && words ? `${title}\n\n${words}` : words || title) : title;
-        const res = await invoke('social_share_note', { networks: picks, text: copy, link: r.url, title: title || `A note on ${wrSite().name || 'my site'}`, photo: WR.photo, alt: WR.alt.trim(), video: '', videoTitle: '', about: '', aboutTitle: '', aboutSite: '', aboutImage: '' });
-        shared = res.filter(x => !x.error).map(x => NET[x.network]); bad = res.filter(x => x.error);
+        const res = await invoke('social_share_note', { networks: picks, text: copy, link: r.url, title: title || `A note on ${wrSite().name || 'my site'}`, photo: WR.photo, alt: WR.alt.trim(), video: '', videoTitle: '', about: '', aboutTitle: '', aboutSite: '', aboutImage: '' })
+          .catch(err => [{ network: '', error: msg(err) }]); // the post is already up: copies that fail are just noted
+        shared = (res || []).filter(x => !x.error).map(x => NET[x.network]); bad = (res || []).filter(x => x.error);
         if (shared.length) setTimeout(() => { loadConversations(true); }, 4000);
       }
       wrClear();
-      wrSay(bad.length ? `Posted to ${wrHost()}${shared.length ? ` and ${shared.join(' and ')}` : ''}. ${bad.map(x => `${NET[x.network]}: ${x.error}`).join(' ')}` : '', !!bad.length);
+      wrSay(bad.length ? `Posted to ${wrHost()}${shared.length ? ` and ${shared.join(' and ')}` : ''}. ${bad.map(x => x.network ? `${NET[x.network]}: ${x.error}` : `The copies weren’t shared: ${x.error}`).join(' ')}` : '', !!bad.length);
       status(`Posted to ${wrHost()}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.`);
       WR.posting = false; wrLoad(true); wrPaint(); renderRail();
     } catch (e) { WR.posting = false; wrSay(msg(e), true); wrPaint(); }
