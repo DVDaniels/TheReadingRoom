@@ -4850,7 +4850,7 @@
     SOC.sres = { q, loading: false, posts: res.posts || [], errors: res.errors || [], at: Date.now() };
     if (S.view === 'talk' && SOC.tab === 'search') renderList();
   }
-  function searchHtml() {
+  function talkSearchHtml() {
     const q = SOC.sq || '', r = SOC.sres && SOC.sres.q === q ? SOC.sres : null, past = searches();
     const form = `<form class="sr-form" id="srForm" role="search"><input type="search" id="srQ" value="${esc(q)}" placeholder="What’s going on? Try “Outlook down”" aria-label="Search what people are saying" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Search</button></form>
       ${past.length ? `<div class="sr-past">${past.map(p => `<span class="sr-chip${p === q ? ' on' : ''}"><button class="linkish" data-talk="srch" data-q="${esc(p)}">${esc(p)}</button><button class="sr-x" data-talk="srdrop" data-q="${esc(p)}" aria-label="Forget ${esc(p)}">×</button></span>`).join('')}</div>` : ''}`;
@@ -4880,7 +4880,7 @@
     const { tab } = talkTabsInfo();
     if (tab === 'blogs') return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
     if (tab === 'you') return `<div class="nb-col">${profilesHtml()}${youHtml()}</div>`;
-    if (tab === 'search') return searchHtml();
+    if (tab === 'search') return talkSearchHtml();
     return `<div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
         <aside class="tside">${sideHtml()}</aside></div>`;
   }
@@ -7491,7 +7491,7 @@
       <p class="cp-foot"><button class="linkish" type="button" data-md="edit">Rituals and goals</button></p>
     </section>`;
   }
-  function goalHtml(g) {
+  function cpGoalHtml(g) {
     const p = goalProgress(g), today = mdPeek(dayKey())?.h?.[g.id];
     const act = g.kind === 'habit' ? `<button class="cp-act${today ? ' on' : ''}" type="button" data-md="habit" data-id="${esc(g.id)}" aria-pressed="${!!today}">${today ? '✓ Today' : 'Did it today'}</button>`
       : g.kind === 'count' && p.target ? `<button class="cp-act" type="button" data-md="count" data-id="${esc(g.id)}" aria-label="Add one to ${esc(g.title)}">+1</button>` : '';
