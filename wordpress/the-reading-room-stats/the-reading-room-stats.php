@@ -3,8 +3,8 @@
  * Plugin Name:       The Reading Room stats
  * Plugin URI:        https://readingroomapp.com/plugin/
  * Description:       Shows your blog's visitors, RSS readers and search traffic in The Reading Room app (My Day › Your blog). Counts visits without cookies and without storing IP addresses.
- * Version:           1.0.0
- * Requires at least: 6.0
+ * Version:           1.0.1
+ * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            David Daniels
  * Author URI:        https://readingroomapp.com/
@@ -15,10 +15,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'RRS_VERSION', '1.0.0' );
-define( 'RRS_DB_VERSION', 1 );
-define( 'RRS_KEEP_DAYS', 70 );   // a little more than two 28-day windows
-define( 'RRS_WINDOW', 28 );
+define( 'TRR_STATS_VERSION', '1.0.1' );
+define( 'TRR_STATS_DB_VERSION', 1 );
+define( 'TRR_STATS_KEEP_DAYS', 70 );   // a little more than two 28-day windows
+define( 'TRR_STATS_WINDOW', 28 );
 
 /* ------------------------------------------------------------------------------------------------
  * Storage: one small table of daily counts.
@@ -31,15 +31,15 @@ define( 'RRS_WINDOW', 28 );
  *   kind 'fseen' item <hash>    today's feed checkers, so each counts once; deleted the next day
  * ------------------------------------------------------------------------------------------------ */
 
-function rrs_table() {
+function trr_stats_table() {
 	global $wpdb;
 	return $wpdb->prefix . 'reading_room_stats';
 }
 
-function rrs_install() {
+function trr_stats_install() {
 	global $wpdb;
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-	$t = rrs_table();
+	$t = trr_stats_table();
 	$c = $wpdb->get_charset_collate();
 	dbDelta( "CREATE TABLE $t (
   day date NOT NULL,
@@ -48,82 +48,87 @@ function rrs_install() {
   n bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (day,kind,item)
 ) $c;" );
-	update_option( 'rrs_db_version', RRS_DB_VERSION, false );
-	if ( ! get_option( 'rrs_since' ) ) {
-		update_option( 'rrs_since', current_time( 'Y-m-d' ), false );
+	update_option( 'trr_stats_db_version', TRR_STATS_DB_VERSION, false );
+	if ( ! get_option( 'trr_stats_since' ) ) {
+		update_option( 'trr_stats_since', current_time( 'Y-m-d' ), false );
 	}
-	if ( ! wp_next_scheduled( 'rrs_daily' ) ) {
-		wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'rrs_daily' );
+	if ( ! wp_next_scheduled( 'trr_stats_daily' ) ) {
+		wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'trr_stats_daily' );
 	}
 }
-register_activation_hook( __FILE__, 'rrs_install' );
+register_activation_hook( __FILE__, 'trr_stats_install' );
 
 register_deactivation_hook( __FILE__, function () {
-	wp_clear_scheduled_hook( 'rrs_daily' );
+	wp_clear_scheduled_hook( 'trr_stats_daily' );
 } );
 
 add_action( 'plugins_loaded', function () {
-	if ( (int) get_option( 'rrs_db_version' ) < RRS_DB_VERSION ) {
-		rrs_install();
+	if ( (int) get_option( 'trr_stats_db_version' ) < TRR_STATS_DB_VERSION ) {
+		trr_stats_install();
 	}
 } );
 
 // Add to a day's count (creates the row the first time).
-function rrs_add( $kind, $item = '', $by = 1, $day = null ) {
+function trr_stats_add( $kind, $item = '', $by = 1, $day = null ) {
 	global $wpdb;
 	$day = $day ? $day : current_time( 'Y-m-d' );
-	$wpdb->query( $wpdb->prepare(
-		'INSERT INTO ' . rrs_table() . ' (day, kind, item, n) VALUES (%s, %s, %s, %d) ON DUPLICATE KEY UPDATE n = n + %d',
-		$day, $kind, substr( (string) $item, 0, 64 ), $by, $by
-	) );
+	$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+		$wpdb->prepare(
+			'INSERT INTO %i (day, kind, item, n) VALUES (%s, %s, %s, %d) ON DUPLICATE KEY UPDATE n = n + %d',
+			trr_stats_table(), $day, $kind, substr( (string) $item, 0, 64 ), $by, $by
+		)
+	);
 }
 
 // Keep the highest number a reader reported that day.
-function rrs_max( $kind, $item, $n ) {
+function trr_stats_max( $kind, $item, $n ) {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare(
-		'INSERT INTO ' . rrs_table() . ' (day, kind, item, n) VALUES (%s, %s, %s, %d) ON DUPLICATE KEY UPDATE n = GREATEST(n, %d)',
-		current_time( 'Y-m-d' ), $kind, substr( (string) $item, 0, 64 ), $n, $n
-	) );
+	$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+		$wpdb->prepare(
+			'INSERT INTO %i (day, kind, item, n) VALUES (%s, %s, %s, %d) ON DUPLICATE KEY UPDATE n = GREATEST(n, %d)',
+			trr_stats_table(), current_time( 'Y-m-d' ), $kind, substr( (string) $item, 0, 64 ), $n, $n
+		)
+	);
 }
 
 // True the first time this hash shows up today.
-function rrs_first_today( $kind, $hash ) {
+function trr_stats_first_today( $kind, $hash ) {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare(
-		'INSERT IGNORE INTO ' . rrs_table() . ' (day, kind, item, n) VALUES (%s, %s, %s, 1)',
-		current_time( 'Y-m-d' ), $kind, $hash
-	) );
+	$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+		$wpdb->prepare(
+			'INSERT IGNORE INTO %i (day, kind, item, n) VALUES (%s, %s, %s, 1)',
+			trr_stats_table(), current_time( 'Y-m-d' ), $kind, $hash
+		)
+	);
 	return 1 === (int) $wpdb->rows_affected;
 }
 
 // A one-way code for "this browser today": the address and browser name mixed with a secret that changes
 // every day. The address itself is never written down, and yesterday's codes are deleted.
-function rrs_hash( $extra = '' ) {
+function trr_stats_hash( $extra = '' ) {
 	$day  = current_time( 'Y-m-d' );
-	$salt = get_option( 'rrs_salt' );
+	$salt = get_option( 'trr_stats_salt' );
 	if ( ! is_array( $salt ) || ( $salt['day'] ?? '' ) !== $day ) {
 		$salt = array( 'day' => $day, 'key' => wp_generate_password( 32, true, true ) );
-		update_option( 'rrs_salt', $salt, false );
+		update_option( 'trr_stats_salt', $salt, false );
 	}
 	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
 	$ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : '';
 	return substr( hash_hmac( 'sha256', $ip . '|' . $ua . '|' . $extra, $salt['key'] ), 0, 20 );
 }
 
-// Once a day: drop yesterday's hashes and anything older than RRS_KEEP_DAYS.
-add_action( 'rrs_daily', 'rrs_cleanup' );
-function rrs_cleanup() {
+// Once a day: drop yesterday's hashes and anything older than TRR_STATS_KEEP_DAYS.
+add_action( 'trr_stats_daily', 'trr_stats_cleanup' );
+function trr_stats_cleanup() {
 	global $wpdb;
-	$t     = rrs_table();
 	$today = current_time( 'Y-m-d' );
-	$old   = gmdate( 'Y-m-d', strtotime( $today . ' -' . RRS_KEEP_DAYS . ' days' ) );
-	$wpdb->query( $wpdb->prepare( "DELETE FROM $t WHERE kind IN ('seen', 'fseen') AND day < %s", $today ) );
-	$wpdb->query( $wpdb->prepare( "DELETE FROM $t WHERE day < %s", $old ) );
+	$old   = gmdate( 'Y-m-d', strtotime( $today . ' -' . TRR_STATS_KEEP_DAYS . ' days' ) );
+	$wpdb->query( $wpdb->prepare( "DELETE FROM %i WHERE kind IN ('seen', 'fseen') AND day < %s", trr_stats_table(), $today ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+	$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE day < %s', trr_stats_table(), $old ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
 }
 
-function rrs_on( $what ) {
-	$o = get_option( 'rrs_settings', array() );
+function trr_stats_on( $what ) {
+	$o = get_option( 'trr_stats_settings', array() );
 	return ! isset( $o[ $what ] ) || $o[ $what ];
 }
 
@@ -134,38 +139,35 @@ function rrs_on( $what ) {
  * ------------------------------------------------------------------------------------------------ */
 
 add_action( 'wp_footer', function () {
-	if ( ! rrs_on( 'visits' ) || is_preview() || is_404() || is_feed() || current_user_can( 'edit_posts' ) ) {
+	if ( ! trr_stats_on( 'visits' ) || is_preview() || is_404() || is_feed() || current_user_can( 'edit_posts' ) ) {
 		return;
 	}
 	$id  = is_singular() ? (int) get_queried_object_id() : 0;
-	$url = esc_url_raw( rest_url( 'reading-room/v1/hit' ) );
-	printf(
-		"<script>(function(){if(navigator.webdriver)return;var b=JSON.stringify({p:%d});try{navigator.sendBeacon?navigator.sendBeacon(%s,new Blob([b],{type:'application/json'})):fetch(%s,{method:'POST',body:b,headers:{'Content-Type':'application/json'},keepalive:true});}catch(e){}})();</script>\n",
-		$id,
-		wp_json_encode( $url ),
-		wp_json_encode( $url )
+	$url = wp_json_encode( esc_url_raw( rest_url( 'reading-room/v1/hit' ) ) );
+	wp_print_inline_script_tag(
+		'(function(){if(navigator.webdriver)return;var b=JSON.stringify({p:' . $id . '});try{navigator.sendBeacon?navigator.sendBeacon(' . $url . ',new Blob([b],{type:\'application/json\'})):fetch(' . $url . ',{method:\'POST\',body:b,headers:{\'Content-Type\':\'application/json\'},keepalive:true});}catch(e){}})();'
 	);
 }, 99 );
 
-function rrs_is_bot() {
+function trr_stats_is_bot() {
 	$ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) ) : '';
 	return '' === $ua || (bool) preg_match( '/bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|monitor|uptime|python|curl|wget|httpclient|java\/|go-http|scrapy/', $ua );
 }
 
-function rrs_hit( WP_REST_Request $req ) {
-	if ( ! rrs_on( 'visits' ) || rrs_is_bot() || current_user_can( 'edit_posts' ) ) {
+function trr_stats_hit( WP_REST_Request $req ) {
+	if ( ! trr_stats_on( 'visits' ) || trr_stats_is_bot() || current_user_can( 'edit_posts' ) ) {
 		return new WP_REST_Response( null, 204 );
 	}
 	$p = (int) $req->get_param( 'p' );
 	if ( $p && 'publish' !== get_post_status( $p ) ) {
 		$p = 0;
 	}
-	rrs_add( 'view' );
-	if ( rrs_first_today( 'seen', rrs_hash() ) ) {
-		rrs_add( 'uniq' );
+	trr_stats_add( 'view' );
+	if ( trr_stats_first_today( 'seen', trr_stats_hash() ) ) {
+		trr_stats_add( 'uniq' );
 	}
 	if ( $p ) {
-		rrs_add( 'post', (string) $p );
+		trr_stats_add( 'post', (string) $p );
 	}
 	return new WP_REST_Response( null, 204 );
 }
@@ -176,7 +178,7 @@ function rrs_hit( WP_REST_Request $req ) {
  * report; for apps on someone's own phone or computer, each one that checks counts as one reader.
  * ------------------------------------------------------------------------------------------------ */
 
-function rrs_readers() {
+function trr_stats_readers() {
 	// pattern => name shown in the app
 	return array(
 		'feedly'          => 'Feedly',
@@ -224,7 +226,7 @@ function rrs_readers() {
 }
 
 add_action( 'template_redirect', function () {
-	if ( ! rrs_on( 'feeds' ) || ! is_feed() || is_comment_feed() ) {
+	if ( ! trr_stats_on( 'feeds' ) || ! is_feed() || is_comment_feed() ) {
 		return;
 	}
 	$ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : '';
@@ -233,14 +235,14 @@ add_action( 'template_redirect', function () {
 	}
 	$low  = strtolower( $ua );
 	$name = '';
-	foreach ( rrs_readers() as $needle => $label ) {
+	foreach ( trr_stats_readers() as $needle => $label ) {
 		if ( false !== strpos( $low, $needle ) ) {
 			$name = $label;
 			break;
 		}
 	}
 	if ( preg_match( '/(\d+)\s+(subscribers?|readers?|followers?)/i', $ua, $m ) ) {
-		rrs_max( 'subs', $name ? $name : 'Other online readers', (int) $m[1] );
+		trr_stats_max( 'subs', $name ? $name : 'Other online readers', (int) $m[1] );
 		return;
 	}
 	// Search engines and site checkers aren't readers.
@@ -248,8 +250,8 @@ add_action( 'template_redirect', function () {
 		return;
 	}
 	$name = $name ? $name : 'Other apps';
-	if ( rrs_first_today( 'fseen', rrs_hash( 'feed' ) ) ) {
-		rrs_add( 'rdr', $name );
+	if ( trr_stats_first_today( 'fseen', trr_stats_hash( 'feed' ) ) ) {
+		trr_stats_add( 'rdr', $name );
 	}
 }, 1 );
 
@@ -258,7 +260,7 @@ add_action( 'template_redirect', function () {
  * connected. Without Site Kit this part is simply left out.
  * ------------------------------------------------------------------------------------------------ */
 
-function rrs_search_console( $start, $end, $dimension, $limit ) {
+function trr_stats_search_console( $start, $end, $dimension, $limit ) {
 	if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
 		return null;
 	}
@@ -280,17 +282,17 @@ function rrs_search_console( $start, $end, $dimension, $limit ) {
 	return is_array( $rows ) ? $rows : null;
 }
 
-function rrs_search() {
-	$cached = get_transient( 'rrs_search' );
+function trr_stats_search() {
+	$cached = get_transient( 'trr_stats_search' );
 	if ( false !== $cached ) {
 		return $cached ? $cached : null;
 	}
 	$today = current_time( 'Y-m-d' );
 	$end   = gmdate( 'Y-m-d', strtotime( $today . ' -2 days' ) ); // Search Console runs a couple of days behind
-	$start = gmdate( 'Y-m-d', strtotime( $end . ' -' . ( RRS_WINDOW - 1 ) . ' days' ) );
+	$start = gmdate( 'Y-m-d', strtotime( $end . ' -' . ( TRR_STATS_WINDOW - 1 ) . ' days' ) );
 	$pend  = gmdate( 'Y-m-d', strtotime( $start . ' -1 day' ) );
-	$pst   = gmdate( 'Y-m-d', strtotime( $pend . ' -' . ( RRS_WINDOW - 1 ) . ' days' ) );
-	$now   = rrs_search_console( $start, $end, 'date', 100 );
+	$pst   = gmdate( 'Y-m-d', strtotime( $pend . ' -' . ( TRR_STATS_WINDOW - 1 ) . ' days' ) );
+	$now   = trr_stats_search_console( $start, $end, 'date', 100 );
 	$out   = null;
 	if ( is_array( $now ) ) {
 		$clicks = 0;
@@ -301,7 +303,7 @@ function rrs_search() {
 			$impr   += (int) ( $r['impressions'] ?? 0 );
 			$pos    += (float) ( $r['position'] ?? 0 ) * (int) ( $r['impressions'] ?? 0 );
 		}
-		$before = rrs_search_console( $pst, $pend, 'date', 100 );
+		$before = trr_stats_search_console( $pst, $pend, 'date', 100 );
 		$prev   = null;
 		if ( is_array( $before ) ) {
 			$prev = 0;
@@ -310,7 +312,7 @@ function rrs_search() {
 			}
 		}
 		$queries = array();
-		foreach ( (array) rrs_search_console( $start, $end, 'query', 10 ) as $r ) {
+		foreach ( (array) trr_stats_search_console( $start, $end, 'query', 10 ) as $r ) {
 			if ( ! empty( $r['keys'][0] ) ) {
 				$queries[] = array(
 					'q'      => (string) $r['keys'][0],
@@ -324,12 +326,12 @@ function rrs_search() {
 			'prevClicks'  => $prev,
 			'impressions' => $impr,
 			'position'    => $impr ? round( $pos / $impr, 1 ) : 0,
-			'window'      => RRS_WINDOW,
+			'window'      => TRR_STATS_WINDOW,
 			'through'     => $end,
 			'queries'     => $queries,
 		);
 	}
-	set_transient( 'rrs_search', $out ? $out : 0, 3 * HOUR_IN_SECONDS );
+	set_transient( 'trr_stats_search', $out ? $out : 0, 3 * HOUR_IN_SECONDS );
 	return $out;
 }
 
@@ -338,22 +340,26 @@ function rrs_search() {
  * (the app signs in with a WordPress application password).
  * ------------------------------------------------------------------------------------------------ */
 
-function rrs_sum( $kind, $from, $to ) {
+function trr_stats_sum( $kind, $from, $to ) {
 	global $wpdb;
-	return (int) $wpdb->get_var( $wpdb->prepare(
-		'SELECT COALESCE(SUM(n), 0) FROM ' . rrs_table() . ' WHERE kind = %s AND day BETWEEN %s AND %s',
-		$kind, $from, $to
-	) );
+	return (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(n), 0) FROM %i WHERE kind = %s AND day BETWEEN %s AND %s',
+			trr_stats_table(), $kind, $from, $to
+		)
+	);
 }
 
 // For each reader, the highest daily count in the 7 days ending $to; the total is the sum.
-function rrs_feed_readers( $to ) {
+function trr_stats_feed_readers( $to ) {
 	global $wpdb;
 	$from = gmdate( 'Y-m-d', strtotime( $to . ' -6 days' ) );
-	$rows = $wpdb->get_results( $wpdb->prepare(
-		'SELECT item, MAX(n) AS n FROM ' . rrs_table() . " WHERE kind IN ('subs', 'rdr') AND day BETWEEN %s AND %s GROUP BY item",
-		$from, $to
-	) );
+	$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
+		$wpdb->prepare(
+			"SELECT item, MAX(n) AS n FROM %i WHERE kind IN ('subs', 'rdr') AND day BETWEEN %s AND %s GROUP BY item",
+			trr_stats_table(), $from, $to
+		)
+	);
 	$apps = array();
 	foreach ( (array) $rows as $r ) {
 		$apps[ $r->item ] = ( $apps[ $r->item ] ?? 0 ) + (int) $r->n;
@@ -362,31 +368,31 @@ function rrs_feed_readers( $to ) {
 	return $apps;
 }
 
-function rrs_stats() {
+function trr_stats_stats() {
 	global $wpdb;
-	$t     = rrs_table();
+	$t     = trr_stats_table();
 	$today = current_time( 'Y-m-d' );
 	$day   = function ( $n ) use ( $today ) {
 		return gmdate( 'Y-m-d', strtotime( $today . ' ' . $n . ' days' ) );
 	};
-	$since = (string) get_option( 'rrs_since', $today );
+	$since = (string) get_option( 'trr_stats_since', $today );
 	$out   = array(
 		'site'    => wp_parse_url( home_url(), PHP_URL_HOST ),
 		'at'      => time() * 1000,
-		'plugin'  => RRS_VERSION,
+		'plugin'  => TRR_STATS_VERSION,
 	);
 
-	if ( rrs_on( 'visits' ) ) {
-		$start = $day( -( RRS_WINDOW - 1 ) );
+	if ( trr_stats_on( 'visits' ) ) {
+		$start = $day( -( TRR_STATS_WINDOW - 1 ) );
 		$days  = array();
-		$per   = $wpdb->get_results( $wpdb->prepare( "SELECT day, n FROM $t WHERE kind = 'uniq' AND day >= %s", $day( -13 ) ), OBJECT_K );
+		$per   = $wpdb->get_results( $wpdb->prepare( "SELECT day, n FROM %i WHERE kind = 'uniq' AND day >= %s", $t, $day( -13 ) ), OBJECT_K ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
 		for ( $i = 13; $i >= 0; $i-- ) {
 			$d      = $day( -$i );
 			$days[] = array( 'd' => $d, 'n' => isset( $per[ $d ] ) ? (int) $per[ $d ]->n : 0 );
 		}
-		$prev_from = $day( -( 2 * RRS_WINDOW - 1 ) );
+		$prev_from = $day( -( 2 * TRR_STATS_WINDOW - 1 ) );
 		$top       = array();
-		$rows      = $wpdb->get_results( $wpdb->prepare( "SELECT item, SUM(n) AS n FROM $t WHERE kind = 'post' AND day >= %s GROUP BY item ORDER BY n DESC LIMIT 5", $start ) );
+		$rows      = $wpdb->get_results( $wpdb->prepare( "SELECT item, SUM(n) AS n FROM %i WHERE kind = 'post' AND day >= %s GROUP BY item ORDER BY n DESC LIMIT 5", $t, $start ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table of daily counters.
 		foreach ( (array) $rows as $r ) {
 			$p = get_post( (int) $r->item );
 			if ( $p && 'publish' === $p->post_status ) {
@@ -394,10 +400,10 @@ function rrs_stats() {
 			}
 		}
 		$out['visitors'] = array(
-			'total'   => rrs_sum( 'uniq', $start, $today ),
-			'prev'    => $since <= $prev_from ? rrs_sum( 'uniq', $prev_from, $day( -RRS_WINDOW ) ) : null,
-			'views'   => rrs_sum( 'view', $start, $today ),
-			'window'  => RRS_WINDOW,
+			'total'   => trr_stats_sum( 'uniq', $start, $today ),
+			'prev'    => $since <= $prev_from ? trr_stats_sum( 'uniq', $prev_from, $day( -TRR_STATS_WINDOW ) ) : null,
+			'views'   => trr_stats_sum( 'view', $start, $today ),
+			'window'  => TRR_STATS_WINDOW,
 			'through' => $today,
 			'since'   => $since,
 			'days'    => $days,
@@ -407,8 +413,8 @@ function rrs_stats() {
 		$out['top'] = array_slice( $top, 0, 3 );
 	}
 
-	if ( rrs_on( 'feeds' ) ) {
-		$apps = rrs_feed_readers( $today );
+	if ( trr_stats_on( 'feeds' ) ) {
+		$apps = trr_stats_feed_readers( $today );
 		$list = array();
 		foreach ( $apps as $name => $n ) {
 			$list[] = array( 'name' => $name, 'n' => $n );
@@ -416,7 +422,7 @@ function rrs_stats() {
 		$week_ago = $day( -7 );
 		$prev     = null;
 		if ( $since <= $day( -13 ) ) {
-			$prev = array_sum( rrs_feed_readers( $week_ago ) );
+			$prev = array_sum( trr_stats_feed_readers( $week_ago ) );
 		}
 		$out['rss'] = array(
 			'total' => array_sum( $apps ),
@@ -426,8 +432,8 @@ function rrs_stats() {
 		);
 	}
 
-	if ( rrs_on( 'search' ) ) {
-		$s = rrs_search();
+	if ( trr_stats_on( 'search' ) ) {
+		$s = trr_stats_search();
 		if ( $s ) {
 			$out['search'] = $s;
 		}
@@ -442,7 +448,7 @@ add_action( 'rest_api_init', function () {
 		register_rest_route( 'reading-room/v1', '/stats', array(
 			'methods'             => 'GET',
 			'callback'            => function () {
-				$r = new WP_REST_Response( rrs_stats() );
+				$r = new WP_REST_Response( trr_stats_stats() );
 				$r->header( 'Cache-Control', 'no-store' );
 				return $r;
 			},
@@ -453,7 +459,7 @@ add_action( 'rest_api_init', function () {
 	}
 	register_rest_route( 'reading-room/v1', '/hit', array(
 		'methods'             => 'POST',
-		'callback'            => 'rrs_hit',
+		'callback'            => 'trr_stats_hit',
 		'permission_callback' => '__return_true',
 		'args'                => array( 'p' => array( 'type' => 'integer', 'default' => 0 ) ),
 	) );
@@ -485,7 +491,7 @@ add_filter( 'determine_current_user', function ( $user ) {
  * ------------------------------------------------------------------------------------------------ */
 
 add_action( 'admin_menu', function () {
-	add_options_page( 'The Reading Room stats', 'The Reading Room stats', 'manage_options', 'reading-room-stats', 'rrs_settings_page' );
+	add_options_page( 'The Reading Room stats', 'The Reading Room stats', 'manage_options', 'reading-room-stats', 'trr_stats_settings_page' );
 } );
 
 add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $links ) {
@@ -493,23 +499,23 @@ add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $li
 	return $links;
 } );
 
-function rrs_settings_page() {
+function trr_stats_settings_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
-	if ( isset( $_POST['rrs_save'] ) && check_admin_referer( 'rrs_save' ) ) {
-		update_option( 'rrs_settings', array(
+	if ( isset( $_POST['trr_stats_save'] ) && check_admin_referer( 'trr_stats_save' ) ) {
+		update_option( 'trr_stats_settings', array(
 			'visits' => ! empty( $_POST['visits'] ),
 			'feeds'  => ! empty( $_POST['feeds'] ),
 			'search' => ! empty( $_POST['search'] ),
 		), false );
-		delete_transient( 'rrs_search' );
+		delete_transient( 'trr_stats_search' );
 		echo '<div class="notice notice-success"><p>' . esc_html__( 'Saved.', 'the-reading-room-stats' ) . '</p></div>';
 	}
-	$s     = rrs_stats();
+	$s     = trr_stats_stats();
 	$v     = $s['visitors'] ?? null;
 	$r     = $s['rss'] ?? null;
-	$since = get_option( 'rrs_since' );
+	$since = get_option( 'trr_stats_since' );
 	$sk    = defined( 'GOOGLESITEKIT_VERSION' );
 	?>
 	<div class="wrap">
@@ -519,7 +525,7 @@ function rrs_settings_page() {
 		<table class="widefat striped" style="max-width:44em">
 			<tbody>
 				<tr><td>Counting since</td><td><?php echo esc_html( $since ? date_i18n( get_option( 'date_format' ), strtotime( $since ) ) : '—' ); ?></td></tr>
-				<tr><td>Visits, last <?php echo (int) RRS_WINDOW; ?> days</td><td><?php echo $v ? esc_html( number_format_i18n( $v['total'] ) ) . ' (' . esc_html( number_format_i18n( $v['views'] ) ) . ' page views)' : 'Off'; ?></td></tr>
+				<tr><td>Visits, last <?php echo (int) TRR_STATS_WINDOW; ?> days</td><td><?php echo $v ? esc_html( number_format_i18n( $v['total'] ) ) . ' (' . esc_html( number_format_i18n( $v['views'] ) ) . ' page views)' : 'Off'; ?></td></tr>
 				<tr><td>RSS readers</td><td><?php
 					if ( ! $r ) {
 						echo 'Off';
@@ -537,11 +543,11 @@ function rrs_settings_page() {
 		</table>
 		<h2>What to count</h2>
 		<form method="post">
-			<?php wp_nonce_field( 'rrs_save' ); ?>
-			<p><label><input type="checkbox" name="visits" value="1" <?php checked( rrs_on( 'visits' ) ); ?>> Visits (a small script at the end of each page; no cookies)</label></p>
-			<p><label><input type="checkbox" name="feeds" value="1" <?php checked( rrs_on( 'feeds' ) ); ?>> Feed readers (from what readers say when they check your feed)</label></p>
-			<p><label><input type="checkbox" name="search" value="1" <?php checked( rrs_on( 'search' ) ); ?>> Search traffic from Google Search Console, through Site Kit</label></p>
-			<p><button class="button button-primary" name="rrs_save" value="1">Save</button></p>
+			<?php wp_nonce_field( 'trr_stats_save' ); ?>
+			<p><label><input type="checkbox" name="visits" value="1" <?php checked( trr_stats_on( 'visits' ) ); ?>> Visits (a small script at the end of each page; no cookies)</label></p>
+			<p><label><input type="checkbox" name="feeds" value="1" <?php checked( trr_stats_on( 'feeds' ) ); ?>> Feed readers (from what readers say when they check your feed)</label></p>
+			<p><label><input type="checkbox" name="search" value="1" <?php checked( trr_stats_on( 'search' ) ); ?>> Search traffic from Google Search Console, through Site Kit</label></p>
+			<p><button class="button button-primary" name="trr_stats_save" value="1">Save</button></p>
 		</form>
 		<h2>Seeing it in the app</h2>
 		<ol style="max-width:44em">

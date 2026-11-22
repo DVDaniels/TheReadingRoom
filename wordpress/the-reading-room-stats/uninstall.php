@@ -3,9 +3,9 @@
 defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
 global $wpdb;
-$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . 'reading_room_stats' ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-foreach ( array( 'rrs_db_version', 'rrs_since', 'rrs_salt', 'rrs_settings' ) as $o ) {
-	delete_option( $o );
+$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $wpdb->prefix . 'reading_room_stats' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing the plugin's own table.
+foreach ( array( 'trr_stats_db_version', 'trr_stats_since', 'trr_stats_salt', 'trr_stats_settings' ) as $trr_stats_option ) {
+	delete_option( $trr_stats_option );
 }
-delete_transient( 'rrs_search' );
-wp_clear_scheduled_hook( 'rrs_daily' );
+delete_transient( 'trr_stats_search' );
+wp_clear_scheduled_hook( 'trr_stats_daily' );

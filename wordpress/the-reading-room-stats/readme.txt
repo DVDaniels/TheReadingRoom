@@ -1,9 +1,9 @@
 === The Reading Room stats ===
 Tags: stats, rss, feed readers, analytics, privacy
-Requires at least: 6.0
+Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ Yes, in Settings › The Reading Room stats.
 Its table and settings are removed.
 
 == Changelog ==
+
+= 1.0.1 =
+* Follows the WordPress.org plugin guidelines more closely: database queries name the table through a placeholder, the visit script is printed by WordPress, and everything uses the prefix trr_stats_. Needs WordPress 6.2 or later.
 
 = 1.0.0 =
 * First version: visits, top posts, RSS readers by app, Search Console through Site Kit.
