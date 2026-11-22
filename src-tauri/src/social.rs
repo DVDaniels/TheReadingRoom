@@ -2259,6 +2259,131 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
     Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
 }
 
+// ---- Writing (Plus): your site's posts, drafts and categories, and full posts written in the app
+
+/// Your site's categories, for the Writing tab's folders and the category picker (empty ones too).
+#[tauri::command]
+pub async fn site_categories() -> Result<Value, String> {
+    let v = wp(reqwest::Method::GET, "/wp/v2/categories?per_page=100&orderby=name&_fields=id,name,slug,count", None).await?;
+    let list: Vec<Value> = v.as_array().cloned().unwrap_or_default().into_iter()
+        .map(|c| json!({ "id": c["id"].as_i64().unwrap_or(0), "name": html_escape::decode_html_entities(&st(&c, "name")).to_string(), "slug": st(&c, "slug"), "count": c["count"].as_i64().unwrap_or(0) }))
+        .collect();
+    Ok(json!(list))
+}
+
+/// A post as the Writing tab lists it: title, first words, dates, address, categories and its picture.
+fn writing_item(p: &Value) -> Value {
+    let title = html_escape::decode_html_entities(&st(p, "title.rendered")).to_string();
+    let excerpt: String = html_text(&st(p, "excerpt.rendered")).replace('\n', " ").chars().take(240).collect();
+    let image = p["_embedded"]["wp:featuredmedia"][0].clone();
+    let pic = ["medium_large", "medium", "large"].iter()
+        .map(|s| image["media_details"]["sizes"][*s]["source_url"].as_str().unwrap_or("").to_string())
+        .find(|u| !u.is_empty())
+        .unwrap_or_else(|| st(&image, "source_url"));
+    json!({
+        "id": p["id"].as_i64().unwrap_or(0),
+        "title": title.trim(),
+        "excerpt": excerpt.trim().trim_end_matches("[…]").trim_end_matches("[&hellip;]").trim(),
+        "date": st(p, "date_gmt"),
+        "modified": st(p, "modified_gmt"),
+        "link": st(p, "link"),
+        "status": st(p, "status"),
+        "categories": p["categories"].clone(),
+        "image": pic,
+    })
+}
+
+/// Posts on your site for the Writing tab: drafts or published ones, in some categories or outside them, newest
+/// first. Drafts need the sign-in (an Application Password for an account that can edit posts).
+#[tauri::command]
+pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, exclude: Option<Vec<i64>>, per_page: Option<u32>, after: Option<String>) -> Result<Value, String> {
+    let status = match status.as_deref() { Some("draft") => "draft", Some("future") => "future", _ => "publish" };
+    let join = |v: &Vec<i64>| v.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let mut q = format!("/wp/v2/posts?status={status}&per_page={}&orderby={}&_embed=wp:featuredmedia&context=edit",
+        per_page.unwrap_or(30).clamp(1, 100), if status == "draft" { "modified" } else { "date" });
+    if let Some(c) = categories.filter(|c| !c.is_empty()) { q.push_str(&format!("&categories={}", join(&c))); }
+    if let Some(c) = exclude.filter(|c| !c.is_empty()) { q.push_str(&format!("&categories_exclude={}", join(&c))); }
+    if let Some(a) = after.filter(|a| !a.trim().is_empty()) { q.push_str(&format!("&after={}", url::form_urlencoded::byte_serialize(a.trim().as_bytes()).collect::<String>())); }
+    let v = wp(reqwest::Method::GET, &q, None).await?;
+    Ok(json!(v.as_array().map(|a| a.iter().map(writing_item).collect::<Vec<_>>()).unwrap_or_default()))
+}
+
+/// A post to keep writing in the app: its words as plain paragraphs when the post is only words (paragraphs,
+/// headings, quotes, links). A post with pictures, galleries or other blocks says `simple: false`, and the app
+/// opens it in WordPress instead, so nothing in it gets lost.
+#[tauri::command]
+pub async fn site_post_get(id: i64) -> Result<Value, String> {
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let p = wp(reqwest::Method::GET, &format!("/wp/v2/posts/{id}?context=edit&_embed=wp:featuredmedia"), None).await?;
+    let raw = st(&p, "content.raw");
+    static BLOCK: OnceLock<regex::Regex> = OnceLock::new();
+    let re = BLOCK.get_or_init(|| regex::Regex::new(r"<!--\s*wp:([a-z0-9/-]+)").unwrap());
+    let simple = re.captures_iter(&raw).all(|c| matches!(&c[1], "paragraph" | "heading" | "quote"))
+        && !["<img", "<figure", "<iframe", "<video", "<table", "<ul", "<ol", "[gallery"].iter().any(|t| raw.contains(t));
+    // headings back to "## ", quotes back to "> ", paragraphs apart by a blank line
+    static H: OnceLock<regex::Regex> = OnceLock::new();
+    let h = H.get_or_init(|| regex::Regex::new(r"(?is)<h[1-6][^>]*>(.*?)</h[1-6]>").unwrap());
+    static Q: OnceLock<regex::Regex> = OnceLock::new();
+    let q = Q.get_or_init(|| regex::Regex::new(r"(?is)<blockquote[^>]*>(.*?)</blockquote>").unwrap());
+    static A: OnceLock<regex::Regex> = OnceLock::new();
+    let a = A.get_or_init(|| regex::Regex::new(r#"(?is)<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap());
+    let t = a.replace_all(&raw, |c: &regex::Captures| if html_text(&c[2]) == c[1] { c[1].to_string() } else { format!("{} ({})", &c[2], &c[1]) }).to_string();
+    let t = h.replace_all(&t, |c: &regex::Captures| format!("<p>## {}</p>", html_text(&c[1]))).to_string();
+    let t = q.replace_all(&t, |c: &regex::Captures| format!("<p>{}</p>", html_text(&c[1]).lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n"))).to_string();
+    let text = html_text(&t);
+    let mut item = writing_item(&p);
+    item["title"] = json!(st(&p, "title.raw"));
+    item["text"] = json!(text);
+    item["simple"] = json!(simple);
+    item["featured_media"] = p["featured_media"].clone();
+    item["edit"] = json!(format!("{}/wp-admin/post.php?post={id}&action=edit", st(&s, "site")));
+    Ok(item)
+}
+
+/// Write a full post on your site from the app: a title, the words (paragraphs, "## " headings, "> " quotes,
+/// links and players, as for notes), categories you pick and an optional featured image. A draft stays on your
+/// site unpublished; `id` updates a post you're still writing. Notes and Weeknotes go through site_note.
+#[tauri::command]
+pub async fn site_post(id: Option<i64>, title: String, text: String, categories: Vec<i64>, photo: String, alt: String, draft: bool) -> Result<SiteNote, String> {
+    if title.trim().is_empty() && text.trim().is_empty() {
+        return Err("Write something first.".into());
+    }
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let mut post = json!({ "title": title.trim(), "content": note_html(&text), "status": if draft { "draft" } else { "publish" } });
+    if !categories.is_empty() {
+        post["categories"] = json!(categories);
+    }
+    let mut image = String::new();
+    if !photo.is_empty() {
+        let bytes = photo_bytes(&photo)?;
+        let name = format!("post-{}.jpg", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+        let up = wp_auth(client().post(format!("{}/wp-json/wp/v2/media", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"))
+            .header("Content-Type", "image/jpeg")
+            .header("Content-Disposition", format!("attachment; filename=\"{name}\""))
+            .body(bytes)
+            .timeout(Duration::from_secs(90));
+        let m = call(up).await.map_err(wp_fail)?;
+        let media_id = m["id"].as_i64().unwrap_or(0);
+        image = st(&m, "source_url");
+        if media_id > 0 {
+            if !alt.trim().is_empty() {
+                let _ = wp(reqwest::Method::POST, &format!("/wp/v2/media/{media_id}"), Some(json!({ "alt_text": alt.trim() }))).await;
+            }
+            post["featured_media"] = json!(media_id);
+        }
+    }
+    let path = match id.filter(|i| *i > 0) { Some(i) => format!("/wp/v2/posts/{i}"), None => "/wp/v2/posts".into() };
+    let p = wp(reqwest::Method::POST, &path, Some(post)).await?;
+    Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+}
+
+/// Publish a draft that's on your site as it is (Post now in the Drafts folder).
+#[tauri::command]
+pub async fn site_post_publish(id: i64) -> Result<SiteNote, String> {
+    let p = wp(reqwest::Method::POST, &format!("/wp/v2/posts/{id}"), Some(json!({ "status": "publish" }))).await?;
+    Ok(SiteNote { url: st(&p, "link"), id, image: String::new() })
+}
+
 /// Download a post's picture to put on your site: an image under 10 MB, or nothing.
 async fn fetch_picture(url: &str) -> Option<(Vec<u8>, String)> {
     let resp = client().get(url).timeout(Duration::from_secs(30)).send().await.ok()?;

@@ -1,9 +1,10 @@
 // The Reading Room — the window's behaviour. Talks to the Rust side through Tauri commands.
 (() => {
   const { invoke: tauriInvoke } = window.__TAURI__.core;
-  // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read)
+  // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read),
+  // site_post and site_post_publish (full posts from Writing)
   // and liking (taking a like back stays free). Everything else goes straight through.
-  const invoke = (cmd, args) => (cmd === 'site_note' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
+  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -38,6 +39,7 @@
     videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
+    write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
@@ -131,7 +133,7 @@
     if (folder) { const f = feedById(i.feed_id); return !!f && folderIdsIn(folder).includes(f.folder_id); }
     return String(i.feed_id) === String(view);
   }
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday'].includes(S.view);
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write'].includes(S.view);
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -326,7 +328,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -385,6 +387,9 @@
         { view: 'edition', label: 'Morning Edition', count: '', icon: ICONS.edition },
         { view: 'email', label: 'Email', count: unreadIn('email'), icon: ICONS.email }]) +
       '<hr class="nav-gap">' +
+      // Read, then Write (David, Nov 22)
+      group('write', 'Write', wrNavItems()) +
+      '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
         { view: 'talk', label: 'Conversations', count: (newYou() + newAnswers() + nbUnread().length) || '', icon: ICONS.talk },
@@ -436,7 +441,7 @@
 
   // ------------------------------------------------------------ render: header
   function viewName() {
-    const names = { myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { write: 'Writing', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -449,8 +454,9 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday') && !S.readerId));
-    document.body.classList.toggle('myday-view', S.view === 'myday');
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write') && !S.readerId));
+    // Writing uses My Day's width and panels
+    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -479,6 +485,7 @@
     $('viewTitle').innerHTML = S.view === 'today'
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
+      : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     if (S.view === 'today') paintGoalChip();
@@ -494,6 +501,7 @@
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
+      : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -506,7 +514,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -849,6 +857,7 @@
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'myday') { paintMyDay(); return; }
+    if (S.view === 'write') { wrPaint(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
@@ -958,7 +967,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'myday', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'myday', 'write', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (Your compass › Open on My Day before 10 am turns this off)
@@ -2703,6 +2712,372 @@
   }
 
 
+  // ------------------------------------------------------------ Writing (The Reading Room Plus)
+  // Everything you write for your own site in one place (David, Nov 22): a new Note, Post or Weeknotes, your ideas,
+  // drafts on your site, this week, a writing calendar, Your blog's numbers and what's on your site lately.
+  // In the sidebar it sits right under Read ("reading, writing…"), and folds open to its folders: Ideas, Drafts,
+  // Posts, Notes, Weeknotes, then your site's own categories. Notes and Weeknotes are the Notes and Weeknotes
+  // categories the app already posts into; the other categories come from WordPress, so they always match the site.
+  // Likes, reposts and replies still happen on the post you're reading; they show here once they're on your site.
+  const WR = { sub: '', cats: null, drafts: null, recent: null, future: null, at: 0, busy: false, err: '', folder: null, folderKey: '', folderBusy: false,
+    cal: null, calKey: '', calMonth: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
+  const wrSite = () => SOC.accounts?.wordpress;
+  const wrHost = () => (wrSite()?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const wrCat = slug => (WR.cats || []).find(c => c.slug === slug);
+  const wrCatName = id => (WR.cats || []).find(c => c.id === id)?.name || '';
+  // the site's categories as folders: not Notes or Weeknotes (they have their own), not empty ones, not Uncategorized
+  const wrOwnCats = () => (WR.cats || []).filter(c => c.count > 0 && !['notes', 'weeknotes', 'uncategorized'].includes(c.slug));
+  const wrIdeas = () => (S.prefs.ideas ||= []);
+  const wrFolded = () => store.get('wrFolded') !== '0'; // folded until you open it, so the sidebar stays short
+  const wrDraftGet = () => { try { return JSON.parse(store.get('wrDraft') || '{}') || {}; } catch { return {}; } };
+  const wrDraftSet = d => store.set('wrDraft', JSON.stringify(d));
+  const wrKind = () => ['note', 'post', 'weeknotes'].includes(wrDraftGet().kind) ? wrDraftGet().kind : 'post';
+  // WordPress gives dates in UTC without the Z
+  const wrDate = s => s ? new Date(/Z|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z') : null;
+  function wrWhen(s) {
+    const d = wrDate(s); if (!d || isNaN(d)) return '';
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const n = Math.round((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY);
+    return n === 0 ? 'today' : n === 1 ? 'yesterday' : n > 1 && n < 7 ? `${n} days ago` : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() === t0.getFullYear() ? {} : { year: 'numeric' }) });
+  }
+  // what a post is, by its category
+  function wrKindOf(p) {
+    const c = p.categories || [], n = wrCat('notes')?.id, w = wrCat('weeknotes')?.id;
+    return n && c.includes(n) ? 'note' : w && c.includes(w) ? 'weeknotes' : 'post';
+  }
+  const WR_KIND = { note: 'Note', post: 'Post', weeknotes: 'Weeknotes' };
+
+  async function wrLoad(force) {
+    if (!wrSite() || WR.busy || (!force && WR.at && Date.now() - WR.at < 5 * 60e3)) return;
+    WR.busy = true;
+    try {
+      const [cats, drafts, recent, future] = await Promise.all([invoke('site_categories'), invoke('site_posts', { status: 'draft', perPage: 50 }),
+        invoke('site_posts', { status: 'publish', perPage: 60 }), invoke('site_posts', { status: 'future', perPage: 20 }).catch(() => [])]);
+      WR.cats = cats || []; WR.drafts = drafts || []; WR.recent = recent || []; WR.future = future || []; WR.err = '';
+    } catch (e) { WR.err = msg(e); }
+    WR.busy = false; WR.at = Date.now(); WR.cal = null;
+    renderRail();
+    if (S.view === 'write') wrPaint();
+  }
+  // one month of the calendar: what went on your site that month
+  async function wrLoadCal() {
+    const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
+    const key = `${m.getFullYear()}-${m.getMonth()}`;
+    if (WR.calKey === key && WR.cal) return;
+    WR.calKey = key; WR.cal = null;
+    try {
+      const list = await invoke('site_posts', { status: 'publish', perPage: 100, after: new Date(m.getTime() - 1000).toISOString().slice(0, 19) });
+      if (WR.calKey === key) { WR.cal = list || []; if (S.view === 'write' && !WR.sub) wrPaint(); }
+    } catch { if (WR.calKey === key) WR.cal = []; }
+  }
+  async function wrLoadFolder(key) {
+    if (WR.folderBusy) return;
+    WR.folderBusy = true; WR.folderKey = key; WR.folder = null;
+    const n = wrCat('notes')?.id, w = wrCat('weeknotes')?.id;
+    const args = key === 'posts' ? { status: 'publish', perPage: 50, exclude: [n, w].filter(Boolean) }
+      : key === 'notes' ? (n ? { status: 'publish', perPage: 50, categories: [n] } : null)
+      : key === 'weeknotes' ? (w ? { status: 'publish', perPage: 50, categories: [w] } : null)
+      : key.startsWith('cat-') ? { status: 'publish', perPage: 50, categories: [Number(key.slice(4))] } : null;
+    try { WR.folder = args ? (await invoke('site_posts', args)) || [] : []; WR.err = ''; } catch (e) { WR.folder = []; WR.err = msg(e); }
+    WR.folderBusy = false;
+    if (S.view === 'write' && WR.sub === key) wrPaint();
+  }
+
+  // ---- the sidebar: Writing, and its folders when it's open
+  function wrNavItems() {
+    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    const it = { view: 'write', label: 'Writing', count: '', icon: ICONS.write };
+    if (!wrSite()) { it.html = navButton('write', 'Writing', '', { icon: ICONS.write, mark }); return [it]; }
+    if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
+    const open = !wrFolded(), nd = (WR.drafts || []).length;
+    it.count = open ? '' : nd || '';
+    it.html = `<div class="folder vidrow">${navButton('write', 'Writing', it.count, { icon: ICONS.write, mark })}<button class="chev" type="button" data-wrfold aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Show'} the folders under Writing" title="${open ? 'Fold the folders into Writing' : 'Show your drafts, posts, notes and categories'}">${ICONS.chev}</button></div>`;
+    if (!open) return [it];
+    const sub = (k, label, n, tip) => ({ view: 'write', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'write' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? fmtCount(n) : ''}</span></button>` });
+    const cats = wrOwnCats();
+    return [it, sub('ideas', 'Ideas', wrIdeas().length, 'Ideas for posts, kept in the app'), sub('drafts', 'Drafts', nd, 'Drafts on your site'), sub('posts', 'Posts'), sub('notes', 'Notes'), sub('weeknotes', 'Weeknotes'),
+      ...(cats.length ? [{ view: 'write', sub: true, html: '<span class="wr-navhead">On your site</span>' }, ...cats.map(c => sub('cat-' + c.id, c.name, 0, `Everything in ${c.name} on your site`))] : [])];
+  }
+
+  // ---- the page
+  function wrPaint() {
+    const a = document.activeElement, id = a && a.id && a.closest?.('#list') ? a.id : '';
+    const sel = id && typeof a.selectionStart === 'number' ? a.selectionStart : null;
+    const y = $('main').scrollTop, ly = $('listView').scrollTop;
+    $('list').innerHTML = writingHtml();
+    $('main').scrollTop = y; $('listView').scrollTop = ly;
+    const el = id && $(id);
+    if (el) { el.focus(); if (sel != null) try { el.setSelectionRange(sel, sel); } catch {} }
+  }
+  function wrHead(sub) {
+    return `<div class="md-top"><div class="md-top-row"><h2>${esc(sub || 'Write something')}</h2>
+        <div class="md-modes">${sub ? '<button type="button" class="linkish" data-wr="back">All of Writing</button>' : ''}${wrSite() ? `<span class="wr-site">Posting to <b>${esc(wrHost())}</b></span><button type="button" class="linkish" data-wr="site">Change</button>` : ''}</div></div>`;
+  }
+  function writingHtml() {
+    if (!wrSite()) return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Writing is where you post to your own site: notes, full posts and Weeknotes, with your drafts, ideas and your blog’s numbers alongside.</p></div>
+      <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your WordPress site to start</h2>
+      <p>The Reading Room posts to your site with an Application Password, a sign-in WordPress makes just for one app. Nothing goes on your site until you press Post.</p>
+      <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
+    if (!plusOk()) return wrInviteHtml();
+    if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
+    if (WR.sub) return wrFolderHtml();
+    const err = WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : '';
+    return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Whatever you write here goes to your own site. Nothing is posted until you press Post.</p></div>
+      ${err}${wrComposerHtml()}<div class="md-quad">${wrIdeasHtml()}${wrDraftsHtml()}${wrWeekHtml()}${wrCalHtml()}</div>${yourBlogHtml()}${wrRecentHtml()}</section>`;
+  }
+  function wrInviteHtml() {
+    return `<section class="brief myday writing" aria-label="Writing"><section class="b-panel wr-invite"><p class="b-sub">The Reading Room Plus</p>
+      <h2>Write back to the web, from where you read it</h2>
+      <p>Reading stays free. Plus adds Writing: post notes, full posts and Weeknotes to your own site, keep your ideas and drafts in one place, and see who’s reading you.</p>
+      <ul class="wr-feat"><li><b>Post to your site</b><span>Notes, posts, replies, likes and reposts</span></li><li><b>Weeknotes and What I read</b><span>Made from your week, posted in a tap</span></li>
+        <li><b>Ideas and drafts</b><span>Your ideas, and the drafts on your site</span></li><li><b>Your blog</b><span>Visitors, RSS readers and search, every day</span></li></ul>
+      <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section></section>`;
+  }
+
+  // New: a Note, a Post or Weeknotes. What you type is kept on this device until it's posted.
+  function wrComposerHtml() {
+    const d = wrDraftGet(), kind = wrKind(), nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const picked = new Set((store.get('wrNets') ?? 'bluesky,mastodon').split(',').filter(Boolean));
+    const cats = (WR.cats || []).filter(c => !['notes', 'weeknotes'].includes(c.slug));
+    const help = kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
+      : kind === 'note' ? 'A note goes on your Notes page and in its feed. Without a title, its first words are used.'
+      : 'Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
+    const pic = WR.photo || WR.photoUrl;
+    return `<section class="b-panel wr-new" aria-label="New">
+      <div class="bp-head"><h3 class="b-sub">${d.editId ? 'Your draft' : 'New'}</h3>${d.editId ? `<span class="bp-meta">Saved on your site · <button class="linkish" type="button" data-wr="clear">Start something new</button></span>` : ''}
+        <div class="wr-kinds" role="group" aria-label="What you’re writing">${Object.entries(WR_KIND).map(([k, l]) => `<button type="button" data-wr="kind" data-k="${k}" aria-pressed="${k === kind}"${d.editId && k !== 'post' ? ' disabled' : ''}>${l}</button>`).join('')}</div></div>
+      <input class="wr-title" id="wrTitle" type="text" maxlength="200" autocomplete="off" value="${esc(d.title || '')}" placeholder="${kind === 'note' ? 'Title (optional)' : 'Title'}" aria-label="Title">
+      <textarea class="wr-body" id="wrText" rows="${kind === 'note' ? 4 : 9}" placeholder="${kind === 'note' ? 'What’s on your mind?' : kind === 'weeknotes' ? 'What happened this week?' : 'Start writing…'}" aria-label="What you’re writing">${esc(d.text || '')}</textarea>
+      <p class="wr-help">${esc(help)}</p>
+      ${pic ? `<div class="wr-pic"><img src="${esc(pic)}" alt=""><div><input class="n-field" id="wrAlt" maxlength="1000" value="${esc(WR.alt)}" placeholder="Describe the photo for people who can’t see it"${WR.photo ? '' : ' disabled'}>
+        <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : 'Change the picture in WordPress'}</button></div></div>` : ''}
+      <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>`}<input id="wrPhoto" type="file" accept="image/*" hidden>
+        ${kind === 'post' ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+        ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
+      <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
+      <div class="wr-acts"><span class="note">${d.text || d.title ? 'Kept on this device as you type' : ''}</span>
+        <button class="btn" type="button" data-wr="draft"${WR.posting ? ' disabled' : ''}>${d.editId ? 'Save the draft' : 'Save as a draft on your site'}</button>
+        <button class="btn primary" type="button" data-wr="post"${WR.posting ? ' disabled' : ''}>${kind === 'post' ? 'Post now' : kind === 'weeknotes' ? 'Publish' : 'Post'}</button></div></section>`;
+  }
+  function wrIdeasHtml() {
+    const ideas = wrIdeas();
+    return `<section class="b-panel wr-ideas" aria-label="Ideas"><div class="bp-head"><h3 class="b-sub">Ideas</h3><span class="bp-meta">${ideas.length ? `${ideas.length} waiting` : ''}</span></div>
+      ${ideas.length ? `<ul class="wr-list">${ideas.slice(0, 5).map(i => `<li><span class="wr-t">${esc(i.t)}<small>Added ${esc(wrWhen(i.at))}</small></span><button class="b-link" type="button" data-wr="idea-write" data-id="${esc(i.id)}">Write it</button></li>`).join('')}</ul>` : ''}
+      ${ideas.length > 5 ? `<p class="day-note"><button class="b-link" type="button" data-wrsub="ideas">All ${ideas.length} ideas</button></p>` : ''}
+      <form class="wr-addf" data-wr-form="idea"><input class="wr-add" id="wrIdea" maxlength="200" placeholder="Add an idea…" aria-label="Add an idea" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+      <p class="day-note">${ideas.length ? 'Your ideas stay in the app and sync through iCloud. Write it starts a post with the idea as its title.' : 'Jot down what you might write about. Your ideas stay in the app and sync through iCloud.'}</p></section>`;
+  }
+  function wrDraftsHtml() {
+    const list = WR.drafts;
+    const body = !list ? `<p class="day-note">${WR.busy ? 'Looking at your site…' : ''}</p>` : !list.length ? '<p class="day-note">No drafts on your site right now. Save as a draft puts one here.</p>'
+      : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button></li>`).join('')}</ul>
+        ${list.length > 4 ? `<p class="day-note"><button class="b-link" type="button" data-wrsub="drafts">All ${list.length} drafts</button></p>` : ''}`;
+    return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length || ''}</span></div>${body}
+      ${list?.length ? '<p class="day-note">Drafts you started here or in WordPress. Finish them in either place.</p>' : ''}</section>`;
+  }
+  function wrWeekHtml() {
+    const wk = mdWeek(), mon = wk.mon.getTime();
+    const wid = wrCat('weeknotes')?.id;
+    const done = wid && (WR.recent || []).find(p => (p.categories || []).includes(wid) && wrDate(p.date) >= wk.mon);
+    const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= mon && !isEmailItem(i)).length;
+    const hls = S.highlights.filter(h => Date.parse(h.created_at) >= mon).length;
+    const nid = wrCat('notes')?.id, notes = nid ? (WR.recent || []).filter(p => (p.categories || []).includes(nid) && wrDate(p.date) >= wk.mon).length : 0;
+    const picks = roundupPicks().length;
+    const bits = [`${read} ${read === 1 ? 'post' : 'posts'} read`, notes ? `${notes} ${notes === 1 ? 'note' : 'notes'}` : '', hls ? `${hls} ${hls === 1 ? 'highlight' : 'highlights'}` : ''].filter(Boolean);
+    return `<section class="b-panel wr-week" aria-label="This week"><div class="bp-head"><h3 class="b-sub">This week</h3><span class="bp-meta">${esc(fmtRange(wk.mon, wk.sun))}</span></div>
+      <div class="wr-wk"><b>Weeknotes</b>${done ? `<span>Posted ${esc(wrWhen(done.date))}: “${esc(done.title)}”</span><button class="btn" type="button" data-mkurl="${esc(done.link)}">Open on your site</button>`
+        : `<span>From your week so far: ${esc(bits.join(', '))}.</span><button class="btn primary" type="button" data-wr="weeknotes">Write Weeknotes</button>`}</div>
+      <div class="wr-wk"><b>What I read this week</b><span>${picks ? `${picks} ${picks === 1 ? 'post' : 'posts'} you read, saved or highlighted. Pick your favorites and add a line about each.` : 'Read, save or highlight a few posts, then make your roundup.'}</span>
+        <button class="btn" type="button" data-roundup${picks ? '' : ' disabled'}>Make the post</button></div></section>`;
+  }
+  function wrCalHtml() {
+    const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
+    if (WR.calKey !== `${m.getFullYear()}-${m.getMonth()}` || !WR.cal) setTimeout(() => wrLoadCal(), 0);
+    const marks = new Map(), add = (p, k) => { const d = wrDate(p.date); if (!d) return; const key = dayKey(d); if (!marks.has(key)) marks.set(key, []); marks.get(key).push({ k, t: p.title || p.excerpt?.slice(0, 60) || '' }); };
+    for (const p of WR.cal || []) add(p, wrKindOf(p));
+    for (const p of WR.future || []) add(p, 'plan');
+    const a = addDays(m, -m.getDay()), last = new Date(m.getFullYear(), m.getMonth() + 1, 0), days = [];
+    for (let d = a; d <= last || d.getDay() !== 0; d = addDays(d, 1)) days.push(d);
+    const today = dayKey(), kinds = { post: 'p', note: 'n', weeknotes: 'w', plan: 'plan' };
+    const cells = days.map(d => {
+      const k = dayKey(d), ms = marks.get(k) || [], out = d.getMonth() !== m.getMonth();
+      const tip = ms.map(x => `${x.k === 'plan' ? 'Scheduled' : WR_KIND[x.k]}: ${x.t}`).join('\n');
+      return `<span class="wr-day${k === today ? ' now' : ''}${out ? ' out' : ''}"${tip ? ` title="${esc(tip)}"` : ''}><i>${d.getDate()}</i>${ms.length ? `<span class="wr-dots">${ms.slice(0, 3).map(x => `<b class="k-${kinds[x.k]}"></b>`).join('')}</span>` : ''}</span>`;
+    }).join('');
+    const inMonth = (WR.cal || []).filter(p => { const d = wrDate(p.date); return d && d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear(); }).length;
+    const thisMonth = m.getMonth() === new Date().getMonth() && m.getFullYear() === new Date().getFullYear();
+    return `<section class="b-panel wr-cal" aria-label="Writing calendar"><div class="bp-head"><h3 class="b-sub">Writing calendar</h3>
+        <span class="mc-nav"><button class="mc-arrow" type="button" data-wr="cal" data-n="-1" aria-label="Previous month">‹</button><span class="bp-meta">${esc(m.toLocaleDateString(undefined, { month: 'long', ...(m.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) }))}</span><button class="mc-arrow" type="button" data-wr="cal" data-n="1" aria-label="Next month"${thisMonth ? ' disabled' : ''}>›</button></span></div>
+      <div class="wr-grid">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<span class="wr-wd">${x}</span>`).join('')}${cells}</div>
+      <p class="wr-key"><span><b class="k-p"></b>Post</span><span><b class="k-n"></b>Note</span><span><b class="k-w"></b>Weeknotes</span>${(WR.future || []).length ? '<span><b class="k-plan"></b>Scheduled</span>' : ''}</p>
+      <p class="day-note">${!WR.cal ? 'Looking at your site…' : `${inMonth ? `${inMonth} ${inMonth === 1 ? 'thing' : 'things'} on your site ${thisMonth ? 'this month' : 'that month'}.` : `Nothing on your site ${thisMonth ? 'yet this month' : 'that month'}.`}`}</p></section>`;
+  }
+  function wrRecentHtml() {
+    const list = (WR.recent || []).slice(0, 8);
+    if (!list.length) return '';
+    return `<section class="b-panel wr-posted" aria-label="Recently on your site"><div class="bp-head"><h3 class="b-sub">Recently on your site</h3><span class="bp-meta">${esc(wrHost())}</span></div>
+      <ul class="wr-plist">${list.map(p => { const k = wrKindOf(p); return `<li><span class="wr-kind k-${k}">${WR_KIND[k]}</span><span class="wr-pt">${esc(p.title || p.excerpt || '')}</span><span class="wr-when">${esc(wrWhen(p.date))}</span><button class="b-link" type="button" data-mkurl="${esc(p.link)}">View</button></li>`; }).join('')}</ul>
+      <p class="day-note">Likes, reposts and replies still happen right on the post you’re reading. Reposts and replies show here as notes; likes go on your Likes page.</p></section>`;
+  }
+  // a folder: Ideas, Drafts, Posts, Notes, Weeknotes or one of your site's categories, as a list
+  function wrFolderHtml() {
+    const k = WR.sub, cat = k.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === k) : null;
+    const name = cat?.name || { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[k] || 'Writing';
+    const note = k === 'ideas' ? 'Ideas for posts, kept in the app and synced through iCloud. Write it starts a post with the idea as its title.'
+      : k === 'drafts' ? `Drafts on ${wrHost()}, whether you started them here or in WordPress. Finish them in either place.`
+      : cat ? `Everything in ${cat.name} on ${wrHost()}, newest first. Categories come from your site, so they always match it.`
+      : `Your ${name.toLowerCase()} on ${wrHost()}, newest first.`;
+    let rows = '';
+    if (k === 'ideas') {
+      const ideas = wrIdeas();
+      rows = ideas.length ? ideas.map(i => `<li class="wr-frow"><div class="wr-fmain"><b>${esc(i.t)}</b><span class="wr-fmeta">Added ${esc(wrWhen(i.at))}</span></div>
+        <div class="wr-facts"><button class="btn primary" type="button" data-wr="idea-write" data-id="${esc(i.id)}">Write it</button><button class="btn" type="button" data-wr="idea-x" data-id="${esc(i.id)}">Remove</button></div></li>`).join('')
+        : '<li class="wr-frow"><p class="day-note">No ideas yet. Add one on the Writing page.</p></li>';
+    } else {
+      const list = k === 'drafts' ? WR.drafts : WR.folderKey === k ? WR.folder : null;
+      if (k !== 'drafts' && WR.folderKey !== k && !WR.folderBusy) setTimeout(() => wrLoadFolder(k), 0);
+      rows = !list ? `<li class="wr-frow"><p class="day-note">Looking at your site…</p></li>`
+        : !list.length ? `<li class="wr-frow"><p class="day-note">${k === 'weeknotes' ? 'No Weeknotes yet. Your first one makes the Weeknotes category on your site.' : k === 'notes' ? 'No notes yet.' : 'Nothing here yet.'}</p></li>`
+        : list.map(p => `<li class="wr-frow">${p.image ? `<img class="wr-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="wr-fmain"><b>${esc(p.title || (k === 'drafts' ? 'Untitled draft' : p.excerpt?.slice(0, 80) || ''))}</b>${p.excerpt && p.title ? `<p>${esc(p.excerpt)}</p>` : ''}
+          <span class="wr-fmeta">${(p.categories || []).slice(0, 2).map(c => wrCatName(c)).filter(Boolean).map(c => `<span class="wr-kind">${esc(c)}</span>`).join('')}${k === 'drafts' ? `Edited ${esc(wrWhen(p.modified))}` : esc(wrWhen(p.date))}</span></div>
+          <div class="wr-facts">${k === 'drafts' ? `<button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
+            : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
+    }
+    return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
+      ${WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : ''}
+      <section class="b-panel wr-folder"><ul class="wr-flist">${rows}</ul></section></section>`;
+  }
+
+  // ---- doing things
+  const wrSay = (t, err) => { WR.note = t; WR.noteErr = !!err; };
+  function wrClear() { wrDraftSet({ kind: wrKind() === 'weeknotes' ? 'post' : wrKind() }); WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; }
+  function wrToTop() { WR.sub = ''; renderHead(); renderRail(); wrPaint(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); }
+  function wrStartWeeknotes() {
+    const wk = mdWeek(), w = mdWk(wk.key), d = wrDraftGet();
+    if (d.editId || ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.'))) { if (d.editId) { status('Save or finish your draft first, then start your Weeknotes.'); return; } else return; }
+    const text = d.kind === 'weeknotes' && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || '## What happened\n\n\n\n## What I made\n\n\n\n## What I read\n\n');
+    wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
+    wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
+  }
+  async function wrEdit(id) {
+    if ((wrDraftGet().text || '').trim() && wrDraftGet().editId !== id && !confirm('Put aside what you’re writing and open this draft? Save what you have as a draft first if you want to keep it.')) return;
+    status('Opening your draft…');
+    try {
+      const p = await invoke('site_post_get', { id });
+      if (!p.simple) { invoke('open_external', { url: p.edit }).catch(() => {}); status('This draft has pictures or other blocks, so it opens in WordPress, where nothing in it gets lost.'); return; }
+      const nid = wrCat('notes')?.id, wid = wrCat('weeknotes')?.id;
+      const cat = (p.categories || []).find(c => c !== nid && c !== wid) || '';
+      wrDraftSet({ kind: 'post', title: p.title || '', text: p.text || '', cat, editId: id, keepCats: (p.categories || []).filter(c => c === nid || c === wid) });
+      WR.photo = ''; WR.photoUrl = p.image || ''; WR.alt = ''; wrSay('');
+      status(''); wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
+    } catch (e) { status(msg(e), true); }
+  }
+  async function wrPublishDraft(id) {
+    const p = (WR.drafts || []).find(x => x.id === id);
+    if (!confirm(`Publish “${p?.title || 'this draft'}” on your site now? Everyone who follows your blog will see it.`)) return;
+    try {
+      const r = await invoke('site_post_publish', { id });
+      status(`Posted to ${wrHost()}.`);
+      if (wrDraftGet().editId === id) wrClear();
+      WR.drafts = (WR.drafts || []).filter(x => x.id !== id); wrPaint(); renderRail();
+      wrLoad(true);
+      return r;
+    } catch (e) { status(msg(e), true); }
+  }
+  async function wrPost(draft) {
+    const d = wrDraftGet(), kind = wrKind(), words = (d.text || '').trim(), title = (d.title || '').trim();
+    if (!words && !WR.photo && !title) { wrSay('Write something first.', true); wrPaint(); return; }
+    if (kind !== 'note' && !title && !draft) { wrSay('Give it a title first.', true); wrPaint(); $('wrTitle')?.focus(); return; }
+    if (!draft && kind !== 'note' && !confirm(`Publish “${title}” on your site now? Everyone who follows your blog will see it.`)) return;
+    if (WR.photo && !WR.alt.trim() && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('wrAlt')?.focus(); return; }
+    WR.posting = true; wrSay(draft ? 'Saving the draft…' : `Posting to ${wrHost()}…`); wrPaint();
+    try {
+      let r;
+      if (kind === 'post') {
+        const cats = [...new Set([...(d.keepCats || []), ...(d.cat ? [Number(d.cat)] : [])])];
+        r = await invoke('site_post', { id: d.editId || null, title, text: words, categories: cats, photo: WR.photo, alt: WR.alt.trim(), draft });
+      } else {
+        r = await invoke('site_note', { title, text: words, link: '', linkTitle: '', photo: WR.photo, alt: WR.alt.trim(), draft, linkImage: '', linkSite: '', category: kind === 'weeknotes' ? 'weeknotes' : null, featuredOnly: kind === 'weeknotes' });
+      }
+      if (draft && kind === 'post') {
+        // a post saved as a draft stays open here, so the next save updates the same draft
+        wrDraftSet({ ...d, editId: r.id }); if (r.image) { WR.photoUrl = r.image; WR.photo = ''; }
+        wrSay('Saved to your drafts on your site. Keep writing, or finish it later here or in WordPress.');
+        WR.posting = false; wrLoad(true); wrPaint(); return;
+      }
+      if (draft) { wrClear(); wrSay(''); status(kind === 'weeknotes' ? 'Saved your Weeknotes as a draft on your site.' : 'Saved as a draft on your site.'); WR.posting = false; wrLoad(true); wrPaint(); return; }
+      if (kind === 'weeknotes') { const wk = mdWeek(), w = mdWk(wk.key); w.published = Date.now(); w.pubUrl = r?.url || ''; savePrefs(); }
+      if (d.idea) { S.prefs.ideas = wrIdeas().filter(i => i.id !== d.idea); savePrefs(); }
+      // copies to Bluesky and Mastodon that link home
+      const picks = [...document.querySelectorAll('[data-wrnet]:checked')].map(x => x.dataset.wrnet).filter(n => SOC.accounts[n]);
+      let shared = [], bad = [];
+      if (picks.length && r?.url) {
+        wrSay('Posted on your site. Sharing the copies…'); wrPaint();
+        const copy = kind === 'note' ? (title && words ? `${title}\n\n${words}` : words || title) : title;
+        const res = await invoke('social_share_note', { networks: picks, text: copy, link: r.url, title: title || `A note on ${wrSite().name || 'my site'}`, photo: WR.photo, alt: WR.alt.trim(), video: '', videoTitle: '', about: '', aboutTitle: '', aboutSite: '', aboutImage: '' });
+        shared = res.filter(x => !x.error).map(x => NET[x.network]); bad = res.filter(x => x.error);
+        if (shared.length) setTimeout(() => { loadConversations(true); }, 4000);
+      }
+      wrClear();
+      wrSay(bad.length ? `Posted to ${wrHost()}${shared.length ? ` and ${shared.join(' and ')}` : ''}. ${bad.map(x => `${NET[x.network]}: ${x.error}`).join(' ')}` : '', !!bad.length);
+      status(`Posted to ${wrHost()}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.`);
+      WR.posting = false; wrLoad(true); wrPaint(); renderRail();
+    } catch (e) { WR.posting = false; wrSay(msg(e), true); wrPaint(); }
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('#views [data-view="write"]')) WR.sub = '';
+  }, true);
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
+    const s = e.target.closest('[data-wrsub]');
+    if (s) { WR.sub = s.dataset.wrsub; if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
+    const b = e.target.closest('[data-wr]'); if (!b || !b.closest('.writing')) return;
+    const k = b.dataset.wr, id = Number(b.dataset.id) || b.dataset.id;
+    if (k === 'connect' || k === 'site') { openAccounts(); return; }
+    if (k === 'back') { wrToTop(); return; }
+    if (k === 'reload') { WR.err = ''; WR.folderKey = ''; wrLoad(true); return; }
+    if (k === 'kind') { const d = wrDraftGet(); if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet({ ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
+    if (k === 'weeknotes') { wrStartWeeknotes(); return; }
+    if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
+    if (k === 'photo') { $('wrPhoto')?.click(); return; }
+    if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
+    if (k === 'post' || k === 'draft') { wrPost(k === 'draft'); return; }
+    if (k === 'edit') { wrEdit(id); return; }
+    if (k === 'publish') { wrPublishDraft(id); return; }
+    if (k === 'cal') { const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })(); WR.calMonth = new Date(m.getFullYear(), m.getMonth() + Number(b.dataset.n), 1); WR.cal = null; wrPaint(); return; }
+    if (k === 'idea-x') { S.prefs.ideas = wrIdeas().filter(i => i.id !== b.dataset.id); savePrefs(); wrPaint(); renderRail(); return; }
+    if (k === 'idea-write') {
+      const idea = wrIdeas().find(i => i.id === b.dataset.id); if (!idea) return;
+      const d = wrDraftGet();
+      if (d.editId || ((d.text || '').trim() && !confirm('Put aside what you’re writing and start this idea? Save what you have as a draft first if you want to keep it.'))) { if (d.editId) status('Save or finish your draft first, then start this idea.'); return; }
+      wrDraftSet({ kind: 'post', title: idea.t, text: '', idea: idea.id }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
+      wrToTop(); setTimeout(() => $('wrText')?.focus(), 0); return;
+    }
+  });
+  document.addEventListener('submit', e => {
+    const f = e.target.closest('[data-wr-form="idea"]'); if (!f) return;
+    e.preventDefault();
+    const t = $('wrIdea')?.value.trim(); if (!t) return;
+    wrIdeas().unshift({ id: Math.random().toString(36).slice(2, 9), t, at: new Date().toISOString() });
+    S.prefs.ideas = wrIdeas().slice(0, 100); savePrefs(); renderRail(); wrPaint(); $('wrIdea')?.focus();
+  });
+  document.addEventListener('input', e => {
+    const t = e.target; if (!t.closest?.('.writing')) return;
+    if (t.id === 'wrTitle' || t.id === 'wrText') { const d = wrDraftGet(); d.kind = wrKind(); d[t.id === 'wrTitle' ? 'title' : 'text'] = t.value; wrDraftSet(d); }
+    if (t.id === 'wrAlt') WR.alt = t.value;
+  });
+  document.addEventListener('change', async e => {
+    const t = e.target; if (!t.closest?.('.writing')) return;
+    if (t.id === 'wrCat') { const d = wrDraftGet(); d.cat = t.value; wrDraftSet(d); }
+    if (t.dataset?.wrnet) store.set('wrNets', [...document.querySelectorAll('[data-wrnet]:checked')].map(x => x.dataset.wrnet).join(','));
+    if (t.id === 'wrPhoto') {
+      const file = t.files[0]; if (!file) return;
+      wrSay('Getting the photo ready…'); wrPaint();
+      try { WR.photo = await shrinkPhoto(file); WR.photoUrl = ''; wrSay(''); } catch { WR.photo = ''; wrSay('Couldn’t open that picture. Try another one, or save it as a JPEG first.', true); }
+      wrPaint(); $('wrAlt')?.focus();
+    }
+  });
+
   // ------------------------------------------------------------ The Reading Room Plus
   // A yearly subscription (StoreKit 2 through tauri-plugin-iap) for people who write: posting to your own site
   // (Notes, reposts, replies, likes, Weeknotes, What I read this week) and Your blog's stats on My Day. Reading,
@@ -2737,6 +3112,7 @@
       PLUS.exp = st?.expirationTime || 0;
       store.set('plusState', JSON.stringify({ owned: PLUS.owned, exp: PLUS.exp, at: Date.now() }));
       if (S.view === 'myday') mdRender();
+      if (S.view === 'write') wrPaint();
       paintPlusRow();
     } catch { /* offline or no StoreKit: keep what we knew */ }
   }
@@ -2754,7 +3130,8 @@
   const PLUS_FEATURES = [
     ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site, with copies to Mastodon and Bluesky.'],
     ['Weeknotes', 'Publish your Weeknotes and What I read this week as posts, with a featured image.'],
-    ['Your blog', 'Visitors, RSS readers and search traffic for your blog, on My Day.'],
+    ['Writing', 'Full posts, notes and Weeknotes, your ideas, the drafts on your site and a writing calendar, in one place.'],
+    ['Your blog', 'Visitors, RSS readers and search traffic for your blog, in Writing.'],
   ];
   function paintPlusRow() {
     const row = $('plusRow'); if (!row) return;
@@ -7311,7 +7688,7 @@
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
       ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
-      : `${quadHtml()}${yourBlogHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
+      : `${quadHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
     const people = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY).length;
     const foot = evening
       ? `<p class="md-foot">Done for the day? <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">Read something good before bed</button></p>`
@@ -7459,7 +7836,7 @@
   async function loadBlog() {
     if (BLOG.busy || (BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
     BLOG.busy = true;
-    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.loaded = true; BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); }
+    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.loaded = true; BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); }
     catch { BLOG.failed = true; }
     finally { BLOG.busy = false; }
   }
