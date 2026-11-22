@@ -2881,7 +2881,7 @@
     const cats = (WR.cats || []).filter(c => !['notes', 'weeknotes'].includes(c.slug));
     const help = kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
       : kind === 'note' ? 'A note goes on your Notes page and in its feed. Without a title, its first words are used.'
-      : 'Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
+      : 'Step 3 of 3: add a few words under What happened (and a line under any post if you like), then Publish, or Save as a draft to finish later. Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
     const pic = WR.photo || WR.photoUrl;
     return `<section class="b-panel wr-new" aria-label="New">
       <div class="bp-head"><h3 class="b-sub">${d.editId ? 'Your draft' : 'New'}</h3>${d.editId ? `<span class="bp-meta">Saved on your site · <button class="linkish" type="button" data-wr="clear">Start something new</button></span>` : ''}
@@ -2929,21 +2929,32 @@
     return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length ? `${list.length}${WR.draftsMore ? '+' : ''}` : ''}</span></div>${wrUndoHtml()}${body}
       ${list?.length ? '<p class="day-note">Drafts you started here or in WordPress. Finish them in either place.</p>' : ''}</section>`;
   }
+  // This week: Weeknotes in three labeled steps (David, Nov 22: "Can we make it easier and label the steps?").
+  // 1 Pick what you read (optional) · 2 Write · 3 Publish. Each step shows when it's done; the next one is the green button.
   function wrWeekHtml() {
     const wk = mdWeek(), mon = wk.mon.getTime();
-    const wid = wrCat('weeknotes')?.id;
-    const done = wrWeekDone(wk);
+    const done = wrWeekDone(wk), d = wrDraftGet(), onSite = wrWeekDraftOnSite(wk);
     const read = S.items.filter(i => i.read_at && Date.parse(i.read_at) >= mon && !isEmailItem(i)).length;
-    const hls = S.highlights.filter(h => Date.parse(h.created_at) >= mon).length;
-    const nid = wrCat('notes')?.id, notes = nid ? (WR.recent || []).filter(p => (p.categories || []).includes(nid) && wrDate(p.date) >= wk.mon).length : 0;
-    const picks = roundupPicks().length;
-    const bits = [`${read} ${read === 1 ? 'post' : 'posts'} read`, notes ? `${notes} ${notes === 1 ? 'note' : 'notes'}` : '', hls ? `${hls} ${hls === 1 ? 'highlight' : 'highlights'}` : ''].filter(Boolean);
+    const picks = roundupPicks().length, picked = wrPicks(wk)?.links.length || 0;
+    const open = d.kind === 'weeknotes', writing = open && (d.editId || !wrUntouched(d)), started = !!(onSite || writing);
+    const s1 = done || picked, s2 = done || started, s3 = !!done;
+    const cur = done ? 0 : !s2 && !s1 ? 1 : !s2 ? 2 : 3;
+    const step = (n, ok, title, text, btn) => `<li class="wr-step${ok ? ' ok' : ''}${cur === n ? ' cur' : ''}"><span class="wr-num" aria-hidden="true">${ok ? '✓' : n}</span>
+      <div><b>${title}</b><span>${text}</span>${btn || ''}</div></li>`;
+    const b = (cls, attrs, label, off) => `<button class="btn${cls}" type="button" ${attrs}${off ? ' disabled' : ''}>${label}</button>`;
     return `<section class="b-panel wr-week" aria-label="This week"><div class="bp-head"><h3 class="b-sub">This week</h3><span class="bp-meta">${esc(fmtRange(wk.mon, wk.sun))}</span></div>
-      <div class="wr-wk"><b>Weeknotes</b>${done ? `<span>Posted ${esc(wrWhen(done.date))}: “${esc(done.title)}”</span><button class="btn" type="button" data-mkurl="${esc(done.link)}">Open on your site</button>`
-        : wrWeekDraftOnSite(wk) ? `<span>Your Weeknotes draft is saved on your site. Pick up where you left off.</span><button class="btn primary" type="button" data-wr="weeknotes">Keep writing</button>`
-        : `<span>From your week so far: ${esc(bits.join(', '))}. Counted from your reading here and your site, since Monday. Write Weeknotes starts a post with what you put on your site and the posts you read, saved or highlighted; add a line to each.</span><button class="btn primary" type="button" data-wr="weeknotes">Write Weeknotes</button>`}</div>
-      <div class="wr-wk"><b>What I read this week</b><span>${picks ? `${picks} ${picks === 1 ? 'post' : 'posts'} you read, saved or highlighted. Pick your favorites and add a line about each; they go into ${done ? 'a post' : 'your Weeknotes or a post of their own'} here in Writing.` : 'Read, save or highlight a few posts, then make your roundup.'}</span>
-        <button class="btn" type="button" data-roundup${picks ? '' : ' disabled'}>Pick posts</button></div></section>`;
+      <p class="wr-steps-lede">${done ? 'Your Weeknotes are on your site.' : 'Your Weeknotes in three steps.'}</p>
+      <ol class="wr-steps">
+        ${step(1, s1, 'Pick what you read', done ? 'Done for this week.' : picked ? `${picked} picked. They go under What I read. Change them any time.`
+          : picks ? `Tick your favorites from the ${picks} ${picks === 1 ? 'post' : 'posts'} you read, saved or highlighted, and add a line about any. Optional: skip it and the ones you read go in.` : 'Read, save or highlight a few posts first. Optional.',
+          done ? '' : b(cur === 1 ? ' primary' : '', 'data-roundup', picked ? 'Change picks' : 'Pick posts', !picks))}
+        ${step(2, s2, 'Write', done ? 'Done.' : started || open ? `Your Weeknotes ${onSite ? 'draft is saved on your site' : 'are open on the page'}. Add a few words under What happened.`
+          : `Opens your Weeknotes: what you posted since Monday, ${picked ? 'your picks' : 'what you read'} under What I read, and room for what happened. ${read} ${read === 1 ? 'post' : 'posts'} read so far.`,
+          done ? '' : b(cur === 2 ? ' primary' : '', 'data-wr="weeknotes"', started || open ? 'Keep writing' : 'Write Weeknotes'))}
+        ${step(3, s3, 'Publish', done ? `Posted ${esc(wrWhen(done.date))}: “${esc(done.title)}”` : 'On the page, press Publish when you’re happy with it, or Save as a draft to finish later.',
+          done ? b('', `data-mkurl="${esc(done.link)}"`, 'Open on your site') : b(cur === 3 ? ' primary' : '', 'data-wr="weeknotes"', 'Go to the page', !(started || open)))}
+      </ol>
+      <p class="wr-steps-alt">${done ? `Want What I read as a post of its own? ${picks ? '<button class="linkish" type="button" data-roundup>Pick posts</button>' : ''}` : `Or make What I read a post of its own: Pick posts, then Write it as a post.`}</p></section>`;
   }
   function wrCalHtml() {
     const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
@@ -3121,8 +3132,10 @@
     const made = (WR.recent || []).filter(p => !(p.categories || []).includes(wid) && (wrDate(p.date) || 0) >= a)
       .sort((x, y) => (x.date || '').localeCompare(y.date || '')).slice(0, 8)
       .map(p => `[${wkLabel(p.title || p.excerpt || 'A note')}](${p.link})`);
-    const read = roundupPicks().filter(p => Date.parse(p.it.read_at || p.hl?.created_at || p.it.date || 0) >= a).slice(0, 7)
-      .map(p => `[${wkLabel(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}`);
+    // the posts you picked (What I read this week › Pick posts), or else the ones you read, saved or highlighted since Monday
+    const all = roundupPicks(), mine = wrPicks(wk);
+    const read = mine ? mine.links.map(l => all.find(p => p.it.link === l)).filter(Boolean).map(p => wrReadLine(p, mine.why?.[p.it.link] || '', mine.quotes))
+      : all.filter(p => Date.parse(p.it.read_at || p.hl?.created_at || p.it.date || 0) >= a).slice(0, 7).map(p => wrReadLine(p, '', false));
     const room = '\n\n\n\n';
     return `## What happened${room}## What I made${made.length ? '\n\n' + made.join('\n\n') + '\n\n' : room}## What I read${read.length ? '\n\n' + read.join('\n\n') : '\n\n'}`;
   }
@@ -3133,9 +3146,19 @@
   }
   // this week's Weeknotes already on your site
   function wrWeekDone(wk) { const wid = wrCat('weeknotes')?.id; return wid && (WR.recent || []).find(p => (p.categories || []).includes(wid) && wrDate(p.date) >= wk.mon); }
+  // a post's name for a link: its title, or for an untitled note its first words (an empty [](link) isn't a link)
+  const wrItemName = it => headline(it).trim() || (it.summary || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim() || `A note by ${cardWriter(it)}`;
+  // The posts you pick in What I read this week are remembered for the week, so the order doesn't matter (David, Nov 22:
+  // "I picked my posts first and then wrote the weeknotes"): Write Weeknotes puts your picks under What I read, and the
+  // picker opens with them ticked. { week, links: [..], why: { link: line }, quotes }
+  function wrPicks(wk) { const k = S.prefs.wkPicks; return k && k.week === wk.key && Array.isArray(k.links) ? k : null; }
+  function wrPicksSet(wk, chosen, quotes) {
+    S.prefs.wkPicks = { week: wk.key, links: chosen.map(c => c.p.it.link), why: Object.fromEntries(chosen.filter(c => c.why).map(c => [c.p.it.link, c.why])), quotes: !!quotes };
+    savePrefs();
+  }
   // a post you read, as a line for your site: "[Title](link) — writer", your line under it, your highlight as a quote
   function wrReadLine(p, why, quote) {
-    return [`[${wkLabel(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}`, quote && p.hl ? '> ' + p.hl.text.replace(/\s+/g, ' ').trim() : ''].filter(Boolean).join('\n\n');
+    return [`[${wkLabel(wrItemName(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}`, quote && p.hl ? '> ' + p.hl.text.replace(/\s+/g, ' ').trim() : ''].filter(Boolean).join('\n\n');
   }
   // The posts you picked in What I read this week go into your Weeknotes' "## What I read" (David, Nov 22: "I'm picking
   // my posts … but it is not porting over to the writing tab"). Lines the page listed on its own for posts you didn't
@@ -6476,26 +6499,28 @@
     // with your site connected (and Writing not hidden), your picks go into Writing: your Weeknotes or a post of their own
     const wrTo = !!wp && !hiddenViews().has('write'), weekOpen = wrTo && !wrWeekDone(mdWeek());
     if (!picks.length) { status('Nothing read this week yet. Read, save or highlight a few posts, then make your roundup.'); return; }
-    const on = new Set(picks.filter(p => p.score >= 2).slice(0, 7).map(p => p.it.id));
-    for (const p of picks) if (on.size < Math.min(5, picks.length)) on.add(p.it.id);
+    const wk = mdWeek(), saved = wrPicks(wk);
+    const on = new Set(saved ? picks.filter(p => saved.links.includes(p.it.link)).map(p => p.it.id) : picks.filter(p => p.score >= 2).slice(0, 7).map(p => p.it.id));
+    if (!saved) for (const p of picks) if (on.size < Math.min(5, picks.length)) on.add(p.it.id);
+    const why0 = p => saved?.why?.[p.it.link] || '';
     const hasHl = picks.some(p => p.hl);
-    const el = sheet('roundupPanel', `<h2>What I read this week</h2>
+    const el = sheet('roundupPanel', `${weekOpen ? '<p class="wr-steps-k">Weeknotes · step 1 of 3</p>' : ''}<h2>What I read this week</h2>
       <p>Pick your favorites and add a line about each.${wrTo ? ' They go into Writing, where you finish and post them.' : ''} Every writer you link to gets a nod: sites that take Webmentions hear about it.</p>
       <input class="n-field n-title" id="ruTitle" type="text" maxlength="200" value="What I read this week" autocomplete="off">
       <textarea id="ruIntro" rows="2" placeholder="A few words to start (optional)"></textarea>
       <div class="ru-list" id="ruList">${picks.map(p => `<div class="ru-item${on.has(p.it.id) ? ' on' : ''}" data-ru="${esc(p.it.id)}">
-        <label class="ru-row"><input type="checkbox"${on.has(p.it.id) ? ' checked' : ''}><span><b>${esc(headline(p.it))}</b><small>${esc(cardWriter(p.it))} · ${esc(hostOfU(p.it.link))}${p.hl ? ' · highlighted' : p.it.saved ? ' · saved' : ''}</small></span></label>
-        <input class="n-field ru-why" type="text" maxlength="280" placeholder="Why it’s worth reading (optional)"></div>`).join('')}</div>
-      ${hasHl ? '<label class="c-net"><input type="checkbox" id="ruQuotes" checked>Add my highlight from each, as a quote</label>' : ''}
+        <label class="ru-row"><input type="checkbox"${on.has(p.it.id) ? ' checked' : ''}><span><b>${esc(wrItemName(p.it))}</b><small>${esc(cardWriter(p.it))} · ${esc(hostOfU(p.it.link))}${p.hl ? ' · highlighted' : p.it.saved ? ' · saved' : ''}</small></span></label>
+        <input class="n-field ru-why" type="text" maxlength="280" value="${esc(why0(p))}" placeholder="Why it’s worth reading (optional)"></div>`).join('')}</div>
+      ${hasHl ? `<label class="c-net"><input type="checkbox" id="ruQuotes"${saved && !saved.quotes ? '' : ' checked'}>Add my highlight from each, as a quote</label>` : ''}
       <p class="acct-note" id="ruNote" aria-live="polite"></p>
-      <div class="row sheet-foot ru-foot">${wrTo ? `<span class="ru-main"><button class="btn${weekOpen ? '' : ' primary'}" type="button" id="ruPostW">Write it as a post</button>${weekOpen ? '<button class="btn primary" type="button" id="ruWeek">Add to my Weeknotes</button>' : ''}</span>` : ''}
+      <div class="row sheet-foot ru-foot">${wrTo ? `<span class="ru-main"><button class="btn${weekOpen ? '' : ' primary'}" type="button" id="ruPostW">Write it as a post</button>${weekOpen ? '<button class="btn primary" type="button" id="ruWeek">Next: add to my Weeknotes</button>' : ''}</span>` : ''}
         <span class="ru-more"><button class="btn" type="button" id="ruCancel">Cancel</button><button class="btn" type="button" id="ruCopy">${IOS ? 'Share…' : 'Copy'}</button><button class="btn" type="button" id="ruEmail">Email</button></span></div>`, 'What I read this week');
     const say = (t, err) => { $('ruNote').textContent = t; $('ruNote').classList.toggle('err', !!err); };
     const chosen = () => [...el.querySelectorAll('.ru-item')].filter(r => r.querySelector('input[type=checkbox]').checked).map(r => ({ p: picks.find(p => String(p.it.id) === r.dataset.ru), why: r.querySelector('.ru-why').value.trim() })).filter(x => x.p);
     const quotesOn = () => !!$('ruQuotes')?.checked;
     const label = t => { t = t.replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim(); return [...t].length > 78 ? [...t].slice(0, 77).join('').trimEnd() + '…' : t; };
     // for your site: [Title](link) lines become links (and Webmentions); "> " lines become quotes
-    const asNote = () => [$('ruIntro').value.trim(), ...chosen().map(({ p, why }) => [`[${label(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}`,
+    const asNote = () => [$('ruIntro').value.trim(), ...chosen().map(({ p, why }) => [`[${label(wrItemName(p.it))}](${p.it.link}) — ${cardWriter(p.it)}${why ? '\n' + why : ''}`,
       quotesOn() && p.hl ? '> ' + p.hl.text.replace(/\s+/g, ' ').trim() : ''].filter(Boolean).join('\n\n'))].filter(Boolean).join('\n\n');
     const asText = () => [$('ruTitle').value.trim(), $('ruIntro').value.trim(), ...chosen().map(({ p, why }) => [`${headline(p.it)} — ${cardWriter(p.it)}`, p.it.link, why, quotesOn() && p.hl ? `“${p.hl.text.replace(/\s+/g, ' ').trim()}”` : ''].filter(Boolean).join('\n'))].filter(Boolean).join('\n\n');
     const count = () => {
@@ -6504,8 +6529,12 @@
       for (const id of ['ruWeek', 'ruPostW', 'ruEmail', 'ruCopy']) if ($(id)) $(id).disabled = !n;
       say(n ? `${n} ${n === 1 ? 'post' : 'posts'} in your roundup.` : 'Pick at least one post.');
     };
-    el.querySelector('#ruList').addEventListener('change', count);
-    $('ruCancel').onclick = () => { el.hidden = true; };
+    // remembered for the week as you pick, even if you close this without a button
+    const remember = () => { if (wrTo) wrPicksSet(wk, chosen(), quotesOn()); };
+    el.querySelector('#ruList').addEventListener('change', () => { count(); remember(); });
+    el.querySelector('#ruList').addEventListener('input', remember);
+    $('ruQuotes')?.addEventListener('change', remember);
+    $('ruCancel').onclick = () => { el.hidden = true; if (wrTo && chosen().length) status(`Kept your ${chosen().length} picks: Write Weeknotes puts them under What I read.`); if (S.view === 'write') wrPaint(); };
     $('ruCopy').onclick = async () => {
       const t = asText();
       if (IOS && navigator.share) { try { await navigator.share({ title: $('ruTitle').value.trim(), text: t }); } catch (e) { if (e?.name !== 'AbortError') say(msg(e), true); } return; }
@@ -6529,7 +6558,7 @@
         const d = wrDraftGet();
         if (d.kind !== 'weeknotes') { status('Your Weeknotes didn’t open, so your picks weren’t added. Try Pick posts again.', true); return; }
         wrDraftSet({ ...d, text: wrTidy(wrPutReads(d.text, list, picks)) });
-        wrSay(`Added ${n} to What I read. Add a line about each if you like, then Save the draft or Publish.`);
+        wrSay(`Added ${n} to What I read. Step 2: add a few words under What happened. Step 3: Publish.`);
       } else {
         const d = wrDraftGet();
         if (d.editId) { if (!(await wrPutAside())) return; }
@@ -6542,7 +6571,7 @@
     };
     if ($('ruWeek')) $('ruWeek').onclick = () => toWriting(true);
     if ($('ruPostW')) $('ruPostW').onclick = () => toWriting(false);
-    count();
+    count(); remember(); // what you see ticked is what goes in
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-roundup]')) openRoundup(); });
 

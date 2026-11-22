@@ -2709,3 +2709,19 @@ html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edg
   display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 #roundupPanel .ru-main, #roundupPanel .ru-more { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 #roundupPanel .ru-main { order: 1; }
+
+/* This week: Weeknotes in three labeled steps (Nov 22) */
+.writing .wr-steps-lede { margin: 2px 0 10px; font-size: 13px; color: var(--b-soft, var(--muted)); }
+.writing .wr-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.writing .wr-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; }
+.writing .wr-step > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 14px; }
+.writing .wr-step > div > span { color: var(--b-soft, var(--muted)); font-size: 13px; line-height: 1.45; }
+.writing .wr-step .btn { margin-top: 6px; }
+.writing .wr-num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 600;
+  border: 1.5px solid var(--b-line, var(--line)); color: var(--b-soft, var(--muted)); background: transparent; }
+.writing .wr-step.cur .wr-num { border-color: var(--accent); color: var(--accent); }
+.writing .wr-step.ok .wr-num { border-color: var(--accent); background: var(--accent); color: #fff; }
+.writing .wr-step.ok > div > b { color: var(--b-soft, var(--muted)); }
+.writing .wr-steps-alt { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--b-line, var(--line)); font-size: 12.5px; color: var(--b-soft, var(--muted)); }
+.writing .wr-steps-alt .linkish { font-size: inherit; }
+#roundupPanel .wr-steps-k { margin: 0 0 -8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
