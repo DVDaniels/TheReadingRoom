@@ -5,6 +5,8 @@ MY DAY, WIDER AND SIMPLER
 • The Big 3 is gone. My Day is now your calendar (Coming up and the month), the markets, Put it down, To do, and your morning ritual if you've set one. Your blog's numbers moved to Writing.
 • In the evening, How today went has your evening ritual, your notes and the Day One button. Tomorrow shows tomorrow's calendar.
 • The Weekly Preview and the Day One pages no longer mention the Big 3.
+• My Day settings: a link at the top of My Day puts every My Day option in one place, including until what time the app opens on My Day in the morning. When it does, it says so.
+• The journal questions and reminders boxes are full size and grow as you type.
 
 WRITING (new, under Read in the sidebar)
 • Everything you write for your own site in one place: a new Note, a full Post (title, featured image, category) or Weeknotes. Save it as a draft on your site or post it now, with copies to Bluesky and Mastodon.
@@ -13,6 +15,8 @@ WRITING (new, under Read in the sidebar)
 • Delete a draft from the Drafts folder: it goes to the trash on your site, and Undo brings it back. Show more drafts loads the rest.
 • Preview shows a post the way readers will see it, before it's on your site: from what you're writing, or from any draft.
 • A draft can become a Note, Post or Weeknotes. Tap a day on the calendar to see what went on your site that day.
+• A new look: your words on a page, a word count, and Focus to hide everything else (Esc or Done to come back).
+• Writing in the sidebar starts a new post. A draft you had open is saved to your site first.
 
 YOUR BLOG (if you connect your own WordPress site)
 • Your visitors, RSS readers and search traffic, now in Writing (no longer on My Day). It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Counting starts the day you turn the plugin on.
@@ -20,8 +24,9 @@ YOUR BLOG (if you connect your own WordPress site)
 CONVERSATIONS
 • Your posts (Conversations › You › Your posts) now show each post's featured image beside it. Tap the picture to open the post.
 
-IPHONE SIDEBAR
-• Folding a section (Read, Explore, Library or Feeds) now hides everything in it, even the page you were just on.
+SIDEBAR
+• iPhone: folding a section (Read, Explore, Library or Feeds) now hides everything in it, even the page you were just on.
+• Only the folder you pick is highlighted, and folding a folder keeps the feed you're reading in view.
 
 FIXES
 • Books opens again on iPhone and Mac.
@@ -39,3 +44,4 @@ Please try:
 • On iPhone, open Library › Books, fold Library, go back, and check nothing is left under it.
 • Open Conversations › You › Your posts and check the pictures match your posts.
 • Look for any leftover mention of the Big 3.
+• Write in Focus, open a draft and tap Writing in the sidebar, and try My Day settings.
