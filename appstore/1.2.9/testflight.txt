@@ -2,12 +2,17 @@ Thanks for testing The Reading Room! This is a test build of 1.2.9, on top of ev
 
 MY DAY, WIDER AND SIMPLER
 • On a big screen (like a 24-inch iMac) My Day now spreads out to use the window. On a MacBook-size window it looks the same as before.
-• The Big 3 is gone. My Day is now your calendar (Coming up and the month), the markets, Put it down, To do, and your morning ritual if you've set one.
+• The Big 3 is gone. My Day is now your calendar (Coming up and the month), the markets, Put it down, To do, and your morning ritual if you've set one. Your blog's numbers moved to Writing.
 • In the evening, How today went has your evening ritual, your notes and the Day One button. Tomorrow shows tomorrow's calendar.
 • The Weekly Preview and the Day One pages no longer mention the Big 3.
 
+WRITING (new, under Read in the sidebar)
+• Everything you write for your own site in one place: a new Note, a full Post (title, featured image, category) or Weeknotes. Save it as a draft on your site or post it now, with copies to Bluesky and Mastodon.
+• Ideas to write about, your drafts on your site (Keep writing opens them right here), This week (Weeknotes and What I read), and a writing calendar.
+• Open Writing's arrow for folders: Ideas, Drafts, Posts, Notes, Weeknotes and your site's own categories.
+
 YOUR BLOG (if you connect your own WordPress site)
-• A new row on My Day with your visitors, RSS readers and search traffic. It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Without it, My Day shows where to get it. Counting starts the day you turn the plugin on.
+• Your visitors, RSS readers and search traffic, now in Writing (no longer on My Day). It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Counting starts the day you turn the plugin on.
 
 CONVERSATIONS
 • Your posts (Conversations › You › Your posts) now show each post's featured image beside it. Tap the picture to open the post.
@@ -23,6 +28,8 @@ ALSO
 • The Mac app now needs macOS 13 Ventura or later.
 
 Please try:
+• In Writing, save a post as a draft, open it again with Keep writing, then post it. Check it lands on your site with its category and picture.
+• Open each folder under Writing and check the lists match your site.
 • On a big Mac screen, open My Day and check it fills the window, and that prices and changes don't overlap.
 • On a MacBook, check My Day still looks the way it did.
 • On iPhone, open Library › Books, fold Library, go back, and check nothing is left under it.
