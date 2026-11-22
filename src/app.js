@@ -4967,7 +4967,7 @@
     SOC.sres = { q, loading: false, posts: res.posts || [], errors: res.errors || [], at: Date.now() };
     if (S.view === 'talk' && SOC.tab === 'search') renderList();
   }
-  function searchHtml() {
+  function talkSearchHtml() {
     const q = SOC.sq || '', r = SOC.sres && SOC.sres.q === q ? SOC.sres : null, past = searches();
     const form = `<form class="sr-form" id="srForm" role="search"><input type="search" id="srQ" value="${esc(q)}" placeholder="What’s going on? Try “Outlook down”" aria-label="Search what people are saying" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Search</button></form>
       ${past.length ? `<div class="sr-past">${past.map(p => `<span class="sr-chip${p === q ? ' on' : ''}"><button class="linkish" data-talk="srch" data-q="${esc(p)}">${esc(p)}</button><button class="sr-x" data-talk="srdrop" data-q="${esc(p)}" aria-label="Forget ${esc(p)}">×</button></span>`).join('')}</div>` : ''}`;
@@ -4997,7 +4997,7 @@
     const { tab } = talkTabsInfo();
     if (tab === 'blogs') return `<div class="nb-col">${who ? personHtml(who) : neighborhoodHtml()}</div>`;
     if (tab === 'you') return `<div class="nb-col">${profilesHtml()}${youHtml()}</div>`;
-    if (tab === 'search') return searchHtml();
+    if (tab === 'search') return talkSearchHtml();
     return `<div class="tcols"><div class="tmain"><h2 class="sec-t">Shared by people you follow</h2><p class="sec-s">Only the posts that share something to read. No doom-scrolling.</p>${sharedHtml()}</div>
         <aside class="tside">${sideHtml()}</aside></div>`;
   }
@@ -7304,7 +7304,7 @@
     const weekCard = sunday && !w.done && !evening ? `<button class="md-weekcard" type="button" data-md="week"><b>Your Weekly Preview is ready</b><span>Ten minutes to look back at the week and point the next one. It ends with a page for Day One and a Weeknotes draft for your site.</span></button>` : '';
     const body = evening
       ? `<div class="md-grid">${eveningTodayHtml()}${planTomorrowHtml()}</div>`
-      : `${quadHtml()}${blogHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
+      : `${quadHtml()}${yourBlogHtml()}${captureHtml()}<div class="md-grid">${compassHtml()}${myDayDayHtml()}</div>`;
     const people = S.items.filter(i => !i.read && !isMuted(i) && !isEmailItem(i) && isPerson(i.feed_id) && !isOwn(i.feed_id) && Date.now() - Date.parse(i.date) < 4 * DAY).length;
     const foot = evening
       ? `<p class="md-foot">Done for the day? <button class="b-link" type="button" data-view="${people ? 'people' : 'today'}">Read something good before bed</button></p>`
@@ -7463,7 +7463,7 @@
     return `<span class="bl-d ${dir}">${dir === 'up' ? '▲' : dir === 'down' ? '▼' : ''} ${Math.abs(pct).toFixed(0)}%</span> <span class="bl-vs">${esc(unit)}</span>`;
   }
   const blDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  function blogHtml() {
+  function yourBlogHtml() {
     if (!plusOk()) return SOC.accounts?.wordpress ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
       <p class="day-note">See your blog’s visitors, RSS readers and search traffic here every day with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.data && !BLOG.failed) setTimeout(() => loadBlog(), 0);
@@ -7655,7 +7655,7 @@
       <p class="cp-foot"><button class="linkish" type="button" data-md="edit">Rituals and goals</button></p>
     </section>`;
   }
-  function goalHtml(g) {
+  function cpGoalHtml(g) {
     const p = goalProgress(g), today = mdPeek(dayKey())?.h?.[g.id];
     const act = g.kind === 'habit' ? `<button class="cp-act${today ? ' on' : ''}" type="button" data-md="habit" data-id="${esc(g.id)}" aria-pressed="${!!today}">${today ? '✓ Today' : 'Did it today'}</button>`
       : g.kind === 'count' && p.target ? `<button class="cp-act" type="button" data-md="count" data-id="${esc(g.id)}" aria-label="Add one to ${esc(g.title)}">+1</button>` : '';
