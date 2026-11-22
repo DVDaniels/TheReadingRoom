@@ -3151,8 +3151,24 @@
       WR.posting = false; wrLoad(true); wrPaint(); renderRail();
     } catch (e) { WR.posting = false; wrSay(msg(e), true); wrPaint(); }
   }
+  // Writing in the sidebar is a fresh start: an open draft from your site is saved back to your site and the
+  // composer is emptied for a new post (David, Nov 22: "the draft stays with you when you click on the writing tab").
+  // A new post that isn't on your site yet stays put, so nothing unsaved is lost.
   document.addEventListener('click', e => {
-    if (e.target.closest('#views [data-view="write"]')) WR.sub = '';
+    if (!e.target.closest('#views [data-view="write"]')) return;
+    WR.sub = '';
+    const d = wrDraftGet(); if (!d.editId) return;
+    const kind = wrKind(), photo = WR.photo, photoUrl = WR.photoUrl, alt = WR.alt, name = (d.title || '').trim() || 'your draft';
+    wrClear(); wrSay(`“${name}” is saved in Drafts on your site.`);
+    if (S.view === 'write') wrPaint();
+    status('Saving your draft on your site…');
+    invoke('site_post', { id: d.editId, title: (d.title || '').trim(), text: (d.text || '').trim(), categories: kind === 'post' && d.cat ? [Number(d.cat)] : [], photo, alt: (alt || '').trim(), draft: true, kind })
+      .then(() => { status(`Saved “${name}” in your drafts.`); wrLoad(true); })
+      .catch(err => {
+        // couldn't save: bring the draft back so nothing is lost
+        if (!(wrDraftGet().text || '').trim()) { wrDraftSet(d); WR.photo = photo; WR.photoUrl = photoUrl; WR.alt = alt; }
+        wrSay(`Couldn’t save your draft on your site, so it’s still open here: ${msg(err)}`, true); if (S.view === 'write') wrPaint();
+      });
   }, true);
   document.addEventListener('click', e => {
     if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
