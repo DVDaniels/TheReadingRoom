@@ -401,6 +401,11 @@
         { view: 'saved', label: 'Read later', count: S.items.filter(i => i.saved).length, icon: ICONS.later },
         { view: 'annotated', label: 'Annotated', count: new Set(S.highlights.map(h => h.item_id)).size, icon: ICONS.notes },
         { view: 'recent', label: 'Recently read', count: '', icon: ICONS.recent }]);
+    // When one of Writing's folders or a favorite channel is picked, only that line is highlighted, not Writing or
+    // Videos above it too (the icon-only sidebar hides those lines, so there the parent stays highlighted).
+    if (!document.body.classList.contains('rail-slim'))
+      for (const sub of $('views').querySelectorAll('.navsub[aria-current="true"]'))
+        $('views').querySelector(`[data-view="${sub.dataset.wrsub != null ? 'write' : 'videos'}"]`)?.setAttribute('aria-current', 'false');
 
     // The Feeds heading folds the whole list away like the groups above; the feed or folder you're on stays
     const feedsOpen = !canFold || !foldedGroups.has('feeds');
@@ -428,6 +433,14 @@
           <button class="chev" data-chev="${folder.id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(folder.name)}">${ICONS.chev}</button>
           ${navButton('folder:' + folder.id, folder.name, unreadIn('folder:' + folder.id), { ini: folder.name, mark: fl ? LIST_MARK : '', title: fl ? `${folder.name}: a followed list` : folderLabel(folder) }).replace('<button ', '<button draggable="true" ')}
         </div>`;
+      // A folded folder still shows the feed or subfolder you're on, the way a folded group keeps your view (Mac, iPad)
+      if (!open && !isPhone()) {
+        const v = String(S.view), here = [...subs.map(x => 'folder:' + x.id), ...inside.map(f => String(f.id))].includes(v) ? v
+          : subs.find(x => S.feeds.some(f => f.folder_id === x.id && String(f.id) === v)) ? v : '';
+        const hf = here && feedById(here), hs = here.startsWith('folder:') && folderById(here.slice(7));
+        if (hf) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${feedButton(hf)}</div>`;
+        else if (hs) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${navButton('folder:' + hs.id, hs.name, unreadIn('folder:' + hs.id), { ini: hs.name })}</div>`;
+      }
       if (open) h += `<div class="infolder${sub ? ' insub' : ''}" data-folder="${folder.id}">${subs.map(x => folderBlock(x, true)).join('')}${inside.map(feedButton).join('')}`
         + (!inside.length && !subs.length ? `<span class="note" style="padding:2px 0 6px ${sub ? 60 : 34}px;display:block">Drag feeds here</span>` : '') + '</div>';
       return h;
