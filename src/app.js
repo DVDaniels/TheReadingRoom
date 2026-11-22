@@ -2940,7 +2940,7 @@
     const bits = [`${read} ${read === 1 ? 'post' : 'posts'} read`, notes ? `${notes} ${notes === 1 ? 'note' : 'notes'}` : '', hls ? `${hls} ${hls === 1 ? 'highlight' : 'highlights'}` : ''].filter(Boolean);
     return `<section class="b-panel wr-week" aria-label="This week"><div class="bp-head"><h3 class="b-sub">This week</h3><span class="bp-meta">${esc(fmtRange(wk.mon, wk.sun))}</span></div>
       <div class="wr-wk"><b>Weeknotes</b>${done ? `<span>Posted ${esc(wrWhen(done.date))}: “${esc(done.title)}”</span><button class="btn" type="button" data-mkurl="${esc(done.link)}">Open on your site</button>`
-        : `<span>From your week so far: ${esc(bits.join(', '))}.</span><button class="btn primary" type="button" data-wr="weeknotes">Write Weeknotes</button>`}</div>
+        : `<span>From your week so far: ${esc(bits.join(', '))}. Counted from your reading here and your site, since Monday. Write Weeknotes starts a post with what you put on your site and the posts you read, saved or highlighted; add a line to each.</span><button class="btn primary" type="button" data-wr="weeknotes">Write Weeknotes</button>`}</div>
       <div class="wr-wk"><b>What I read this week</b><span>${picks ? `${picks} ${picks === 1 ? 'post' : 'posts'} you read, saved or highlighted. Pick your favorites and add a line about each.` : 'Read, save or highlight a few posts, then make your roundup.'}</span>
         <button class="btn" type="button" data-roundup${picks ? '' : ' disabled'}>Make the post</button></div></section>`;
   }
@@ -3113,11 +3113,23 @@
       status(`Saved “${(d.title || '').trim() || 'your draft'}” in your drafts.`); wrLoad(true); return true;
     } catch (e) { status(`Couldn’t save your draft first: ${msg(e)}`, true); return false; }
   }
+  // Weeknotes on their own, without My Day (David, Nov 22): a page started from your week — room for what happened,
+  // what you put on your site since Monday, and the posts you read, saved or highlighted — for you to add a line to each.
+  function wrWeekDraft(wk) {
+    const a = wk.mon.getTime(), wid = wrCat('weeknotes')?.id;
+    const made = (WR.recent || []).filter(p => !(p.categories || []).includes(wid) && (wrDate(p.date) || 0) >= a)
+      .sort((x, y) => (x.date || '').localeCompare(y.date || '')).slice(0, 8)
+      .map(p => `[${wkLabel(p.title || p.excerpt || 'A note')}](${p.link})`);
+    const read = roundupPicks().filter(p => Date.parse(p.it.read_at || p.hl?.created_at || p.it.date || 0) >= a).slice(0, 7)
+      .map(p => `[${wkLabel(headline(p.it))}](${p.it.link}) — ${cardWriter(p.it)}`);
+    const room = '\n\n\n\n';
+    return `## What happened${room}## What I made${made.length ? '\n\n' + made.join('\n\n') + '\n\n' : room}## What I read${read.length ? '\n\n' + read.join('\n\n') : '\n\n'}`;
+  }
   async function wrStartWeeknotes() {
-    const wk = mdWeek(), w = mdWk(wk.key), d = wrDraftGet();
+    const wk = mdWeek(), d = wrDraftGet();
     if (d.editId) { if (!(await wrPutAside())) return; }
     else if ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.')) return;
-    const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || WK_BLANK);
+    const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : wrWeekDraft(wk);
     wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text, tpl: d.kind === 'weeknotes' && d.tpl ? d.tpl : text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
     wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
   }
