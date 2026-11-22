@@ -99,3 +99,43 @@ PLINKS = {f"https://{p[2]}/": {'at': 9e12, 'links': [], 'icon': PIC + f"face-{p[
     'Home cooking and family recipes, written down before they get lost.',
     'Writing about the independent web since 2006.',
     'Zines, buses and city maps.', 'Seeds, libraries and slow weekends.', 'Fast, tiny websites.', 'Back to blogging, for good this time.'])}
+
+# Writing (1.2.9): a made-up site of the made-up reader, Alex Moreno. WordPress gives dates in UTC without the Z.
+def wp(h): return (NOW - timedelta(hours=h)).strftime('%Y-%m-%dT%H:%M:%S')
+CATS = [{'id': 7, 'slug': 'notes', 'name': 'Notes', 'count': 48}, {'id': 8, 'slug': 'weeknotes', 'name': 'Weeknotes', 'count': 21},
+        {'id': 3, 'slug': 'garden', 'name': 'Garden', 'count': 14}, {'id': 4, 'slug': 'reading', 'name': 'Reading', 'count': 22},
+        {'id': 5, 'slug': 'the-web', 'name': 'The web', 'count': 17}, {'id': 1, 'slug': 'uncategorized', 'name': 'Uncategorized', 'count': 0}]
+def wpost(i, title, hours, cats, excerpt='', status='publish', slug='x'):
+    return {'id': i, 'title': title, 'excerpt': excerpt, 'date': wp(hours), 'modified': wp(hours), 'categories': cats, 'status': status,
+            'link': f'https://alexmoreno.net/{slug}/', 'image': ''}
+SITE = {
+    'accounts': {'wordpress': {'site': 'https://alexmoreno.net', 'name': 'Alex Moreno'}, 'bluesky': {'handle': 'alexmoreno.net'}, 'mastodon': {'handle': '@alex@social.example'}},
+    'draft': [wpost(301, 'A year of walking to the library', 26, [4], status='draft'), wpost(302, 'Small sites I keep coming back to', 75, [5], status='draft'),
+               wpost(303, 'The bean soup, my way', 140, [3], status='draft')],
+    'publish': [wpost(290, 'Finally planted the garlic. Forty cloves, one row, see you in July.', 20, [7], excerpt='Finally planted the garlic. Forty cloves, one row, see you in July.'),
+                wpost(289, 'Weeknotes: rain, soup and a new shelf', 30, [8]),
+                wpost(288, 'Ben’s post got me to start a blogroll. Five people so far.', 50, [7], excerpt='Ben’s post got me to start a blogroll. Five people so far.'),
+                wpost(287, 'Everything I read in October', 98, [4]),
+                wpost(286, 'Why my site has no comments, and how to reach me anyway', 170, [5]),
+                wpost(285, 'Weeknotes: the first frost', 200, [8]),
+                wpost(284, 'Saving seeds from the Cherokee Purples', 260, [3]),
+                wpost(283, 'A short note on long walks', 320, [7], excerpt='A short note on long walks')],
+    'future': [wpost(320, 'Five things I learned from a year of Weeknotes', -60, [8], status='future')],
+    'stats': {'site': 'alexmoreno.net', 'at': int((NOW - timedelta(minutes=20)).timestamp() * 1000),
+              'visitors': {'total': 1840, 'prev': 1512, 'window': 28, 'label': 'visits', 'source': 'From The Reading Room stats',
+                           'through': (NOW - timedelta(days=1)).strftime('%Y-%m-%d'),
+                           'days': [{'d': (NOW - timedelta(days=28 - i)).strftime('%Y-%m-%d'), 'n': n} for i, n in enumerate(
+                               [52, 48, 61, 55, 49, 40, 44, 58, 63, 71, 66, 60, 47, 45, 59, 62, 140, 96, 70, 64, 51, 49, 57, 66, 73, 68, 61, 79])]},
+              'rss': {'total': 312, 'prev': 301, 'apps': [{'name': 'The Reading Room', 'n': 96}, {'name': 'NetNewsWire', 'n': 71}, {'name': 'Feedly', 'n': 58}, {'name': 'Inoreader', 'n': 41}]},
+              'top': [{'title': 'Everything I read in October', 'url': 'https://alexmoreno.net/x/', 'n': 286}, {'title': 'Saving seeds from the Cherokee Purples', 'url': 'https://alexmoreno.net/x/', 'n': 205},
+                      {'title': 'Why my site has no comments', 'url': 'https://alexmoreno.net/x/', 'n': 160}]},
+}
+IDEAS = [{'id': 'i1', 't': 'What my grandmother’s recipe cards taught me about blogging', 'at': ago(30)},
+         {'id': 'i2', 't': 'A walking map of every little free library in town', 'at': ago(80)},
+         {'id': 'i3', 't': 'Why I read on Sunday mornings, phone in the other room', 'at': ago(150)}]
+WR_DRAFT = {'kind': 'post', 'title': 'Five blogs I’d hand you',
+            'text': "Ben Harlow wrote this week about why he still keeps a blogroll, and Emily Carter called hers a bookshelf by the front door. So here is mine, at last.\n\n"
+                    "These are five people I read every week. No app showed them to me. I found every one of them on somebody else’s list, which is exactly how this is meant to work.\n\n"
+                    "Sarah Mitchell writes about tomatoes, compost and the people on her street. Her fall garden posts are the best thing in my reader right now.\n\n"
+                    "Jake Turner makes small, fast websites and writes about how. Even if you never build one, his posts will change how you see the web.\n\n"
+                    "Linda Russo writes down her family’s recipes before they get lost. Start with the bean soup."}

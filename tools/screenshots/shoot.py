@@ -12,10 +12,12 @@ OUT = KIT / 'out'; OUT.mkdir(exist_ok=True)
 MOCK = """
 window.__STATE = %s;
 window.__LOG = [];
+if (window.__SITE) window.__STATE.prefs.ideas = window.__SITE.ideas;
 const answers = {
   get_state: () => window.__STATE,
   app_info: () => ({ platform: window.__PLATFORM, mobile: window.__PLATFORM === 'ios', version: '1.2.5' }),
-  social_accounts: () => ({}), social_conversations: () => null, site_accounts: () => [],
+  social_accounts: () => (window.__SITE ? window.__SITE.accounts : {}),
+  site_categories: () => window.__SITE && window.__SITE.cats, site_posts: a => window.__SITE ? (window.__SITE[a.status] || []) : [], blog_stats: () => window.__SITE && window.__SITE.stats, social_conversations: () => null, site_accounts: () => [],
   weather_now: () => ({ temp: 58, code: 1, place: 'Fort Mill' }), sync_status: () => ({}), mail_account: () => null,
   discover_get: () => null, get_article: () => ({ html: %s, byline: 'Ben Harlow' }), wm_counts: () => ({}), email_account: () => window.__MAIL || null, email_check: () => ({ added: 0 }), reply_options: () => ({ email: { address: 'ben@benharlow.net' }, comments: 'https://benharlow.net/keep-a-blogroll/#comments', webmention: true }), lists_get: () => [],
 };
@@ -28,12 +30,12 @@ window.__TAURI__ = {
 };
 """ % (json.dumps(data.STATE), json.dumps(data.ARTICLE))
 
-def run(name, steps, w, h, dark, platform, scale, mail=False):
+def run(name, steps, w, h, dark, platform, scale, mail=False, site=False):
     tmp = KIT / 'site'
     if tmp.exists(): shutil.rmtree(tmp)
     shutil.copytree(SRC, tmp)
     html = (tmp / 'index.html').read_text()
-    html = html.replace('<script', '<script>window.__MAIL=%s;window.__PLATFORM=%s;</script><script src="mock.js"></script><script' % (json.dumps({'address':'alex@alexmoreno.net','name':'Alex Moreno','imap_host':'imap.fastmail.com'} if mail else None), json.dumps(platform)), 1)
+    html = html.replace('<script', '<script>window.__SITE=%s;</script><script>window.__MAIL=%s;window.__PLATFORM=%s;</script><script src="mock.js"></script><script' % (json.dumps(dict(data.SITE, cats=data.CATS, ideas=data.IDEAS) if site else None), json.dumps({'address':'alex@alexmoreno.net','name':'Alex Moreno','imap_host':'imap.fastmail.com'} if mail else None), json.dumps(platform)), 1)
     (tmp / 'index.html').write_text(html)
     (tmp / 'mock.js').write_text(MOCK)
     with sync_playwright() as p:
@@ -49,6 +51,8 @@ def run(name, steps, w, h, dark, platform, scale, mail=False):
             r.fulfill(path=str(f)) if f.exists() else r.fulfill(status=404, body='')
         ctx.route('https://pics.test/**', route)
         ctx.route(lambda u: u.startswith('http') and 'pics.test' not in u and 'localhost' not in u and '127.0.0.1' not in u, lambda r: r.fulfill(status=404, body=''))
+        if site:
+            ctx.add_init_script('window.__WRD = %s; localStorage.setItem("wrFolded", "1");' % json.dumps(data.WR_DRAFT))
         pg = ctx.new_page()
         errs = []
         pg.on('pageerror', lambda e: errs.append(str(e)))
@@ -65,5 +69,5 @@ def run(name, steps, w, h, dark, platform, scale, mail=False):
 if __name__ == '__main__':
     a = argparse.ArgumentParser(); a.add_argument('name'); a.add_argument('steps', nargs='?', default='')
     a.add_argument('--w', type=int, default=430); a.add_argument('--h', type=int, default=932)
-    a.add_argument('--dark', action='store_true'); a.add_argument('--platform', default='ios'); a.add_argument('--scale', type=float, default=3); a.add_argument('--mail', action='store_true')
-    x = a.parse_args(); run(x.name, x.steps, x.w, x.h, x.dark, x.platform, x.scale, x.mail)
+    a.add_argument('--dark', action='store_true'); a.add_argument('--platform', default='ios'); a.add_argument('--scale', type=float, default=3); a.add_argument('--mail', action='store_true'); a.add_argument('--site', action='store_true')
+    x = a.parse_args(); run(x.name, x.steps, x.w, x.h, x.dark, x.platform, x.scale, x.mail, x.site)
