@@ -3100,8 +3100,8 @@
     const wk = mdWeek(), w = mdWk(wk.key), d = wrDraftGet();
     if (d.editId) { if (!(await wrPutAside())) return; }
     else if ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.')) return;
-    const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || '## What happened\n\n\n\n## What I made\n\n\n\n## What I read\n\n');
-    wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
+    const text = d.kind === 'weeknotes' && !d.editId && (d.text || '').trim() ? d.text : (weeknotes(wk, w, true) || WK_BLANK);
+    wrDraftSet({ kind: 'weeknotes', title: wkTitle(wk), text, tpl: d.kind === 'weeknotes' && d.tpl ? d.tpl : text }); WR.photo = ''; WR.photoUrl = ''; WR.alt = '';
     wrToTop(); setTimeout(() => $('wrText')?.focus(), 0);
   }
   async function wrEdit(id) {
@@ -3173,21 +3173,33 @@
       WR.posting = false; wrLoad(true); wrPaint(); renderRail();
     } catch (e) { WR.posting = false; wrSay(msg(e), true); wrPaint(); }
   }
-  // Writing in the sidebar is a fresh start: an open draft from your site is saved back to your site and the
-  // composer is emptied for a new post (David, Nov 22: "the draft stays with you when you click on the writing tab").
-  // A new post that isn't on your site yet stays put, so nothing unsaved is lost.
+  // Writing in the sidebar is always a fresh start, a blank composer (David, Nov 22: "the draft stays with you when
+  // you click on the writing tab"; then "When clicking on write we should be taken back to a blank composer").
+  // Anything you wrote yourself is saved as a draft on your site first, so nothing is lost; an empty composer or a
+  // Weeknotes template you haven't touched is simply cleared.
+  const WK_BLANK = '## What happened\n\n\n\n## What I made\n\n\n\n## What I read\n\n';
+  const wrUntouched = d => {
+    const t = (d.text || '').trim(); if (!t) return true;
+    if (d.tpl) return t === d.tpl.trim();
+    if (d.kind !== 'weeknotes') return false;
+    // Weeknotes started before the template was remembered: compare with what the template would be now
+    try { const wk = mdWeek(); return t === WK_BLANK.trim() || t === (weeknotes(wk, mdWk(wk.key), true) || '').trim(); } catch { return false; }
+  };
   document.addEventListener('click', e => {
     if (!e.target.closest('#views [data-view="write"]')) return;
     WR.sub = '';
-    const d = wrDraftGet(); if (!d.editId) return;
-    const kind = wrKind(), photo = WR.photo, photoUrl = WR.photoUrl, alt = WR.alt, name = (d.title || '').trim() || 'your draft';
+    const d = wrDraftGet(), photo = WR.photo, photoUrl = WR.photoUrl, alt = WR.alt;
+    if (!d.editId && wrUntouched(d) && !photo) { if ((d.text || d.title || d.tpl || photoUrl)) { wrClear(); wrSay(''); if (S.view === 'write') wrPaint(); } return; }
+    const kind = wrKind(), title = (d.title || '').trim(), text = (d.text || '').trim(), name = title || 'your draft';
     wrClear(); wrSay(`“${name}” is saved in Drafts on your site.`);
     if (S.view === 'write') wrPaint();
     status('Saving your draft on your site…');
-    invoke('site_post', { id: d.editId, title: (d.title || '').trim(), text: (d.text || '').trim(), categories: kind === 'post' && d.cat ? [Number(d.cat)] : [], photo, alt: (alt || '').trim(), draft: true, kind })
-      .then(() => { status(`Saved “${name}” in your drafts.`); wrLoad(true); })
+    const save = kind === 'post' || d.editId
+      ? invoke('site_post', { id: d.editId || null, title, text, categories: kind === 'post' && d.cat ? [Number(d.cat)] : [], photo, alt: (alt || '').trim(), draft: true, kind })
+      : invoke('site_note', { title, text, link: '', linkTitle: '', photo, alt: (alt || '').trim(), draft: true, linkImage: '', linkSite: '', category: kind === 'weeknotes' ? 'weeknotes' : null, featuredOnly: kind === 'weeknotes' });
+    save.then(() => { status(`Saved “${name}” in your drafts.`); wrLoad(true); })
       .catch(err => {
-        // couldn't save: bring the draft back so nothing is lost
+        // couldn't save: bring it back so nothing is lost
         if (!(wrDraftGet().text || '').trim()) { wrDraftSet(d); WR.photo = photo; WR.photoUrl = photoUrl; WR.alt = alt; }
         wrSay(`Couldn’t save your draft on your site, so it’s still open here: ${msg(err)}`, true); if (S.view === 'write') wrPaint();
       });
@@ -3201,7 +3213,7 @@
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
     if (k === 'back') { wrToTop(); return; }
     if (k === 'reload') { WR.err = ''; WR.folderKey = ''; wrLoad(true); return; }
-    if (k === 'kind') { const d = wrDraftGet(); if (d.editId) { wrDraftSet({ ...d, kind: b.dataset.k }); wrSay(`Saves as ${b.dataset.k === 'note' ? 'a Note' : b.dataset.k === 'weeknotes' ? 'Weeknotes' : 'a Post'} on your site.`); wrPaint(); return; } if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet({ ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
+    if (k === 'kind') { const d = wrDraftGet(); if (d.editId) { wrDraftSet({ ...d, kind: b.dataset.k }); wrSay(`Saves as ${b.dataset.k === 'note' ? 'a Note' : b.dataset.k === 'weeknotes' ? 'Weeknotes' : 'a Post'} on your site.`); wrPaint(); return; } if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet(d.kind === 'weeknotes' && wrUntouched(d) ? { kind: b.dataset.k } : { ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }
     if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
