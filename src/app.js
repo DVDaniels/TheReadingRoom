@@ -360,7 +360,8 @@
     const todayN = unreadIn('today');
     if (todayN !== lastBadge) { lastBadge = todayN; invoke('set_badge', { n: todayN }).catch(() => {}); }
     // Read · Explore · Library, each under a heading that folds it away. A folded heading shows the
-    // group's total, and the view you're on stays visible even when its group is folded.
+    // group's total, and the view you're on stays visible even when its group is folded (Mac, iPad: the sidebar
+    // sits beside the page). On iPhone the sidebar is its own screen, so a folded group hides everything (David, Nov 21).
     // Folding is off in the icon-only sidebar and the narrow chip strip, which show every view.
     const canFold = !document.body.classList.contains('rail-slim') && !(phoneSize.matches && !document.documentElement.classList.contains('ios'));
     const hid = hiddenViews();
@@ -368,7 +369,7 @@
       const items = all.filter(it => !hid.has(it.view) || String(S.view) === it.view);
       const open = !canFold || !foldedGroups.has(id);
       const total = items.reduce((n, it) => n + (Number(it.count) || 0), 0);
-      const shown = open ? items : items.filter(it => !it.sub && String(S.view) === it.view);
+      const shown = open ? items : isPhone() ? [] : items.filter(it => !it.sub && String(S.view) === it.view);
       return `<button class="grp" type="button" data-group="${id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${name}">`
         + `<span class="grp-chev">${ICONS.chev}</span><span class="grp-name">${name}</span>`
         + `<span class="count">${open || !total ? '' : fmtCount(total)}</span></button>`
@@ -406,7 +407,7 @@
     }
     if (!feedsOpen) {
       const v = String(S.view), f = folderOf(S.view);
-      $('feeds').innerHTML = v === 'all' ? navButton('all', 'All', unreadIn('all'), { icon: ICONS.all })
+      $('feeds').innerHTML = isPhone() ? '' : v === 'all' ? navButton('all', 'All', unreadIn('all'), { icon: ICONS.all })
         : f ? navButton('folder:' + f.id, f.name, unreadIn('folder:' + f.id), { ini: f.name })
         : feedById(S.view) && !isJobFeed(feedById(S.view)) ? feedButton(feedById(S.view)) : '';
       return;
