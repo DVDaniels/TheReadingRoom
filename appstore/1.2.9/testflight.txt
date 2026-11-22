@@ -11,6 +11,8 @@ WRITING (new, under Read in the sidebar)
 • Ideas to write about, your drafts on your site (Keep writing opens them right here), This week (Weeknotes and What I read), and a writing calendar.
 • Open Writing's arrow for folders: Ideas, Drafts, Posts, Notes, Weeknotes and your site's own categories.
 • Delete a draft from the Drafts folder: it goes to the trash on your site, and Undo brings it back. Show more drafts loads the rest.
+• Preview shows a post the way readers will see it, before it's on your site: from what you're writing, or from any draft.
+• A draft can become a Note, Post or Weeknotes. Tap a day on the calendar to see what went on your site that day.
 
 YOUR BLOG (if you connect your own WordPress site)
 • Your visitors, RSS readers and search traffic, now in Writing (no longer on My Day). It needs the free WordPress plugin The Reading Room stats, from readingroomapp.com/plugin. Counting starts the day you turn the plugin on.
@@ -30,6 +32,7 @@ ALSO
 
 Please try:
 • In Writing, save a post as a draft, open it again with Keep writing, then post it. Check it lands on your site with its category and picture.
+• Preview a draft, switch an old draft to Note, and tap a day on the calendar.
 • Open each folder under Writing and check the lists match your site. Delete a draft, then Undo.
 • On a big Mac screen, open My Day and check it fills the window, and that prices and changes don't overlap.
 • On a MacBook, check My Day still looks the way it did.
