@@ -918,6 +918,7 @@
     }
     if (img.tagName === 'IMG' && img.classList.contains('nb-face-img')) { img.remove(); return; }
     if (img.tagName === 'IMG' && img.classList.contains('nb-pic')) { img.closest('.nb-picb')?.remove(); return; }
+    if (img.tagName === 'IMG' && img.classList.contains('tp-pic')) { img.closest('.t-post')?.classList.remove('has-pic'); img.closest('.tp-picb')?.remove(); return; }
     if (img.tagName === 'IMG' && img.closest?.('.newpost, .pav')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph' })); return; }
     if (img.tagName === 'IMG' && img.closest?.('.tcols') && img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     if (img.tagName === 'IMG' && img.closest?.('.c-card, .n-note')) { img.classList.contains('n-av') ? img.replaceWith(Object.assign(document.createElement('span'), { className: 'n-av fav', textContent: '•' })) : img.remove(); return; }
@@ -3351,16 +3352,25 @@
         <div class="n-box" data-box="${esc(n.id)}"></div>
       </div></div>`;
   }
+  // A post's picture: the featured image of your own post when it's in your feeds, else the link card's picture
+  function postPic(ps, it) {
+    const src = (it && isWeb(it.image) && it.image) || (ps.find(q => isWeb(q.image)) || {}).image || '';
+    if (!src) return '';
+    const go = it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(ps.find(q => q.link)?.link || ps[0].url)}"`;
+    return `<button class="tp-picb" ${go} aria-label="Open the post"><img class="tp-pic" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`;
+  }
   function postHtml(p) {
     const open = SOC.open.has(p.id), thread = SOC.threads.get(p.id);
     const it = S.items.find(i => i.link && p.link && i.link.replace(/\/$/, '') === p.link.replace(/\/$/, ''));
-    return `<article class="t-post">
+    const pic = postPic([p], it);
+    return `<article class="t-post${pic ? ' has-pic' : ''}"><div class="tp-row"><div class="tp-main">
       <div class="t-story">${!p.link ? `<span class="t-plain">${ICON_NET[p.network]}</span>` : ''}${p.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(p.link)}"`}>${esc(p.link_title || p.link.replace(/^https?:\/\//, ''))}</button>` : ''}
         <span class="t-when">${ICON_NET[p.network]} ${esc(fmtWhen(p.created_at))}</span></div>
       ${p.text ? `<p class="t-note">${esc(p.text)}</p>` : ''}
       <div class="t-meta"><button class="t-count linkish" data-talk="thread" data-net="${p.network}" data-id="${esc(p.id)}">${p.replies ? `${p.replies} ${p.replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'}${p.replies ? (open ? ' ▴' : ' ▾') : ''}</button>
         ${p.reposts ? `<span>${p.reposts} ${p.network === 'mastodon' ? (p.reposts === 1 ? 'boost' : 'boosts') : (p.reposts === 1 ? 'repost' : 'reposts')}</span>` : ''}${p.likes ? `<span>${p.likes} ${p.network === 'mastodon' ? (p.likes === 1 ? 'favorite' : 'favorites') : (p.likes === 1 ? 'like' : 'likes')}</span>` : ''}
         <button class="linkish" data-talk="open" data-url="${esc(p.url)}">Open on ${NET[p.network]}</button></div>
+      </div>${pic}</div>
       <div class="n-box" data-box="${esc(p.id)}"></div>
       ${open ? `<div class="t-thread">${thread === undefined ? '<p class="note">Loading the replies…</p>' : thread.length ? thread.map(n => noteHtml(n, { reply: true, rootId: p.id, rootCid: p.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>` : ''}
     </article>`;
@@ -4857,12 +4867,14 @@
     };
     const threads = g.filter(q => SOC.open.has(q.id)).map(q => { const t = SOC.threads.get(q.id);
       return `<div class="t-thread">${t === undefined ? '<p class="note">Loading the replies…</p>' : t.length ? t.map(n => noteHtml(n, { reply: true, rootId: q.id, rootCid: q.cid })).join('') : '<p class="note">No replies yet.</p>'}</div>`; }).join('');
-    return `<article class="t-post">
+    const pic = postPic(g, it);
+    return `<article class="t-post${pic ? ' has-pic' : ''}"><div class="tp-row"><div class="tp-main">
       <div class="t-story">${!lp.link ? `<span class="t-plain">${g.map(q => ICON_NET[q.network]).join('')}</span>` : ''}${lp.link ? `<button class="t-link" ${it ? `data-open="${esc(it.id)}"` : `data-talk="open" data-url="${esc(lp.link)}"`}>${esc(lp.link_title || lp.link.replace(/^https?:\/\//, ''))}</button>` : ''}
         <span class="t-when" title="Posted to ${g.map(q => NET[q.network]).join(' and ')}">${g.map(q => ICON_NET[q.network]).join('')} ${esc(fmtWhen(p.created_at))}</span></div>
       ${p.text ? `<p class="t-note">${esc(p.text)}</p>` : ''}
       <div class="t-meta">${replies ? '' : '<span>No replies yet</span>'}${g.map(per).join('')}
         ${g.map(q => `<button class="linkish" data-talk="open" data-url="${esc(q.url)}">Open on ${NET[q.network]}</button>`).join('')}</div>
+      </div>${pic}</div>
       ${g.map(q => `<div class="n-box" data-box="${esc(q.id)}"></div>`).join('')}
       ${threads}
     </article>`;
