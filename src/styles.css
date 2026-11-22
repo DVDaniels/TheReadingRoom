@@ -2703,3 +2703,9 @@ html.ios .brief.writing .wr-body { line-height: 34px; }
 @media (prefers-color-scheme: dark) { html:not([data-theme="light"]):not([data-theme="sepia"]) .writing .wr-new.b-panel {
   --nb-paper: #1C1F24; --nb-edge: #2E333B; --nb-rule: rgba(140,170,220,.16); --nb-margin: rgba(230,110,110,.35); --nb-ink: var(--ink); box-shadow: 0 12px 30px -12px rgba(0,0,0,.7); } }
 html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edge: #2E333B; --nb-rule: rgba(140,170,220,.16); --nb-margin: rgba(230,110,110,.35); --nb-ink: var(--ink); box-shadow: 0 12px 30px -12px rgba(0,0,0,.7); }
+
+/* What I read this week: the buttons stay in view at the bottom of the picker, the ones that go to Writing first (Nov 22) */
+#roundupPanel .ru-foot { position: sticky; bottom: -22px; z-index: 1; margin: 0 -4px -4px; padding: 10px 4px 4px; background: var(--surface); border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+#roundupPanel .ru-main, #roundupPanel .ru-more { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+#roundupPanel .ru-main { order: 1; }
