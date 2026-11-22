@@ -2720,7 +2720,7 @@
   // categories the app already posts into; the other categories come from WordPress, so they always match the site.
   // Likes, reposts and replies still happen on the post you're reading; they show here once they're on your site.
   const WR = { sub: '', cats: null, drafts: null, recent: null, future: null, at: 0, busy: false, err: '', folder: null, folderKey: '', folderBusy: false,
-    cal: null, calKey: '', calMonth: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
+    cal: null, calKey: '', calMonth: null, draftsMore: false, draftsPage: 1, trashed: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
   const wrSite = () => SOC.accounts?.wordpress;
   const wrHost = () => (wrSite()?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const wrCat = slug => (WR.cats || []).find(c => c.slug === slug);
@@ -2753,7 +2753,7 @@
     try {
       const [cats, drafts, recent, future] = await Promise.all([invoke('site_categories'), invoke('site_posts', { status: 'draft', perPage: 50 }),
         invoke('site_posts', { status: 'publish', perPage: 60 }), invoke('site_posts', { status: 'future', perPage: 20 }).catch(() => [])]);
-      WR.cats = cats || []; WR.drafts = drafts || []; WR.recent = recent || []; WR.future = future || []; WR.err = '';
+      WR.cats = cats || []; WR.drafts = drafts || []; WR.draftsMore = WR.drafts.length >= 50; WR.draftsPage = 1; WR.recent = recent || []; WR.future = future || []; WR.err = '';
     } catch (e) { WR.err = msg(e); }
     WR.busy = false; WR.at = Date.now(); WR.cal = null;
     renderRail();
@@ -2789,11 +2789,11 @@
     const it = { view: 'write', label: 'Writing', count: '', icon: ICONS.write };
     if (!wrSite()) { it.html = navButton('write', 'Writing', '', { icon: ICONS.write, mark }); return [it]; }
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
-    const open = !wrFolded(), nd = (WR.drafts || []).length;
+    const open = !wrFolded(), nd = (WR.drafts || []).length ? `${(WR.drafts || []).length}${WR.draftsMore ? '+' : ''}` : '';
     it.count = open ? '' : nd || '';
     it.html = `<div class="folder vidrow">${navButton('write', 'Writing', it.count, { icon: ICONS.write, mark })}<button class="chev" type="button" data-wrfold aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Show'} the folders under Writing" title="${open ? 'Fold the folders into Writing' : 'Show your drafts, posts, notes and categories'}">${ICONS.chev}</button></div>`;
     if (!open) return [it];
-    const sub = (k, label, n, tip) => ({ view: 'write', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'write' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? fmtCount(n) : ''}</span></button>` });
+    const sub = (k, label, n, tip) => ({ view: 'write', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'write' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? (typeof n === 'number' ? fmtCount(n) : esc(n)) : ''}</span></button>` });
     const cats = wrOwnCats();
     return [it, sub('ideas', 'Ideas', wrIdeas().length, 'Ideas for posts, kept in the app'), sub('drafts', 'Drafts', nd, 'Drafts on your site'), sub('posts', 'Posts'), sub('notes', 'Notes'), sub('weeknotes', 'Weeknotes'),
       ...(cats.length ? [{ view: 'write', sub: true, html: '<span class="wr-navhead">On your site</span>' }, ...cats.map(c => sub('cat-' + c.id, c.name, 0, `Everything in ${c.name} on your site`))] : [])];
@@ -2870,9 +2870,9 @@
   function wrDraftsHtml() {
     const list = WR.drafts;
     const body = !list ? `<p class="day-note">${WR.busy ? 'Looking at your site…' : ''}</p>` : !list.length ? '<p class="day-note">No drafts on your site right now. Save as a draft puts one here.</p>'
-      : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button></li>`).join('')}</ul>
+      : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><span class="wr-lacts"><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="b-link wr-dl" type="button" data-wr="trash" data-id="${p.id}">Delete</button></span></li>`).join('')}</ul>
         ${list.length > 4 ? `<p class="day-note"><button class="b-link" type="button" data-wrsub="drafts">All ${list.length} drafts</button></p>` : ''}`;
-    return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length || ''}</span></div>${body}
+    return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length ? `${list.length}${WR.draftsMore ? '+' : ''}` : ''}</span></div>${wrUndoHtml()}${body}
       ${list?.length ? '<p class="day-note">Drafts you started here or in WordPress. Finish them in either place.</p>' : ''}</section>`;
   }
   function wrWeekHtml() {
@@ -2940,18 +2940,50 @@
         : !list.length ? `<li class="wr-frow"><p class="day-note">${k === 'weeknotes' ? 'No Weeknotes yet. Your first one makes the Weeknotes category on your site.' : k === 'notes' ? 'No notes yet.' : 'Nothing here yet.'}</p></li>`
         : list.map(p => `<li class="wr-frow">${p.image ? `<img class="wr-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="wr-fmain"><b>${esc(p.title || (k === 'drafts' ? 'Untitled draft' : p.excerpt?.slice(0, 80) || ''))}</b>${p.excerpt && p.title ? `<p>${esc(p.excerpt)}</p>` : ''}
           <span class="wr-fmeta">${(p.categories || []).slice(0, 2).map(c => wrCatName(c)).filter(Boolean).map(c => `<span class="wr-kind">${esc(c)}</span>`).join('')}${k === 'drafts' ? `Edited ${esc(wrWhen(p.modified))}` : esc(wrWhen(p.date))}</span></div>
-          <div class="wr-facts">${k === 'drafts' ? `<button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
+          <div class="wr-facts">${k === 'drafts' ? `<button class="btn wr-del" type="button" data-wr="trash" data-id="${p.id}">Delete</button><button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
             : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
     }
     return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
       ${WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : ''}
-      <section class="b-panel wr-folder"><ul class="wr-flist">${rows}</ul></section></section>`;
+      ${k === 'drafts' ? wrUndoHtml() : ''}<section class="b-panel wr-folder"><ul class="wr-flist">${rows}</ul>
+      ${k === 'drafts' && WR.draftsMore ? `<p class="wr-more"><button class="btn" type="button" data-wr="moredrafts"${WR.folderBusy ? ' disabled' : ''}>${WR.folderBusy ? 'Loading…' : 'Show more drafts'}</button></p>` : ''}</section></section>`;
   }
 
   // ---- doing things
   const wrSay = (t, err) => { WR.note = t; WR.noteErr = !!err; };
+  // Delete moves a draft to WordPress's Trash (it can be restored there for 30 days); Undo brings it straight back
+  const wrUndoHtml = () => WR.trashed ? `<p class="wr-undo" role="status">Moved “${esc(WR.trashed.title || 'Untitled draft')}” to the trash on your site. <button class="b-link" type="button" data-wr="untrash">Undo</button></p>` : '';
+  async function wrTrash(id) {
+    const p = (WR.drafts || []).find(x => x.id === id); if (!p) return;
+    const at = WR.drafts.indexOf(p);
+    WR.drafts = WR.drafts.filter(x => x !== p); WR.trashed = { ...p, at }; wrPaint(); renderRail();
+    try {
+      await invoke('site_post_trash', { id });
+      if (wrDraftGet().editId === id) { wrClear(); wrSay(''); }
+    } catch (e) {
+      WR.drafts.splice(at, 0, p); WR.trashed = null; status(msg(e), true); wrPaint(); renderRail();
+    }
+  }
+  async function wrUntrash() {
+    const p = WR.trashed; if (!p) return;
+    WR.trashed = null; wrPaint();
+    try { await invoke('site_post_restore', { id: p.id }); WR.drafts.splice(Math.min(p.at, WR.drafts.length), 0, p); status(`“${p.title || 'Untitled draft'}” is back in your drafts.`); }
+    catch (e) { status(msg(e), true); }
+    wrPaint(); renderRail();
+  }
+  async function wrMoreDrafts() {
+    if (WR.folderBusy) return;
+    WR.folderBusy = true; wrPaint();
+    try {
+      const more = (await invoke('site_posts', { status: 'draft', perPage: 50, page: WR.draftsPage + 1 })) || [];
+      const have = new Set((WR.drafts || []).map(x => x.id));
+      WR.drafts = [...(WR.drafts || []), ...more.filter(x => !have.has(x.id))];
+      WR.draftsPage += 1; WR.draftsMore = more.length >= 50;
+    } catch { WR.draftsMore = false; }
+    WR.folderBusy = false; wrPaint(); renderRail();
+  }
   function wrClear() { wrDraftSet({ kind: wrKind() === 'weeknotes' ? 'post' : wrKind() }); WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; }
-  function wrToTop() { WR.sub = ''; renderHead(); renderRail(); wrPaint(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); }
+  function wrToTop() { WR.sub = ''; WR.trashed = null; renderHead(); renderRail(); wrPaint(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); }
   function wrStartWeeknotes() {
     const wk = mdWeek(), w = mdWk(wk.key), d = wrDraftGet();
     if (d.editId || ((d.text || '').trim() && d.kind !== 'weeknotes' && !confirm('Put aside what you’re writing and start your Weeknotes? What you wrote stays only if you save it as a draft first.'))) { if (d.editId) { status('Save or finish your draft first, then start your Weeknotes.'); return; } else return; }
@@ -3030,7 +3062,7 @@
   document.addEventListener('click', e => {
     if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
     const s = e.target.closest('[data-wrsub]');
-    if (s) { WR.sub = s.dataset.wrsub; if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
+    if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
     const b = e.target.closest('[data-wr]'); if (!b || !b.closest('.writing')) return;
     const k = b.dataset.wr, id = Number(b.dataset.id) || b.dataset.id;
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
@@ -3044,6 +3076,9 @@
     if (k === 'post' || k === 'draft') { wrPost(k === 'draft'); return; }
     if (k === 'edit') { wrEdit(id); return; }
     if (k === 'publish') { wrPublishDraft(id); return; }
+    if (k === 'trash') { wrTrash(id); return; }
+    if (k === 'untrash') { wrUntrash(); return; }
+    if (k === 'moredrafts') { wrMoreDrafts(); return; }
     if (k === 'cal') { const m = WR.calMonth || (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })(); WR.calMonth = new Date(m.getFullYear(), m.getMonth() + Number(b.dataset.n), 1); WR.cal = null; wrPaint(); return; }
     if (k === 'idea-x') { S.prefs.ideas = wrIdeas().filter(i => i.id !== b.dataset.id); savePrefs(); wrPaint(); renderRail(); return; }
     if (k === 'idea-write') {

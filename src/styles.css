@@ -2537,3 +2537,9 @@ html.ios .nav .wr-navhead { padding-left: 46px; }
   .writing .wr-frow { flex-wrap: wrap; align-items: flex-start; gap: 10px; } .writing .wr-fmain p { white-space: normal; } .writing .wr-facts { width: 100%; }
   .writing .wr-thumb { width: 72px; height: 72px; }
 }
+.writing .wr-lacts { display: flex; gap: 12px; flex: none; }
+.writing .wr-list .wr-dl, .writing .wr-folder .wr-del { color: var(--danger) !important; }
+.writing .wr-folder .wr-del { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); background: transparent; }
+.writing .wr-undo { margin: 0 0 12px; padding: 9px 14px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
+.writing .wr-drafts .wr-undo { margin: 0 0 8px; font-size: 13px; }
+.writing .wr-more { margin: 10px 0 8px; text-align: center; }

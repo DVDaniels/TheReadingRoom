@@ -2296,13 +2296,14 @@ fn writing_item(p: &Value) -> Value {
 /// Posts on your site for the Writing tab: drafts or published ones, in some categories or outside them, newest
 /// first. Drafts need the sign-in (an Application Password for an account that can edit posts).
 #[tauri::command]
-pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, exclude: Option<Vec<i64>>, per_page: Option<u32>, after: Option<String>) -> Result<Value, String> {
+pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, exclude: Option<Vec<i64>>, per_page: Option<u32>, after: Option<String>, page: Option<u32>) -> Result<Value, String> {
     let status = match status.as_deref() { Some("draft") => "draft", Some("future") => "future", _ => "publish" };
     let join = |v: &Vec<i64>| v.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
     let mut q = format!("/wp/v2/posts?status={status}&per_page={}&orderby={}&_embed=wp:featuredmedia&context=edit",
         per_page.unwrap_or(30).clamp(1, 100), if status == "draft" { "modified" } else { "date" });
     if let Some(c) = categories.filter(|c| !c.is_empty()) { q.push_str(&format!("&categories={}", join(&c))); }
     if let Some(c) = exclude.filter(|c| !c.is_empty()) { q.push_str(&format!("&categories_exclude={}", join(&c))); }
+    if let Some(n) = page.filter(|n| *n > 1) { q.push_str(&format!("&page={n}")); }
     if let Some(a) = after.filter(|a| !a.trim().is_empty()) { q.push_str(&format!("&after={}", url::form_urlencoded::byte_serialize(a.trim().as_bytes()).collect::<String>())); }
     let v = wp(reqwest::Method::GET, &q, None).await?;
     Ok(json!(v.as_array().map(|a| a.iter().map(writing_item).collect::<Vec<_>>()).unwrap_or_default()))
@@ -2375,6 +2376,21 @@ pub async fn site_post(id: Option<i64>, title: String, text: String, categories:
     let path = match id.filter(|i| *i > 0) { Some(i) => format!("/wp/v2/posts/{i}"), None => "/wp/v2/posts".into() };
     let p = wp(reqwest::Method::POST, &path, Some(post)).await?;
     Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+}
+
+/// Move a post on your site to WordPress's Trash (Delete in the Drafts folder). It isn't erased: it stays in
+/// Posts › Trash in WordPress, where you can restore it, until WordPress empties the trash (after 30 days).
+#[tauri::command]
+pub async fn site_post_trash(id: i64) -> Result<(), String> {
+    wp(reqwest::Method::DELETE, &format!("/wp/v2/posts/{id}"), None).await?;
+    Ok(())
+}
+
+/// Bring a post back out of the Trash as a draft (Undo after Delete).
+#[tauri::command]
+pub async fn site_post_restore(id: i64) -> Result<(), String> {
+    wp(reqwest::Method::POST, &format!("/wp/v2/posts/{id}"), Some(json!({ "status": "draft" }))).await?;
+    Ok(())
 }
 
 /// Publish a draft that's on your site as it is (Post now in the Drafts folder).
