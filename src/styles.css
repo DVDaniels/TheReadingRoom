@@ -2595,3 +2595,89 @@ html.ios .nav .wr-navhead { padding-left: 46px; }
 .myday .md-modes { flex-wrap: wrap; row-gap: 6px; }
 .brief .md-modes .linkish { white-space: nowrap; }
 .brief.myday .md-auto { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+
+/* ---- Writing, the premium look (David, Nov 22: "How to make it feel more premium?")
+   The green stays as the setting; what you write sits on white paper. */
+.brief.writing {
+  background:
+    radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 100% 0%, color-mix(in srgb, #E9C46A 14%, transparent), transparent 65%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 85%, var(--surface)) 0%, var(--surface) 520px);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--surface) 70%, transparent) inset, 0 1px 2px rgba(16,40,32,.05), 0 12px 32px -12px rgba(16,40,32,.16);
+  padding: 26px 26px 20px;
+}
+.brief.writing h2 { font-size: 36px; letter-spacing: -.01em; display: inline-flex; align-items: center; gap: 10px; }
+.writing .wr-plusmark { font-family: var(--font-ui, inherit); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+  color: #6B4E00; background: linear-gradient(180deg, #F7E3A1, #E9C46A); box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 1px 2px rgba(120,90,0,.25); }
+
+/* the composer: a sheet of paper, the words in a comfortable column (about 70 characters) */
+.writing .wr-new.b-panel {
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 16px;
+  padding: 22px max(26px, calc((100% - 720px) / 2)) 18px;
+  box-shadow: 0 1px 2px rgba(16,32,40,.06), 0 10px 30px -10px rgba(16,32,40,.18);
+  transition: box-shadow .2s, border-color .2s;
+}
+.writing .wr-new .b-sub { font-size: 11px; letter-spacing: .14em; color: var(--accent); }
+.brief.writing .wr-title { border: 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 9%, transparent); border-radius: 0; background: transparent;
+  padding: 10px 0 12px; font-size: 30px; font-weight: 600; letter-spacing: -.01em; font-family: var(--font-read); }
+.brief.writing .wr-body { border: 0; border-radius: 0; background: transparent; margin-top: 6px; padding: 14px 0 8px;
+  font-family: var(--font-read); font-size: 19px; line-height: 1.75; min-height: 240px; resize: none; }
+.brief.writing .wr-title:focus, .brief.writing .wr-body:focus { outline: none; }
+.writing .wr-new:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent), 0 10px 30px -10px rgba(16,32,40,.2); }
+.writing .wr-help { padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent); }
+.writing .wr-acts .note { display: flex; flex-direction: column; gap: 2px; }
+.writing .wr-count { font-size: 12.5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.writing .wr-count:empty { display: none; }
+
+/* Note / Post / Weeknotes: a segmented control with a white thumb */
+.writing .wr-kinds { background: color-mix(in srgb, var(--ink) 5%, transparent); border: 0; border-radius: 10px; padding: 3px; }
+.writing .wr-kinds button { padding: 6px 14px; border-radius: 8px; color: var(--muted); font-weight: 500; }
+.writing .wr-kinds button[aria-pressed="true"] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 2px 6px -2px rgba(0,0,0,.12); }
+.writing .wr-focusbtn { margin-left: auto; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); background: none; border-radius: 8px; padding: 5px 11px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.writing .wr-focusbtn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.writing .wr-focusbtn + .wr-kinds { margin-left: 0; }
+
+/* buttons with a little depth */
+.writing .btn { border-radius: 10px; }
+.writing .btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #fff) 0%, var(--accent) 100%); border-color: color-mix(in srgb, var(--accent) 80%, #000);
+  box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 1px 2px rgba(0,0,0,.12), 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+
+/* the cards below: white, defined, small spaced capitals */
+.writing .md-quad .b-panel, .writing .md-blog, .writing .wr-posted {
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,32,40,.04), 0 6px 18px -10px rgba(16,32,40,.14); }
+.writing .md-quad .b-sub, .writing .md-blog .b-sub, .writing .wr-posted .b-sub { letter-spacing: .14em; font-size: 11px; color: var(--accent); }
+.writing .wr-list li { padding: 10px 0; }
+.writing .wr-day { border-color: color-mix(in srgb, var(--ink) 7%, transparent); background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
+.writing .wr-day.now { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+
+/* Focus: only the page, centered, until Done or Esc */
+body.wr-focus .rail, body.wr-focus #listTop, body.wr-focus .writing > :not(.wr-new) { display: none !important; }
+body.wr-focus .app { grid-template-columns: minmax(0, 1fr); }
+body.wr-focus .brief.writing { background: none; border-color: transparent; box-shadow: none; width: min(860px, 100%); box-sizing: border-box; margin: 24px auto; }
+body.wr-focus .writing .wr-new.b-panel { padding: 32px max(32px, calc((100% - 680px) / 2)) 22px; }
+body.wr-focus .writing .wr-focusbtn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+/* dark: softer shadows, the gradient into the page colour */
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]):not([data-theme="sepia"]) .brief.writing { box-shadow: 0 12px 32px -12px rgba(0,0,0,.6);
+  background: radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), linear-gradient(180deg, var(--accent-soft) 0%, var(--bg) 520px); } }
+html[data-theme="dark"] .brief.writing { box-shadow: 0 12px 32px -12px rgba(0,0,0,.6);
+  background: radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), linear-gradient(180deg, var(--accent-soft) 0%, var(--bg) 520px); }
+
+/* phones: less padding so the words get the width; iOS keeps fields at 16px or more (no zoom), so set ours explicitly */
+@media (max-width: 760px) {
+  .brief.writing { padding: 16px 12px 14px; }
+  .brief.writing h2 { font-size: 30px; }
+  .writing .wr-new.b-panel { padding: 16px 16px 14px; border-radius: 14px; }
+  .writing .wr-new .bp-head { gap: 8px; }
+  .writing .wr-new .bp-head .bp-meta { flex-basis: 100%; order: 1; }
+  .writing .wr-new .bp-head .b-sub { order: 0; }
+  .writing .wr-focusbtn + .wr-kinds { order: 2; margin-left: 0; flex: 1; }
+  .writing .wr-focusbtn { order: 3; margin-left: 0; align-self: stretch; }
+  .writing .wr-kinds button { flex: 1; }
+  body.wr-focus .brief.writing { margin: 0; }
+}
+html.ios .brief.writing .wr-title { font-size: 26px !important; }
+html.ios .brief.writing .wr-body { font-size: 18px !important; line-height: 1.7; }

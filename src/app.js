@@ -1023,6 +1023,7 @@
 
   function selectView(v) {
     const was = S.view;
+    if (v !== 'write' && document.body.classList.contains('wr-focus')) { document.body.classList.remove('wr-focus'); try { WR.focus = false; } catch {} }
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
@@ -2814,17 +2815,25 @@
   }
 
   // ---- the page
+  // The page grows with what you write (no box to scroll inside)
+  function wrGrow(t) {
+    if (!t || t.offsetParent === null) return;
+    const m = $('main'), y = m?.scrollTop, ly = $('listView')?.scrollTop;
+    t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px';
+    if (m) m.scrollTop = y; if ($('listView')) $('listView').scrollTop = ly;
+  }
   function wrPaint() {
     const a = document.activeElement, id = a && a.id && a.closest?.('#list') ? a.id : '';
     const sel = id && typeof a.selectionStart === 'number' ? a.selectionStart : null;
     const y = $('main').scrollTop, ly = $('listView').scrollTop;
     $('list').innerHTML = writingHtml();
+    wrGrow($('wrText'));
     $('main').scrollTop = y; $('listView').scrollTop = ly;
     const el = id && $(id);
     if (el) { el.focus(); if (sel != null) try { el.setSelectionRange(sel, sel); } catch {} }
   }
   function wrHead(sub) {
-    return `<div class="md-top"><div class="md-top-row"><h2>${esc(sub || 'Write something')}</h2>
+    return `<div class="md-top"><div class="md-top-row"><h2>${esc(sub || 'Write something')}${!sub && plusLive() ? '<span class="wr-plusmark" title="Part of The Reading Room Plus">Plus</span>' : ''}</h2>
         <div class="md-modes">${sub ? '<button type="button" class="linkish" data-wr="back">All of Writing</button>' : ''}${wrSite() ? `<span class="wr-site">Posting to <b>${esc(wrHost())}</b></span><button type="button" class="linkish" data-wr="site">Change</button>` : ''}</div></div>`;
   }
   function writingHtml() {
@@ -2859,6 +2868,7 @@
     const pic = WR.photo || WR.photoUrl;
     return `<section class="b-panel wr-new" aria-label="New">
       <div class="bp-head"><h3 class="b-sub">${d.editId ? 'Your draft' : 'New'}</h3>${d.editId ? `<span class="bp-meta">Saved on your site · <button class="linkish" type="button" data-wr="clear">Start something new</button></span>` : ''}
+        <button class="wr-focusbtn" type="button" data-wr="focus" aria-pressed="${!!WR.focus}" title="${WR.focus ? 'Show the rest of Writing (Esc)' : 'Hide everything but the page'}">${WR.focus ? 'Done' : 'Focus'}</button>
         <div class="wr-kinds" role="group" aria-label="What you’re writing">${Object.entries(WR_KIND).map(([k, l]) => `<button type="button" data-wr="kind" data-k="${k}" aria-pressed="${k === kind}"${d.editId ? ` title="Make this draft a ${l}"` : ''}>${l}</button>`).join('')}</div></div>
       <input class="wr-title" id="wrTitle" type="text" maxlength="200" autocomplete="off" value="${esc(d.title || '')}" placeholder="${kind === 'note' ? 'Title (optional)' : 'Title'}" aria-label="Title">
       <textarea class="wr-body" id="wrText" rows="${kind === 'note' ? 4 : 9}" placeholder="${kind === 'note' ? 'What’s on your mind?' : kind === 'weeknotes' ? 'What happened this week?' : 'Start writing…'}" aria-label="What you’re writing">${esc(d.text || '')}</textarea>
@@ -2869,11 +2879,23 @@
         ${kind === 'post' ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
-      <div class="wr-acts"><span class="note">${d.text || d.title ? 'Kept on this device as you type' : ''}</span>
+      <div class="wr-acts"><span class="note"><span class="wr-count" id="wrCount">${wrCount(d.text)}</span>${d.text || d.title ? '<span class="wr-kept">Kept on this device as you type</span>' : ''}</span>
         <button class="btn" type="button" data-wr="preview"${WR.posting ? ' disabled' : ''} title="See how it will look on your site">Preview</button>
         <button class="btn" type="button" data-wr="draft"${WR.posting ? ' disabled' : ''}>${d.editId ? 'Save the draft' : 'Save as a draft on your site'}</button>
         <button class="btn primary" type="button" data-wr="post"${WR.posting ? ' disabled' : ''}>${kind === 'post' ? 'Post now' : kind === 'weeknotes' ? 'Publish' : 'Post'}</button></div></section>`;
   }
+  // "312 words · 2 min read" by the buttons (about 230 words a minute)
+  function wrCount(text) {
+    const n = ((text || '').match(/[\p{L}\p{N}’'-]+/gu) || []).length;
+    return n ? `${n.toLocaleString()} word${n === 1 ? '' : 's'} · ${Math.max(1, Math.round(n / 230))} min read` : '';
+  }
+  // Focus: everything but the page goes away until you press Done or Esc
+  function wrSetFocus(on) {
+    WR.focus = !!on; document.body.classList.toggle('wr-focus', WR.focus);
+    if (S.view === 'write') wrPaint();
+    if (WR.focus) setTimeout(() => { const t = $('wrText'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }, 0);
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && WR.focus && !document.querySelector('.overlay:not([hidden])')) { e.preventDefault(); wrSetFocus(false); } });
   function wrIdeasHtml() {
     const ideas = wrIdeas();
     return `<section class="b-panel wr-ideas" aria-label="Ideas"><div class="bp-head"><h3 class="b-sub">Ideas</h3><span class="bp-meta">${ideas.length ? `${ideas.length} waiting` : ''}</span></div>
@@ -3185,6 +3207,7 @@
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
     if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
     if (k === 'preview') { wrPreviewNew(); return; }
+    if (k === 'focus') { wrSetFocus(!WR.focus); return; }
     if (k === 'pv') { wrPreviewDraft(id); return; }
     if (k === 'post' || k === 'draft') { wrPost(k === 'draft'); return; }
     if (k === 'edit') { wrEdit(id); return; }
@@ -3219,7 +3242,7 @@
   });
   document.addEventListener('input', e => {
     const t = e.target; if (!t.closest?.('.writing')) return;
-    if (t.id === 'wrTitle' || t.id === 'wrText') { const d = wrDraftGet(); d.kind = wrKind(); d[t.id === 'wrTitle' ? 'title' : 'text'] = t.value; wrDraftSet(d); }
+    if (t.id === 'wrTitle' || t.id === 'wrText') { const d = wrDraftGet(); d.kind = wrKind(); d[t.id === 'wrTitle' ? 'title' : 'text'] = t.value; wrDraftSet(d); const c = $('wrCount'); if (c) c.textContent = wrCount(d.text); if (t.id === 'wrText') wrGrow(t); }
     if (t.id === 'wrAlt') WR.alt = t.value;
   });
   document.addEventListener('change', async e => {
