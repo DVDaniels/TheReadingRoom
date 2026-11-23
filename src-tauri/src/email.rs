@@ -442,6 +442,113 @@ async fn move_out(a: &Account, uid: &str, message_id: &str, to: Out) -> Result<O
     Ok(folder)
 }
 
+/// Search the whole inbox on the mail server (subject, sender and text): the newest `NEWEST` matches the app
+/// doesn't have yet, and how many matched in all.
+pub async fn search(a: &Account, query: &str, have: &HashSet<String>) -> Result<(Vec<Mail>, usize), String> {
+    use futures::TryStreamExt;
+    let q: String = query.chars().filter(|c| !c.is_control() && *c != '"' && *c != '\\').take(100).collect();
+    if q.trim().is_empty() {
+        return Ok((vec![], 0));
+    }
+    let mut s = imap_login(a).await?;
+    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+    let validity = mb.uid_validity.unwrap_or(0);
+    // non-ASCII words need the server told it's UTF-8; most servers take CHARSET UTF-8, a few only plain ASCII
+    let cmd = format!("OR OR SUBJECT \"{q}\" FROM \"{q}\" TEXT \"{q}\"");
+    let found = match s.uid_search(if q.is_ascii() { cmd.clone() } else { format!("CHARSET UTF-8 {cmd}") }).await {
+        Ok(f) => f,
+        Err(_) if !q.is_ascii() => s.uid_search(&cmd).await.unwrap_or_default(),
+        Err(e) => return Err(format!("Your mail server couldn't search ({e}).")),
+    };
+    let mut all: Vec<u32> = found.into_iter().collect();
+    all.sort_unstable();
+    let total = all.len();
+    let missing: Vec<u32> = all.into_iter().rev().filter(|u| !have.contains(&format!("{validity}:{u}"))).take(NEWEST as usize).collect();
+    let mut out = vec![];
+    if !missing.is_empty() {
+        let set = missing.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        let sizes: Vec<_> = s.uid_fetch(&set, "(UID RFC822.SIZE)").await.map_err(|e| format!("Couldn't list the inbox ({e})."))?.try_collect().await.map_err(|e| format!("Couldn't list the inbox ({e})."))?;
+        let (mut small, mut big) = (vec![], vec![]);
+        for f in &sizes {
+            if let Some(u) = f.uid {
+                if f.size.unwrap_or(0) > MAX_BYTES { big.push(u) } else { small.push(u) }
+            }
+        }
+        for (uids, what, too_big) in [(&small, "(UID BODY.PEEK[])", false), (&big, "(UID BODY.PEEK[HEADER])", true)] {
+            if uids.is_empty() {
+                continue;
+            }
+            let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+            let got: Vec<_> = s.uid_fetch(set, what).await.map_err(|e| format!("Couldn't download email ({e})."))?.try_collect().await.map_err(|e| format!("Couldn't download email ({e})."))?;
+            for f in &got {
+                let (Some(uid), Some(raw)) = (f.uid, f.body().or_else(|| f.header())) else { continue };
+                if let Some(mut m) = parse(raw, &format!("{validity}:{uid}")) {
+                    if too_big {
+                        m.html = "<p><em>This email is too big to show here (it probably has large attachments). Open it in your email app.</em></p>".into();
+                    }
+                    out.push(m);
+                }
+            }
+        }
+    }
+    let _ = s.logout().await;
+    Ok((out, total))
+}
+
+/// Where a newsletter's own site might be, best guess first: the host of its "View in browser" or most-linked
+/// page, then the sender's own domain (not a mail service's). Known newsletter platforms give their feed directly.
+pub fn newsletter_sites(html: &str, from: &str) -> Vec<String> {
+    static HREF: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let href = HREF.get_or_init(|| regex::Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*["'](https?://[^"'\s]+)["'][^>]*>(.*?)</a>"#).unwrap());
+    // mail services, trackers, link shorteners and big sites: never the newsletter's own site
+    const NOT: &[&str] = &["list-manage.com", "mailchimp.com", "mcusercontent.com", "substackcdn.com", "sendgrid.net", "mailgun", "convertkit", "ck.page", "kit.com", "beehiiv.com/", "cmail", "createsend", "constantcontact", "hubspot", "klaviyo", "mailerlite", "sendinblue", "brevo", "bit.ly", "t.co", "lnkd.in", "facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com", "youtube.com", "tiktok.com", "apple.com", "google.com", "gstatic.com", "medium.com/m/", "unsubscribe", "manage", "preferences", "click.", "links.", "link.", "email.", "e.", "track", "open.", "eotrx", "cdn"];
+    let host = |u: &str| url::Url::parse(u).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_ascii_lowercase()));
+    let bad = |u: &str| {
+        let l = u.to_ascii_lowercase();
+        let h = host(&l).unwrap_or_default();
+        NOT.iter().any(|n| if n.ends_with('.') { h.starts_with(n) } else { l.contains(n) })
+    };
+    let mut out: Vec<String> = vec![];
+    fn push(out: &mut Vec<String>, h: String) {
+        if !h.is_empty() && !out.contains(&h) {
+            out.push(h);
+        }
+    }
+    let mut counts: Vec<(String, usize)> = vec![];
+    for c in href.captures_iter(html) {
+        let (u, words) = (&c[1], c[2].to_ascii_lowercase());
+        if bad(u) {
+            continue;
+        }
+        let Some(h) = host(u) else { continue };
+        if words.contains("browser") || words.contains("online") || words.contains("on the web") || words.contains("web version") {
+            push(&mut out, h.clone());
+        }
+        match counts.iter_mut().find(|(x, _)| *x == h) {
+            Some(x) => x.1 += 1,
+            None => counts.push((h, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1));
+    for (h, _) in counts.into_iter().take(2) {
+        push(&mut out, h);
+    }
+    let dom = from.rsplit('@').next().unwrap_or("").to_ascii_lowercase();
+    // a newsletter platform: the writer's own page there
+    for (platform, feed) in [("substack.com", "/feed"), ("ghost.io", "/rss/"), ("beehiiv.com", "/feed")] {
+        if let Some(h) = out.iter().find(|h| h.ends_with(&format!(".{platform}")) && h.split('.').count() == 3).cloned() {
+            out.insert(0, format!("{h}{feed}"));
+            break;
+        }
+    }
+    let free = ["gmail.com", "googlemail.com", "icloud.com", "me.com", "yahoo.com", "outlook.com", "hotmail.com", "proton.me", "protonmail.com", "substack.com", "beehiiv.com", "buttondown.email", "mailchimp.com", "convertkit.com", "ghost.io"];
+    let base = dom.split('.').rev().take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(".");
+    if !dom.is_empty() && !free.iter().any(|f| base == *f || dom == *f) {
+        push(&mut out, base);
+    }
+    out.into_iter().take(4).collect()
+}
+
 /// The whole email as the server keeps it (to open a file attached to it).
 pub async fn fetch_raw(a: &Account, uid: &str, message_id: &str) -> Result<Vec<u8>, String> {
     use futures::TryStreamExt;
@@ -838,6 +945,8 @@ pub struct Outgoing<'a> {
     pub body: &'a str,
     pub in_reply_to: &'a str,
     pub references: &'a str,
+    /// Files to attach: name, type, bytes
+    pub files: &'a [(String, String, Vec<u8>)],
 }
 
 fn header_text(s: &str) -> String {
@@ -879,12 +988,33 @@ pub fn compose(a: &Account, o: &Outgoing<'_>) -> String {
         let refs: Vec<String> = o.references.split_whitespace().chain([o.in_reply_to]).map(angle).collect();
         m += &format!("References: {}\r\n", refs.join(" "));
     }
-    m += "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\nX-Mailer: The Reading Room\r\n\r\n";
-    let b64 = base64::engine::general_purpose::STANDARD.encode(o.body.replace("\r\n", "\n").replace('\n', "\r\n"));
-    for chunk in b64.as_bytes().chunks(76) {
-        m += std::str::from_utf8(chunk).unwrap_or("");
-        m += "\r\n";
+    let lines = |b: &[u8]| -> String {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b);
+        b64.as_bytes().chunks(76).map(|c| format!("{}\r\n", std::str::from_utf8(c).unwrap_or(""))).collect()
+    };
+    let text = o.body.replace("\r\n", "\n").replace('\n', "\r\n");
+    m += "MIME-Version: 1.0\r\nX-Mailer: The Reading Room\r\n";
+    if o.files.is_empty() {
+        m += "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+        m += &lines(text.as_bytes());
+        return m;
     }
+    // with files: the words first, then each file (names in RFC 2231 form, so any language works)
+    let boundary = format!("rr-{id}");
+    m += &format!("Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n");
+    m += &format!("--{boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
+    m += &lines(text.as_bytes());
+    for (name, mime, bytes) in o.files {
+        let safe: String = name.chars().filter(|c| !c.is_control() && !matches!(c, '"' | '\\' | '/')).collect();
+        let enc: String = url::form_urlencoded::byte_serialize(safe.as_bytes()).collect::<String>().replace('+', "%20");
+        let mime = if mime.contains('/') && !mime.contains(['\r', '\n', ';']) { mime.as_str() } else { "application/octet-stream" };
+        m += &format!(
+            "--{boundary}\r\nContent-Type: {mime}; name=\"{}\"\r\nContent-Disposition: attachment; filename*=UTF-8''{enc}\r\nContent-Transfer-Encoding: base64\r\n\r\n",
+            header_text(&safe)
+        );
+        m += &lines(bytes);
+    }
+    m += &format!("--{boundary}--\r\n");
     m
 }
 
@@ -1184,6 +1314,27 @@ mod tests {
     }
 
     #[test]
+    fn finds_a_newsletters_site() {
+        let html = r#"<p><a href="https://slowweb.substack.com/p/week-47?utm_source=email">View in browser</a></p><a href="https://eotrx.substackcdn.com/open?x">x</a><a href="https://slowweb.substack.com/p/week-47/comments">Leave a comment</a><a href="https://slowweb.substack.com/action/disable_email">Unsubscribe</a>"#;
+        assert_eq!(newsletter_sites(html, "janedoe@substack.com"), vec!["slowweb.substack.com/feed", "slowweb.substack.com"]);
+        let html = r#"<a href="https://porchletter.us1.list-manage.com/track/click?u=1">Read</a><a href="https://www.porchletter.com/47">Read the full letter</a><a href="https://www.instagram.com/porch">IG</a>"#;
+        assert_eq!(newsletter_sites(html, "hello@news.porchletter.com"), vec!["porchletter.com"]);
+        assert!(newsletter_sites("<p>Hi</p>", "sam@gmail.com").is_empty());
+    }
+
+    #[test]
+    fn sends_files() {
+        let a = Account { address: "reading@daviddaniels.com".into(), ..Default::default() };
+        let files = vec![("Café menu.pdf".to_string(), "application/pdf".to_string(), b"%PDF-1.4".to_vec())];
+        let m = compose(&a, &Outgoing { to: "a@b.c", cc: "", subject: "Menu", body: "Here it is.", in_reply_to: "", references: "", files: &files });
+        assert!(m.contains("Content-Type: multipart/mixed; boundary="), "{m}");
+        assert!(m.contains("filename*=UTF-8''Caf%C3%A9%20menu.pdf"), "{m}");
+        let back = parse(m.as_bytes(), "1:30").unwrap();
+        assert!(back.html.contains("Here it is.") && back.html.contains("Café menu.pdf"), "{}", back.html);
+        assert_eq!(attachment(m.as_bytes(), 0).unwrap().2, b"%PDF-1.4");
+    }
+
+    #[test]
     fn finds_the_address() {
         assert_eq!(plain_address("hello@mikebifulco.com (Mike Bifulco @irreverentmike)").as_deref(), Some("hello@mikebifulco.com"));
         assert_eq!(plain_address("Sam Rivera <sam@example.com>").as_deref(), Some("sam@example.com"));
@@ -1202,7 +1353,7 @@ mod tests {
     #[test]
     fn writes_a_reply() {
         let a = Account { address: "reading@daviddaniels.com".into(), name: "David Daniels".into(), ..Default::default() };
-        let m = compose(&a, &Outgoing { to: "hello@example.com", subject: "Re: The year", body: "Thanks!\n.\nDavid", in_reply_to: "abc@example.com", references: "<x@y>", cc: "sam@example.com, Lee <lee@example.com>" });
+        let m = compose(&a, &Outgoing { to: "hello@example.com", subject: "Re: The year", body: "Thanks!\n.\nDavid", in_reply_to: "abc@example.com", references: "<x@y>", cc: "sam@example.com, Lee <lee@example.com>", files: &[] });
         assert!(m.contains("From: David Daniels <reading@daviddaniels.com>\r\n"));
         assert!(m.contains("In-Reply-To: <abc@example.com>\r\n"));
         assert!(m.contains("References: <x@y> <abc@example.com>\r\n"));

@@ -806,7 +806,8 @@ fn reply_all_cc(others: &str, to: &str, me: &str) -> Vec<String> {
 
 /// Send a reply from your mailbox, and file it in its Sent folder.
 #[tauri::command]
-async fn email_reply(state: State<'_, Shared>, item_id: String, body: String, all: Option<bool>) -> Result<String, String> {
+async fn email_reply(state: State<'_, Shared>, item_id: String, body: String, all: Option<bool>, files: Option<Vec<OutFile>>) -> Result<String, String> {
+    let files = out_files(files)?;
     let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
     if body.trim().is_empty() {
         return Err("Write something first.".into());
@@ -824,7 +825,7 @@ async fn email_reply(state: State<'_, Shared>, item_id: String, body: String, al
     };
     let subject = if subject.to_lowercase().starts_with("re:") { subject } else { format!("Re: {subject}") };
     let cc = if all.unwrap_or(false) { reply_all_cc(&others, &to, &a.address).join(", ") } else { String::new() };
-    let out = email::Outgoing { to: &to, cc: &cc, subject: &subject, body: &body, in_reply_to: &msg_id, references: &refs };
+    let out = email::Outgoing { to: &to, cc: &cc, subject: &subject, body: &body, in_reply_to: &msg_id, references: &refs, files: &files };
     let raw = email::send(&a, &out).await?;
     email::file_sent(&a, &raw).await;
     Ok(to)
@@ -859,16 +860,102 @@ async fn email_delete(app: AppHandle, state: State<'_, Shared>, item_id: String)
 
 /// Send a new email from your mailbox (Write back, Share › Email, New email), and file it in Sent.
 #[tauri::command]
-async fn email_send(to: String, subject: String, body: String) -> Result<String, String> {
+async fn email_send(to: String, subject: String, body: String, files: Option<Vec<OutFile>>) -> Result<String, String> {
+    let files = out_files(files)?;
     let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
     let to = email::plain_address(&to).ok_or("Enter one email address to send to.")?;
     if body.trim().is_empty() {
         return Err("Write something first.".into());
     }
-    let out = email::Outgoing { to: &to, cc: "", subject: subject.trim(), body: &body, in_reply_to: "", references: "" };
+    let out = email::Outgoing { to: &to, cc: "", subject: subject.trim(), body: &body, in_reply_to: "", references: "", files: &files };
     let raw = email::send(&a, &out).await?;
     email::file_sent(&a, &raw).await;
     Ok(to)
+}
+
+/// A file to attach, as the interface sends it (its bytes in base64).
+#[derive(serde::Deserialize)]
+struct OutFile {
+    name: String,
+    mime: String,
+    data: String,
+}
+
+/// Files to attach, decoded; at most 20 MB together (most mail servers refuse bigger emails).
+fn out_files(files: Option<Vec<OutFile>>) -> Result<Vec<(String, String, Vec<u8>)>, String> {
+    use base64::Engine;
+    let mut out = vec![];
+    let mut total = 0usize;
+    for f in files.unwrap_or_default() {
+        let b = base64::engine::general_purpose::STANDARD.decode(f.data.trim()).map_err(|_| format!("Couldn't read {}.", f.name))?;
+        total += b.len();
+        out.push((f.name, f.mime, b));
+    }
+    if total > 20 * 1024 * 1024 {
+        return Err("The files are too big together (over 20 MB). Most mail servers won't send that; try fewer or smaller files.".into());
+    }
+    Ok(out)
+}
+
+/// Search the whole inbox on the mail server; matches the app doesn't have yet are brought in.
+#[tauri::command]
+async fn email_search(app: AppHandle, state: State<'_, Shared>, query: String) -> Result<serde_json::Value, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let have: std::collections::HashSet<String> = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        let mut st = conn.prepare("SELECT uid FROM email_meta").map_err(err)?;
+        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+        rows.filter_map(Result::ok).collect()
+    };
+    let (mails, found) = email::search(&a, &query, &have).await?;
+    let added = {
+        let mut conn = state.db.lock().unwrap();
+        email_store(&mut conn, &mails)?
+    };
+    if added > 0 {
+        let _ = app.emit("state-changed", ());
+        changed(state.inner());
+    }
+    Ok(serde_json::json!({ "added": added, "found": found }))
+}
+
+/// A newsletter's own feed, when it has one: looked for on its site (from its links and the sender's domain),
+/// so you can follow it in your reader and unsubscribe from the email. Null when none is found.
+#[tauri::command]
+async fn email_newsletter_feed(state: State<'_, Shared>, item_id: String) -> Result<serde_json::Value, String> {
+    let (html, from) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        conn.query_row(
+            "SELECT COALESCE(i.content,''), COALESCE(m.from_addr,'') FROM items i LEFT JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .map_err(|_| "That email isn't here any more.".to_string())?
+    };
+    for site in email::newsletter_sites(&html, &from) {
+        let url = format!("https://{site}");
+        // a known platform's feed address, or the feed the site's front page names
+        if site.contains('/') {
+            if let Ok(f) = feeds::fetch(&state.client, &url).await {
+                return Ok(serde_json::json!({ "feed": if f.url.is_empty() { url.clone() } else { f.url.clone() }, "title": f.title, "site": format!("https://{}", site.split('/').next().unwrap_or(&site)) }));
+            }
+            continue;
+        }
+        let Ok(resp) = state.client.get(&url).send().await else { continue };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let base = resp.url().to_string();
+        let Ok(page) = resp.text().await else { continue };
+        if let Some(feed) = feeds::discover(&page, &base) {
+            if let Ok(f) = feeds::fetch(&state.client, &feed).await {
+                return Ok(serde_json::json!({ "feed": if f.url.is_empty() { feed.clone() } else { f.url.clone() }, "title": f.title, "site": base }));
+            }
+        }
+    }
+    Ok(serde_json::Value::Null)
 }
 
 /// What the Email tab needs to know about each email, by its link: newsletter or person, whether it can be
@@ -957,7 +1044,7 @@ async fn email_unsubscribe(state: State<'_, Shared>, item_id: String) -> Result<
         }
         let addr = url::form_urlencoded::parse(format!("a={addr}").as_bytes()).next().map(|(_, v)| v.to_string()).unwrap_or_default();
         if let Some(to) = email::plain_address(&addr) {
-            let out = email::Outgoing { to: &to, cc: "", subject: &subject, body: &body, in_reply_to: "", references: "" };
+            let out = email::Outgoing { to: &to, cc: "", subject: &subject, body: &body, in_reply_to: "", references: "", files: &[] };
             if email::send(&a, &out).await.is_ok() {
                 return Ok(serde_json::json!({ "how": "emailed", "to": to }));
             }
@@ -2859,6 +2946,8 @@ pub fn run() {
             email_unsubscribe,
             email_attachment,
             email_older,
+            email_search,
+            email_newsletter_feed,
             save_url,
             share_inbox,
             widget_data,

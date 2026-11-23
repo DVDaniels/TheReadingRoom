@@ -3652,11 +3652,13 @@
     if (!MAIL.account || MAIL.checking || bridgeAway() || hiddenViews().has('email')) return;
     if (quiet && Date.now() - MAIL.last < 120e3) return;
     MAIL.checking = true; MAIL.last = Date.now();
+    const before = new Set(S.items.filter(isEmailItem).map(i => i.id));
     if (S.view === 'email') { renderList(); renderHead(); }
     try {
       const r = await invoke('email_refresh'), n = r?.added || 0;
       MAIL.error = ''; MAIL.inbox = r?.inbox ?? null; MAIL.checkedAt = new Date();
       if (n && !quiet) status(`${n} new ${n === 1 ? 'email' : 'emails'}.`);
+      if (n) { await load(); await loadMailMeta(); mailAlert(S.items.filter(i => isEmailItem(i) && !before.has(i.id) && !i.read && !isNewsletter(i))); }
     } catch (e) { MAIL.error = msg(e); }
     MAIL.checking = false;
     await loadMailMeta();
@@ -3672,8 +3674,8 @@
       MAIL.error && `<span class="mb-err">${esc(MAIL.error)}</span>`,
       MAIL.elsewhere && `<span class="mb-err">Mail for ${esc(domain)} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>`,
     ].filter(Boolean);
-    if (!problems.length) return mailKindsHtml();
-    return mailKindsHtml() + `<div class="mailbar mail-problem"><div>${problems.join('')}</div>
+    if (!problems.length) return mailAlertsOfferHtml() + mailKindsHtml();
+    return mailAlertsOfferHtml() + mailKindsHtml() + `<div class="mailbar mail-problem"><div>${problems.join('')}</div>
       <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Try again</button><button class="btn" type="button" data-mailbar="setup">Email settings</button></span></div>`;
   }
   $('list').addEventListener('click', e => {
@@ -3702,6 +3704,7 @@
         <label>Pictures from the web <span class="hint">(they tell the sender when you read their email)</span><select id="mailPics">
           <option value="ask"${mailPicsMode() === 'ask' ? ' selected' : ''}>Ask first: show them with Show pictures</option>
           <option value="always"${mailPicsMode() === 'always' ? ' selected' : ''}>Always show them</option></select></label>
+        <label class="mail-check"><input id="mailAlerts" type="checkbox"${S.prefs.mailAlerts === true ? ' checked' : ''}> Alert me when a person writes to me <span class="hint">(never for newsletters)</span></label>
         ${(S.prefs.mailPicsFrom || []).length ? `<p class="note" id="mailPicsFromNote">Always shown from ${esc(S.prefs.mailPicsFrom.join(', '))}. <button class="linkish" type="button" id="mailPicsClear">Forget these</button></p>` : ''}
         <label>Signature <span class="hint">(added to every email you send; leave empty for none)</span><textarea id="mailSig" rows="3">${esc(mailSig())}</textarea></label>
         <p class="note" id="mailNote">${a ? `Connected to ${esc(a.address)}.` : 'Each device connects its own mailbox (so your Mac can use one and your iPhone another). Your password stays in this device’s Keychain, and nothing goes through The Reading Room’s servers.'}</p>
@@ -3719,6 +3722,7 @@
     $('mailProv').onchange = () => { fill($('mailProv').value); if ($('mailProv').value === 'other') $('mailServers').open = true; };
     $('mailAddr').onchange = () => { const k = mailProviderFor($('mailAddr').value.trim()); if (k && k !== $('mailProv').value) { $('mailProv').value = k; fill(k); } };
     $('mailCancel').onclick = () => { el.hidden = true; };
+    $('mailAlerts').onchange = () => { S.prefs.mailAlerts = $('mailAlerts').checked; MAIL.offerAlerts = false; savePrefs(); };
     $('mailPics').onchange = () => { S.prefs.mailPics = $('mailPics').value; savePrefs(); if (S.readerId) paintArticle(); };
     if ($('mailPicsClear')) $('mailPicsClear').onclick = () => { S.prefs.mailPicsFrom = []; savePrefs(); $('mailPicsFromNote')?.remove(); };
     if ($('mailOff')) $('mailOff').onclick = async () => {
@@ -3832,6 +3836,7 @@
     const acts = document.createElement('div'); acts.className = 'mh-acts';
     acts.innerHTML = `${others.length ? `<button class="linkish" type="button" data-mailact="all" title="Reply to ${esc(others.length + 1 + ' people')}">Reply all</button>` : ''}
       <button class="linkish" type="button" data-mailact="fwd">Forward</button>
+      ${meta.bulk ? '<button class="linkish" type="button" data-mailact="feed" title="Many newsletters also publish a feed: read them with your other feeds">Follow as a feed</button>' : ''}
       ${meta.unsub ? '<button class="linkish" type="button" data-mailact="unsub">Unsubscribe</button>' : ''}
       ${blog ? `<button class="linkish mh-blog" type="button" data-view="${esc(String(blog.id))}" title="See their posts">You follow their blog, ${esc(blog.title)}</button>` : ''}`;
     head.after(acts);
@@ -3840,6 +3845,7 @@
       if (b.dataset.mailact === 'all') openMailReply(it, { all: true });
       if (b.dataset.mailact === 'fwd') openMailForward(it);
       if (b.dataset.mailact === 'unsub') mailUnsubscribe(it);
+      if (b.dataset.mailact === 'feed') mailFollowFeed(it, b);
     });
     body.querySelector('.mail-conv')?.remove();
     const conv = mailThreadOf(it).filter(x => x.id !== it.id);
@@ -3865,15 +3871,41 @@
   const mailLongDate = d => new Date(d).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   async function openMailForward(it) {
     const r = await mailFrom(it), text = mailText(it);
-    const files = (articleHtml.match(/data-rr-file=/g) || []).length;
+    const t = document.createElement('template'); t.innerHTML = it.id === S.readerId ? articleHtml : '';
+    const fromFiles = [...t.content.querySelectorAll('[data-rr-file]')].map(sp => ({ index: Number(sp.dataset.rrFile), name: sp.textContent.trim() }));
     const fwd = `---------- Forwarded message ----------\nFrom: ${r.name || srcLabel(it)}${r.address ? ` <${r.address}>` : ''}\nDate: ${mailLongDate(it.date)}\nSubject: ${headline(it)}\n\n${text}`;
-    openMailCompose({ subject: /^fwd?:/i.test(headline(it)) ? headline(it) : `Fwd: ${headline(it)}`, quote: fwd,
-      note: files ? `The ${files === 1 ? 'file' : 'files'} attached to the email aren’t forwarded; only its words are.` : '' });
+    openMailCompose({ subject: /^fwd?:/i.test(headline(it)) ? headline(it) : `Fwd: ${headline(it)}`, quote: fwd, fwd: it.id, fromFiles,
+      note: fromFiles.length ? `Untick a file to leave it out.` : '' });
   }
-  async function mailUnsubscribe(it) {
+  // A newsletter as a feed: found on its site, followed in your reader, and (if you like) unsubscribed from
+  async function mailFollowFeed(it, btn) {
+    const who = srcLabel(it), was = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'Looking for its feed…'; }
+    let r = null;
+    try { r = await invoke('email_newsletter_feed', { itemId: it.id }); } catch (e) { status(msg(e), true); }
+    if (btn) { btn.disabled = false; btn.textContent = was; }
+    if (!r?.feed) { status(`${who} doesn't seem to have a feed. Not every newsletter does.`); return; }
+    const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+    const have = S.feeds.find(f => f.url === r.feed || (host(f.site) && host(f.site) === host(r.site)));
+    if (have) { status(`You already follow ${have.title}.`); return; }
+    const name = r.title || who, canUnsub = !!mailMeta(it).unsub;
+    showBanner(`<span><b>${esc(name)}</b> has a feed. Follow it with your other feeds${canUnsub ? ', and stop the emails' : ''}? New posts arrive in your reader instead of your inbox.</span>
+      <span class="row"><button class="btn primary" id="nfYes">${canUnsub ? 'Follow and unsubscribe' : 'Follow'}</button>${canUnsub ? '<button class="btn" id="nfOnly">Just follow</button>' : ''}<button class="btn" id="nfNo">Cancel</button></span>`, false, 'confirm');
+    $('nfNo').onclick = hideBanner;
+    const go = async unsub => {
+      hideBanner(); status(`Following ${name}…`);
+      try { const a = await invoke('add_feed', { url: r.feed, title: null, folderId: null }); await load(); status(`Following ${a?.title || name}. Its posts arrive with your feeds.`); }
+      catch (e) { status(msg(e), true); return; }
+      if (unsub) mailUnsubscribe(it, true);
+    };
+    $('nfYes').onclick = () => go(canUnsub);
+    if ($('nfOnly')) $('nfOnly').onclick = () => go(false);
+  }
+  async function mailUnsubscribe(it, already = false) {
     const who = srcLabel(it);
     showBanner(`<span>Unsubscribe from ${esc(who)}? The app asks their mailing list to take your address off. Emails already here stay.</span><button class="btn primary" id="unsubYes">Unsubscribe</button><button class="btn" id="unsubNo">Cancel</button>`, false, 'confirm');
     $('unsubNo').onclick = hideBanner;
+    if (already) { hideBanner(); setTimeout(() => $('unsubYes')?.onclick?.(), 0); }
     $('unsubYes').onclick = async () => {
       hideBanner(); status(`Unsubscribing from ${who}…`);
       try {
@@ -3899,51 +3931,134 @@
     } catch (e) { status(msg(e), true); }
   }
 
-  function openMailCompose({ to = '', toName = '', subject = '', body = '', replyTo = null, all = null, quote = '', note: extra = '' } = {}) {
+  // Unfinished emails are kept on this device as drafts: one per email you're answering (Reply and Reply all
+  // apart), one forward, one new email. They come back the next time, and go once the email is sent.
+  const draftKey = (replyTo, all, fwd) => replyTo ? `mailDraft:${replyTo}${all ? ':all' : ''}` : fwd ? `mailDraft:fwd:${fwd}` : 'mailDraft:new';
+  const draftGet = k => { try { return JSON.parse(store.get(k) || 'null'); } catch { return null; } };
+  const draftSet = (k, v) => { try { v ? localStorage.setItem(k, JSON.stringify(v)) : localStorage.removeItem(k); } catch {} };
+  const mailHasDraft = id => !!(store.get(`mailDraft:${id}`) || store.get(`mailDraft:${id}:all`));
+  // Addresses to suggest in To: people who wrote to you or were on their emails (not newsletters), and you
+  function mailContacts() {
+    // (and not the addresses machines send from: no-reply, alerts, orders, receipts and the like)
+    const robot = a => /^(no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster|bounces?|notifications?|notify|alerts?|orders?|receipts?|billing|invoices?|news|newsletters?|deals|offers|marketing|promo|info|support|help|hello|team|updates?|digest|scan|scanner|system|admin|automated|auto)([-+._].*)?$/i.test(a.split('@')[0]);
+    const me = (MAIL.account?.address || '').toLowerCase(), seen = new Map();
+    for (const it of S.items) {
+      if (!isEmailItem(it)) continue;
+      const m = mailMeta(it); if (m.bulk) continue;
+      const from = (m.from || '').toLowerCase();
+      if (from && from !== me && !robot(from) && !seen.has(from)) seen.set(from, it.byline || srcLabel(it));
+      for (const x of [m.to, m.cc].join(',').split(',')) { const a = x.trim().toLowerCase(); if (a && a !== me && a.includes('@') && !robot(a) && !seen.has(a)) seen.set(a, ''); }
+    }
+    return [...seen].slice(0, 300);
+  }
+  const fileSize = n => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+  const toB64 = file => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => no(new Error(`Couldn't read ${file.name}.`)); r.readAsDataURL(file); });
+
+  function openMailCompose({ to = '', toName = '', subject = '', body = '', replyTo = null, all = null, quote = '', note: extra = '', fwd = null, fromFiles = [] } = {}) {
     if (!MAIL.account) { openMailSettings(); status('Connect your email first.'); return; }
-    const fixedTo = !!replyTo;
-    const el = sheet('mailComposePanel', `<h2>${replyTo ? (all ? 'Reply all' : 'Reply') : quote ? 'Forward' : 'New email'}</h2>
+    const fixedTo = !!replyTo, key = draftKey(replyTo, all, fwd);
+    const title = replyTo ? (all ? 'Reply all' : 'Reply') : quote ? 'Forward' : 'New email';
+    const el = sheet('mailComposePanel', `<h2>${title}</h2>
       <div class="mail-form mc-fields">
-        <label class="mc-line"><span>To</span>${fixedTo ? `<span class="mc-fixed">${esc(toName && toName !== to ? `${toName} <${to}>` : to)}</span>` : `<input id="mcTo" type="email" value="${esc(to)}" placeholder="name@example.com" spellcheck="false" autocapitalize="off">`}</label>
+        <label class="mc-line"><span>To</span>${fixedTo ? `<span class="mc-fixed">${esc(toName && toName !== to ? `${toName} <${to}>` : to)}</span>` : `<input id="mcTo" type="email" list="mcToList" value="${esc(to)}" placeholder="name@example.com" spellcheck="false" autocapitalize="off" autocomplete="off"><datalist id="mcToList">${mailContacts().map(([a, n]) => `<option value="${esc(a)}"${n ? ` label="${esc(n)}"` : ''}></option>`).join('')}</datalist>`}</label>
         ${all ? `<div class="mc-line"><span>Cc</span><span class="mc-fixed">${esc(all.join(', '))}</span></div>` : ''}
         <label class="mc-line"><span>Subject</span>${fixedTo ? `<span class="mc-fixed">${esc(subject)}</span>` : `<input id="mcSubj" type="text" value="${esc(subject)}">`}</label>
         <div class="mc-line"><span>From</span><span class="mc-fixed">${esc(MAIL.account.name ? `${MAIL.account.name} <${MAIL.account.address}>` : MAIL.account.address)}</span></div>
       </div>
       <textarea id="mcBody" rows="11"></textarea>
-      <p class="note" id="mcNote">${extra ? esc(extra) + ' ' : ''}Sent from your mailbox and filed in its Sent folder. Change the signature in Email settings.</p>
-      <div class="row sheet-foot"><button class="btn" type="button" id="mcCancel">Cancel</button><button class="btn primary" type="button" id="mcSend">Send</button></div>`, replyTo ? (all ? 'Reply all' : 'Reply') : quote ? 'Forward' : 'New email');
+      <div class="mc-files" id="mcFiles"></div>
+      <p class="note" id="mcNote"></p>
+      <div class="row sheet-foot"><label class="btn mc-attach" title="Attach files (up to 20 MB in all)">Attach…<input id="mcPick" type="file" multiple hidden></label><button class="btn" type="button" id="mcCancel">Cancel</button><button class="btn primary" type="button" id="mcSend">Send</button></div>`, title);
     const box = $('mcBody');
     box.value = withSig(body.startsWith('\n') ? body : body ? `\n\n${body}` : '') + (quote ? `\n\n${quote}` : '');
     const untouched = box.value;
+    const baseNote = `${extra ? extra + ' ' : ''}Sent from your mailbox and filed in its Sent folder. Change the signature in Email settings.`;
     const note = (t, err) => { $('mcNote').textContent = t; $('mcNote').classList.toggle('err', !!err); };
-    $('mcCancel').onclick = () => { el.hidden = true; };
+    note(baseNote);
+    // files: ones you pick, and (forwarding) the email's own files, ticked to go along
+    const files = [], orig = fromFiles.map(f => ({ ...f, on: true }));
+    const paintFiles = () => {
+      $('mcFiles').innerHTML = [...orig.map((f, k) => `<label class="mc-file${f.on ? '' : ' off'}"><input type="checkbox" data-orig="${k}"${f.on ? ' checked' : ''}> ${esc(f.name)} <small>from the email</small></label>`),
+        ...files.map((f, k) => `<span class="mc-file">${esc(f.name)} <small>${fileSize(f.size)}</small><button type="button" class="linkish" data-drop="${k}" aria-label="Remove ${esc(f.name)}">×</button></span>`)].join('');
+    };
+    paintFiles();
+    $('mcFiles').addEventListener('click', e => { const d = e.target.closest('[data-drop]'); if (d) { files.splice(Number(d.dataset.drop), 1); paintFiles(); } });
+    $('mcFiles').addEventListener('change', e => { const c = e.target.closest('[data-orig]'); if (c) { orig[Number(c.dataset.orig)].on = c.checked; paintFiles(); } });
+    $('mcPick').onchange = () => {
+      for (const f of $('mcPick').files) files.push({ file: f, name: f.name, size: f.size, mime: f.type || 'application/octet-stream' });
+      $('mcPick').value = ''; paintFiles();
+      const total = files.reduce((n, f) => n + f.size, 0);
+      note(total > 20 * 1048576 ? `That's ${fileSize(total)} of files: most mail servers won't send more than 20 MB.` : baseNote, total > 20 * 1048576);
+    };
+    // the draft: back if there is one, kept as you type
+    const saved = draftGet(key);
+    if (saved && saved.body && saved.body.trim() !== untouched.trim()) {
+      box.value = saved.body;
+      if (!fixedTo) { if (saved.to) $('mcTo').value = saved.to; if (saved.subject) $('mcSubj').value = saved.subject; }
+      note('Your unfinished draft is back. ' + baseNote);
+    }
+    const keep = () => draftSet(key, box.value.trim() !== untouched.trim() || (!fixedTo && $('mcTo').value.trim() !== to) ? { body: box.value, to: fixedTo ? '' : $('mcTo').value, subject: fixedTo ? '' : $('mcSubj').value, at: Date.now() } : null);
+    let typing = 0;
+    el.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(keep, 400); });
+    $('mcCancel').onclick = () => {
+      clearTimeout(typing); keep(); el.hidden = true;
+      if (draftGet(key)) { status('Kept as a draft. It comes back when you open this again.'); if (S.view === 'email') renderList(); }
+    };
     setTimeout(() => { if (!fixedTo && !$('mcTo').value) $('mcTo').focus(); else { box.focus(); box.setSelectionRange(0, 0); box.scrollTop = 0; } }, 30);
     $('mcSend').onclick = async () => {
       const text = box.value, b = $('mcSend');
-      if (!text.replace(mailSig(), '').trim() || (!quote.startsWith('-') && text.trim() === untouched.trim())) { note('Write something first.', true); return; }
-      b.disabled = true; b.textContent = 'Sending…'; note('');
+      if (!text.replace(mailSig(), '').trim() || (!quote.startsWith('-') && text.trim() === untouched.trim() && !files.length)) { note('Write something first.', true); return; }
+      b.disabled = true; b.textContent = files.length || orig.some(f => f.on) ? 'Attaching…' : 'Sending…'; note('');
       try {
+        const out = [];
+        for (const f of orig.filter(f => f.on)) { const r = await invoke('email_attachment', { itemId: fwd, index: f.index, action: 'data' }); out.push({ name: r.name, mime: r.mime, data: r.data }); }
+        for (const f of files) out.push({ name: f.name, mime: f.mime, data: await toB64(f.file) });
+        b.textContent = 'Sending…';
         const sentTo = replyTo
-          ? await invoke('email_reply', { itemId: replyTo, body: text, all: !!all })
-          : await invoke('email_send', { to: $('mcTo').value, subject: $('mcSubj').value, body: text });
-        el.hidden = true; status(`Sent to ${sentTo}.`);
+          ? await invoke('email_reply', { itemId: replyTo, body: text, all: !!all, files: out })
+          : await invoke('email_send', { to: $('mcTo').value, subject: $('mcSubj').value, body: text, files: out });
+        clearTimeout(typing); draftSet(key, null);
+        el.hidden = true; status(`Sent to ${sentTo}${out.length ? ` with ${out.length === 1 ? 'a file' : `${out.length} files`}` : ''}.`);
+        if (S.view === 'email') renderList();
       } catch (e) { note(msg(e), true); b.disabled = false; b.textContent = 'Send'; }
     };
   }
   $('mailNew').onclick = () => openMailCompose();
   $('rDelete').onclick = () => { const it = item(S.readerId); if (it) deleteMail(it); };
-  // Delete: the email goes to the mailbox's Trash and leaves the Email tab at once (put back if the server says no)
-  async function deleteMail(it) {
-    if (!it || !isEmailItem(it)) return;
-    const list = visible(), i = list.findIndex(x => x.id === it.id), next = list[i + 1] || list[i - 1];
-    const wasOpen = S.readerId === it.id;
-    S.items = S.items.filter(x => x.id !== it.id);
+  // Archive and Delete leave the Email tab at once, and reach your mailbox a few seconds later: until then,
+  // Undo puts them back. (Another archive or delete in the meantime sends the first one on its way.)
+  let mailPending = null;
+  function mailLater(kind, items, run) {
+    mailFlush();
+    const gone = new Set(items.filter(x => kind === 'delete' || !x.saved).map(x => x.id));
+    const list = visible(), first = list.findIndex(x => gone.has(x.id)), next = list.slice(first + 1).concat(list.slice(0, Math.max(0, first)).reverse()).find(x => !gone.has(x.id));
+    const wasOpen = items.some(x => x.id === S.readerId);
+    const kept = S.items.filter(x => gone.has(x.id));
+    S.items = S.items.filter(x => !gone.has(x.id));
     if (wasOpen) { if (next && isSplit()) openReader(next.id); else closeReader(); }
     render();
-    try {
-      const folder = await invoke('email_delete', { itemId: it.id });
-      status(folder ? `Moved to ${folder}.` : 'Deleted.');
-    } catch (e) { status(msg(e), true); load(); }
+    const what = items.length > 1 ? `the conversation (${items.length} emails)` : `“${clipT(headline(items[0]), 50)}”`;
+    showBanner(`<span>${kind === 'delete' ? 'Deleted' : 'Archived'} ${esc(what)}.</span><button class="btn" id="mailUndo">Undo</button>`, false, 'mail-undo');
+    const p = mailPending = { kind, run, kept, timer: setTimeout(() => mailFlush(), 6000) };
+    $('mailUndo').onclick = () => {
+      if (mailPending !== p) return;
+      clearTimeout(p.timer); mailPending = null; hideBanner();
+      S.items = [...S.items, ...p.kept].sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+      render(); status(kind === 'delete' ? 'Not deleted.' : 'Not archived.');
+    };
+  }
+  async function mailFlush() {
+    const p = mailPending; if (!p) return;
+    mailPending = null; clearTimeout(p.timer);
+    if ($('banner').dataset.kind === 'mail-undo') hideBanner();
+    try { const msgText = await p.run(); if (msgText) status(msgText); } catch (e) { status(msg(e), true); load(); }
+  }
+  // the app going to the background, or closing: what's waiting goes now
+  document.addEventListener('visibilitychange', () => { if (document.hidden) mailFlush(); });
+  window.addEventListener('pagehide', () => mailFlush());
+  function deleteMail(it) {
+    if (!it || !isEmailItem(it)) return;
+    mailLater('delete', [it], async () => { const folder = await invoke('email_delete', { itemId: it.id }); return folder ? `Moved to ${folder}.` : ''; });
   }
   $('mailSet').onclick = () => openMailSettings();
   $('mailCheck').onclick = () => { refresh(); };
@@ -3965,12 +4080,24 @@
   }
   // The line under an email's subject: its own words, without the email it answers
   const mailSnip = t => (t || '').replace(/\s(On\s.{4,200}?\swrote:|-{3,}\s*Original Message).*$/s, '').trim();
+  // A writer you follow shows their site's icon (from their own site, which the app already reads for their feed)
+  function mailAvatar(it, cls = 'mr-av') {
+    const from = srcLabel(it), blog = mailBlogFeed(it), h = hueFor('mail:' + from), ini = esc((from.trim()[0] || '?').toUpperCase());
+    let host = ''; try { host = blog ? new URL(blog.site || blog.url).origin : ''; } catch {}
+    return host ? `<img class="${cls} mr-ico" src="${esc(host)}/apple-touch-icon.png" data-alt="${esc(host)}/favicon.ico" data-h="${h}" data-ini="${ini}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+      : `<span class="${cls}" style="--h:${h}" aria-hidden="true">${ini}</span>`;
+  }
+  document.addEventListener('error', e => {
+    const img = e.target; if (img.tagName !== 'IMG' || !img.classList.contains('mr-ico')) return;
+    if (img.dataset.alt) { const a = img.dataset.alt; img.dataset.alt = ''; img.src = a; return; }
+    const sp = document.createElement('span'); sp.className = img.className.replace('mr-ico', '').trim(); sp.style.setProperty('--h', img.dataset.h); sp.setAttribute('aria-hidden', 'true'); sp.textContent = img.dataset.ini; img.replaceWith(sp);
+  }, true);
   function mailRow(it) {
     const from = srcLabel(it), n = MAIL.threads.get(it.id) || 1;
     return `<article class="story mail-row${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}${S.readerId === it.id ? ' open' : ''}" data-id="${esc(it.id)}">
-      <span class="mr-av" style="--h:${hueFor('mail:' + from)}" aria-hidden="true">${esc((from.trim()[0] || '?').toUpperCase())}</span>
+      ${mailAvatar(it)}
       <button class="mr-main title" data-act="open"><span class="mr-top"><span class="mr-from">${esc(from)}${n > 1 ? `<span class="mr-n" title="${n} emails in this conversation">${n}</span>` : ''}</span><time datetime="${esc(it.date)}">${esc(mailWhen(it.date))}</time></span>
-        <span class="mr-subj">${esc(headline(it))}</span>${mailSnip(it.summary) ? `<span class="mr-snip">${esc(mailSnip(it.summary))}</span>` : ''}</button>
+        <span class="mr-subj">${mailHasDraft(it.id) ? '<span class="mr-draft">Draft</span>' : ''}${esc(headline(it))}</span>${mailSnip(it.summary) ? `<span class="mr-snip">${esc(mailSnip(it.summary))}</span>` : ''}</button>
       <div class="acts mr-acts">
         <button class="icon" data-act="march" title="Archive (e)" aria-label="Archive">${ICONS.archive}</button>
         <button class="icon" data-act="mdel" title="Move to the Trash" aria-label="Move to the Trash">${ICONS.trash}</button>
@@ -4007,6 +4134,20 @@
     for (const it of out) { const all = mailThreadOf(it).length; if (all > 1) MAIL.threads.set(it.id, Math.max(MAIL.threads.get(it.id) || 1, all)); }
     return out;
   }
+  // Alerts when a person writes to you (newsletters, stores and services never alert). Off until you say so:
+  // the first time a person writes, the Email tab offers it once.
+  function mailAlert(fresh) {
+    if (!fresh.length) return;
+    if (S.prefs.mailAlerts === true) {
+      const one = fresh[0], who = srcLabel(one);
+      invoke('notify', { title: fresh.length === 1 ? who : `${fresh.length} new emails from people`, body: fresh.length === 1 ? headline(one) : fresh.slice(0, 3).map(i => `${srcLabel(i)}: ${headline(i)}`).join(' · '), id: 'mail-' + one.id }).catch(() => {});
+    } else if (S.prefs.mailAlerts === undefined) { MAIL.offerAlerts = true; if (S.view === 'email') renderList(); }
+  }
+  function mailAlertsOfferHtml() {
+    if (!MAIL.offerAlerts || S.prefs.mailAlerts !== undefined) return '';
+    return `<div class="mailbar mail-offer"><div><strong>Get an alert when a person writes to you?</strong><span>Only emails from people: newsletters, stores and services never alert. Change it any time in Email settings.</span></div>
+      <span class="mb-acts"><button class="btn primary" type="button" data-mailalerts="on">Turn on</button><button class="btn" type="button" data-mailalerts="off">No thanks</button></span></div>`;
+  }
   function mailKindsHtml() {
     if (!MAIL.account) return '';
     const all = S.items.filter(isEmailItem), news = all.filter(isNewsletter).length;
@@ -4015,8 +4156,27 @@
     const b = (v, label, n, tip) => `<button type="button" data-mailkind="${v}" aria-pressed="${k === v}" title="${esc(tip)}">${label}${n != null ? ` <span>${n}</span>` : ''}</button>`;
     return `<div class="mail-kinds seg" role="group" aria-label="Show">${b('', 'Everything', null, 'Every email')}${b('people', 'People', people, 'Emails written to you by people')}${b('news', 'Newsletters', news, 'Newsletters, stores and services: emails sent to a list')}</div>`;
   }
+  // Searching: what's here first, then the whole inbox on your mail server
+  function mailSearchHtml() {
+    if (!MAIL.account || bridgeAway() || !S.q || S.q.trim().length < 2) return '';
+    const done = MAIL.searched === S.q;
+    return `<div class="mail-older"><button class="btn" type="button" data-mailsearch${MAIL.searching || done ? ' disabled' : ''}>${MAIL.searching ? 'Searching your inbox…' : done ? `Searched your whole inbox for “${esc(S.q)}”` : `Search your whole inbox for “${esc(S.q)}”`}</button>
+      <span>${done ? esc(MAIL.searchNote || '') : 'Looks through every email in your inbox on your mail server, not just the ones here.'}</span></div>`;
+  }
+  async function mailSearch() {
+    const q = S.q; if (!q || MAIL.searching) return;
+    MAIL.searching = true; renderList();
+    try {
+      const r = await invoke('email_search', { query: q });
+      MAIL.searched = q;
+      MAIL.searchNote = !r.found ? 'Nothing else in your inbox matches.' : r.added ? `Found ${r.found}; brought in ${r.added} that weren’t here.` : `All ${r.found} matching emails were already here.`;
+      if (r.added) { await load(); await loadMailMeta(); }
+    } catch (e) { status(msg(e), true); }
+    MAIL.searching = false; renderList();
+  }
   function mailOlderHtml() {
-    if (!MAIL.account || bridgeAway() || MAIL.olderLeft === 0 || S.q) return '';
+    if (S.q) return mailSearchHtml();
+    if (!MAIL.account || bridgeAway() || MAIL.olderLeft === 0) return '';
     return `<div class="mail-older"><button class="btn" type="button" data-mailolder${MAIL.olderBusy ? ' disabled' : ''}>${MAIL.olderBusy ? 'Getting older emails…' : 'Show older emails'}</button>
       <span>The app brings in your newest 100 emails. This gets the 100 before them from your inbox.</span></div>`;
   }
@@ -4033,25 +4193,25 @@
     MAIL.olderBusy = false; renderList();
   }
   $('list').addEventListener('click', e => {
+    const al = e.target.closest('[data-mailalerts]');
+    if (al) { S.prefs.mailAlerts = al.dataset.mailalerts === 'on'; MAIL.offerAlerts = false; savePrefs(); renderList();
+      if (S.prefs.mailAlerts) { status('You’ll get an alert when a person writes to you.'); invoke('notify', { title: 'Email alerts are on', body: 'When a person writes to you, it shows up like this.', id: 'mail-alerts-on' }).catch(() => {}); } else status('No email alerts. Turn them on in Email settings if you change your mind.');
+      return; }
+    if (e.target.closest('[data-mailsearch]')) { mailSearch(); return; }
     const k = e.target.closest('[data-mailkind]');
     if (k) { store.set('mailKind', k.dataset.mailkind); S.shown = 60; renderList(); renderHead(); return; }
     if (e.target.closest('[data-mailolder]')) mailOlder();
   });
   // Archive: the email leaves the inbox for the Archive folder (and leaves the Email tab), like Delete does
   // From the list (a row, a swipe, e), the whole conversation goes; from the reader, the email you're reading.
-  async function archiveMail(it, whole = false) {
+  function archiveMail(it, whole = false) {
     if (!it || !isEmailItem(it)) return;
-    const these = whole ? mailThreadOf(it) : [it], gone = new Set(these.filter(x => !x.saved).map(x => x.id));
-    const list = visible(), i = list.findIndex(x => x.id === it.id), next = list.slice(i + 1).concat(list.slice(0, Math.max(0, i)).reverse()).find(x => !gone.has(x.id));
-    const wasOpen = these.some(x => x.id === S.readerId);
-    S.items = S.items.filter(x => !gone.has(x.id));
-    if (wasOpen) { if (next && isSplit()) openReader(next.id); else closeReader(); }
-    render();
-    try {
+    const these = whole ? mailThreadOf(it) : [it];
+    mailLater('archive', these, async () => {
       let folder = null;
       for (const x of these) folder = (await invoke('email_archive', { itemId: x.id })) || folder;
-      status(`${these.length > 1 ? `Archived the conversation (${these.length} emails)` : 'Archived'}${folder ? ` in ${folder}` : ''}.`);
-    } catch (e) { status(msg(e), true); load(); }
+      return folder ? `In ${folder}.` : '';
+    });
   }
   $('rArchive').onclick = () => { const it = item(S.readerId); if (it) archiveMail(it); };
   for (const [id, icon, label] of [['rArchive', ICONS.archive, 'Archive'], ['rDelete', ICONS.trash, 'Delete']]) { const b = $(id); b.classList.add('r-icon-btn'); b.innerHTML = `${icon}<span class="lbl">${label}</span>`; b.setAttribute('aria-label', label); }
@@ -6453,7 +6613,7 @@
     const name = it.byline || srcLabel(it) || 'Email';
     const when = new Date(it.date).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const el = document.createElement('div'); el.className = 'mail-head';
-    el.innerHTML = `<span class="mr-av" style="--h:${hueFor('mail:' + srcLabel(it))}" aria-hidden="true">${esc((name.trim()[0] || '?').toUpperCase())}</span>
+    el.innerHTML = `${mailAvatar(it)}
       <div class="mh-who"><b>${esc(name)}</b> <span class="mh-addr"></span><small>${esc(when)}</small></div>`;
     invoke('email_from', { itemId: it.id }).then(r => {
       const a = el.querySelector('.mh-addr'); if (!a || !r) return;

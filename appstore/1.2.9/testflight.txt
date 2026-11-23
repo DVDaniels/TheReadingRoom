@@ -25,6 +25,7 @@ EMAIL
 • Reads every kind of email properly: photos sent in it, every part of it, and attached files (Open or Save).
 • People and Newsletters, Unsubscribe, conversations, Reply all, Forward, Archive (or swipe left on iPhone), Mark all read, Show older emails.
 • Pictures from the web wait for Show pictures, so senders can't tell when you read.
+• New: follow a newsletter as a feed instead, Undo after Archive or Delete, drafts kept, address suggestions, alerts when a person writes (offered once), search your whole inbox, attach files (forwards can include the original's). Japanese and other languages read properly.
 
 ALSO NEW
 • Your posts show their featured images. A tidier sidebar.

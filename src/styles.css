@@ -2769,3 +2769,16 @@ html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edg
   .story.mail-row .mr-acts { display: none; }
   .mail-kinds { display: flex; } .mail-kinds button { flex: 1; }
 }
+/* Email, round 3: a followed writer's icon, drafts, files when writing, the alerts offer */
+img.mr-av.mr-ico { object-fit: cover; background: var(--card, #fff); border: 1px solid var(--line); padding: 0; }
+.mail-row .mr-draft { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--danger, #c0392b) 12%, transparent); color: var(--danger, #c0392b); font-size: 11px; font-weight: 600; line-height: 17px; vertical-align: 1px; }
+#mailComposePanel .mc-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+#mailComposePanel .mc-files:empty { display: none; }
+#mailComposePanel .mc-file { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
+#mailComposePanel .mc-file.off { opacity: .55; text-decoration: line-through; }
+#mailComposePanel .mc-file small { color: var(--muted); }
+#mailComposePanel .mc-file .linkish { font-size: 16px; line-height: 1; padding: 0 2px; }
+#mailComposePanel .mc-attach { margin-right: auto; cursor: pointer; }
+.mailbar.mail-offer { background: var(--accent-soft); }
+.mail-form .mail-check { display: flex; align-items: center; gap: 8px; flex-direction: row; }
+.mail-form .mail-check input { width: auto; }
