@@ -8,7 +8,7 @@ usage: asc_plus.py check   — shows the subscription's state, review note and r
 """
 import hashlib, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
-from asc_release import call, note, token, API
+from asc_release import call, note, token, API, AID, versions
 import requests
 
 SUB = "6837848076"   # Plus yearly, com.daviddaniels.readingroom.plus.yearly
@@ -84,4 +84,37 @@ def submit():
     show()
 
 
-{"check": show, "review": review, "submit": submit}[sys.argv[1]]()
+def together(version_string):
+    """The first subscription must go with an app version: open the iPhone/iPad review submission, add the version,
+    send Plus, then submit both. If Apple won't take Plus, nothing is submitted."""
+    v = next((x for x in versions("IOS") if x["attributes"]["versionString"] == version_string), None)
+    if not v:
+        print(f"::error title=Version::No iPhone/iPad {version_string}"); sys.exit(1)
+    b = call("GET", f"/appStoreVersions/{v['id']}/build").get("data")
+    if b and b["attributes"].get("usesNonExemptEncryption") is None:
+        call("PATCH", f"/builds/{b['id']}", json={"data": {"type": "builds", "id": b["id"], "attributes": {"usesNonExemptEncryption": False}}})
+        note("Export compliance", "Answered: uses only standard (exempt) encryption")
+    subs = call("GET", "/reviewSubmissions", params={"filter[app]": AID, "filter[platform]": "IOS", "limit": 20})["data"]
+    sub = next((s for s in subs if s["attributes"].get("state") == "READY_FOR_REVIEW"), None)
+    if not sub:
+        sub = call("POST", "/reviewSubmissions", json={"data": {"type": "reviewSubmissions", "attributes": {"platform": "IOS"},
+              "relationships": {"app": {"data": {"type": "apps", "id": AID}}}}})["data"]
+    if not call("GET", f"/reviewSubmissions/{sub['id']}/items")["data"]:
+        call("POST", "/reviewSubmissionItems", json={"data": {"type": "reviewSubmissionItems",
+             "relationships": {"reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub["id"]}},
+                               "appStoreVersion": {"data": {"type": "appStoreVersions", "id": v["id"]}}}}})
+    note("iPhone/iPad", f"version {version_string} added to review submission {sub['id']} (not sent yet)")
+    try:
+        submit()
+    except SystemExit:
+        print("::error title=Plus::Apple wouldn't take Plus with the version this way. Nothing was submitted; the iPhone/iPad version is waiting in a review submission.")
+        sys.exit(1)
+    out = call("PATCH", f"/reviewSubmissions/{sub['id']}", json={"data": {"type": "reviewSubmissions", "id": sub["id"],
+               "attributes": {"submitted": True}}})
+    note("Submitted iPhone/iPad " + version_string, out["data"]["attributes"].get("state"))
+    items = call("GET", f"/reviewSubmissions/{sub['id']}/items")["data"]
+    note("Items in the submission", "; ".join(str({k: v for k, v in i["attributes"].items() if v}) for i in items))
+
+
+a = sys.argv[1]
+together(sys.argv[2]) if a == "together" else {"check": show, "review": review, "submit": submit}[a]()

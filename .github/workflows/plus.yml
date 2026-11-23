@@ -1,14 +1,17 @@
 name: Plus subscription
 
 # Run by hand. check: state of Plus yearly. review: review note + review screenshot from appstore/plus/.
-# submit: send the subscription to App Review (the first one goes with the next app version).
+# submit: send the subscription alone. together: the first subscription, sent with the iPhone/iPad version.
 on:
   workflow_dispatch:
     inputs:
       action:
         type: choice
-        options: [check, review, submit]
+        options: [check, review, submit, together]
         default: check
+      version:
+        description: "For together: the iPhone/iPad version that Plus goes with"
+        default: ""
 
 jobs:
   plus:
@@ -23,4 +26,4 @@ jobs:
       - run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          python .github/scripts/asc_plus.py "${{ inputs.action }}"
+          python .github/scripts/asc_plus.py "${{ inputs.action }}" "${{ inputs.version }}"
