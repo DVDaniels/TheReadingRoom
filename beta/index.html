@@ -8,6 +8,13 @@
   <link rel="canonical" href="https://readingroomapp.com/beta/">
   <link rel="icon" href="../assets/img/icon.png">
   <link rel="stylesheet" href="../assets/site.css">
+  <style>
+    .beta-look { margin: 32px 0 8px; }
+    .beta-shot { width: 100%; height: auto; margin: 12px 0 20px; }
+    .beta-pair { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; }
+    .beta-pair img { width: 30%; height: auto; border: 1px solid var(--line); border-radius: 24px; }
+    @media (max-width: 640px) { .beta-pair { flex-direction: column; } .beta-pair img { width: 70%; } }
+  </style>
 </head>
 <body>
   <div class="wrap">
@@ -56,6 +63,13 @@
           <li><strong>Up next.</strong> On a Mac or iPad, Videos fills the empty side of the window with your newest unwatched video, ready to play, and four more below it. Channels your people share fold into one tidy row.</li>
           <li><strong>Fixes.</strong> Books opens again, and Discover’s search box searches topics.</li>
         </ul>
+        <h3 class="beta-look">A first look at Writing</h3>
+        <p class="muted">Writing is the tab that comes with The Reading Room Plus. Write a note, a full post or your Weeknotes on a quiet notebook page, then post it to your own WordPress site or save it there as a draft. Reading stays free.</p>
+        <img class="shot beta-shot" src="../assets/img/writing-mac.jpg" width="1800" height="1125" loading="lazy" alt="Writing on the Mac: a post called Five blogs I’d hand you on a ruled notebook page, with Note, Post and Weeknotes choices and the Plus label">
+        <div class="beta-pair">
+          <img src="../assets/img/writing-iphone.jpg" width="780" height="1691" loading="lazy" alt="Writing on iPhone: the same post on the notebook page">
+          <p class="muted">The same page on iPhone and iPad. Writing posts to your site only when you press Post, and you can hide the tab from the sidebar if you just want to read.</p>
+        </div>
         <p class="muted">Version 1.2.8 is now on the App Store: My Day in four parts, Unfollow from someone’s page, one card per post on Mastodon and Bluesky, and more.</p>
         <p class="muted">Something not right? Send feedback from TestFlight; a screenshot helps.</p>
       </section>
