@@ -2787,3 +2787,29 @@ img.mr-av.mr-ico { object-fit: cover; background: var(--card, #fff); border: 1px
 .mail-fnote { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 .mail-fnote span { opacity: .8; }
 .mail-fnote .mail-empty { margin-left: 6px; color: var(--danger) !important; font-size: 13px; }
+
+/* Videos (Nov 23): Up next fills the empty right side on wide screens; Channels your people share is a compact row */
+.reader-empty.has-upnext > div:first-child { display: none; }
+.reader-empty.has-upnext:not([hidden]) { align-items: flex-start; justify-content: center; text-align: left; overflow-y: auto; }
+.reader-empty .upnext { display: block; max-width: none; width: min(760px, 100%); padding: 8px 40px 40px; color: var(--ink); }
+.upnext .un-k { margin: 0 0 12px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.upnext .un-big { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 14px; overflow: hidden; background: var(--surface); cursor: pointer; }
+.upnext .un-big img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+.upnext .un-big:hover img { transform: scale(1.02); }
+.upnext .un-play { position: absolute; inset: 0; margin: auto; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.55); color: #fff; font-size: 26px; padding-left: 5px; box-sizing: border-box; }
+.upnext .un-t { margin: 14px 0 4px; font-size: 22px; line-height: 1.25; letter-spacing: var(--tight-sm); }
+.upnext .un-t .linkish { color: inherit; font: inherit; text-align: left; }
+.upnext .un-m { margin: 0; color: var(--muted); font-size: 14px; }
+.upnext .un-list { list-style: none; margin: 22px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.upnext .un-list button { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: start; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.upnext .un-list img, .upnext .un-noimg { width: 150px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--surface); display: block; }
+.upnext .un-list b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.upnext .un-list small { display: block; margin-top: 4px; color: var(--muted); font-size: 12.5px; }
+.upnext .un-hint { margin: 22px 0 0; color: var(--muted); font-size: 13px; }
+@media (max-width: 1500px) { .upnext .un-list { grid-template-columns: minmax(0, 1fr); } }
+.vchans-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.vchans.compact .vchan-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vchans.compact .vchan-pic img { aspect-ratio: 16 / 9; object-fit: cover; }
+.vchans.compact .vchan-body b { font-size: 14px; }
+.vchans.compact .vchan-body span { font-size: 12.5px; }
+.vchans.compact .vchan-body .btn { padding: 4px 12px; font-size: 13px; }

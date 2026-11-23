@@ -1,7 +1,8 @@
 """Made-up writers and posts for App Store screenshots. Every person, site and post here is invented."""
 from datetime import datetime, timedelta, timezone
 
-NOW = datetime.now(timezone.utc).replace(microsecond=0)
+# the screenshots' clock: today at 10:40 am New York time (shoot.py sets the page's clock to it), so times look ordinary
+NOW = datetime.now(timezone.utc).replace(hour=15, minute=40, second=0, microsecond=0)
 def ago(h): return (NOW - timedelta(hours=h)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 PEOPLE = [  # id, name, host, recent posts in 30 days
@@ -139,3 +140,31 @@ WR_DRAFT = {'kind': 'post', 'title': 'Five blogs I’d hand you',
                     "Sarah Mitchell writes about tomatoes, compost and the people on her street. Her fall garden posts are the best thing in my reader right now.\n\n"
                     "Jake Turner makes small, fast websites and writes about how. Even if you never build one, his posts will change how you see the web.\n\n"
                     "Linda Russo writes down her family’s recipes before they get lost. Start with the bean soup."}
+
+# Email (1.2.9): a made-up inbox for the Email screenshot (shoot.py --inbox). Writers you follow write to Alex;
+# their site icons are their faces (shoot.py routes https://<host>/apple-touch-icon.png to pics/face-<id>.jpg).
+EMAIL_FEED = {'id': 99, 'url': 'saved:email', 'title': 'Email', 'site': '', 'status': 'ok', 'error': '',
+              'last_fetched': ago(0.1), 'folder_id': None, 'recent': 0, 'latest': ago(0.4)}
+EMAILS, EMAIL_META, EMAIL_HTML = [], {}, {}
+def mail(n, who, addr, subject, hours, snip, html='', read=False, bulk=False, thread=''):
+    link = f'email:inbox|1:{500 - n}'
+    EMAILS.append({'id': f'm{n}', 'feed_id': 99, 'title': subject, 'link': link, 'date': ago(hours), 'summary': snip,
+                   'image': '', 'audio': '', 'shares': '', 'read': read, 'saved': False, 'read_at': None, 'byline': who,
+                   'paid': False, 'links': '', 'comments': -1, 'tags': '', 'videos': ''})
+    EMAIL_META[link] = {'from': addr, 'bulk': bulk, 'unsub': bulk, 'thread': thread or f't{n}', 'to': 'alex@alexmoreno.net', 'cc': '', 'folder': 'inbox'}
+    if html: EMAIL_HTML[f'm{n}'] = html
+mail(1, 'Ben Harlow', 'ben@benharlow.net', 'Re: Your blogroll', 0.4,
+     'Alex, this made my week. I added you to mine this morning, right under Emily.',
+     """<p>Alex,</p><p>This made my week. Thank you for writing. I added you to my blogroll this morning, right under Emily, which feels like good company.</p><p>Five people is a perfect start. Mine began with three, and two of them still write every week.</p><p>One small thing: put a line under each name saying why you read them. People click on reasons, not names.</p><p>See you on the web,<br>Ben</p>""",
+     thread='blogroll')
+mail(2, 'Ben Harlow', 'ben@benharlow.net', 'Re: Your blogroll', 3, 'Happy to look it over before you post it.', read=True, thread='blogroll')
+mail(3, 'Emily Carter', 'emily@emilycarter.blog', 'Coffee next Saturday?', 2.5, 'I’ll be in town for the book sale. The place by the library, around ten?')
+mail(4, 'Sarah Mitchell', 'sarah@sarahmitchell.net', 'Tomato seeds for you', 1.6, 'I saved too many again. Brandywine and a little yellow pear one. Want some?')
+mail(5, 'Jake Turner', 'jake@jaketurner.ink', 'Your site loads in 0.4 seconds now', 20, 'Took the fonts down to one file and the pictures to WebP. Have a look.', read=True)
+mail(6, 'Priya Shah', 'priya.shah@fastmail.com', 'Photos from the trail', 27, 'Six from Saturday. The one at the falls is my favorite.', read=True)
+mail(7, 'The Weekly Garden', 'hello@weeklygarden.news', 'Planting garlic before the frost', 9, 'This week: garlic, leaf mulch, and the last of the peppers.', bulk=True)
+mail(8, 'Small Web Digest', 'digest@smallweb.email', '12 personal sites worth a visit', 30, 'Hand-picked this week: a recipe blog, a bike shop diary and more.', bulk=True, read=True)
+EMAIL_FOLDERS = [{'kind': 'sent', 'name': 'Sent'}, {'kind': 'archive', 'name': 'Archive'}, {'kind': 'trash', 'name': 'Trash'}, {'kind': 'spam', 'name': 'Spam'}]
+
+# My Day is off (David, Nov 22), so the screenshots don't show it.
+STATE['prefs']['hiddenViews'] = ['myday']

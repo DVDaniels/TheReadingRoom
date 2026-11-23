@@ -541,6 +541,7 @@
     $('fFree').setAttribute('aria-pressed', String(!!S.freeOnly));
     const onVid = S.view === 'videos';
     { const t = $('readerEmptyT'); if (t) t.textContent = onVid ? 'Pick a video to watch it here' : onMail ? 'Pick an email to read it here' : 'Pick a story to read it here'; }
+    paintUpNext();
     $('fFree').hidden = onMail || onVid; // nothing to pay for in Videos
     // Videos speaks of watching: Unwatched first, then All; Mark all watched
     $('fUnread').textContent = onVid ? 'Unwatched' : 'Unread';
@@ -860,7 +861,7 @@
   }
 
   function renderList() {
-    syncHome();
+    syncHome(); paintUpNext();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); buildGuideToc(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') {
@@ -2263,7 +2264,8 @@
 
   // ---- Channels your people share: YouTube videos in the posts of the people you read, grouped by the channel
   // that made them (YouTube's oEmbed says who), most-shared first. Channels you already follow are left out.
-  const VID = { info: new Map(), asked: new Set(), busy: false, added: new Set(), err: {} };
+  const VID = { info: new Map(), asked: new Set(), busy: false, added: new Set(), err: {}, more: false };
+  document.addEventListener('click', e => { if (e.target.closest('[data-vmore]')) { VID.more = true; renderList(); } });
   const isYouTubeFeed = f => /youtube\.com\//.test(f?.url || '');
   function sharedVideos() {
     const since = Date.now() - 60 * DAY, out = new Map(); // video id → { feeds: Set, item, date }
@@ -2300,10 +2302,13 @@
       v.feeds.forEach(x => c.feeds.add(x)); c.videos.push({ id, title: info.title, date: v.date });
       chans.set(info.channel_url, c);
     }
-    const list = [...chans.values()].sort((a, b) => b.feeds.size - a.feeds.size || b.videos.length - a.videos.length).slice(0, 6);
+    const all = [...chans.values()].sort((a, b) => b.feeds.size - a.feeds.size || b.videos.length - a.videos.length).slice(0, 6);
+    // in Videos a compact row of three (more on request), so the videos from your channels show without scrolling (Nov 23)
+    const inVid = S.view === 'videos', more = inVid && !VID.more && all.length > 3, list = more ? all.slice(0, 3) : all;
     if (!list.length) return VID.busy ? '<section class="vchans"><h3>Channels your people share</h3><p class="note">Looking up the videos in the posts you read…</p></section>' : '';
-    const who = c => { const names = [...c.feeds].map(id => feedById(id)?.title).filter(Boolean); return names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and '); };
-    return `<section class="vchans"><h3>Channels your people share</h3><p class="note" title="${esc(CUES.vchans)}">YouTube channels whose videos turned up in the posts of people you read.</p><div class="vchan-row">${list.map(c => {
+    // each person once, by name: a person with two feeds ("Posts", "Atom Feed") counts once (David, Nov 23)
+    const who = c => { const names = [...new Set([...c.feeds].map(id => (feedById(personId(id)) || feedById(id))?.title).filter(Boolean))]; return names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and '); };
+    return `<section class="vchans${inVid ? ' compact' : ''}"><div class="vchans-head"><h3>Channels your people share</h3>${more ? `<button class="linkish" type="button" data-vmore>Show ${all.length - 3} more</button>` : ''}</div><p class="note" title="${esc(CUES.vchans)}">YouTube channels whose videos turned up in the posts of people you read.</p><div class="vchan-row">${list.map(c => {
       const v = c.videos.sort((a, b) => b.date.localeCompare(a.date))[0];
       return `<article class="vchan"><button class="vchan-pic" type="button" data-vplay="${esc(v.id)}" title="Play “${esc(v.title)}”"><img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer"></button>
         <div class="vchan-body"><b>${esc(c.name)}</b><span>Shared by ${esc(who(c))}</span>
@@ -6516,6 +6521,26 @@
     renderList();
   });
 
+  // Videos on a wide screen: the right side shows Up next instead of "Pick a video" (David, Nov 23: "What can we do
+  // with this opening screen?"): the newest video you haven't watched, big and ready to play, and the next few.
+  function paintUpNext() {
+    const box = $('readerEmpty'); if (!box) return;
+    let up = box.querySelector('.upnext');
+    const list = S.view === 'videos' ? visible().filter(i => isVideoItem(i) && !i.read) : [];
+    box.classList.toggle('has-upnext', list.length > 0);
+    if (!list.length) { up?.remove(); return; }
+    if (!up) { up = document.createElement('div'); up.className = 'upnext'; box.appendChild(up); }
+    const pic = i => isWeb(i.image) ? i.image : ytId(i.link) ? `https://i.ytimg.com/vi/${ytId(i.link)}/hqdefault.jpg` : '';
+    const chan = i => feedById(i.feed_id)?.title || '';
+    const [first, ...rest] = list;
+    up.innerHTML = `<p class="un-k">Up next · ${list.length} you haven’t watched</p>
+      <button class="un-big" type="button" data-upnext="${esc(first.id)}" title="Watch “${esc(headline(first))}”">${pic(first) ? `<img src="${esc(pic(first))}" alt="" referrerpolicy="no-referrer">` : ''}<span class="un-play" aria-hidden="true">▶</span></button>
+      <h3 class="un-t"><button class="linkish" type="button" data-upnext="${esc(first.id)}">${esc(headline(first))}</button></h3>
+      <p class="un-m">${esc(chan(first))} · ${esc(ago(first.date))}</p>
+      ${rest.length ? `<ol class="un-list">${rest.slice(0, 4).map(i => `<li><button type="button" data-upnext="${esc(i.id)}">${pic(i) ? `<img src="${esc(pic(i))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="un-noimg"></span>'}<span><b>${esc(headline(i))}</b><small>${esc(chan(i))} · ${esc(ago(i.date))}</small></span></button></li>`).join('')}</ol>` : ''}
+      <p class="un-hint">Or pick any video on the left. j and k move through the list.</p>`;
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-upnext]'); if (b) openReader(b.dataset.upnext); });
   function openReader(id) {
     const it = item(id); if (!it) return;
     if (S.readerId && S.readerId !== id) toMini(); // what's playing keeps going in the corner
@@ -6541,7 +6566,7 @@
     $('rMedia').innerHTML = ''; $('rMedia').hidden = true;
     // videos inside the story stop too (a hidden player keeps playing otherwise)
     $('rBody').querySelectorAll('.r-video').forEach(v => v.remove());
-    $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide();
+    $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide(); paintUpNext();
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
     if (S.view === 'talk' && talkScroll) { const [m, l] = talkScroll; requestAnimationFrame(() => { $('main').scrollTop = m; $('listView').scrollTop = l; }); talkScroll = null; }

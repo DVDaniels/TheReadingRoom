@@ -8,7 +8,13 @@ python3 shoot.py $P-s1 "$T" $o >/dev/null
 python3 shoot.py $P-s2 "$T document.querySelector('[data-talk=nbonly][data-k=talk]').click(); await sleep(600);" $o >/dev/null
 python3 shoot.py $P-s3 "$T document.querySelector('[data-talk=nbwho][data-feed=\"3\"]').click(); await sleep(800);" $o >/dev/null
 python3 shoot.py $P-s4 "$T document.querySelector('[data-open=\"6-keep-a-blogroll\"]').click(); await sleep(1200);" $o >/dev/null
-python3 shoot.py $P-s5 "$T document.querySelector('[data-open=\"6-keep-a-blogroll\"]').click(); await sleep(1000); document.getElementById('rReply').click(); await sleep(600); document.querySelector('[data-reply-mail]').click(); await sleep(500); const b=document.getElementById('mcBody'); b.value='Hi Ben,\n\nYour post this morning got me to finally put a blogroll on my own site. Five people so far, and you are one of them.\n\nThank you for writing it.\n\nAlex' + b.value.replace(/^\s*\n/,'\n\n'); b.blur(); b.scrollTop=0;" $o --mail >/dev/null
+# Email (1.2.9): a made-up inbox (--inbox). Mac and iPad open Ben's reply next to the list; iPhone shows the list.
+E='document.querySelector("[data-view=email]").click(); await sleep(1200); document.getElementById("fAll").click(); await sleep(500);'
+if [ "$P" = iphone ]; then
+  python3 shoot.py $P-s5 "$E" $o --inbox >/dev/null
+else
+  python3 shoot.py $P-s5 "$E document.querySelector('.mail-row[data-id=m1] [data-act=open]').click(); await sleep(1500);" $o --inbox >/dev/null
+fi
 python3 shoot.py $P-s6 "" $o >/dev/null
 python3 shoot.py $P-s8 "document.querySelector('[data-view=people]').click(); await sleep(1000);" $o >/dev/null
 # Writing (1.2.9): a made-up site, alexmoreno.net. Clicking Writing gives a blank page, so the post is typed in after.

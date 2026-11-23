@@ -10,7 +10,7 @@ SHOTS = [  # file, headline, line under it
     ('s4', 'A calm place to read', 'Just the words and the pictures. Highlight what stays with you.'),
     ('s7', 'Write on your own site', 'Notes, posts and Weeknotes go to your WordPress site, not a platform. With The Reading Room Plus.'),
     ('s3', 'A page for each person', 'Their posts, who they talk with, and the blogs they recommend.'),
-    ('s5', 'Write back to the writer', 'Reply by email from your own address. No platform in the middle.'),
+    ('s5', 'Email from people, first', 'Newsletters wait to one side, and pictures load only when you say.'),
     ('s8', 'Just the people', 'Posts from the people you read, kept apart from news sites and big outlets.'),
     ('s6', 'Start the day with people', 'Today puts posts from the people you read ahead of the big outlets.'),
 ]
