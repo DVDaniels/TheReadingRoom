@@ -456,6 +456,32 @@ pub async fn archive(a: &Account, uid: &str, message_id: &str) -> Result<Option<
     move_out(a, uid, message_id, Out::Archive).await
 }
 
+/// Empty Trash: every email in the mailbox's Trash folder is deleted for good. Returns the folder's name and how
+/// many emails it held. (The app asks first; this can't be undone.)
+pub async fn empty_trash(a: &Account) -> Result<(String, u32), String> {
+    use futures::TryStreamExt;
+    let mut s = imap_login(a).await?;
+    let names = folder_list(&mut s).await;
+    let Some(trash) = pick_folder(&names, Kind::Trash) else {
+        let _ = s.logout().await;
+        return Err("Your mailbox has no Trash folder.".into());
+    };
+    let mb = s.select(&trash).await.map_err(|e| format!("Couldn't open {trash} ({e})."))?;
+    let n = mb.exists;
+    if n > 0 {
+        let _: Vec<_> = s
+            .store("1:*", "+FLAGS.SILENT (\\Deleted)")
+            .await
+            .map_err(|e| format!("Couldn't empty {trash} ({e})."))?
+            .try_collect()
+            .await
+            .unwrap_or_default();
+        let _: Vec<_> = s.expunge().await.map_err(|e| format!("Couldn't empty {trash} ({e})."))?.try_collect().await.unwrap_or_default();
+    }
+    let _ = s.logout().await;
+    Ok((trash, n))
+}
+
 /// Put an email back in the inbox (from Archive, Trash or Spam: Move to Inbox, Not spam).
 pub async fn to_inbox(a: &Account, uid: &str, message_id: &str) -> Result<Option<String>, String> {
     move_out(a, uid, message_id, Out::Inbox).await

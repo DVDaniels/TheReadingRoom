@@ -1076,6 +1076,23 @@ async fn email_folder(app: AppHandle, state: State<'_, Shared>, kind: String, ol
     Ok(serde_json::json!({ "name": name, "added": added, "count": count, "left": left, "removed": gone.len() }))
 }
 
+/// Empty Trash (asked first in the app): the mailbox's Trash is emptied for good, and its emails leave the app.
+#[tauri::command]
+async fn email_empty_trash(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let (name, n) = email::empty_trash(&a).await?;
+    {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        // kept in Read later: it stays there
+        conn.execute("DELETE FROM items WHERE saved=0 AND link IN (SELECT link FROM email_meta WHERE folder='trash')", []).map_err(err)?;
+        conn.execute("DELETE FROM email_meta WHERE folder='trash' AND NOT EXISTS (SELECT 1 FROM items WHERE items.link = email_meta.link)", []).map_err(err)?;
+    }
+    let _ = app.emit("state-changed", ());
+    changed(state.inner());
+    Ok(serde_json::json!({ "name": name, "deleted": n }))
+}
+
 /// Move to Inbox (from Archive or Trash) and Not spam: the email goes back to the inbox, and the next check
 /// brings it in there.
 #[tauri::command]
@@ -3054,6 +3071,7 @@ pub fn run() {
             email_folders,
             email_folder,
             email_move,
+            email_empty_trash,
             email_newsletter_feed,
             save_url,
             share_inbox,

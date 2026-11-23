@@ -3678,7 +3678,7 @@
       MAIL.elsewhere && `<span class="mb-err">Mail for ${esc(domain)} is delivered to ${esc(MAIL.elsewhere)}, not to this mail server, so mail sent to this address won’t arrive here.</span>`,
     ].filter(Boolean);
     const fk = mailFolder(), fname = (MAIL.folders || []).find(f => f.kind === fk)?.name;
-    const fnote = fk === 'inbox' ? '' : `<p class="mail-fnote">${MAIL.folderBusy === fk ? 'Getting the newest emails…' : { sent: 'Emails you sent from this mailbox.', archive: 'Emails you archived. Move one back with Move to Inbox.', trash: 'Emails you deleted. Your mail service empties the Trash on its own; Move to Inbox brings one back.', spam: 'Emails your mail service thinks are junk. Not spam puts one in your inbox.' }[fk]}${fname && fname !== MAIL_FOLDERS[fk] ? ` <span>(“${esc(fname)}” in your mailbox)</span>` : ''}</p>`;
+    const fnote = fk === 'inbox' ? '' : `<p class="mail-fnote">${MAIL.folderBusy === fk ? 'Getting the newest emails…' : { sent: 'Emails you sent from this mailbox.', archive: 'Emails you archived. Move one back with Move to Inbox.', trash: 'Emails you deleted. Your mail service empties the Trash on its own; Move to Inbox brings one back.', spam: 'Emails your mail service thinks are junk. Not spam puts one in your inbox.' }[fk]}${fname && fname !== MAIL_FOLDERS[fk] ? ` <span>(“${esc(fname)}” in your mailbox)</span>` : ''}${fk === 'trash' ? ` <button class="linkish mail-empty" type="button" data-mailempty>Empty Trash…</button>` : ''}</p>`;
     if (!problems.length) return fnote + mailAlertsOfferHtml() + mailKindsHtml();
     return fnote + mailAlertsOfferHtml() + mailKindsHtml() + `<div class="mailbar mail-problem"><div>${problems.join('')}</div>
       <span class="mb-acts"><button class="btn" type="button" data-mailbar="check"${MAIL.checking ? ' disabled' : ''}>Try again</button><button class="btn" type="button" data-mailbar="setup">Email settings</button></span></div>`;
@@ -4163,6 +4163,24 @@
     const s = e.target.closest('[data-mailsub]');
     if (s) openMailFolder(s.dataset.mailsub);
   });
+  // Empty Trash: always asks first, says how many, and that it can't be undone
+  function mailEmptyTrash() {
+    const here = S.items.filter(i => isEmailItem(i) && mailFolderOf(i) === 'trash').length;
+    showBanner(`<span><b>Empty Trash?</b> Every email in your mailbox’s Trash is deleted for good${here ? `: the ${here === 1 ? 'one' : here} here${MAIL.olderLeft ? ' and any older ones' : ''}` : ''}. This can’t be undone, here or in any other email app.</span>
+      <span class="row"><button class="btn danger" id="etYes">Delete for good</button><button class="btn" id="etNo">Cancel</button></span>`, false, 'confirm');
+    $('etNo').onclick = hideBanner;
+    $('etYes').onclick = async () => {
+      hideBanner(); status('Emptying the Trash…');
+      try {
+        const r = await invoke('email_empty_trash');
+        S.items = S.items.filter(i => !(isEmailItem(i) && mailFolderOf(i) === 'trash' && !i.saved));
+        if (S.readerId && !item(S.readerId)) closeReader();
+        render();
+        status(r.deleted ? `Emptied the Trash: ${r.deleted} ${r.deleted === 1 ? 'email' : 'emails'} deleted for good.` : 'The Trash was already empty.');
+        await load(); await loadMailMeta();
+      } catch (e) { status(msg(e), true); }
+    };
+  }
   // Move to Inbox (Archive, Trash) and Not spam: back to the inbox, where the next check brings it in
   async function mailToInbox(it) {
     const spam = mailFolderOf(it) === 'spam';
@@ -4274,6 +4292,7 @@
       if (S.prefs.mailAlerts) { status('You’ll get an alert when a person writes to you.'); invoke('notify', { title: 'Email alerts are on', body: 'When a person writes to you, it shows up like this.', id: 'mail-alerts-on' }).catch(() => {}); } else status('No email alerts. Turn them on in Email settings if you change your mind.');
       return; }
     if (e.target.closest('[data-mailsearch]')) { mailSearch(); return; }
+    if (e.target.closest('[data-mailempty]')) { mailEmptyTrash(); return; }
     const k = e.target.closest('[data-mailkind]');
     if (k) { store.set('mailKind', k.dataset.mailkind); S.shown = 60; renderList(); renderHead(); return; }
     if (e.target.closest('[data-mailolder]')) { if (mailFolder() === 'inbox') mailOlder(); else openMailFolder(mailFolder(), { older: true }); }
