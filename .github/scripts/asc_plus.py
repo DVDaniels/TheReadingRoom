@@ -116,5 +116,14 @@ def together(version_string):
     note("Items in the submission", "; ".join(str({k: v for k, v in i["attributes"].items() if v}) for i in items))
 
 
+def clear():
+    """Take back an unsent iPhone/iPad review submission (left by a together try), so the version page is plain again."""
+    for s in call("GET", "/reviewSubmissions", params={"filter[app]": AID, "filter[platform]": "IOS", "limit": 20})["data"]:
+        if s["attributes"].get("state") == "READY_FOR_REVIEW":
+            out = call("PATCH", f"/reviewSubmissions/{s['id']}", json={"data": {"type": "reviewSubmissions", "id": s["id"], "attributes": {"canceled": True}}})
+            note("Unsent iOS submission cleared", f"{s['id']} -> {out['data']['attributes'].get('state')}")
+
+
 a = sys.argv[1]
+if a == "clear": clear(); sys.exit(0)
 together(sys.argv[2]) if a == "together" else {"check": show, "review": review, "submit": submit}[a]()

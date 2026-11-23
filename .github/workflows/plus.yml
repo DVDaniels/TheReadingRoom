@@ -7,7 +7,7 @@ on:
     inputs:
       action:
         type: choice
-        options: [check, review, submit, together]
+        options: [check, review, submit, together, clear]
         default: check
       version:
         description: "For together: the iPhone/iPad version that Plus goes with"
