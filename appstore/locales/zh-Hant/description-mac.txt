@@ -63,3 +63,8 @@ App 內有一份簡短的指南，說明訂閱來源如何運作、如何開始�
 不需帳號，沒有追蹤，沒有廣告。所有內容都保存在你的裝置上；如果開啟同步，也會保存在你自己的 iCloud 雲碟中。App 直接與你選擇的網站、服務和郵件伺服器連線。
 
 App 介面目前為英文。
+
+THE READING ROOM PLUS
+閱讀始終免費。Plus 是一項可選的年度訂閱，用來在你自己的網站上寫作，第一週免費。費用將向你的 Apple 帳號收取。除非在目前訂閱期結束前至少 24 小時取消，訂閱會自動續訂；你可以隨時在 Apple 帳號的「訂閱項目」中管理或取消。
+使用條款：https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+隱私權：https://readingroomapp.com/privacy/

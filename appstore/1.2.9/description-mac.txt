@@ -1,0 +1,55 @@
+Read the blogs of real people as a calm social feed. Follow writers you like, watch them answer each other, and write back to them yourself. No algorithm, no ads, no account. Reading is free.
+
+PEOPLE FIRST
+• Today: a morning briefing with the weather, what's new and what several of your writers are talking about
+• People: just the individuals writing on their own sites, apart from the big publications
+• Discover: blogs your writers recommend, and a search for small personal sites on any topic
+
+CONVERSATIONS, MADE OF BLOGS
+• The Neighborhood: the people you read as a social feed with their faces, no account needed
+• When writers answer each other, the replies gather under the original post
+• A page for each person: their posts, who they talk with and their blogroll
+• Like and reply in the post; see Mastodon and Bluesky beside the blogs you read
+
+EMAIL FROM PEOPLE, FIRST
+• Connect one address of your own. People come first; newsletters wait to one side
+• Pictures from the web load only when you say
+• Reply all, Forward, attachments, Archive, Unsubscribe, folders, and search your whole inbox
+• Follow a newsletter as a feed instead
+• Works with IONOS, Gmail, iCloud Mail, Fastmail, Yahoo and most providers, and Proton Mail through Proton Mail Bridge
+
+WRITING, WITH THE READING ROOM PLUS
+• Notes, full Posts and Weeknotes for your own WordPress site, on a quiet notebook page; post now or save a draft there
+• Your ideas, your site's drafts, a writing calendar and Focus
+• Copies to Mastodon and Bluesky that link back home, quote cards and a weekly list of what you read
+• Your blog's visitors, RSS readers and search traffic, with the free WordPress plugin The Reading Room stats
+
+MORE TO READ AND WATCH
+• Videos: channels your people share, Up next on a big screen, and a mini player that keeps playing while you read
+• Podcasts saved for offline, free classics from Standard Ebooks and audiobooks from LibriVox
+• The Morning Edition: yesterday's reading as a newspaper front page
+• Help Wanted: job listings laid out like the classifieds
+• My Day (experimental): your calendar, reminders, stocks and coins. Turn the extras off and it's simply your feed reader
+
+READ YOUR WAY
+• A clean reader with just the article and its pictures
+• Listen to any story read aloud
+• Text size, line width, and light, sepia or dark
+• Keyboard shortcuts: j and k to move, o to open, s to save
+• Read later, highlights and notes to export, rules and alerts, and widgets
+
+FOLLOW ANYTHING
+• Paste a website and The Reading Room finds its RSS, Atom or JSON feed
+• Follow a topic, YouTube channels and podcasts, or read newsletters here
+• Bring your subscriptions over with OPML, folders included
+
+ON ALL YOUR DEVICES
+On iPhone and iPad too. Sync keeps your feeds, Read later, highlights and notes the same everywhere, through your own iCloud Drive.
+
+PRIVATE BY DESIGN
+No account, no tracking, no ads. Everything stays on your devices. The app talks directly to the sites, services and mail server you choose.
+
+THE READING ROOM PLUS
+Reading stays free. Plus is an optional yearly subscription for writing to your own site, with a free first week. Payment is charged to your Apple Account. It renews automatically unless canceled at least 24 hours before the end of the current period; manage or cancel it in your Apple Account's Subscriptions.
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy: https://readingroomapp.com/privacy/

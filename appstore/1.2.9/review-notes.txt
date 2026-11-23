@@ -1,0 +1,24 @@
+The Reading Room is an RSS, Atom and JSON Feed reader. It needs no account: open it and it starts with sample feeds that refresh automatically. No login is needed to review it.
+
+NEW IN 1.2.9: THE READING ROOM PLUS (auto-renewing subscription "Plus yearly", com.daviddaniels.readingroom.plus.yearly, free first week)
+- Reading stays free. Plus unlocks posting to the user's own WordPress site from the Writing tab (notes, posts, Weeknotes, likes and replies kept on their site) and their blog's stats.
+- To see it: Settings > Connections > The Reading Room Plus, or Write in the sidebar. The sheet shows the price, the free week, renewal terms, Terms of Use and Privacy links, Subscribe/Try it free and Restore purchases.
+- Posting needs the user's own WordPress site (Application Password), so the purchase itself can be tested without a site: Try it free, then Restore purchases. Without Plus, Writing still opens; posting asks for Plus.
+- Users who were already posting to their site before 1.2.9 get three months free (set once on the device).
+
+Mac: Window > The Reading Room (Cmd-1) or the Dock icon brings the main window back.
+
+Optional features and what they contact (nothing goes to the developer):
+- Conversations, Neighborhood: no account needed. Arranges posts from followed feeds as a social feed; reads each followed site's home page for its icon and Mastodon/Bluesky links. Person pages read public home, blogroll and Likes pages.
+- Search on Mastodon/Bluesky and "Bring your people over" use only accounts the user connects (Mastodon OAuth on their server, or a Bluesky app password).
+- Writing (Plus): the user's own WordPress site through its REST API with an Application Password: posts, drafts, categories, preview, moving drafts to Trash. Optional copies to Mastodon/Bluesky. Like adds to a Likes page there with a Webmention sent from the device. Your blog's stats come from the free plugin The Reading Room stats on the user's own site.
+- Reactions: like/reply counts looked up at webmention.io (the post's address is sent).
+- Email (optional): one mailbox of the user's own (IMAP/SMTP; on the Mac also Proton Mail Bridge on 127.0.0.1), sign-in in the Keychain; dns.google is asked which provider handles the domain's mail. Pictures from the web load only when the user asks. Unsubscribe uses the sender's own one-click link or address, after asking. "Follow as a feed" reads the newsletter's website for its feed. Site icons for senders come only from blogs the user follows.
+- Videos: YouTube's public oEmbed endpoint for who made a video; a channel's public Videos page if its feed fails. Save for offline downloads podcast/video files from feeds (never YouTube/Vimeo).
+- Books: standardebooks.org, LibriVox/archive.org. Help Wanted and Discover: job-board RSS, Google News RSS, Marginalia Search. Weather: Open-Meteo, if the user types a town. Translate: Google Translate.
+- Newsletters address (Add a feed > Read newsletters here): kill-the-newsletter.com, only when asked.
+- My Day (optional, Settings > Experimental): Calendar and Reminders read on the device through EventKit after the system asks; the app writes only what the user adds. Markets: the user's own Finnhub key; CoinGecko for coins.
+- Write back opens the writer's own reply links. Send feedback opens a GitHub issue form. Rate uses Apple's review prompt. Rules & alerts are local notifications.
+- URL schemes readingroom:// and feed://; nothing is added without pressing Follow.
+
+Sync is optional and uses a folder in the user's own iCloud Drive.
