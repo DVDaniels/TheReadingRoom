@@ -120,8 +120,9 @@ def clear():
     """Take back an unsent iPhone/iPad review submission (left by a together try), so the version page is plain again."""
     for s in call("GET", "/reviewSubmissions", params={"filter[app]": AID, "filter[platform]": "IOS", "limit": 20})["data"]:
         if s["attributes"].get("state") == "READY_FOR_REVIEW":
-            out = call("PATCH", f"/reviewSubmissions/{s['id']}", json={"data": {"type": "reviewSubmissions", "id": s["id"], "attributes": {"canceled": True}}})
-            note("Unsent iOS submission cleared", f"{s['id']} -> {out['data']['attributes'].get('state')}")
+            for it in call("GET", f"/reviewSubmissions/{s['id']}/items")["data"]:
+                call("DELETE", f"/reviewSubmissionItems/{it['id']}")
+                note("Unsent iOS submission", f"took the version back out of {s['id']}")
 
 
 a = sys.argv[1]
