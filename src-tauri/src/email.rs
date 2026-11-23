@@ -283,15 +283,113 @@ pub struct Inbox {
 
 /// The newest emails in the inbox that aren't in `have` yet, and which of `seen` have left it.
 pub async fn fetch(a: &Account, have: &HashSet<String>, seen: &HashSet<String>) -> Result<Inbox, String> {
+    fetch_in(a, "INBOX", have, seen).await
+}
+
+/// An email's key: "<uidvalidity>:<uid>" in the inbox, "<folder>|<uidvalidity>:<uid>" in any other folder
+/// (numbers are only unique within a folder).
+pub fn mail_key(folder: &str, validity: u32, uid: u32) -> String {
+    if folder.eq_ignore_ascii_case("INBOX") { format!("{validity}:{uid}") } else { format!("{folder}|{validity}:{uid}") }
+}
+/// The folder an email's key belongs to, and the "<uidvalidity>:<uid>" part.
+pub fn split_key(key: &str) -> (&str, &str) {
+    key.rsplit_once('|').unwrap_or(("INBOX", key))
+}
+
+/// The folders the Email tab shows besides the inbox, by what they're for.
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Kind {
+    Sent,
+    Archive,
+    Trash,
+    Spam,
+}
+impl Kind {
+    pub fn from_str(s: &str) -> Option<Kind> {
+        match s {
+            "sent" => Some(Kind::Sent),
+            "archive" => Some(Kind::Archive),
+            "trash" => Some(Kind::Trash),
+            "spam" => Some(Kind::Spam),
+            _ => None,
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::Sent => "sent",
+            Kind::Archive => "archive",
+            Kind::Trash => "trash",
+            Kind::Spam => "spam",
+        }
+    }
+    /// What the server marks the folder with (RFC 6154), best first
+    fn marks(self) -> &'static [&'static str] {
+        match self {
+            Kind::Sent => &["Sent"],
+            Kind::Archive => &["Archive", "All"],
+            Kind::Trash => &["Trash"],
+            Kind::Spam => &["Junk"],
+        }
+    }
+    /// Names it goes by on servers that don't mark folders
+    fn names(self) -> &'static [&'static str] {
+        match self {
+            Kind::Sent => &["Sent", "Sent Items", "Sent Messages", "Sent Mail", "INBOX.Sent", "INBOX.Sent Items", "[Gmail]/Sent Mail", "Gesendet"],
+            Kind::Archive => &["Archive", "Archives", "INBOX.Archive", "Archived", "[Gmail]/All Mail"],
+            Kind::Trash => &["Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash", "Papierkorb", "[Gmail]/Trash", "[Gmail]/Bin", "Bin"],
+            Kind::Spam => &["Spam", "Junk", "Junk E-mail", "Junk Email", "INBOX.Spam", "INBOX.Junk", "[Gmail]/Spam", "Bulk Mail"],
+        }
+    }
+}
+
+/// The mailbox's folders, by name and what the server says they're for (\Sent, \Archive, \All, \Trash, \Junk).
+async fn folder_list(s: &mut Imap) -> Vec<(String, String)> {
+    use futures::TryStreamExt;
+    match s.list(Some(""), Some("*")).await {
+        Ok(list) => {
+            let got: Vec<_> = list.try_collect().await.unwrap_or_default();
+            got.iter().map(|n| (n.name().to_string(), n.attributes().iter().map(|at| format!("{at:?}")).collect::<Vec<_>>().join(" "))).collect()
+        }
+        Err(_) => vec![],
+    }
+}
+
+/// Which folder is for `kind`: marked by the server, else by a usual name.
+fn pick_folder(names: &[(String, String)], kind: Kind) -> Option<String> {
+    kind.marks()
+        .iter()
+        .find_map(|want| names.iter().find(|(_, at)| at.split(' ').any(|a| a.trim_matches(|c: char| !c.is_alphanumeric()).ends_with(want) && !a.contains("HasNo"))).map(|(n, _)| n.clone()))
+        .or_else(|| kind.names().iter().find_map(|want| names.iter().find(|(n, _)| n.eq_ignore_ascii_case(want)).map(|(n, _)| n.clone())))
+}
+
+/// The Sent, Archive, Trash and Spam folders this mailbox has (kind, folder name).
+pub async fn folders(a: &Account) -> Result<Vec<(Kind, String)>, String> {
+    let mut s = imap_login(a).await?;
+    let names = folder_list(&mut s).await;
+    let _ = s.logout().await;
+    Ok([Kind::Sent, Kind::Archive, Kind::Trash, Kind::Spam].into_iter().filter_map(|k| pick_folder(&names, k).map(|n| (k, n))).collect())
+}
+
+/// The folder for `kind` in this mailbox (None when it has none).
+pub async fn folder_name(a: &Account, kind: Kind) -> Result<Option<String>, String> {
+    let mut s = imap_login(a).await?;
+    let names = folder_list(&mut s).await;
+    let _ = s.logout().await;
+    Ok(pick_folder(&names, kind))
+}
+
+/// The newest emails in one folder: like the inbox check, for Sent, Archive, Trash or Spam.
+pub async fn fetch_in(a: &Account, folder: &str, have: &HashSet<String>, seen: &HashSet<String>) -> Result<Inbox, String> {
     let known = have;
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
-    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+    let mb = s.select(folder).await.map_err(|e| format!("Couldn't open {} ({e}).", if folder == "INBOX" { "the inbox" } else { folder }))?;
     let validity = mb.uid_validity.unwrap_or(0);
-    // Emails from this inbox the app has, by number (a different uidvalidity means the server renumbered: can't tell)
+    // Emails from this folder the app has, by number (a different uidvalidity means the server renumbered: can't tell)
     let ours: Vec<(String, u32)> = seen
         .iter()
-        .filter_map(|k| k.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok().map(|u| (k.clone(), u))))
+        .filter(|k| split_key(k).0 == folder)
+        .filter_map(|k| split_key(k).1.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok().map(|u| (k.clone(), u))))
         .collect();
     if mb.exists == 0 {
         let _ = s.logout().await;
@@ -314,7 +412,7 @@ pub async fn fetch(a: &Account, have: &HashSet<String>, seen: &HashSet<String>) 
     let mut big = vec![];
     for h in &heads {
         let Some(uid) = h.uid else { continue };
-        if known.contains(&format!("{validity}:{uid}")) {
+        if known.contains(&mail_key(folder, validity, uid)) {
             continue;
         }
         if h.size.unwrap_or(0) > MAX_BYTES { big.push(uid) } else { small.push(uid) }
@@ -334,7 +432,7 @@ pub async fn fetch(a: &Account, have: &HashSet<String>, seen: &HashSet<String>) 
             .map_err(|e| format!("Couldn't download email ({e})."))?;
         for f in &got {
             let (Some(uid), Some(raw)) = (f.uid, f.body().or_else(|| f.header())) else { continue };
-            if let Some(mut m) = parse(raw, &format!("{validity}:{uid}")) {
+            if let Some(mut m) = parse(raw, &mail_key(folder, validity, uid)) {
                 if std::ptr::eq(uids, &big) {
                     m.html = "<p><em>This email is too big to show here (it probably has large attachments). Open it in your email app.</em></p>".into();
                 }
@@ -358,15 +456,22 @@ pub async fn archive(a: &Account, uid: &str, message_id: &str) -> Result<Option<
     move_out(a, uid, message_id, Out::Archive).await
 }
 
+/// Put an email back in the inbox (from Archive, Trash or Spam: Move to Inbox, Not spam).
+pub async fn to_inbox(a: &Account, uid: &str, message_id: &str) -> Result<Option<String>, String> {
+    move_out(a, uid, message_id, Out::Inbox).await
+}
+
 #[derive(PartialEq, Clone, Copy)]
 enum Out {
     Trash,
     Archive,
+    Inbox,
 }
 
-/// The email's number in the inbox now ("<uidvalidity>:<uid>", or found again by its Message-ID).
-async fn find_in_inbox(s: &mut Imap, uid: &str, message_id: &str) -> Result<Option<String>, String> {
-    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+/// The email's number in its folder now (its key, or found again by its Message-ID). Selects that folder.
+async fn find_in(s: &mut Imap, key: &str, message_id: &str) -> Result<Option<String>, String> {
+    let (folder, uid) = split_key(key);
+    let mb = s.select(folder).await.map_err(|e| format!("Couldn't open {} ({e}).", if folder == "INBOX" { "the inbox" } else { folder }))?;
     let validity = mb.uid_validity.unwrap_or(0).to_string();
     let mut target = uid.split_once(':').filter(|(v, _)| *v == validity).map(|(_, u)| u.to_string());
     // still there? (moved or deleted elsewhere since, a move would quietly do nothing)
@@ -387,27 +492,20 @@ async fn find_in_inbox(s: &mut Imap, uid: &str, message_id: &str) -> Result<Opti
 async fn move_out(a: &Account, uid: &str, message_id: &str, to: Out) -> Result<Option<String>, String> {
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
-    let Some(target) = find_in_inbox(&mut s, uid, message_id).await? else {
+    let Some(target) = find_in(&mut s, uid, message_id).await? else {
         let _ = s.logout().await;
-        return Ok(None); // not in the inbox any more: nothing to do there
+        return Ok(None); // not in its folder any more: nothing to do there
     };
-    // the folders, by name and what the server says they're for (\Trash, \Archive, \All)
-    let names: Vec<(String, String)> = match s.list(Some(""), Some("*")).await {
-        Ok(list) => {
-            let got: Vec<_> = list.try_collect().await.unwrap_or_default();
-            got.iter().map(|n| (n.name().to_string(), n.attributes().iter().map(|at| format!("{at:?}")).collect::<Vec<_>>().join(" "))).collect()
-        }
-        Err(_) => vec![],
+    let names = folder_list(&mut s).await;
+    let mut folder = match to {
+        Out::Inbox => Some("INBOX".to_string()),
+        Out::Trash => pick_folder(&names, Kind::Trash),
+        Out::Archive => pick_folder(&names, Kind::Archive),
     };
-    let marks: &[&str] = if to == Out::Trash { &["Trash"] } else { &["Archive", "All"] };
-    let mut folder = marks.iter().find_map(|want| names.iter().find(|(_, at)| at.split(' ').any(|a| a.trim_matches(|c: char| !c.is_alphanumeric()).ends_with(want) && !a.contains("HasNo"))).map(|(n, _)| n.clone()));
-    if folder.is_none() {
-        let wants: &[&str] = if to == Out::Trash {
-            &["Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash", "Papierkorb", "[Gmail]/Trash", "[Gmail]/Bin", "Bin"]
-        } else {
-            &["Archive", "Archives", "INBOX.Archive", "Archived", "[Gmail]/All Mail"]
-        };
-        folder = wants.iter().find_map(|want| names.iter().find(|(n, _)| n.eq_ignore_ascii_case(want)).map(|(n, _)| n.clone()));
+    // already there (Archive from the Archive folder): nothing to move
+    if folder.as_deref() == Some(split_key(uid).0) {
+        let _ = s.logout().await;
+        return Ok(folder);
     }
     if folder.is_none() && to == Out::Archive && !names.is_empty() {
         // no Archive folder yet: make one (inside INBOX on servers that keep every folder there)
@@ -553,9 +651,9 @@ pub fn newsletter_sites(html: &str, from: &str) -> Vec<String> {
 pub async fn fetch_raw(a: &Account, uid: &str, message_id: &str) -> Result<Vec<u8>, String> {
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
-    let Some(target) = find_in_inbox(&mut s, uid, message_id).await? else {
+    let Some(target) = find_in(&mut s, uid, message_id).await? else {
         let _ = s.logout().await;
-        return Err("This email isn't in your inbox any more, so its files can't be opened from here.".into());
+        return Err("This email isn't in its folder any more, so its files can't be opened from here.".into());
     };
     let got: Vec<_> = s
         .uid_fetch(&target, "(UID BODY.PEEK[])")
@@ -570,11 +668,20 @@ pub async fn fetch_raw(a: &Account, uid: &str, message_id: &str) -> Result<Vec<u
 
 /// Older emails: up to `NEWEST` emails from the inbox that come before the oldest one the app has.
 pub async fn fetch_older(a: &Account, have: &HashSet<String>) -> Result<(Vec<Mail>, usize), String> {
+    fetch_older_in(a, "INBOX", have).await
+}
+
+/// Older emails in any folder (see fetch_older).
+pub async fn fetch_older_in(a: &Account, folder: &str, have: &HashSet<String>) -> Result<(Vec<Mail>, usize), String> {
     use futures::TryStreamExt;
     let mut s = imap_login(a).await?;
-    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+    let mb = s.select(folder).await.map_err(|e| format!("Couldn't open {folder} ({e})."))?;
     let validity = mb.uid_validity.unwrap_or(0);
-    let ours: Vec<u32> = have.iter().filter_map(|k| k.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok())).collect();
+    let ours: Vec<u32> = have
+        .iter()
+        .filter(|k| split_key(k).0 == folder)
+        .filter_map(|k| split_key(k).1.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok()))
+        .collect();
     let oldest = ours.iter().min().copied().unwrap_or(u32::MAX);
     let mut all: Vec<u32> = s.uid_search("ALL").await.map_err(|e| format!("Couldn't look through the inbox ({e})."))?.into_iter().collect();
     all.sort_unstable();
@@ -599,7 +706,7 @@ pub async fn fetch_older(a: &Account, have: &HashSet<String>) -> Result<(Vec<Mai
             let got: Vec<_> = s.uid_fetch(set, what).await.map_err(|e| format!("Couldn't download email ({e})."))?.try_collect().await.map_err(|e| format!("Couldn't download email ({e})."))?;
             for f in &got {
                 let (Some(uid), Some(raw)) = (f.uid, f.body().or_else(|| f.header())) else { continue };
-                if let Some(mut m) = parse(raw, &format!("{validity}:{uid}")) {
+                if let Some(mut m) = parse(raw, &mail_key(folder, validity, uid)) {
                     if too_big {
                         m.html = "<p><em>This email is too big to show here (it probably has large attachments). Open it in your email app.</em></p>".into();
                     }

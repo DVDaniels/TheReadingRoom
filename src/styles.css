@@ -2782,3 +2782,7 @@ img.mr-av.mr-ico { object-fit: cover; background: var(--card, #fff); border: 1px
 .mailbar.mail-offer { background: var(--accent-soft); }
 .mail-form .mail-check { display: flex; align-items: center; gap: 8px; flex-direction: row; }
 .mail-form .mail-check input { width: auto; }
+
+/* Email folders */
+.mail-fnote { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.mail-fnote span { opacity: .8; }

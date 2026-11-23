@@ -601,7 +601,7 @@ fn email_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
          CREATE TABLE IF NOT EXISTS email_parsed (uid TEXT PRIMARY KEY, v INTEGER NOT NULL);",
     )?;
     // added later: who else it went to, newsletter or person, where to unsubscribe, the conversation
-    for col in ["to_addrs TEXT NOT NULL DEFAULT ''", "cc_addrs TEXT NOT NULL DEFAULT ''", "bulk INTEGER NOT NULL DEFAULT 0", "unsub TEXT NOT NULL DEFAULT ''", "unsub_post INTEGER NOT NULL DEFAULT 0", "thread TEXT NOT NULL DEFAULT ''"] {
+    for col in ["to_addrs TEXT NOT NULL DEFAULT ''", "cc_addrs TEXT NOT NULL DEFAULT ''", "bulk INTEGER NOT NULL DEFAULT 0", "unsub TEXT NOT NULL DEFAULT ''", "unsub_post INTEGER NOT NULL DEFAULT 0", "thread TEXT NOT NULL DEFAULT ''", "folder TEXT NOT NULL DEFAULT 'inbox'"] {
         let name = col.split(' ').next().unwrap_or("");
         let has: bool = conn.prepare(&format!("SELECT {name} FROM email_meta LIMIT 0")).is_ok();
         if !has {
@@ -666,6 +666,34 @@ fn email_disconnect() {
 
 /// Keep emails just downloaded: as stories in the Email tab, with the cleaned email and what's known about it.
 fn email_store(conn: &mut rusqlite::Connection, mails: &[email::Mail]) -> Result<usize, String> {
+    email_store_in(conn, mails, "inbox")
+}
+
+/// Keep emails from a folder ("inbox", "sent", "archive", "trash", "spam"). An email the app already has from
+/// another folder stays where it is (Gmail's All Mail holds the inbox too); emails outside the inbox arrive read.
+fn email_store_in(conn: &mut rusqlite::Connection, mails: &[email::Mail], folder: &str) -> Result<usize, String> {
+    let owned: Vec<email::Mail>;
+    let mails = if folder == "inbox" {
+        mails
+    } else {
+        owned = mails
+            .iter()
+            .filter(|m| !conn.query_row("SELECT 1 FROM email_meta WHERE link=?1 AND folder<>?2", rusqlite::params![m.link, folder], |_| Ok(())).is_ok())
+            .cloned()
+            .collect();
+        &owned
+    };
+    let added = email_store_raw(conn, mails)?;
+    for m in mails {
+        conn.execute("UPDATE email_meta SET folder=?1 WHERE link=?2", rusqlite::params![folder, m.link]).map_err(err)?;
+        if folder != "inbox" {
+            conn.execute("UPDATE items SET read=1 WHERE link=?1 AND read=0 AND id NOT IN (SELECT id FROM items WHERE link=?1 AND saved=1)", [&m.link]).map_err(err)?;
+        }
+    }
+    Ok(added)
+}
+
+fn email_store_raw(conn: &mut rusqlite::Connection, mails: &[email::Mail]) -> Result<usize, String> {
     let now = feeds::now_iso();
     {
         let feed = email_feed(conn)?;
@@ -710,15 +738,17 @@ fn email_store(conn: &mut rusqlite::Connection, mails: &[email::Mail]) -> Result
 }
 
 
+/// Email keys from a query (its first column).
+fn uids(conn: &rusqlite::Connection, sql: &str) -> Result<std::collections::HashSet<String>, String> {
+    let mut st = conn.prepare(sql).map_err(err)?;
+    let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+    Ok(rows.filter_map(Result::ok).collect())
+}
+
 /// Bring in new email from the inbox: how many arrived, and how many the inbox holds.
 #[tauri::command]
 async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
     let Some(a) = email_account_saved() else { return Ok(serde_json::json!({ "added": 0, "inbox": null })) };
-    let uids = |conn: &rusqlite::Connection, sql: &str| -> Result<std::collections::HashSet<String>, String> {
-        let mut st = conn.prepare(sql).map_err(err)?;
-        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
-        Ok(rows.filter_map(Result::ok).collect())
-    };
     let (known, seen) = {
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
@@ -964,10 +994,13 @@ async fn email_newsletter_feed(state: State<'_, Shared>, item_id: String) -> Res
 fn email_meta_all(state: State<'_, Shared>) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().unwrap();
     email_table(&conn).map_err(err)?;
-    let mut st = conn.prepare("SELECT link, from_addr, bulk, unsub<>'', thread, to_addrs, cc_addrs FROM email_meta").map_err(err)?;
+    let mut st = conn.prepare("SELECT link, from_addr, bulk, unsub<>'', thread, to_addrs, cc_addrs, folder FROM email_meta").map_err(err)?;
     let rows = st
         .query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, serde_json::json!({ "from": r.get::<_, String>(1)?, "bulk": r.get::<_, bool>(2)?, "unsub": r.get::<_, bool>(3)?, "thread": r.get::<_, String>(4)?, "to": r.get::<_, String>(5)?, "cc": r.get::<_, String>(6)? })))
+            Ok((
+                r.get::<_, String>(0)?,
+                serde_json::json!({ "from": r.get::<_, String>(1)?, "bulk": r.get::<_, bool>(2)?, "unsub": r.get::<_, bool>(3)?, "thread": r.get::<_, String>(4)?, "to": r.get::<_, String>(5)?, "cc": r.get::<_, String>(6)?, "folder": r.get::<_, String>(7)? }),
+            ))
         })
         .map_err(err)?;
     let mut map = serde_json::Map::new();
@@ -987,6 +1020,77 @@ fn email_ids(state: &Shared, item_id: &str) -> Result<(String, String, String), 
         |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
     )
     .map_err(|_| "That email isn't here any more.".to_string())
+}
+
+/// The Sent, Archive, Trash and Spam folders this mailbox has: [{kind, name}].
+#[tauri::command]
+async fn email_folders() -> Result<serde_json::Value, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let list = email::folders(&a).await?;
+    Ok(serde_json::json!(list.into_iter().map(|(k, n)| serde_json::json!({ "kind": k.as_str(), "name": n })).collect::<Vec<_>>()))
+}
+
+/// Bring a folder up to date (its newest 100), or with `older` the 100 before the oldest one here. Emails that
+/// left the folder leave the app. Sent shows what you sent; Gmail's All Mail (its Archive) leaves out your own
+/// sent emails and anything already in the inbox.
+#[tauri::command]
+async fn email_folder(app: AppHandle, state: State<'_, Shared>, kind: String, older: Option<bool>) -> Result<serde_json::Value, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let k = email::Kind::from_str(&kind).ok_or("That isn't an email folder.")?;
+    let Some(name) = email::folder_name(&a, k).await? else {
+        return Ok(serde_json::json!({ "missing": true }));
+    };
+    let (known, seen) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        let known = uids(&conn, &format!("SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link JOIN email_parsed p ON p.uid = m.uid AND p.v >= {EMAIL_PARSE} WHERE COALESCE(i.content, '') <> ''"))?;
+        let seen = uids(&conn, "SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link")?;
+        (known, seen)
+    };
+    let me = a.address.to_ascii_lowercase();
+    let keep = |m: &email::Mail| !(k == email::Kind::Archive && m.from_addr.to_ascii_lowercase() == me);
+    let (mails, count, left, gone) = if older.unwrap_or(false) {
+        let (mails, left) = email::fetch_older_in(&a, &name, &seen).await?;
+        (mails, 0, left, vec![])
+    } else {
+        let f = email::fetch_in(&a, &name, &known, &seen).await?;
+        (f.mails, f.count, 0, f.gone)
+    };
+    let mails: Vec<email::Mail> = mails.into_iter().filter(|m| keep(m)).collect();
+    let added = {
+        let mut conn = state.db.lock().unwrap();
+        for uid in &gone {
+            conn.execute("DELETE FROM items WHERE saved=0 AND link IN (SELECT link FROM email_meta WHERE uid=?1)", [uid]).map_err(err)?;
+            conn.execute("DELETE FROM email_meta WHERE uid=?1", [uid]).map_err(err)?;
+        }
+        let n = email_store_in(&mut conn, &mails, k.as_str())?;
+        for m in &mails {
+            conn.execute("INSERT OR REPLACE INTO email_parsed(uid, v) VALUES (?1, ?2)", rusqlite::params![m.uid, EMAIL_PARSE]).map_err(err)?;
+        }
+        n
+    };
+    if added > 0 || !gone.is_empty() {
+        let _ = app.emit("state-changed", ());
+        changed(state.inner());
+    }
+    Ok(serde_json::json!({ "name": name, "added": added, "count": count, "left": left, "removed": gone.len() }))
+}
+
+/// Move to Inbox (from Archive or Trash) and Not spam: the email goes back to the inbox, and the next check
+/// brings it in there.
+#[tauri::command]
+async fn email_move(app: AppHandle, state: State<'_, Shared>, item_id: String) -> Result<(), String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let (link, uid, msg_id) = email_ids(state.inner(), &item_id)?;
+    email::to_inbox(&a, &uid, &msg_id).await?;
+    {
+        let conn = state.db.lock().unwrap();
+        conn.execute("DELETE FROM items WHERE id=?1 AND saved=0", [&item_id]).map_err(err)?;
+        conn.execute("DELETE FROM email_meta WHERE link=?1", [&link]).map_err(err)?;
+    }
+    let _ = app.emit("state-changed", ());
+    changed(state.inner());
+    Ok(())
 }
 
 /// Archive an email: it leaves the inbox (and the Email tab) for the mailbox's Archive folder.
@@ -2947,6 +3051,9 @@ pub fn run() {
             email_attachment,
             email_older,
             email_search,
+            email_folders,
+            email_folder,
+            email_move,
             email_newsletter_feed,
             save_url,
             share_inbox,
