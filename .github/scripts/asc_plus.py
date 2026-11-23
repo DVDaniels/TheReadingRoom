@@ -12,6 +12,7 @@ from asc_release import call, note, token, API
 import requests
 
 SUB = "6837848076"   # Plus yearly, com.daviddaniels.readingroom.plus.yearly
+GROUP = "22603996"   # The Reading Room Plus
 
 
 def show():
@@ -35,8 +36,9 @@ def show():
         note("Availability", str((av.get("data") or {}).get("attributes")) + (f" {av.get('errors')}" if av.get("errors") else ""))
         intro = get(f"/subscriptions/{SUB}/introductoryOffers")
         note("Free week offers", f"{len(intro.get('data', []))}")
-        grp = get(f"/subscriptions/{SUB}/group").get("data") or {}
-        gl = get(f"/subscriptionGroups/{grp.get('id')}/subscriptionGroupLocalizations").get("data", [])
+        glr = get(f"/subscriptionGroups/{GROUP}/subscriptionGroupLocalizations")
+        gl = glr.get("data", [])
+        if glr.get("errors"): note("Group localizations error", str(glr["errors"])[:300])
         note("Group localizations", "; ".join(f"{l['attributes'].get('locale')} {l['attributes'].get('state')} '{l['attributes'].get('name')}'" for l in gl) or "none")
         note("Subscription attrs", str({k: v for k, v in s.items() if k != 'reviewNote'}))
     return s, shot
@@ -44,12 +46,11 @@ def show():
 
 def group_name():
     """The subscription group needs a display name (what people see in their Subscriptions list)."""
-    grp = call("GET", f"/subscriptions/{SUB}/group")["data"]
-    have = call("GET", f"/subscriptionGroups/{grp['id']}/subscriptionGroupLocalizations")["data"]
+    have = call("GET", f"/subscriptionGroups/{GROUP}/subscriptionGroupLocalizations")["data"]
     if not any(l["attributes"].get("locale") == "en-US" for l in have):
         call("POST", "/subscriptionGroupLocalizations", json={"data": {"type": "subscriptionGroupLocalizations",
              "attributes": {"locale": "en-US", "name": "The Reading Room Plus"},
-             "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": grp["id"]}}}}})
+             "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": GROUP}}}}})
         note("Group name", "en-US: The Reading Room Plus")
 
 
