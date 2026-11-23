@@ -180,7 +180,7 @@ pub fn clean_mail(html: &str) -> String {
         .add_tag_attributes("img", ["srcset", "sizes", "loading"])
         .add_tag_attributes("source", ["srcset", "type", "media"])
         .add_tag_attributes("time", ["datetime"])
-        .add_generic_attributes(["data-rr-hide", "data-rr-btn", "data-rr-sig", "data-rr-cell", "data-rr-att"])
+        .add_generic_attributes(["data-rr-hide", "data-rr-btn", "data-rr-sig", "data-rr-cell", "data-rr-att", "data-rr-file"])
         .rm_tags(["mark"])
         .clean_content_tags(HashSet::from(["script", "style", "title"])) // a <title> in the head isn't part of the email
         .link_rel(Some("noopener noreferrer"))

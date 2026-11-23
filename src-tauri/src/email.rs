@@ -63,6 +63,16 @@ pub struct Mail {
     pub summary: String,
     /// The email's own HTML (not yet cleaned), or its text turned into paragraphs
     pub html: String,
+    /// Who else it went to (addresses, comma-separated), for Reply All
+    pub to: String,
+    pub cc: String,
+    /// Sent to a list (a newsletter, a store, a service), not written to you by a person
+    pub bulk: bool,
+    /// Where to unsubscribe (the List-Unsubscribe header as sent), and whether one click does it (RFC 8058)
+    pub unsub: String,
+    pub unsub_post: bool,
+    /// The conversation it belongs to: the Message-ID that started it
+    pub thread: String,
 }
 
 // ---------------------------------------------------------------- connections
@@ -339,8 +349,23 @@ pub async fn fetch(a: &Account, have: &HashSet<String>, seen: &HashSet<String>) 
 /// Move an email to the mailbox's Trash (or, with no Trash folder, delete it). `uid` is "<uidvalidity>:<uid>";
 /// if the server has renumbered since, the email is found by its Message-ID. Returns the folder it went to.
 pub async fn trash(a: &Account, uid: &str, message_id: &str) -> Result<Option<String>, String> {
-    use futures::TryStreamExt;
-    let mut s = imap_login(a).await?;
+    move_out(a, uid, message_id, Out::Trash).await
+}
+
+/// Archive an email: it leaves the inbox for the mailbox's Archive folder (Gmail: All Mail). A mailbox without
+/// one gets an "Archive" folder. Returns the folder it went to.
+pub async fn archive(a: &Account, uid: &str, message_id: &str) -> Result<Option<String>, String> {
+    move_out(a, uid, message_id, Out::Archive).await
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Out {
+    Trash,
+    Archive,
+}
+
+/// The email's number in the inbox now ("<uidvalidity>:<uid>", or found again by its Message-ID).
+async fn find_in_inbox(s: &mut Imap, uid: &str, message_id: &str) -> Result<Option<String>, String> {
     let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
     let validity = mb.uid_validity.unwrap_or(0).to_string();
     let mut target = uid.split_once(':').filter(|(v, _)| *v == validity).map(|(_, u)| u.to_string());
@@ -350,43 +375,128 @@ pub async fn trash(a: &Account, uid: &str, message_id: &str) -> Result<Option<St
             target = found.into_iter().next().map(|u| u.to_string());
         }
     }
-    let Some(target) = target else {
+    Ok(target)
+}
+
+async fn move_out(a: &Account, uid: &str, message_id: &str, to: Out) -> Result<Option<String>, String> {
+    use futures::TryStreamExt;
+    let mut s = imap_login(a).await?;
+    let Some(target) = find_in_inbox(&mut s, uid, message_id).await? else {
         let _ = s.logout().await;
         return Ok(None); // not in the inbox any more: nothing to do there
     };
-    let mut trash = None;
-    if let Ok(list) = s.list(Some(""), Some("*")).await {
-        let names: Vec<_> = list.try_collect().await.unwrap_or_default();
-        trash = names.iter().find(|n| n.attributes().iter().any(|at| format!("{at:?}").contains("Trash"))).map(|n| n.name().to_string());
-        if trash.is_none() {
-            for want in ["Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash", "Papierkorb", "[Gmail]/Trash", "[Gmail]/Bin", "Bin"] {
-                if let Some(n) = names.iter().find(|n| n.name().eq_ignore_ascii_case(want)) {
-                    trash = Some(n.name().to_string());
-                    break;
-                }
-            }
+    // the folders, by name and what the server says they're for (\Trash, \Archive, \All)
+    let names: Vec<(String, String)> = match s.list(Some(""), Some("*")).await {
+        Ok(list) => {
+            let got: Vec<_> = list.try_collect().await.unwrap_or_default();
+            got.iter().map(|n| (n.name().to_string(), n.attributes().iter().map(|at| format!("{at:?}")).collect::<Vec<_>>().join(" "))).collect()
+        }
+        Err(_) => vec![],
+    };
+    let marks: &[&str] = if to == Out::Trash { &["Trash"] } else { &["Archive", "All"] };
+    let mut folder = marks.iter().find_map(|want| names.iter().find(|(_, at)| at.split(' ').any(|a| a.trim_matches(|c: char| !c.is_alphanumeric()).ends_with(want) && !a.contains("HasNo"))).map(|(n, _)| n.clone()));
+    if folder.is_none() {
+        let wants: &[&str] = if to == Out::Trash {
+            &["Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash", "Papierkorb", "[Gmail]/Trash", "[Gmail]/Bin", "Bin"]
+        } else {
+            &["Archive", "Archives", "INBOX.Archive", "Archived", "[Gmail]/All Mail"]
+        };
+        folder = wants.iter().find_map(|want| names.iter().find(|(n, _)| n.eq_ignore_ascii_case(want)).map(|(n, _)| n.clone()));
+    }
+    if folder.is_none() && to == Out::Archive && !names.is_empty() {
+        // no Archive folder yet: make one (inside INBOX on servers that keep every folder there)
+        let name = if names.iter().any(|(n, _)| n.starts_with("INBOX.")) { "INBOX.Archive" } else { "Archive" };
+        if s.create(name).await.is_ok() {
+            folder = Some(name.to_string());
         }
     }
-    let moved = match &trash {
+    if to == Out::Archive && folder.is_none() {
+        let _ = s.logout().await;
+        return Err("Your mailbox has no Archive folder, and the app couldn't make one.".into());
+    }
+    let moved = match &folder {
         Some(t) => s.uid_mv(&target, t).await.is_ok(),
         None => false,
     };
     if !moved {
-        // No MOVE (or no Trash): copy to Trash if there is one, then delete from the inbox
-        if let Some(t) = &trash {
+        // No MOVE (or no Trash): copy there if there is a folder, then delete from the inbox
+        if let Some(t) = &folder {
             s.uid_copy(&target, t).await.map_err(|e| format!("Couldn't move the email to {t} ({e})."))?;
         }
         let _: Vec<_> = s
             .uid_store(&target, "+FLAGS.SILENT (\\Deleted)")
             .await
-            .map_err(|e| format!("Couldn't delete the email ({e})."))?
+            .map_err(|e| format!("Couldn't move the email ({e})."))?
             .try_collect()
             .await
             .unwrap_or_default();
-        let _: Vec<_> = s.expunge().await.map_err(|e| format!("Couldn't delete the email ({e})."))?.try_collect().await.unwrap_or_default();
+        let _: Vec<_> = s.expunge().await.map_err(|e| format!("Couldn't move the email ({e})."))?.try_collect().await.unwrap_or_default();
     }
     let _ = s.logout().await;
-    Ok(trash)
+    Ok(folder)
+}
+
+/// The whole email as the server keeps it (to open a file attached to it).
+pub async fn fetch_raw(a: &Account, uid: &str, message_id: &str) -> Result<Vec<u8>, String> {
+    use futures::TryStreamExt;
+    let mut s = imap_login(a).await?;
+    let Some(target) = find_in_inbox(&mut s, uid, message_id).await? else {
+        let _ = s.logout().await;
+        return Err("This email isn't in your inbox any more, so its files can't be opened from here.".into());
+    };
+    let got: Vec<_> = s
+        .uid_fetch(&target, "(UID BODY.PEEK[])")
+        .await
+        .map_err(|e| format!("Couldn't download the email ({e})."))?
+        .try_collect()
+        .await
+        .map_err(|e| format!("Couldn't download the email ({e})."))?;
+    let _ = s.logout().await;
+    got.iter().find_map(|f| f.body().map(|b| b.to_vec())).ok_or_else(|| "The mail server didn't send the email.".to_string())
+}
+
+/// Older emails: up to `NEWEST` emails from the inbox that come before the oldest one the app has.
+pub async fn fetch_older(a: &Account, have: &HashSet<String>) -> Result<(Vec<Mail>, usize), String> {
+    use futures::TryStreamExt;
+    let mut s = imap_login(a).await?;
+    let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
+    let validity = mb.uid_validity.unwrap_or(0);
+    let ours: Vec<u32> = have.iter().filter_map(|k| k.split_once(':').filter(|(v, _)| v.parse::<u32>().ok() == Some(validity)).and_then(|(_, u)| u.parse().ok())).collect();
+    let oldest = ours.iter().min().copied().unwrap_or(u32::MAX);
+    let mut all: Vec<u32> = s.uid_search("ALL").await.map_err(|e| format!("Couldn't look through the inbox ({e})."))?.into_iter().collect();
+    all.sort_unstable();
+    let before: Vec<u32> = all.into_iter().filter(|u| *u < oldest).collect();
+    let left = before.len().saturating_sub(NEWEST as usize);
+    let pick = &before[left..];
+    let mut out = vec![];
+    if !pick.is_empty() {
+        let set = pick.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        let sizes: Vec<_> = s.uid_fetch(&set, "(UID RFC822.SIZE)").await.map_err(|e| format!("Couldn't list the inbox ({e})."))?.try_collect().await.map_err(|e| format!("Couldn't list the inbox ({e})."))?;
+        let (mut small, mut big) = (vec![], vec![]);
+        for f in &sizes {
+            if let Some(u) = f.uid {
+                if f.size.unwrap_or(0) > MAX_BYTES { big.push(u) } else { small.push(u) }
+            }
+        }
+        for (uids, what, too_big) in [(&small, "(UID BODY.PEEK[])", false), (&big, "(UID BODY.PEEK[HEADER])", true)] {
+            if uids.is_empty() {
+                continue;
+            }
+            let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+            let got: Vec<_> = s.uid_fetch(set, what).await.map_err(|e| format!("Couldn't download email ({e})."))?.try_collect().await.map_err(|e| format!("Couldn't download email ({e})."))?;
+            for f in &got {
+                let (Some(uid), Some(raw)) = (f.uid, f.body().or_else(|| f.header())) else { continue };
+                if let Some(mut m) = parse(raw, &format!("{validity}:{uid}")) {
+                    if too_big {
+                        m.html = "<p><em>This email is too big to show here (it probably has large attachments). Open it in your email app.</em></p>".into();
+                    }
+                    out.push(m);
+                }
+            }
+        }
+    }
+    let _ = s.logout().await;
+    Ok((out, left))
 }
 
 pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
@@ -421,6 +531,12 @@ pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
         summary = alt.captures_iter(&html).map(|c| html_escape::decode_html_entities(&c[1]).trim().to_string()).filter(|a| !a.contains('.') || a.contains(' ')).collect::<Vec<_>>().join(" · ").chars().take(240).collect();
     }
     let key = if message_id.is_empty() { format!("uid-{uid}") } else { message_id.clone() };
+    let addrs = |a: Option<&mail_parser::Address>| a.map(|a| a.iter().filter_map(|x| x.address()).map(|x| x.to_string()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
+    let raw_header = |n: &str| m.header_raw(n).map(|v| v.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default();
+    let unsub = raw_header("List-Unsubscribe");
+    let precedence = raw_header("Precedence").to_ascii_lowercase();
+    let bulk = !unsub.is_empty() || !raw_header("List-Id").is_empty() || matches!(precedence.as_str(), "bulk" | "list" | "junk");
+    let thread = refs.first().cloned().filter(|r| !r.trim().is_empty()).unwrap_or_else(|| message_id.clone());
     Some(Mail {
         link: format!("email:{key}"),
         uid: uid.to_string(),
@@ -433,7 +549,39 @@ pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
         date,
         summary,
         html,
+        to: addrs(m.to()),
+        cc: addrs(m.cc()),
+        bulk,
+        unsub_post: raw_header("List-Unsubscribe-Post").to_ascii_lowercase().contains("one-click"),
+        unsub,
+        thread: thread.trim().trim_start_matches('<').trim_end_matches('>').to_string(),
     })
+}
+
+/// One file attached to an email (by its place among the email's attachments): its name, type and bytes.
+pub fn attachment(raw: &[u8], pos: usize) -> Option<(String, String, Vec<u8>)> {
+    use mail_parser::MimeHeaders;
+    let m = mail_parser::MessageParser::default().parse(raw)?;
+    let p = m.parts.get(*m.attachments.get(pos)? as usize)?;
+    let mime = p.content_type().map(|c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or("octet-stream"))).unwrap_or_else(|| "application/octet-stream".into());
+    let name = p.attachment_name().map(|n| n.to_string()).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| if p.is_message() { "Forwarded email.eml".into() } else { "Attachment".into() });
+    let name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0')).take(120).collect();
+    Some((name, mime, p.contents().to_vec()))
+}
+
+/// Where List-Unsubscribe points: a web address (https) and an email address (mailto), either may be missing.
+pub fn unsubscribe_targets(header: &str) -> (Option<String>, Option<String>) {
+    let mut web = None;
+    let mut mail = None;
+    for part in header.split(',') {
+        let u = part.trim().trim_start_matches('<').trim_end_matches('>').trim();
+        if web.is_none() && u.starts_with("https://") {
+            web = Some(u.to_string());
+        } else if mail.is_none() && u.to_ascii_lowercase().starts_with("mailto:") {
+            mail = Some(u.to_string());
+        }
+    }
+    (web, mail)
 }
 
 /// Plain text without tags, quoted replies or runs of spaces (for the line under a title).
@@ -538,7 +686,7 @@ fn body(m: &mail_parser::Message) -> String {
     }
     // Files attached: pictures are shown, anything else is listed (the app doesn't keep attachments)
     let mut files = vec![];
-    for &i in &m.attachments {
+    for (pos, &i) in m.attachments.iter().enumerate() {
         let i = i as usize;
         let Some(p) = m.parts.get(i) else { continue };
         if shown.contains(&i) || p.is_multipart() {
@@ -550,14 +698,13 @@ fn body(m: &mail_parser::Message) -> String {
         }
         let kb = p.len().div_ceil(1024);
         let size = if kb >= 1024 { format!("{:.1} MB", kb as f64 / 1024.0) } else { format!("{kb} KB") };
-        files.push(format!("<li>{} <small>({size})</small></li>", html_escape::encode_text(&name(p))));
+        files.push(format!(r#"<li><span data-rr-file="{pos}">{}</span> <small>({size})</small></li>"#, html_escape::encode_text(&name(p))));
     }
     if !files.is_empty() {
         html.push_str(&format!(
-            r#"<div data-rr-att="1"><p><b>{}</b></p><ul>{}</ul><p>Open this email in your email app to get {}.</p></div>"#,
+            r#"<div data-rr-att="1"><p><b>{}</b></p><ul>{}</ul></div>"#,
             if files.len() == 1 { "1 file attached" } else { "Files attached" },
-            files.join(""),
-            if files.len() == 1 { "it" } else { "them" }
+            files.join("")
         ));
     }
     html
@@ -639,6 +786,8 @@ pub async fn delivered_elsewhere(client: &reqwest::Client, a: &Account) -> Optio
 
 pub struct Outgoing<'a> {
     pub to: &'a str,
+    /// More people, comma-separated (Reply All)
+    pub cc: &'a str,
     pub subject: &'a str,
     pub body: &'a str,
     pub in_reply_to: &'a str,
@@ -675,6 +824,10 @@ pub fn compose(a: &Account, o: &Outgoing<'_>) -> String {
         now.to_rfc2822(),
         a.domain()
     );
+    let cc = cc_list(o.cc);
+    if !cc.is_empty() {
+        m += &format!("Cc: {}\r\n", cc.iter().map(|c| format!("<{c}>")).collect::<Vec<_>>().join(", "));
+    }
     if !o.in_reply_to.is_empty() {
         m += &format!("In-Reply-To: {}\r\n", angle(o.in_reply_to));
         let refs: Vec<String> = o.references.split_whitespace().chain([o.in_reply_to]).map(angle).collect();
@@ -733,10 +886,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Smtp<S> {
         self.cmd(&format!("AUTH PLAIN {auth}"), 235, "The mail server didn't accept the address and password for sending").await?;
         Ok(())
     }
-    async fn send(&mut self, a: &Account, to: &str, msg: &str) -> Result<(), String> {
+    async fn send(&mut self, a: &Account, to: &[String], msg: &str) -> Result<(), String> {
         self.sign_in(a).await?;
         self.cmd(&format!("MAIL FROM:<{}>", a.address), 250, "The mail server wouldn't send from this address").await?;
-        self.cmd(&format!("RCPT TO:<{}>", to.trim()), 250, "The mail server wouldn't send to that address").await?;
+        for t in to {
+            self.cmd(&format!("RCPT TO:<{}>", t.trim()), 250, &format!("The mail server wouldn't send to {}", t.trim())).await?;
+        }
         self.cmd("DATA", 354, "The mail server wouldn't take the email").await?;
         // A line starting with a dot gets a second one, so it isn't read as the end
         let stuffed: String = msg.split("\r\n").map(|l| if l.starts_with('.') { format!(".{l}") } else { l.to_string() }).collect::<Vec<_>>().join("\r\n");
@@ -770,13 +925,20 @@ pub fn plain_address(s: &str) -> Option<String> {
     }
 }
 
+/// The addresses in a comma-separated list (each checked like a single address).
+pub fn cc_list(s: &str) -> Vec<String> {
+    s.split(',').filter_map(plain_address).collect()
+}
+
 /// Send over SMTP: port 465 is secure from the start, other ports (587) switch to secure with STARTTLS.
 pub async fn send(a: &Account, o: &Outgoing<'_>) -> Result<String, String> {
     let to = plain_address(o.to).ok_or("Enter one email address to send to.")?;
     let o = &Outgoing { to: &to, ..*o };
     let msg = compose(a, o);
+    let mut all = vec![to.clone()];
+    all.extend(cc_list(o.cc));
     let mut s = smtp_open(a).await?;
-    s.send(a, o.to, &msg).await?;
+    s.send(a, &all, &msg).await?;
     Ok(msg)
 }
 
@@ -918,6 +1080,32 @@ mod tests {
     }
 
     #[test]
+    fn knows_newsletters_threads_and_who_else() {
+        let raw = b"From: Porch <hello@porch.com>\r\nTo: me@x.com, sam@y.com\r\nCc: Lee <lee@z.com>\r\nSubject: Re: Hi\r\nMessage-ID: <c@x>\r\nReferences: <a@x> <b@x>\r\nList-Unsubscribe: <mailto:u@porch.com?subject=unsub>,\r\n <https://porch.com/u/1>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\nContent-Type: text/plain\r\n\r\nHi\r\n";
+        let m = parse(raw, "1:12").unwrap();
+        assert!(m.bulk && m.unsub_post);
+        assert_eq!(m.thread, "a@x");
+        assert_eq!(m.to, "me@x.com, sam@y.com");
+        assert_eq!(m.cc, "lee@z.com");
+        assert_eq!(unsubscribe_targets(&m.unsub), (Some("https://porch.com/u/1".into()), Some("mailto:u@porch.com?subject=unsub".into())));
+        let raw = b"From: Sam <sam@y.com>\r\nTo: me@x.com\r\nSubject: Hi\r\nMessage-ID: <s@y>\r\nContent-Type: text/plain\r\n\r\nHi\r\n";
+        let m = parse(raw, "1:13").unwrap();
+        assert!(!m.bulk);
+        assert_eq!(m.thread, "s@y");
+    }
+
+    #[test]
+    fn hands_over_an_attached_file() {
+        let raw = b"From: a@b.c\r\nSubject: Hours\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nSee attached.\r\n--x\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"hours/v2.pdf\"\r\n\r\n%PDF-1.4\r\n--x--\r\n";
+        let m = parse(raw, "1:14").unwrap();
+        assert!(m.html.contains(r#"data-rr-file="0""#), "{}", m.html);
+        let (name, mime, bytes) = attachment(raw, 0).unwrap();
+        assert_eq!((name.as_str(), mime.as_str()), ("hoursv2.pdf", "application/pdf"));
+        assert!(bytes.starts_with(b"%PDF"));
+        assert!(attachment(raw, 1).is_none());
+    }
+
+    #[test]
     fn finds_the_address() {
         assert_eq!(plain_address("hello@mikebifulco.com (Mike Bifulco @irreverentmike)").as_deref(), Some("hello@mikebifulco.com"));
         assert_eq!(plain_address("Sam Rivera <sam@example.com>").as_deref(), Some("sam@example.com"));
@@ -936,10 +1124,11 @@ mod tests {
     #[test]
     fn writes_a_reply() {
         let a = Account { address: "reading@daviddaniels.com".into(), name: "David Daniels".into(), ..Default::default() };
-        let m = compose(&a, &Outgoing { to: "hello@example.com", subject: "Re: The year", body: "Thanks!\n.\nDavid", in_reply_to: "abc@example.com", references: "<x@y>" });
+        let m = compose(&a, &Outgoing { to: "hello@example.com", subject: "Re: The year", body: "Thanks!\n.\nDavid", in_reply_to: "abc@example.com", references: "<x@y>", cc: "sam@example.com, Lee <lee@example.com>" });
         assert!(m.contains("From: David Daniels <reading@daviddaniels.com>\r\n"));
         assert!(m.contains("In-Reply-To: <abc@example.com>\r\n"));
         assert!(m.contains("References: <x@y> <abc@example.com>\r\n"));
         assert!(m.contains("Message-ID: <") && m.contains("@daviddaniels.com>"));
+        assert!(m.contains("Cc: <sam@example.com>, <lee@example.com>\r\n"), "{m}");
     }
 }

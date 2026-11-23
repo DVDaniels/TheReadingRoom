@@ -2733,3 +2733,39 @@ html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edg
 .prose.mail-body .mail-att ul { margin: 4px 0; padding-left: 20px; } .prose.mail-body .mail-att small { color: var(--muted); }
 .prose.mail-body .mail-alt { display: inline-block; margin: 4px 0; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-style: italic; }
 .prose.mail-body .mail-web, .prose.mail-body .mail-web a { font-family: var(--font-ui); font-size: 12px !important; color: var(--muted) !important; }
+
+/* Email: People / Newsletters, conversations, older emails, held pictures, files, more ways to answer */
+.mail-kinds { display: inline-flex; margin: 0 0 12px; }
+.mail-kinds button span { color: var(--muted); font-size: 12px; margin-left: 2px; }
+.mail-row .mr-n { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--line); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 17px; vertical-align: 1px; }
+.mail-older { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 18px 0 28px; text-align: center; }
+.mail-older span { color: var(--muted); font-size: 12px; max-width: 340px; }
+.prose.mail-body .mail-pics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 18px; padding: 10px 14px; border-radius: 10px; background: var(--accent-soft); font-family: var(--font-ui); font-size: 13px; line-height: 1.4; }
+.prose.mail-body .mail-pics .mp-acts { display: flex; gap: 12px; align-items: center; margin-left: auto; }
+.prose.mail-body .mail-alt.held { font-size: 0.9em; }
+.prose.mail-body .mail-att li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0; }
+.prose.mail-body .mail-att .ma-acts { display: inline-flex; gap: 6px; margin-left: auto; }
+.prose.mail-body .mail-att .ma-acts .btn { padding: 3px 10px; font-size: 12px; }
+.prose.mail-body .mail-att .ma-note { color: var(--muted); font-size: 12px; }
+.prose.mail-body .mail-att ul { list-style: none; padding-left: 0; }
+.prose.mail-body .mh-acts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: -10px 0 18px; font-family: var(--font-ui); font-size: 13px; }
+.prose.mail-body .mh-acts .mh-blog { color: var(--muted); }
+.prose.mail-body .mail-conv { margin: 2.4em 0 0; padding-top: 1em; border-top: 1px solid var(--line); font-family: var(--font-ui); }
+.prose.mail-body .mail-conv h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+.prose.mail-body .mail-conv .mc-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; width: 100%; padding: 10px 12px; margin: 0 0 6px; border: 1px solid var(--line); border-radius: 10px; background: transparent; text-align: left; font: inherit; font-size: 14px; color: inherit; cursor: pointer; }
+.prose.mail-body .mail-conv .mc-item.unread b::before { content: '● '; color: var(--accent); font-size: 10px; vertical-align: 2px; }
+.prose.mail-body .mail-conv .mc-item time { color: var(--muted); font-size: 12px; }
+.prose.mail-body .mail-conv .mc-item span { grid-column: 1 / -1; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rArchive.r-icon-btn, #rDelete.r-icon-btn { display: inline-flex; align-items: center; gap: 6px; }
+#rArchive.r-icon-btn svg, #rDelete.r-icon-btn svg { width: 16px; height: 16px; }
+/* a narrow reader: Archive and Delete as icons only */
+@media (max-width: 1400px) { #rArchive.r-icon-btn .lbl, #rDelete.r-icon-btn .lbl { display: none; } #rArchive.r-icon-btn, #rDelete.r-icon-btn { padding-left: 9px; padding-right: 9px; } }
+@media (max-width: 1400px) { body.mail-view #rListen .lbl { display: none; } }
+/* Email rows on a phone: the sender's initial, then the email; the row buttons step aside (swipe does them:
+   right for read or unread, left to archive) */
+@media (max-width: 760px) {
+  .story.mail-row { display: flex !important; grid-template-columns: none !important; grid-template-areas: none !important; gap: 12px; padding: 12px 4px; }
+  .story.mail-row .mr-main.title { grid-area: auto; text-align: left; align-items: stretch; padding: 0; margin: 0; }
+  .story.mail-row .mr-acts { display: none; }
+  .mail-kinds { display: flex; } .mail-kinds button { flex: 1; }
+}

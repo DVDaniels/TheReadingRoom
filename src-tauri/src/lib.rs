@@ -599,11 +599,21 @@ fn email_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
             refs TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL DEFAULT '');
          CREATE INDEX IF NOT EXISTS email_meta_uid ON email_meta(uid);
          CREATE TABLE IF NOT EXISTS email_parsed (uid TEXT PRIMARY KEY, v INTEGER NOT NULL);",
-    )
+    )?;
+    // added later: who else it went to, newsletter or person, where to unsubscribe, the conversation
+    for col in ["to_addrs TEXT NOT NULL DEFAULT ''", "cc_addrs TEXT NOT NULL DEFAULT ''", "bulk INTEGER NOT NULL DEFAULT 0", "unsub TEXT NOT NULL DEFAULT ''", "unsub_post INTEGER NOT NULL DEFAULT 0", "thread TEXT NOT NULL DEFAULT ''"] {
+        let name = col.split(' ').next().unwrap_or("");
+        let has: bool = conn.prepare(&format!("SELECT {name} FROM email_meta LIMIT 0")).is_ok();
+        if !has {
+            conn.execute_batch(&format!("ALTER TABLE email_meta ADD COLUMN {col};"))?;
+        }
+    }
+    Ok(())
 }
 /// How the app reads an email: raise it when that improves, and the emails still in the inbox are read again
 /// (keeping read marks). 2: every part, pictures sent in the email, attached files listed, newsletter previews.
-const EMAIL_PARSE: i64 = 2;
+/// 3: newsletters told apart, unsubscribe, conversations, who else it went to, attached files that open.
+const EMAIL_PARSE: i64 = 3;
 
 fn email_feed(conn: &rusqlite::Connection) -> Result<db::Feed, String> {
     let id = match db::feeds(conn).map_err(err)?.into_iter().find(|f| f.url == email::FEED) {
@@ -654,6 +664,52 @@ fn email_disconnect() {
     social::secret_delete(EMAIL_SHARED_KEY);
 }
 
+/// Keep emails just downloaded: as stories in the Email tab, with the cleaned email and what's known about it.
+fn email_store(conn: &mut rusqlite::Connection, mails: &[email::Mail]) -> Result<usize, String> {
+    let now = feeds::now_iso();
+    {
+        let feed = email_feed(conn)?;
+        let fresh: Vec<db::NewItem> = mails
+            .iter()
+            .map(|m| db::NewItem {
+                id: feeds::item_id(feed.id, &m.link),
+                title: m.subject.clone(),
+                link: m.link.clone(),
+                date: m.date.clone(),
+                summary: m.summary.clone(),
+                image: String::new(),
+                audio: String::new(),
+                shares: String::new(),
+                paid: false,
+                links: String::new(),
+                comments: -1,
+            tags: String::new(),
+            videos: String::new(),
+            })
+            .collect();
+        let added = db::store_fetch(conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
+        for m in mails {
+            // the story may have come first through sync from another device, under its own id
+            let id: Option<String> = conn.query_row("SELECT id FROM items WHERE link=?1 LIMIT 1", [&m.link], |r| r.get(0)).ok();
+            if let Some(id) = id {
+                db::cache_article(conn, &id, &article::clean_mail(&m.html), &m.from_name).map_err(err)?;
+                if !m.summary.is_empty() {
+                    conn.execute("UPDATE items SET summary=?1 WHERE id=?2", rusqlite::params![m.summary, id]).map_err(err)?;
+                }
+            }
+            conn.execute("INSERT OR REPLACE INTO email_parsed(uid, v) VALUES (?1, ?2)", rusqlite::params![m.uid, EMAIL_PARSE]).map_err(err)?;
+            conn.execute(
+                "INSERT OR REPLACE INTO email_meta(link, uid, from_name, from_addr, reply_to, message_id, refs, subject, to_addrs, cc_addrs, bulk, unsub, unsub_post, thread)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+                rusqlite::params![m.link, m.uid, m.from_name, m.from_addr, m.reply_to, m.message_id, m.references, m.subject, m.to, m.cc, m.bulk, m.unsub, m.unsub_post, m.thread],
+            )
+            .map_err(err)?;
+        }
+        Ok(added)
+    }
+}
+
+
 /// Bring in new email from the inbox: how many arrived, and how many the inbox holds.
 #[tauri::command]
 async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
@@ -694,46 +750,9 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
         }
         return Ok(serde_json::json!({ "added": 0, "inbox": inbox, "removed": removed }));
     }
-    let now = feeds::now_iso();
     let added = {
         let mut conn = state.db.lock().unwrap();
-        let feed = email_feed(&conn)?;
-        let fresh: Vec<db::NewItem> = mails
-            .iter()
-            .map(|m| db::NewItem {
-                id: feeds::item_id(feed.id, &m.link),
-                title: m.subject.clone(),
-                link: m.link.clone(),
-                date: m.date.clone(),
-                summary: m.summary.clone(),
-                image: String::new(),
-                audio: String::new(),
-                shares: String::new(),
-                paid: false,
-                links: String::new(),
-                comments: -1,
-            tags: String::new(),
-            videos: String::new(),
-            })
-            .collect();
-        let added = db::store_fetch(&mut conn, &feed, email::TITLE, "", &fresh, &now).map_err(err)?;
-        for m in &mails {
-            // the story may have come first through sync from another device, under its own id
-            let id: Option<String> = conn.query_row("SELECT id FROM items WHERE link=?1 LIMIT 1", [&m.link], |r| r.get(0)).ok();
-            if let Some(id) = id {
-                db::cache_article(&conn, &id, &article::clean_mail(&m.html), &m.from_name).map_err(err)?;
-                if !m.summary.is_empty() {
-                    conn.execute("UPDATE items SET summary=?1 WHERE id=?2", rusqlite::params![m.summary, id]).map_err(err)?;
-                }
-            }
-            conn.execute("INSERT OR REPLACE INTO email_parsed(uid, v) VALUES (?1, ?2)", rusqlite::params![m.uid, EMAIL_PARSE]).map_err(err)?;
-            conn.execute(
-                "INSERT OR REPLACE INTO email_meta(link, uid, from_name, from_addr, reply_to, message_id, refs, subject) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                rusqlite::params![m.link, m.uid, m.from_name, m.from_addr, m.reply_to, m.message_id, m.references, m.subject],
-            )
-            .map_err(err)?;
-        }
-        added
+        email_store(&mut conn, &mails)?
     };
     let _ = app.emit("state-changed", ());
     update_badge(&app);
@@ -763,36 +782,49 @@ fn email_reply_to(state: State<'_, Shared>, item_id: String) -> Result<serde_jso
     email_table(&conn).map_err(err)?;
     let r = conn
         .query_row(
-            "SELECT m.from_name, CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject
-             FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
-            [&item_id],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
-        )
-        .map_err(|_| "This email can't be replied to from here.".to_string())?;
-    let subject = if r.2.to_lowercase().starts_with("re:") { r.2.clone() } else { format!("Re: {}", r.2) };
-    Ok(serde_json::json!({ "name": r.0, "to": r.1, "subject": subject, "from": email_account_saved().map(|a| a.address) }))
-}
-
-/// Send a reply from your mailbox, and file it in its Sent folder.
-#[tauri::command]
-async fn email_reply(state: State<'_, Shared>, item_id: String, body: String) -> Result<String, String> {
-    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
-    if body.trim().is_empty() {
-        return Err("Write something first.".into());
-    }
-    let (to, subject, msg_id, refs) = {
-        let conn = state.db.lock().unwrap();
-        email_table(&conn).map_err(err)?;
-        conn.query_row(
-            "SELECT CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject, m.message_id, m.refs
+            "SELECT m.from_name, CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject, m.to_addrs || ', ' || m.cc_addrs
              FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
             [&item_id],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)),
         )
+        .map_err(|_| "This email can't be replied to from here.".to_string())?;
+    let subject = if r.2.to_lowercase().starts_with("re:") { r.2.clone() } else { format!("Re: {}", r.2) };
+    let me = email_account_saved().map(|a| a.address).unwrap_or_default();
+    Ok(serde_json::json!({ "name": r.0, "to": r.1, "subject": subject, "from": me, "cc": reply_all_cc(&r.3, &r.1, &me) }))
+}
+
+/// Reply All: everyone the email went to, but not you and not the person you're answering.
+fn reply_all_cc(others: &str, to: &str, me: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for a in email::cc_list(others) {
+        if !a.eq_ignore_ascii_case(me) && !a.eq_ignore_ascii_case(to) && !out.iter().any(|o| o.eq_ignore_ascii_case(&a)) {
+            out.push(a);
+        }
+    }
+    out
+}
+
+/// Send a reply from your mailbox, and file it in its Sent folder.
+#[tauri::command]
+async fn email_reply(state: State<'_, Shared>, item_id: String, body: String, all: Option<bool>) -> Result<String, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    if body.trim().is_empty() {
+        return Err("Write something first.".into());
+    }
+    let (to, subject, msg_id, refs, others) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        conn.query_row(
+            "SELECT CASE WHEN m.reply_to<>'' THEN m.reply_to ELSE m.from_addr END, m.subject, m.message_id, m.refs, m.to_addrs || ', ' || m.cc_addrs
+             FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+            [&item_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)),
+        )
         .map_err(|_| "This email can't be replied to from here.".to_string())?
     };
     let subject = if subject.to_lowercase().starts_with("re:") { subject } else { format!("Re: {subject}") };
-    let out = email::Outgoing { to: &to, subject: &subject, body: &body, in_reply_to: &msg_id, references: &refs };
+    let cc = if all.unwrap_or(false) { reply_all_cc(&others, &to, &a.address).join(", ") } else { String::new() };
+    let out = email::Outgoing { to: &to, cc: &cc, subject: &subject, body: &body, in_reply_to: &msg_id, references: &refs };
     let raw = email::send(&a, &out).await?;
     email::file_sent(&a, &raw).await;
     Ok(to)
@@ -833,10 +865,160 @@ async fn email_send(to: String, subject: String, body: String) -> Result<String,
     if body.trim().is_empty() {
         return Err("Write something first.".into());
     }
-    let out = email::Outgoing { to: &to, subject: subject.trim(), body: &body, in_reply_to: "", references: "" };
+    let out = email::Outgoing { to: &to, cc: "", subject: subject.trim(), body: &body, in_reply_to: "", references: "" };
     let raw = email::send(&a, &out).await?;
     email::file_sent(&a, &raw).await;
     Ok(to)
+}
+
+/// What the Email tab needs to know about each email, by its link: newsletter or person, whether it can be
+/// unsubscribed from, its conversation, and its sender's address (to find their blog among your feeds).
+#[tauri::command]
+fn email_meta_all(state: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let conn = state.db.lock().unwrap();
+    email_table(&conn).map_err(err)?;
+    let mut st = conn.prepare("SELECT link, from_addr, bulk, unsub<>'', thread, to_addrs, cc_addrs FROM email_meta").map_err(err)?;
+    let rows = st
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, serde_json::json!({ "from": r.get::<_, String>(1)?, "bulk": r.get::<_, bool>(2)?, "unsub": r.get::<_, bool>(3)?, "thread": r.get::<_, String>(4)?, "to": r.get::<_, String>(5)?, "cc": r.get::<_, String>(6)? })))
+        })
+        .map_err(err)?;
+    let mut map = serde_json::Map::new();
+    for (k, v) in rows.filter_map(Result::ok) {
+        map.insert(k, v);
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+/// The uid and Message-ID of an email in the Email tab.
+fn email_ids(state: &Shared, item_id: &str) -> Result<(String, String, String), String> {
+    let conn = state.db.lock().unwrap();
+    email_table(&conn).map_err(err)?;
+    conn.query_row(
+        "SELECT i.link, COALESCE(m.uid,''), COALESCE(m.message_id,'') FROM items i LEFT JOIN email_meta m ON m.link = i.link WHERE i.id=?1",
+        [item_id],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+    )
+    .map_err(|_| "That email isn't here any more.".to_string())
+}
+
+/// Archive an email: it leaves the inbox (and the Email tab) for the mailbox's Archive folder.
+#[tauri::command]
+async fn email_archive(app: AppHandle, state: State<'_, Shared>, item_id: String) -> Result<Option<String>, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let (link, uid, msg_id) = email_ids(state.inner(), &item_id)?;
+    let folder = email::archive(&a, &uid, &msg_id).await?;
+    {
+        let conn = state.db.lock().unwrap();
+        // kept in Read later: it stays there
+        conn.execute("DELETE FROM items WHERE id=?1 AND saved=0", [&item_id]).map_err(err)?;
+        conn.execute("DELETE FROM email_meta WHERE link=?1 AND NOT EXISTS (SELECT 1 FROM items WHERE link=?1)", [&link]).map_err(err)?;
+    }
+    let _ = app.emit("state-changed", ());
+    update_badge(&app);
+    changed(state.inner());
+    Ok(folder)
+}
+
+/// Unsubscribe from a newsletter the way it asks to be: one click on its server (RFC 8058), else an email to
+/// its unsubscribe address, else its unsubscribe page, which the app opens for you to finish there.
+#[tauri::command]
+async fn email_unsubscribe(state: State<'_, Shared>, item_id: String) -> Result<serde_json::Value, String> {
+    let (header, post) = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        conn.query_row("SELECT m.unsub, m.unsub_post FROM items i JOIN email_meta m ON m.link = i.link WHERE i.id=?1", [&item_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))
+            .map_err(|_| "This email doesn't say how to unsubscribe.".to_string())?
+    };
+    let (web, mail) = email::unsubscribe_targets(&header);
+    if let (Some(url), true) = (&web, post) {
+        let r = state
+            .client
+            .post(url)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body("List-Unsubscribe=One-Click")
+            .send()
+            .await;
+        if r.map(|r| r.status().is_success()).unwrap_or(false) {
+            return Ok(serde_json::json!({ "how": "done" }));
+        }
+    }
+    if let (Some(m), Some(a)) = (&mail, email_account_saved()) {
+        let rest = m.trim_start_matches("mailto:").trim_start_matches("MAILTO:");
+        let (addr, query) = rest.split_once('?').unwrap_or((rest, ""));
+        let mut subject = "unsubscribe".to_string();
+        let mut body = "unsubscribe".to_string();
+        for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+            match k.to_ascii_lowercase().as_str() {
+                "subject" if !v.trim().is_empty() => subject = v.to_string(),
+                "body" if !v.trim().is_empty() => body = v.to_string(),
+                _ => {}
+            }
+        }
+        let addr = url::form_urlencoded::parse(format!("a={addr}").as_bytes()).next().map(|(_, v)| v.to_string()).unwrap_or_default();
+        if let Some(to) = email::plain_address(&addr) {
+            let out = email::Outgoing { to: &to, cc: "", subject: &subject, body: &body, in_reply_to: "", references: "" };
+            if email::send(&a, &out).await.is_ok() {
+                return Ok(serde_json::json!({ "how": "emailed", "to": to }));
+            }
+        }
+    }
+    match web {
+        Some(url) => Ok(serde_json::json!({ "how": "page", "url": url })),
+        None => Err("Couldn't unsubscribe from here. Look for Unsubscribe at the end of the email.".into()),
+    }
+}
+
+/// A file attached to an email: downloaded again from the inbox, then opened in the app that opens that kind
+/// of file (open), saved where you choose (save), or handed back to share (data, for iPhone and iPad).
+#[tauri::command]
+async fn email_attachment(app: AppHandle, state: State<'_, Shared>, item_id: String, index: usize, action: String) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let (_, uid, msg_id) = email_ids(state.inner(), &item_id)?;
+    let raw = email::fetch_raw(&a, &uid, &msg_id).await?;
+    let (name, mime, bytes) = email::attachment(&raw, index).ok_or("That file isn't in the email any more.")?;
+    match action.as_str() {
+        "save" => {
+            let Some(file) = app.dialog().file().set_title("Save the attached file").set_file_name(&name).blocking_save_file() else {
+                return Ok(serde_json::json!({ "saved": false }));
+            };
+            let path = file.into_path().map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+            std::fs::write(&path, &bytes).map_err(|_| "Couldn't save there. Pick another folder.".to_string())?;
+            Ok(serde_json::json!({ "saved": true, "name": name }))
+        }
+        "open" => {
+            let dir = app.path().app_cache_dir().map_err(err)?.join("Attachments");
+            std::fs::create_dir_all(&dir).map_err(err)?;
+            let path = dir.join(&name);
+            std::fs::write(&path, &bytes).map_err(err)?;
+            app.opener().open_path(path.to_string_lossy().to_string(), None::<&str>).map_err(|_| "Couldn't open the file. Try Save instead.".to_string())?;
+            Ok(serde_json::json!({ "opened": true, "name": name }))
+        }
+        _ => Ok(serde_json::json!({ "name": name, "mime": mime, "data": base64::engine::general_purpose::STANDARD.encode(&bytes) })),
+    }
+}
+
+/// Bring in older email: the next hundred from the inbox before the oldest one here. Says how many more are left.
+#[tauri::command]
+async fn email_older(app: AppHandle, state: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let a = email_account_saved().ok_or("Connect your email in Settings first.")?;
+    let have: std::collections::HashSet<String> = {
+        let conn = state.db.lock().unwrap();
+        email_table(&conn).map_err(err)?;
+        let mut st = conn.prepare("SELECT uid FROM email_meta").map_err(err)?;
+        let rows = st.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+        rows.filter_map(Result::ok).collect()
+    };
+    let (mails, left) = email::fetch_older(&a, &have).await?;
+    let added = {
+        let mut conn = state.db.lock().unwrap();
+        email_store(&mut conn, &mails)?
+    };
+    let _ = app.emit("state-changed", ());
+    update_badge(&app);
+    changed(state.inner());
+    Ok(serde_json::json!({ "added": added, "left": left }))
 }
 
 /// Save a page you found elsewhere to Read later (in a feed of its own, "Saved pages").
@@ -2672,6 +2854,11 @@ pub fn run() {
             email_reply,
             email_send,
             email_delete,
+            email_archive,
+            email_meta_all,
+            email_unsubscribe,
+            email_attachment,
+            email_older,
             save_url,
             share_inbox,
             widget_data,
