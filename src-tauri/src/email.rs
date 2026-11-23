@@ -369,6 +369,12 @@ async fn find_in_inbox(s: &mut Imap, uid: &str, message_id: &str) -> Result<Opti
     let mb = s.select("INBOX").await.map_err(|e| format!("Couldn't open the inbox ({e})."))?;
     let validity = mb.uid_validity.unwrap_or(0).to_string();
     let mut target = uid.split_once(':').filter(|(v, _)| *v == validity).map(|(_, u)| u.to_string());
+    // still there? (moved or deleted elsewhere since, a move would quietly do nothing)
+    if let Some(u) = target.clone() {
+        if !s.uid_search(format!("UID {u}")).await.map(|f| f.contains(&u.parse::<u32>().unwrap_or(0))).unwrap_or(true) {
+            target = None;
+        }
+    }
     if target.is_none() && !message_id.is_empty() {
         let id = message_id.trim().trim_start_matches('<').trim_end_matches('>').replace('"', "");
         if let Ok(found) = s.uid_search(format!("HEADER Message-ID \"{id}\"")).await {
@@ -558,15 +564,50 @@ pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
     })
 }
 
+/// A file's name as the email gives it, or one made from its type, always with an extension (so Open knows
+/// which app opens it): "invite.ics", "Forwarded email.eml", "Delivery report.txt", "Attachment.pdf".
+fn file_name(p: &mail_parser::MessagePart) -> String {
+    use mail_parser::MimeHeaders;
+    let clean = |n: &str| n.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0')).take(120).collect::<String>().trim().to_string();
+    if let Some(n) = p.attachment_name().map(clean).filter(|n| !n.is_empty()) {
+        return n;
+    }
+    let (t, sub) = p.content_type().map(|c| (c.ctype().to_ascii_lowercase(), c.subtype().unwrap_or("").to_ascii_lowercase())).unwrap_or_default();
+    match (t.as_str(), sub.as_str()) {
+        _ if p.is_message() => "Forwarded email.eml".into(),
+        ("text", "calendar") | ("application", "ics") => "invite.ics".into(),
+        ("message", "delivery-status") | ("message", "global-delivery-status") => "Delivery report.txt".into(),
+        ("text", "plain") => "Attachment.txt".into(),
+        ("text", "html") => "Attachment.html".into(),
+        ("image", s) | ("application", s) | ("audio", s) | ("video", s) if !s.is_empty() && s.len() <= 5 && s.chars().all(|c| c.is_ascii_alphanumeric()) => format!("Attachment.{s}"),
+        ("application", "vnd.openxmlformats-officedocument.wordprocessingml.document") => "Attachment.docx".into(),
+        ("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet") => "Attachment.xlsx".into(),
+        ("application", "msword") => "Attachment.doc".into(),
+        _ => "Attachment".into(),
+    }
+}
+
+/// Parts that aren't files for you: a digital signature (S/MIME, PGP), or the calendar invitation an email
+/// carries both inside its text and as invite.ics (only the file is listed).
+fn not_a_file(m: &mail_parser::Message, p: &mail_parser::MessagePart) -> bool {
+    use mail_parser::MimeHeaders;
+    let ct = p.content_type().map(|c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or("")).to_ascii_lowercase()).unwrap_or_default();
+    if matches!(ct.as_str(), "application/pkcs7-signature" | "application/x-pkcs7-signature" | "application/pgp-signature" | "application/pgp-keys") {
+        return true;
+    }
+    if ct == "text/calendar" && p.attachment_name().is_none() {
+        return m.attachments.iter().filter_map(|&i| m.parts.get(i as usize)).any(|o| o.attachment_name().map(|n| n.to_ascii_lowercase().ends_with(".ics")).unwrap_or(false));
+    }
+    false
+}
+
 /// One file attached to an email (by its place among the email's attachments): its name, type and bytes.
 pub fn attachment(raw: &[u8], pos: usize) -> Option<(String, String, Vec<u8>)> {
     use mail_parser::MimeHeaders;
     let m = mail_parser::MessageParser::default().parse(raw)?;
     let p = m.parts.get(*m.attachments.get(pos)? as usize)?;
-    let mime = p.content_type().map(|c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or("octet-stream"))).unwrap_or_else(|| "application/octet-stream".into());
-    let name = p.attachment_name().map(|n| n.to_string()).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| if p.is_message() { "Forwarded email.eml".into() } else { "Attachment".into() });
-    let name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0')).take(120).collect();
-    Some((name, mime, p.contents().to_vec()))
+    let mime = if p.is_message() { "message/rfc822".to_string() } else { p.content_type().map(|c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or("octet-stream"))).unwrap_or_else(|| "application/octet-stream".into()) };
+    Some((file_name(p), mime, p.contents().to_vec()))
 }
 
 /// Where List-Unsubscribe points: a web address (https) and an email address (mailto), either may be missing.
@@ -587,8 +628,15 @@ pub fn unsubscribe_targets(header: &str) -> (Option<String>, Option<String>) {
 /// Plain text without tags, quoted replies or runs of spaces (for the line under a title).
 fn squash(s: &str) -> String {
     static TAGS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let tags = TAGS.get_or_init(|| regex::Regex::new(r"(?s)<style.*?</style>|<[^>]+>").unwrap());
-    let plain = html_escape::decode_html_entities(&tags.replace_all(s, " ")).to_string();
+    let tags = TAGS.get_or_init(|| {
+        regex::Regex::new(r#"(?is)<style\b.*?</style>|<script\b.*?</script>|<title\b.*?</title>|<!--.*?-->|<(?:br|/p|/div|/li|/tr|/h[1-6]|blockquote)\b(?:[^>"']|"[^"]*"|'[^']*')*>|<(?:[^>"']|"[^"]*"|'[^']*')*>"#).unwrap()
+    });
+    // a tag that ends a line (a paragraph, a line break, a quote) becomes a line break, so "On … wrote:" is a line of its own
+    let plain = tags.replace_all(s, |c: &regex::Captures| {
+        let t = c[0].to_ascii_lowercase();
+        if t.starts_with("<br") || t.starts_with("</p") || t.starts_with("</div") || t.starts_with("</li") || t.starts_with("</tr") || t.starts_with("</h") || t.starts_with("<blockquote") { "\n" } else { " " }
+    });
+    let plain = html_escape::decode_html_entities(&plain).to_string();
     let mut kept = Vec::new();
     let lines: Vec<&str> = plain.lines().collect();
     for (k, l) in lines.iter().enumerate() {
@@ -596,7 +644,8 @@ fn squash(s: &str) -> String {
         // the email being answered starts here ("On Tue, Nov 17, Sam wrote:" / "-----Original Message-----" /
         // Outlook's "From: … Sent: …" block)
         let outlook = t.starts_with("From:") && lines.iter().skip(k + 1).take(3).any(|n| n.trim_start().starts_with("Sent:") || n.trim_start().starts_with("Date:"));
-        if (t.starts_with("On ") && t.ends_with("wrote:")) || t.contains("Original Message-----") || t == "--" || outlook {
+        let phone_sig = t.starts_with("Sent from my ") && t.len() < 40;
+        if (t.starts_with("On ") && t.ends_with("wrote:")) || t.contains("Original Message-----") || t == "--" || outlook || phone_sig {
             break;
         }
         if !t.starts_with('>') {
@@ -611,7 +660,8 @@ fn squash(s: &str) -> String {
 fn preview_tidy(s: &str) -> String {
     static JUNK: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let junk = JUNK.get_or_init(|| {
-        regex::Regex::new(r"(?i)\[image:[^\]]*\]|\b(view|read|open) (this|the|it|our)?\s*(email|post|newsletter|message|issue)?\s*(online|on the web|in (your |a |the )?(web )?browser)\b( at)?:?|<?https?://\S+>?").unwrap()
+        // "View this email in your browser", "Read it online", or a bare "View online" at the very start; not "ready to view online"
+        regex::Regex::new(r"(?i)\[image:[^\]]*\]|\b(view|read|open) (this|the|it|our) ?(email|post|newsletter|message|issue)? ?(online|on the web|in (your |a |the )?(web )?browser)\b( at)?:?|^\s*(view|read|open) (online|on the web|in (your |a |the )?(web )?browser)\b:?|<?https?://\S+>?").unwrap()
     });
     let visible: String = s.chars().filter(|c| !matches!(c, '\u{200b}'..='\u{200f}' | '\u{2060}'..='\u{2064}' | '\u{034f}' | '\u{00ad}' | '\u{feff}' | '\u{180e}')).collect();
     let words = junk.replace_all(&visible, " ").split_whitespace().collect::<Vec<_>>().join(" ");
@@ -645,11 +695,7 @@ fn body(m: &mail_parser::Message) -> String {
         let b = p.contents();
         (!b.is_empty() && b.len() <= PICTURE_MAX).then(|| format!("data:image/{sub};base64,{}", base64::engine::general_purpose::STANDARD.encode(b)))
     };
-    let name = |p: &mail_parser::MessagePart| -> String {
-        p.attachment_name().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| {
-            if p.is_message() { "a forwarded email".into() } else { p.content_type().map(|c| format!("a {} file", c.subtype().unwrap_or(c.ctype()))).unwrap_or_else(|| "a file".into()) }
-        })
-    };
+    let name = |p: &mail_parser::MessagePart| -> String { file_name(p) };
     let img = |src: &str, alt: &str| format!(r#"<p><img src="{src}" alt="{}"></p>"#, html_escape::encode_double_quoted_attribute(alt));
     let mut shown: HashSet<usize> = HashSet::new();
     let rich = m.html_body.iter().any(|&i| m.parts.get(i as usize).map(|p| p.is_text_html()).unwrap_or(false));
@@ -689,7 +735,7 @@ fn body(m: &mail_parser::Message) -> String {
     for (pos, &i) in m.attachments.iter().enumerate() {
         let i = i as usize;
         let Some(p) = m.parts.get(i) else { continue };
-        if shown.contains(&i) || p.is_multipart() {
+        if shown.contains(&i) || p.is_multipart() || not_a_file(m, p) {
             continue;
         }
         if let Some(src) = picture(p) {
@@ -1103,6 +1149,38 @@ mod tests {
         assert_eq!((name.as_str(), mime.as_str()), ("hoursv2.pdf", "application/pdf"));
         assert!(bytes.starts_with(b"%PDF"));
         assert!(attachment(raw, 1).is_none());
+    }
+
+    #[test]
+    fn reads_every_language() {
+        // Japanese mail is often sent as ISO-2022-JP
+        let raw = b"From: =?ISO-2022-JP?b?GyRCOzNFRBsoQiAbJEJCQE86GyhC?= <taro@example.jp>\r\nSubject: =?ISO-2022-JP?b?GyRCJVYlbSUwJEskRCQkJEYbKEI=?=\r\nContent-Type: text/plain; charset=\"iso-2022-jp\"\r\nContent-Transfer-Encoding: 7bit\r\n\r\n\x1b$B$3$s$K$A$O\x1b(B\r\n";
+        let m = parse(raw, "1:20").unwrap();
+        assert_eq!(m.subject, "\u{30d6}\u{30ed}\u{30b0}\u{306b}\u{3064}\u{3044}\u{3066}", "{}", m.subject);
+        assert_eq!(m.from_name, "\u{5c71}\u{7530} \u{592a}\u{90ce}");
+        assert!(m.html.contains("\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}"), "{}", m.html);
+    }
+
+    #[test]
+    fn lists_only_real_files() {
+        // a signed email: the signature isn't a file for you
+        let raw = b"From: a@b.c\r\nSubject: Statement\r\nMIME-Version: 1.0\r\nContent-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nYour statement is ready to view online.\r\n--x\r\nContent-Type: application/pkcs7-signature; name=smime.p7s\r\nContent-Disposition: attachment; filename=smime.p7s\r\n\r\nxx\r\n--x--\r\n";
+        let m = parse(raw, "1:21").unwrap();
+        assert!(!m.html.contains("data-rr-att"), "{}", m.html);
+        assert_eq!(m.summary, "Your statement is ready to view online.");
+        // an invitation: listed once, as invite.ics; a file with no name still gets an extension
+        let raw = b"From: a@b.c\r\nSubject: Invite\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: multipart/alternative; boundary=y\r\n\r\n--y\r\nContent-Type: text/plain\r\n\r\nYou're invited.\r\n--y\r\nContent-Type: text/calendar; method=REQUEST\r\n\r\nBEGIN:VCALENDAR\r\n--y--\r\n--x\r\nContent-Type: application/ics; name=invite.ics\r\nContent-Disposition: attachment; filename=invite.ics\r\n\r\nBEGIN:VCALENDAR\r\n--x\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment\r\n\r\n%PDF\r\n--x--\r\n";
+        let m = parse(raw, "1:22").unwrap();
+        assert_eq!(m.html.matches("invite.ics").count(), 1, "{}", m.html);
+        assert!(m.html.contains("Attachment.pdf"), "{}", m.html);
+    }
+
+    #[test]
+    fn previews_leave_out_code_and_quotes() {
+        let raw = b"From: x@y.z\r\nSubject: Won\r\nContent-Type: text/html\r\n\r\n<script>alert(1)</script><p>Hi <a href=\"data:text/html,<script>alert(6)</script>\">there</a></p>";
+        assert_eq!(parse(raw, "1:23").unwrap().summary, "Hi there");
+        let raw = b"From: m@icloud.com\r\nSubject: Re: Dinner\r\nContent-Type: text/html\r\n\r\nSounds good!<br><br><div>Sent from my iPhone</div><div><br><blockquote type=\"cite\">On Nov 21, 2026, at 7:02 PM, David wrote:<br></blockquote></div><blockquote>Dinner?</blockquote>";
+        assert_eq!(parse(raw, "1:24").unwrap().summary, "Sounds good!");
     }
 
     #[test]

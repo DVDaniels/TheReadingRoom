@@ -3688,7 +3688,7 @@
     const pick = a ? (Object.keys(MAIL_HOSTS).find(k => MAIL_HOSTS[k].imap === a.imap_host) || 'other') : 'ionos';
     const opts = Object.entries(MAIL_HOSTS).map(([k, v]) => `<option value="${k}"${k === pick ? ' selected' : ''}>${v.label}</option>`).join('');
     const el = sheet('mailPanel', `<h2>Email</h2>
-      <p>Connect one mailbox to read its inbox in the Email tab and reply from it. Best: an address on your own domain that you use only for this app, like reading@yoursite.com. The app reads the inbox; it only moves an email (to the Trash) when you delete it.</p>
+      <p>Connect one mailbox to read its inbox in the Email tab and reply from it. Best: an address on your own domain that you use only for this app, like reading@yoursite.com. The app reads the inbox; it only moves an email when you archive it or delete it (to the Trash).</p>
       <form class="mail-form" id="mailForm" autocomplete="off">
         <label>Email provider<select id="mailProv">${opts}</select></label>
         <label>Your name <span class="hint">(shown on replies)</span><input id="mailName" type="text" maxlength="80" value="${esc(a?.name || '')}" placeholder="David Daniels"></label>
@@ -6433,6 +6433,8 @@
     const sig = body.querySelector('[data-rr-sig]') || [...body.querySelectorAll('p, div')].find(el => !el.querySelector('p, div, table') && (/^--\s*(\n|$)/.test(el.innerText || el.textContent) || /^\s*--\s*$/.test(el.textContent) || /^Sent from my \w+/i.test(el.textContent.trim())));
     if (sig && !sig.closest('details')) for (let n = sig; n; n = n.nextElementSibling) n.classList.add('mail-sig');
     // Newsletters: buttons, columns and the footer
+    // a link the cleaning took the address from (javascript:, data:) is just its words
+    body.querySelectorAll('a:not([href])').forEach(a => a.replaceWith(...a.childNodes));
     body.querySelectorAll('a[data-rr-btn]').forEach(a => a.classList.add('mail-btn'));
     body.querySelectorAll('[data-rr-cell]').forEach(td => { const a = td.querySelectorAll('a'); if (a.length === 1 && !td.querySelector('img') && a[0].textContent.trim() && td.textContent.trim() === a[0].textContent.trim() && a[0].textContent.trim().length <= 40) a[0].classList.add('mail-btn'); });
     body.querySelectorAll('[data-rr-att]').forEach(d => d.classList.add('mail-att'));

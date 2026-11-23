@@ -38,7 +38,7 @@ libc = "0.2"
 async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
 webpki-roots = "0.26"
-mail-parser = "0.11"
+mail-parser = { version = "0.11", features = ["full_encoding"] }
 
 dom_smoothie = "0.19.0"
 ammonia = "4.2.4"
