@@ -2434,8 +2434,16 @@ pub async fn site_post(id: Option<i64>, title: String, text: String, categories:
 /// Posts › Trash in WordPress, where you can restore it, until WordPress empties the trash (after 30 days).
 #[tauri::command]
 pub async fn site_post_trash(id: i64) -> Result<(), String> {
-    wp(reqwest::Method::DELETE, &format!("/wp/v2/posts/{id}"), None).await?;
-    Ok(())
+    let s = secret_get("wordpress").ok_or("Connect your site first.")?;
+    let req = wp_auth(client().request(reqwest::Method::DELETE, format!("{}/wp-json/wp/v2/posts/{id}", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"));
+    match call(req).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Already in the Trash, or deleted for good, on the site (say, in WordPress itself): it's gone either way.
+            let code = serde_json::from_str::<Value>(&e.1).map(|v| st(&v, "code")).unwrap_or_default();
+            if matches!(code.as_str(), "rest_already_trashed" | "rest_post_invalid_id") || e.0 == 410 { Ok(()) } else { Err(wp_fail(e)) }
+        }
+    }
 }
 
 /// Bring a post back out of the Trash as a draft (Undo after Delete).

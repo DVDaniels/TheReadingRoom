@@ -1026,6 +1026,7 @@
     if (v !== 'write' && document.body.classList.contains('wr-focus')) { document.body.classList.remove('wr-focus'); try { WR.focus = false; } catch {} }
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
+    if (S.view === 'write' && String(was) !== 'write') { try { wrLoad(); } catch {} } // drafts deleted or added in WordPress show up when you come back to Writing
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
     if (S.view !== 'videos') S.vchan = null;
     if (S.view !== 'myday') { MD.mode = null; MD.step = 0; } // the channel picked in Videos is just for that visit
@@ -2780,7 +2781,7 @@
   const WR_KIND = { note: 'Note', post: 'Post', weeknotes: 'Weeknotes' };
 
   async function wrLoad(force) {
-    if (!wrSite() || WR.busy || (!force && WR.at && Date.now() - WR.at < 5 * 60e3)) return;
+    if (!wrSite() || WR.busy || (!force && WR.at && Date.now() - WR.at < 60e3)) return;
     WR.busy = true;
     try {
       const [cats, drafts, recent, future] = await Promise.all([invoke('site_categories'), invoke('site_posts', { status: 'draft', perPage: 50 }),
@@ -3309,7 +3310,7 @@
   document.addEventListener('click', e => {
     if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
     const s = e.target.closest('[data-wrsub]');
-    if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
+    if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (WR.sub === 'drafts') wrLoad(); if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
     const b = e.target.closest('[data-wr]'); if (!b || !b.closest('.writing')) return;
     const k = b.dataset.wr, id = Number(b.dataset.id) || b.dataset.id;
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
@@ -3486,6 +3487,7 @@
     paint();
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) plusRefresh(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.view === 'write') wrLoad(); });
   document.addEventListener('click', e => { if (e.target.closest('[data-plus]')) openPlus(); });
   setTimeout(() => { paintPlusRow(); plusRefresh(); }, 1500);
 
