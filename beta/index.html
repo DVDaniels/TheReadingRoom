@@ -13,7 +13,8 @@
     .beta-shot { width: 100%; height: auto; margin: 12px 0 20px; }
     .beta-pair { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; }
     .beta-pair img { width: 30%; height: auto; border: 1px solid var(--line); border-radius: 24px; }
-    @media (max-width: 640px) { .beta-pair { flex-direction: column; } .beta-pair img { width: 70%; } }
+    .beta-card, .beta-pair img.beta-card { border: 0; border-radius: 16px; }
+    @media (max-width: 640px) { .beta-pair { flex-direction: column; } .beta-pair img { width: 70%; } .beta-shot.beta-card { display: none; } }
   </style>
 </head>
 <body>
@@ -69,6 +70,13 @@
         <div class="beta-pair">
           <img src="../assets/img/writing-iphone.jpg" width="780" height="1691" loading="lazy" alt="Writing on iPhone: the same post on the notebook page">
           <p class="muted">The same page on iPhone and iPad. Writing posts to your site only when you press Post, and you can hide the tab from the sidebar if you just want to read.</p>
+        </div>
+        <h3 class="beta-look">Your blog, by the numbers</h3>
+        <p class="muted">Writing also shows how your blog is doing, without opening a dashboard: visitors over the last four weeks and the posts read most, how many people follow your feed and in which apps, and the Google searches that bring people to you, with your spot in the results. It comes with The Reading Room Plus.</p>
+        <img class="beta-shot beta-card" src="../assets/img/stats-mac.jpg" width="1600" height="624" loading="lazy" alt="Your blog in Writing on the Mac: 1.8K visits in 28 days with a bar for each day and the posts read most, 312 RSS readers split by app, and 412 search clicks with the searches the site shows up for">
+        <div class="beta-pair">
+          <img class="beta-card" src="../assets/img/stats-iphone.jpg" width="700" height="1520" loading="lazy" alt="Your blog on iPhone: visitors, RSS readers and search, one above the other">
+          <p class="muted">The visitor and RSS numbers come from <a href="../plugin/">The Reading Room stats</a>, a free WordPress plugin, and they stay on your own site. Search numbers come from Google Search Console if your site already uses Google’s Site Kit plugin.</p>
         </div>
         <p class="muted">Version 1.2.8 is now on the App Store: My Day in four parts, Unfollow from someone’s page, one card per post on Mastodon and Bluesky, and more.</p>
         <p class="muted">Something not right? Send feedback from TestFlight; a screenshot helps.</p>
