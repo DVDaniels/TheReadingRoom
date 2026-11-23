@@ -1,0 +1,26 @@
+name: Plus subscription
+
+# Run by hand. check: state of Plus yearly. review: review note + review screenshot from appstore/plus/.
+# submit: send the subscription to App Review (the first one goes with the next app version).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [check, review, submit]
+        default: check
+
+jobs:
+  plus:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          python .github/scripts/asc_plus.py "${{ inputs.action }}"
