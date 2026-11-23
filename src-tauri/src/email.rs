@@ -408,12 +408,18 @@ pub fn parse(raw: &[u8], uid: &str) -> Option<Mail> {
         .map(|d| d.with_timezone(&chrono::Utc).to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     let text = m.body_text(0).map(|t| t.to_string()).unwrap_or_default();
-    let html = match m.body_html(0) {
-        // mail-parser makes HTML out of a text-only email too; use our own paragraphs for those
-        Some(h) if m.html_body_count() > 0 && m.html_part(0).map(|p| p.is_text_html()).unwrap_or(false) => h.to_string(),
-        _ => text_to_html(&text),
-    };
-    let summary: String = squash(if text.trim().is_empty() { &html } else { &text }).chars().take(240).collect();
+    let html = body(&m);
+    // A newsletter's hidden preview line is written to be the line under its subject; otherwise its first words
+    let pre = preheader(&html);
+    // (an HTML-only email's "text" is mail-parser's rough copy, which runs table cells together: use the HTML)
+    let html_only = m.text_part(0).map(|p| p.is_text_html()).unwrap_or(true);
+    let mut summary: String = if pre.chars().count() >= 25 { pre } else { squash(if text.trim().is_empty() || html_only { &html } else { &text }) }.chars().take(240).collect();
+    if summary.is_empty() {
+        // all pictures (a sale, an invitation): their descriptions say what it's about
+        static ALT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let alt = ALT.get_or_init(|| regex::Regex::new(r#"(?i)<img\b[^>]*\balt\s*=\s*"([^"]{4,200})""#).unwrap());
+        summary = alt.captures_iter(&html).map(|c| html_escape::decode_html_entities(&c[1]).trim().to_string()).filter(|a| !a.contains('.') || a.contains(' ')).collect::<Vec<_>>().join(" · ").chars().take(240).collect();
+    }
     let key = if message_id.is_empty() { format!("uid-{uid}") } else { message_id.clone() };
     Some(Mail {
         link: format!("email:{key}"),
@@ -436,17 +442,125 @@ fn squash(s: &str) -> String {
     let tags = TAGS.get_or_init(|| regex::Regex::new(r"(?s)<style.*?</style>|<[^>]+>").unwrap());
     let plain = html_escape::decode_html_entities(&tags.replace_all(s, " ")).to_string();
     let mut kept = Vec::new();
-    for l in plain.lines() {
+    let lines: Vec<&str> = plain.lines().collect();
+    for (k, l) in lines.iter().enumerate() {
         let t = l.trim();
-        // the email being answered starts here ("On Tue, Nov 17, Sam wrote:" / "-----Original Message-----")
-        if (t.starts_with("On ") && t.ends_with("wrote:")) || t.contains("Original Message-----") || t == "--" {
+        // the email being answered starts here ("On Tue, Nov 17, Sam wrote:" / "-----Original Message-----" /
+        // Outlook's "From: … Sent: …" block)
+        let outlook = t.starts_with("From:") && lines.iter().skip(k + 1).take(3).any(|n| n.trim_start().starts_with("Sent:") || n.trim_start().starts_with("Date:"));
+        if (t.starts_with("On ") && t.ends_with("wrote:")) || t.contains("Original Message-----") || t == "--" || outlook {
             break;
         }
         if !t.starts_with('>') {
-            kept.push(l);
+            kept.push(*l);
         }
     }
-    kept.join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
+    preview_tidy(&kept.join(" "))
+}
+
+/// Text for the line under a subject: no invisible spacer characters (newsletters pad their preview line with
+/// them), no "[image: …]" stand-ins, no "View this email in your browser" and no bare web addresses.
+fn preview_tidy(s: &str) -> String {
+    static JUNK: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let junk = JUNK.get_or_init(|| {
+        regex::Regex::new(r"(?i)\[image:[^\]]*\]|\b(view|read|open) (this|the|it|our)?\s*(email|post|newsletter|message|issue)?\s*(online|on the web|in (your |a |the )?(web )?browser)\b( at)?:?|<?https?://\S+>?").unwrap()
+    });
+    let visible: String = s.chars().filter(|c| !matches!(c, '\u{200b}'..='\u{200f}' | '\u{2060}'..='\u{2064}' | '\u{034f}' | '\u{00ad}' | '\u{feff}' | '\u{180e}')).collect();
+    let words = junk.replace_all(&visible, " ").split_whitespace().collect::<Vec<_>>().join(" ");
+    words.trim_start_matches(|c: char| c == '|' || c == '-' || c == '·' || c.is_whitespace()).to_string()
+}
+
+/// The hidden preview line at the top of a newsletter (shown by mail apps under the subject, never in the email).
+fn preheader(html: &str) -> String {
+    static PRE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let pre = PRE.get_or_init(|| {
+        regex::Regex::new(r#"(?is)<(div|span|p|td)\b[^>]*\bstyle\s*=\s*["'][^"']*(display\s*:\s*none|max-height\s*:\s*0|mso-hide\s*:\s*all)[^"']*["'][^>]*>(.*?)</(div|span|p|td)>"#).unwrap()
+    });
+    let Some(c) = pre.captures(html) else { return String::new() };
+    let inner = regex::Regex::new(r"<[^>]+>").unwrap().replace_all(&c[3], " ").to_string();
+    preview_tidy(&html_escape::decode_html_entities(&inner).replace('\u{a0}', " "))
+}
+
+/// What the email shows: its HTML (or its text made into paragraphs), every part of it in order (Apple Mail
+/// sends a message with a picture in the middle as text, picture, text), pictures sent in the email itself put
+/// where they belong, and a list of the files attached at the end.
+fn body(m: &mail_parser::Message) -> String {
+    use base64::Engine;
+    use mail_parser::{MimeHeaders, PartType};
+    const PICTURE_MAX: usize = 4 * 1024 * 1024;
+    let picture = |p: &mail_parser::MessagePart| -> Option<String> {
+        let ct = p.content_type()?;
+        let sub = ct.subtype().unwrap_or("").to_ascii_lowercase();
+        if !ct.ctype().eq_ignore_ascii_case("image") || !matches!(sub.as_str(), "png" | "jpeg" | "jpg" | "gif" | "webp" | "heic" | "heif" | "bmp") {
+            return None;
+        }
+        let b = p.contents();
+        (!b.is_empty() && b.len() <= PICTURE_MAX).then(|| format!("data:image/{sub};base64,{}", base64::engine::general_purpose::STANDARD.encode(b)))
+    };
+    let name = |p: &mail_parser::MessagePart| -> String {
+        p.attachment_name().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| {
+            if p.is_message() { "a forwarded email".into() } else { p.content_type().map(|c| format!("a {} file", c.subtype().unwrap_or(c.ctype()))).unwrap_or_else(|| "a file".into()) }
+        })
+    };
+    let img = |src: &str, alt: &str| format!(r#"<p><img src="{src}" alt="{}"></p>"#, html_escape::encode_double_quoted_attribute(alt));
+    let mut shown: HashSet<usize> = HashSet::new();
+    let rich = m.html_body.iter().any(|&i| m.parts.get(i as usize).map(|p| p.is_text_html()).unwrap_or(false));
+    let ids = if rich { &m.html_body } else { &m.text_body };
+    let mut html = String::new();
+    for &i in ids {
+        let Some(p) = m.parts.get(i as usize) else { continue };
+        match &p.body {
+            PartType::Html(h) => html.push_str(h),
+            // mail-parser makes HTML out of a text-only part too; use our own paragraphs for those
+            PartType::Text(t) => html.push_str(&text_to_html(t)),
+            _ => {
+                if let Some(src) = picture(p) {
+                    html.push_str(&img(&src, &name(p)));
+                    shown.insert(i as usize);
+                }
+            }
+        }
+        html.push('\n');
+    }
+    // <img src="cid:…">: a picture sent along with the email
+    if html.to_ascii_lowercase().contains("cid:") {
+        for (i, p) in m.parts.iter().enumerate() {
+            let Some(id) = p.content_id().map(|c| c.trim().trim_start_matches('<').trim_end_matches('>').to_string()).filter(|c| !c.is_empty()) else { continue };
+            let pat = regex::Regex::new(&format!(r#"(?i)cid:{}"#, regex::escape(&id))).unwrap();
+            if !pat.is_match(&html) {
+                continue;
+            }
+            if let Some(src) = picture(p) {
+                html = pat.replace_all(&html, regex::NoExpand(&src)).into_owned();
+                shown.insert(i);
+            }
+        }
+    }
+    // Files attached: pictures are shown, anything else is listed (the app doesn't keep attachments)
+    let mut files = vec![];
+    for &i in &m.attachments {
+        let i = i as usize;
+        let Some(p) = m.parts.get(i) else { continue };
+        if shown.contains(&i) || p.is_multipart() {
+            continue;
+        }
+        if let Some(src) = picture(p) {
+            html.push_str(&img(&src, &name(p)));
+            continue;
+        }
+        let kb = p.len().div_ceil(1024);
+        let size = if kb >= 1024 { format!("{:.1} MB", kb as f64 / 1024.0) } else { format!("{kb} KB") };
+        files.push(format!("<li>{} <small>({size})</small></li>", html_escape::encode_text(&name(p))));
+    }
+    if !files.is_empty() {
+        html.push_str(&format!(
+            r#"<div data-rr-att="1"><p><b>{}</b></p><ul>{}</ul><p>Open this email in your email app to get {}.</p></div>"#,
+            if files.len() == 1 { "1 file attached" } else { "Files attached" },
+            files.join(""),
+            if files.len() == 1 { "it" } else { "them" }
+        ));
+    }
+    html
 }
 
 pub fn text_to_html(text: &str) -> String {
@@ -768,6 +882,39 @@ mod tests {
         assert!(m.html.contains("<b>rich</b>"), "{}", m.html);
         assert_eq!(m.summary, "plain");
         assert!(m.link.starts_with("email:uid-1:6"));
+    }
+
+    #[test]
+    fn keeps_every_part_pictures_and_files() {
+        // Apple Mail: text, a picture, more text; and a PDF
+        let raw = b"From: a@b.c\r\nSubject: Photo\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/html\r\n\r\n<div>Before</div>\r\n--x\r\nContent-Type: image/png\r\nContent-Disposition: inline; filename=a.png\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--x\r\nContent-Type: text/html\r\n\r\n<div>After</div>\r\n--x\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=hours.pdf\r\n\r\n%PDF\r\n--x--\r\n";
+        let m = parse(raw, "1:7").unwrap();
+        let (b, p, a) = (m.html.find("Before").unwrap(), m.html.find("data:image/png;base64,").unwrap(), m.html.find("After").unwrap());
+        assert!(b < p && p < a, "{}", m.html);
+        assert!(m.html.contains("data-rr-att") && m.html.contains("hours.pdf"), "{}", m.html);
+        let clean = crate::article::clean_mail(&m.html);
+        assert!(clean.contains(r#"src="data:image/png;base64,"#) && clean.contains("After") && clean.contains("data-rr-att"), "{clean}");
+    }
+
+    #[test]
+    fn shows_pictures_sent_with_the_email() {
+        let raw = b"From: a@b.c\r\nSubject: Sunset\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=x\r\n\r\n--x\r\nContent-Type: text/html\r\n\r\n<html><head><title>Sunset</title></head><body><p>Look!</p><img src=\"cid:sun@x\"></body></html>\r\n--x\r\nContent-Type: image/jpeg\r\nContent-ID: <sun@x>\r\nContent-Transfer-Encoding: base64\r\n\r\n/9j/4AAQ\r\n--x--\r\n";
+        let m = parse(raw, "1:8").unwrap();
+        let clean = crate::article::clean_mail(&m.html);
+        assert!(clean.contains(r#"<img src="data:image/jpeg;base64,"#), "{clean}");
+        assert!(!clean.contains("Sunset"), "the title isn't part of the email: {clean}");
+        // data: never survives as a link
+        assert!(!crate::article::clean_mail(r#"<a href="data:text/html,hi">x</a>"#).contains("data:"));
+    }
+
+    #[test]
+    fn previews_read_well() {
+        let raw = "From: n@x.c\r\nSubject: News\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<div style=\"display:none;max-height:0\">Why I quit the algorithm and read blogs&nbsp;\u{34f}\u{200c}&nbsp;\u{34f}\u{200c}</div><p><a href=\"https://x.c/p\">View in browser</a></p><p>Hello</p>";
+        assert_eq!(parse(raw.as_bytes(), "1:9").unwrap().summary, "Why I quit the algorithm and read blogs");
+        let raw = b"From: a@b.c\r\nSubject: Re\r\nContent-Type: text/plain\r\n\r\nYes, Saturday works.\r\n\r\nFrom: David <d@x.c>\r\nSent: Friday\r\nTo: Lee\r\n\r\nAre you coming?\r\n";
+        assert_eq!(parse(raw, "1:10").unwrap().summary, "Yes, Saturday works.");
+        let raw = b"From: a@b.c\r\nSubject: Hi\r\nContent-Type: text/plain\r\n\r\nView this post on the web at https://x.substack.com/p/a\r\n\r\nHello friends [image: photo.jpg] here.\r\n";
+        assert_eq!(parse(raw, "1:11").unwrap().summary, "Hello friends here.");
     }
 
     #[test]

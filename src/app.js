@@ -3813,7 +3813,7 @@
     return t.toLocaleDateString([], t.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
   }
   // The line under an email's subject: its own words, without the email it answers
-  const mailSnip = t => (t || '').replace(/\s(On\s.{4,200}?\swrote:|-{3,}\s*Original Message|>\s).*$/s, '').trim();
+  const mailSnip = t => (t || '').replace(/\s(On\s.{4,200}?\swrote:|-{3,}\s*Original Message).*$/s, '').trim();
   function mailRow(it) {
     const from = srcLabel(it);
     return `<article class="story mail-row${it.read ? ' read' : ''}${S.selId === it.id ? ' sel' : ''}${S.readerId === it.id ? ' open' : ''}" data-id="${esc(it.id)}">
@@ -6159,8 +6159,17 @@
     const empty = el => !el.textContent.trim() && !el.querySelector('img, a, hr');
     body.querySelectorAll('tr').forEach(tr => { if (empty(tr)) tr.remove(); });
     body.querySelectorAll('td, th').forEach(td => { if (empty(td)) td.remove(); });
-    const first = [...body.querySelectorAll('p, div, span, td, h1, h2')].find(el => el.textContent.trim());
-    if (first && it && first.textContent.trim() === headline(it).trim() && !first.querySelector('img')) first.remove();
+    // Spacer paragraphs (Outlook's <p>&nbsp;</p>, Gmail's <div><br></div>): paragraphs already have room
+    // between them, so a spacer paragraph goes; a run of spacer lines keeps one
+    const blank = el => !el.textContent.replace(/[\s\u00a0\u200b-\u200f\u034f]/g, '') && !el.querySelector('img, hr, table, a, video');
+    body.querySelectorAll('p').forEach(p => { if (blank(p)) p.remove(); });
+    body.querySelectorAll('div').forEach(d => { if (blank(d) && d.previousElementSibling && blank(d.previousElementSibling) && d.previousElementSibling.tagName === 'DIV') d.remove(); });
+    // "View in browser" / "View this email online": a quiet link, not the first thing you read
+    body.querySelectorAll('a').forEach(a => { if (/^\s*(view|read|open)\b.{0,30}\b(online|on the web|in (your |a |the )?(web )?browser|web version)\s*$/i.test(a.textContent)) { const blk = a.closest('p, td, div'); (blk && blk.textContent.trim().length < 120 ? blk : a).classList.add('mail-web'); } });
+    // The subject repeated as the email's own heading (near the top)
+    const tops = [...body.querySelectorAll('p, div, span, td, h1, h2, h3')].filter(el => el.textContent.trim() && !el.querySelector('p, div, td, h1, h2, h3') && !el.closest('.mail-web')).slice(0, 4);
+    const same = it && tops.find(el => el.textContent.trim().toLowerCase() === headline(it).trim().toLowerCase() && !el.querySelector('img'));
+    if (same) same.remove();
     // Plain text: "> " lines are a quote; lines cut at about 72 characters go back into paragraphs
     body.querySelectorAll('p').forEach(p => {
       if (!p.querySelector('br') || p.querySelector('table, div, p')) return;
@@ -6179,12 +6188,16 @@
     // The email being answered: from "On … wrote:" (or "Original Message") to the end, folded away
     const fold = start => {
       if (!start?.parentNode || start.closest('details')) return;
+      // start from the outermost block the marker begins (Gmail's quote box, Outlook's divider), so the
+      // email being answered goes with it, not just the line that introduces it
+      for (let up = start.parentElement; up && up.parentNode && up !== body && up.firstElementChild === start
+        && up.textContent.trim().startsWith(start.textContent.trim().slice(0, 40)); up = up.parentElement) start = up;
       const det = document.createElement('details'); det.className = 'mail-quote';
       det.innerHTML = '<summary>Show the earlier email</summary>';
       start.parentNode.insertBefore(det, start);
       for (let n = start; n;) { const next = n.nextSibling; det.appendChild(n); n = next; }
     };
-    const marker = [...body.querySelectorAll('p, div, span, td')].find(el => el.textContent.length < 400 && /^\s*(On\s.{4,200}\swrote:|-{3,}\s*Original Message\s*-{3,})/i.test(el.textContent) && ![...el.children].some(c => /^(P|DIV|TABLE)$/.test(c.tagName)));
+    const marker = [...body.querySelectorAll('p, div, span, td')].find(el => el.textContent.length < 400 && /^\s*(On\s.{4,200}\swrote:|-{3,}\s*Original Message\s*-{3,}|From:\s.{3,200}\s(Sent|Date):\s)/is.test(el.textContent) && ![...el.children].some(c => /^(P|DIV|TABLE)$/.test(c.tagName)));
     if (marker) fold(marker);
     else if (it && /^(re|aw|sv|antw)\s*:/i.test(headline(it))) body.querySelectorAll('blockquote').forEach(b => { if (!b.parentElement?.closest('blockquote, details')) fold(b); });
     // The signature: after a "-- " line, or a "Sent from my …" line
@@ -6192,6 +6205,8 @@
     if (sig && !sig.closest('details')) for (let n = sig; n; n = n.nextElementSibling) n.classList.add('mail-sig');
     // Newsletters: buttons, columns and the footer
     body.querySelectorAll('a[data-rr-btn]').forEach(a => a.classList.add('mail-btn'));
+    body.querySelectorAll('[data-rr-cell]').forEach(td => { const a = td.querySelectorAll('a'); if (a.length === 1 && !td.querySelector('img') && a[0].textContent.trim() && td.textContent.trim() === a[0].textContent.trim() && a[0].textContent.trim().length <= 40) a[0].classList.add('mail-btn'); });
+    body.querySelectorAll('[data-rr-att]').forEach(d => d.classList.add('mail-att'));
     body.querySelectorAll('tr').forEach(tr => {
       const cells = [...tr.children].filter(c => /^T[DH]$/.test(c.tagName));
       if (cells.length >= 2 && cells.filter(c => c.textContent.trim().length > 30 || c.querySelector('img')).length >= 2) tr.classList.add('mail-cols');
@@ -6241,7 +6256,11 @@
     body.querySelectorAll('img').forEach(img => {
       img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
       // A picture that can't load leaves no empty frame behind (nor an empty figure around it).
-      const drop = () => { const fig = img.closest('figure'); img.remove(); if (fig && !fig.querySelector('img, video')) fig.remove(); };
+      const drop = () => {
+        const fig = img.closest('figure'), alt = (img.getAttribute('alt') || '').trim();
+        if (isMail && alt.length > 3 && !(Number(img.getAttribute('width')) > 0 && Number(img.getAttribute('width')) < 100) && !/^[\w-]+\.(jpe?g|png|gif|webp|heic)$/i.test(alt) && !/^(logo|image|photo|picture|spacer)$/i.test(alt)) { const t = document.createElement('span'); t.className = 'mail-alt'; t.textContent = alt; img.replaceWith(t); return; }
+        img.remove(); if (fig && !fig.querySelector('img, video')) fig.remove();
+      };
       if (!img.getAttribute('src') && !img.getAttribute('srcset')) drop(); else img.addEventListener('error', drop, { once: true });
     });
     for (const h of S.highlights.filter(h => h.item_id === S.readerId)) wrapHighlight(body, h);

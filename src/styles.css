@@ -2725,3 +2725,11 @@ html[data-theme="dark"] .writing .wr-new.b-panel { --nb-paper: #1C1F24; --nb-edg
 .writing .wr-steps-alt { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--b-line, var(--line)); font-size: 12.5px; color: var(--b-soft, var(--muted)); }
 .writing .wr-steps-alt .linkish { font-size: inherit; }
 #roundupPanel .wr-steps-k { margin: 0 0 -8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+
+/* Email: files attached (listed; the app doesn't keep them), a picture's description when it can't load,
+   and the "View in browser" line made quiet */
+.prose.mail-body .mail-att { margin: 1.6em 0 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; font-family: var(--font-ui); font-size: 14px; }
+.prose.mail-body .mail-att p { margin: 0 0 4px; } .prose.mail-body .mail-att p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.prose.mail-body .mail-att ul { margin: 4px 0; padding-left: 20px; } .prose.mail-body .mail-att small { color: var(--muted); }
+.prose.mail-body .mail-alt { display: inline-block; margin: 4px 0; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-style: italic; }
+.prose.mail-body .mail-web, .prose.mail-body .mail-web a { font-family: var(--font-ui); font-size: 12px !important; color: var(--muted) !important; }

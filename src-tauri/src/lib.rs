@@ -597,9 +597,13 @@ fn email_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
             link TEXT PRIMARY KEY, uid TEXT NOT NULL DEFAULT '', from_name TEXT NOT NULL DEFAULT '',
             from_addr TEXT NOT NULL DEFAULT '', reply_to TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '',
             refs TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL DEFAULT '');
-         CREATE INDEX IF NOT EXISTS email_meta_uid ON email_meta(uid);",
+         CREATE INDEX IF NOT EXISTS email_meta_uid ON email_meta(uid);
+         CREATE TABLE IF NOT EXISTS email_parsed (uid TEXT PRIMARY KEY, v INTEGER NOT NULL);",
     )
 }
+/// How the app reads an email: raise it when that improves, and the emails still in the inbox are read again
+/// (keeping read marks). 2: every part, pictures sent in the email, attached files listed, newsletter previews.
+const EMAIL_PARSE: i64 = 2;
 
 fn email_feed(conn: &rusqlite::Connection) -> Result<db::Feed, String> {
     let id = match db::feeds(conn).map_err(err)?.into_iter().find(|f| f.url == email::FEED) {
@@ -663,7 +667,8 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
         let conn = state.db.lock().unwrap();
         email_table(&conn).map_err(err)?;
         // an email counts as fetched only while its text is still here (else it's downloaded again)
-        let known = uids(&conn, "SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link WHERE COALESCE(i.content, '') <> ''")?;
+        // (read again when the app has since learned to read email better)
+        let known = uids(&conn, &format!("SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link JOIN email_parsed p ON p.uid = m.uid AND p.v >= {EMAIL_PARSE} WHERE COALESCE(i.content, '') <> ''"))?;
         let seen = uids(&conn, "SELECT m.uid FROM email_meta m JOIN items i ON i.link = m.link")?;
         (known, seen)
     };
@@ -717,7 +722,11 @@ async fn email_refresh(app: AppHandle, state: State<'_, Shared>) -> Result<serde
             let id: Option<String> = conn.query_row("SELECT id FROM items WHERE link=?1 LIMIT 1", [&m.link], |r| r.get(0)).ok();
             if let Some(id) = id {
                 db::cache_article(&conn, &id, &article::clean_mail(&m.html), &m.from_name).map_err(err)?;
+                if !m.summary.is_empty() {
+                    conn.execute("UPDATE items SET summary=?1 WHERE id=?2", rusqlite::params![m.summary, id]).map_err(err)?;
+                }
             }
+            conn.execute("INSERT OR REPLACE INTO email_parsed(uid, v) VALUES (?1, ?2)", rusqlite::params![m.uid, EMAIL_PARSE]).map_err(err)?;
             conn.execute(
                 "INSERT OR REPLACE INTO email_meta(link, uid, from_name, from_addr, reply_to, message_id, refs, subject) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                 rusqlite::params![m.link, m.uid, m.from_name, m.from_addr, m.reply_to, m.message_id, m.references, m.subject],

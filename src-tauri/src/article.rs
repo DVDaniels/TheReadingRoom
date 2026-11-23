@@ -170,7 +170,9 @@ pub fn clean_mail(html: &str) -> String {
             || (style.contains("font-size:0") && !style.contains("font-size:0."))
             || style.contains("height:0;") && style.contains("overflow:hidden");
         let button = name == "a" && style.contains("padding") && (style.contains("background") || style.contains("border"));
-        let mark = if hidden { " data-rr-hide=\"1\"" } else if button { " data-rr-btn=\"1\"" } else { "" };
+        // a coloured table cell around a link is how Mailchimp and others draw a button
+        let cell = (name == "td" || name == "th") && style.contains("background") && !style.contains("background-color:#fff") && !style.contains("background-color:#ffffff") && !style.contains("background:#fff");
+        let mark = if hidden { " data-rr-hide=\"1\"" } else if button { " data-rr-btn=\"1\"" } else if cell { " data-rr-cell=\"1\"" } else { "" };
         format!("<{}{}style={}{}{}>", &c[1], &c[2], &c[3], &c[4], mark)
     });
     let mut b = ammonia::Builder::default();
@@ -178,10 +180,19 @@ pub fn clean_mail(html: &str) -> String {
         .add_tag_attributes("img", ["srcset", "sizes", "loading"])
         .add_tag_attributes("source", ["srcset", "type", "media"])
         .add_tag_attributes("time", ["datetime"])
-        .add_generic_attributes(["data-rr-hide", "data-rr-btn", "data-rr-sig"])
+        .add_generic_attributes(["data-rr-hide", "data-rr-btn", "data-rr-sig", "data-rr-cell", "data-rr-att"])
         .rm_tags(["mark"])
+        .clean_content_tags(HashSet::from(["script", "style", "title"])) // a <title> in the head isn't part of the email
         .link_rel(Some("noopener noreferrer"))
-        .url_schemes(HashSet::from(["http", "https", "mailto"]))
+        // data: only for pictures sent inside the email (parse puts them there), never for links
+        .url_schemes(HashSet::from(["http", "https", "mailto", "data"]))
+        .attribute_filter(|el, attr, value| {
+            if value.trim_start().get(..5).is_some_and(|v| v.eq_ignore_ascii_case("data:")) && !(el == "img" && attr == "src" && value.starts_with("data:image/")) {
+                None
+            } else {
+                Some(value.into())
+            }
+        })
         .url_relative(ammonia::UrlRelative::Deny);
     b.clean(&mark_videos(&marked)).to_string()
 }
