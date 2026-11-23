@@ -42,7 +42,19 @@ def show():
     return s, shot
 
 
+def group_name():
+    """The subscription group needs a display name (what people see in their Subscriptions list)."""
+    grp = call("GET", f"/subscriptions/{SUB}/group")["data"]
+    have = call("GET", f"/subscriptionGroups/{grp['id']}/subscriptionGroupLocalizations")["data"]
+    if not any(l["attributes"].get("locale") == "en-US" for l in have):
+        call("POST", "/subscriptionGroupLocalizations", json={"data": {"type": "subscriptionGroupLocalizations",
+             "attributes": {"locale": "en-US", "name": "The Reading Room Plus"},
+             "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": grp["id"]}}}}})
+        note("Group name", "en-US: The Reading Room Plus")
+
+
 def review():
+    group_name()
     call("PATCH", f"/subscriptions/{SUB}", json={"data": {"type": "subscriptions", "id": SUB,
          "attributes": {"reviewNote": open("appstore/plus/review-note.txt").read().strip()}}})
     note("Review note", "set")
