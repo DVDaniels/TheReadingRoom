@@ -3734,6 +3734,41 @@
     requestAnimationFrame(() => el.querySelectorAll('textarea').forEach(growArea));
     return el;
   }
+  /** Let a sheet float over the page instead of blocking it: drag it by its .sheet-grip, double-click the grip to
+   *  put it back in the middle. Where it was left is remembered under `key`. Part of the grip always stays on screen. */
+  function floatSheet(el, key) {
+    el.classList.add('floating');
+    const sh = el.querySelector('.sheet'), grip = el.querySelector('.sheet-grip');
+    let pos = { x: 0, y: 0 }; try { pos = { x: 0, y: 0, ...JSON.parse(store.get(key) || '{}') }; } catch {}
+    const place = (x, y, fit) => {
+      sh.style.transform = ''; const r = sh.getBoundingClientRect(); // where it sits in the middle
+      const keep = 72, vw = innerWidth, vh = innerHeight;
+      x = Math.min(Math.max(x, keep - r.right), vw - keep - r.left);
+      if (fit) x = Math.min(Math.max(x, 8 - r.left), vw - 8 - r.right), y = Math.min(y, vh - 8 - r.bottom); // all of it on screen
+      y = Math.min(Math.max(y, -r.top), vh - 56 - r.top);
+      pos = { x: Math.round(x), y: Math.round(y) };
+      sh.style.transform = pos.x || pos.y ? `translate(${pos.x}px, ${pos.y}px)` : '';
+    };
+    const save = () => store.set(key, pos.x || pos.y ? JSON.stringify(pos) : '');
+    requestAnimationFrame(() => place(pos.x, pos.y));
+    if (!grip) return;
+    grip.onpointerdown = e => {
+      if (e.button || e.target.closest('button, a, input')) return;
+      e.preventDefault();
+      const sx = e.clientX - pos.x, sy = e.clientY - pos.y;
+      grip.setPointerCapture(e.pointerId); sh.classList.add('dragging');
+      grip.onpointermove = m => place(m.clientX - sx, m.clientY - sy);
+      grip.onpointerup = grip.onpointercancel = () => { grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; sh.classList.remove('dragging'); save(); };
+    };
+    grip.ondblclick = e => { if (e.target.closest('button')) return; place(0, 0); save(); };
+    el._refloat = () => place(pos.x, pos.y);
+    // change the sheet's size (tuck it away, open it again) without its top bar jumping: it stays where it was put
+    el._resize = (change, fit) => {
+      const a = sh.getBoundingClientRect(); change(); sh.style.transform = '';
+      const b = sh.getBoundingClientRect(); place(a.left - b.left, a.top - b.top, fit); save();
+    };
+    if (!el.dataset.floatResize) { el.dataset.floatResize = '1'; addEventListener('resize', () => { if (!el.hidden) el._refloat?.(); }); }
+  }
   async function openAccounts() {
     await loadAccounts();
     const el = sheet('socialPanel', accountsHtml(), 'Your site, Mastodon and Bluesky');
@@ -4540,7 +4575,10 @@
     const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
     const f = it && feedById(it.feed_id);
     let photo = '';
-    const el = sheet('notePanel', `<h2>${it ? 'Note about this' : 'New note'}</h2>
+    const el = sheet('notePanel', `<div class="sheet-grip" id="nGrip" title="Drag to move the note. Double-click to put it back in the middle.">
+        <span class="grip-dots" aria-hidden="true"></span><div class="grip-t"><h2>${it ? 'Note about this' : 'New note'}</h2>
+        <small>Drag here to move it out of the way. The page behind still works.</small></div>
+        <button class="b-link n-fold" id="nFold" type="button">Tuck away</button></div>
       ${it ? `<div class="c-card">${isWeb(it.image) ? `<img src="${esc(it.image)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(headline(it))}</b><span>${esc(srcLabel(it) || f?.title || '')}</span></div></div>` : ''}
       <input class="n-field n-title" id="nTitle" type="text" placeholder="Title (optional)" maxlength="200" autocomplete="off">
       <textarea id="nText" rows="5" placeholder="${it ? 'What did you think? Mention the writer to let them know.' : 'What’s on your mind?'}"></textarea>
@@ -4603,10 +4641,18 @@
       $('nNote').innerHTML = 'Your unfinished note is back. <button class="b-link" id="nDiscard" type="button">Start over</button>';
       $('nDiscard').onclick = () => { forget(); $('nTitle').value = text.value = $('nAlt').value = ''; photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; say(''); count(); text.focus(); };
     }
-    // Closing (the button, or a tap outside) keeps the note for next time
+    // The note floats: drag it aside and the video or article behind it still plays, scrolls and takes clicks
+    // (David, Nov 24). So a tap outside no longer closes it; Close (or Escape) does, and keeps the note for next time.
+    floatSheet(el, 'notePos');
+    const fold = on => {
+      el._resize(() => { el.querySelector('.sheet').classList.toggle('folded', on); $('nFold').textContent = on ? 'Open' : 'Tuck away'; }, !on);
+      if (!on) text.focus();
+    };
+    $('nFold').onclick = () => fold(!el.querySelector('.sheet').classList.contains('folded'));
     const closed = () => { if (store.get(dkey) || NOTE_PH.has(dkey)) status('Your note is kept. Open Note again to pick up where you left off.'); };
     $('nCancel').onclick = () => { el.hidden = true; closed(); };
-    el.onmousedown = e => { if (e.target === el) setTimeout(closed, 0); };
+    el.onmousedown = null;
+    el.onkeydown = e => { if (e.key === 'Escape') { e.stopPropagation(); el.hidden = true; closed(); } };
     const go = async draft => {
       const words = text.value.trim(), alt = $('nAlt').value.trim(), picks = boxes();
       if (photo && !alt && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('nAlt').focus(); return; }
