@@ -1,0 +1,243 @@
+{
+ "version": 1,
+ "updated": "2026-11-24",
+ "circles": [
+  {
+   "id": "web",
+   "name": "The web and design",
+   "about": "People who build websites and write about how the web works. They quote each other almost every week.",
+   "writers": [
+    {
+     "name": "Jeremy Keith",
+     "site": "https://adactio.com/",
+     "feed": "https://adactio.com/journal/rss",
+     "about": "Journal of a web developer in Brighton, since 2001."
+    },
+    {
+     "name": "Jim Nielsen",
+     "site": "https://blog.jim-nielsen.com/",
+     "feed": "https://blog.jim-nielsen.com/feed.xml",
+     "about": "Short, thoughtful posts about the web, design and making things."
+    },
+    {
+     "name": "Chris Coyier",
+     "site": "https://chriscoyier.net/",
+     "feed": "https://chriscoyier.net/feed/",
+     "about": "Personal blog of the CodePen co-founder."
+    },
+    {
+     "name": "Dave Rupert",
+     "site": "https://daverupert.com/",
+     "feed": "https://daverupert.com/atom.xml",
+     "about": "Web developer and podcaster; notes on building and life."
+    },
+    {
+     "name": "Ethan Marcotte",
+     "site": "https://ethanmarcotte.com/",
+     "feed": "https://ethanmarcotte.com/wrote/feed.xml",
+     "about": "The designer who coined “responsive web design.”"
+    },
+    {
+     "name": "Brad Frost",
+     "site": "https://bradfrost.com/",
+     "feed": "https://bradfrost.com/feed/",
+     "about": "Design systems, the web, and making music."
+    },
+    {
+     "name": "Eric Meyer",
+     "site": "https://meyerweb.com/",
+     "feed": "https://meyerweb.com/eric/thoughts/feed/",
+     "about": "CSS, the web platform and life, since the 1990s."
+    },
+    {
+     "name": "Sophie Koonin",
+     "site": "https://localghost.dev/",
+     "feed": "https://localghost.dev/feed.xml",
+     "about": "Front-end engineering, the indie web and side projects."
+    }
+   ]
+  },
+  {
+   "id": "small",
+   "name": "The small web",
+   "about": "Personal sites, blogrolls and the indie web. A good place to start if you want a blog of your own.",
+   "writers": [
+    {
+     "name": "Kev Quirk",
+     "site": "https://kevquirk.com/",
+     "feed": "https://kevquirk.com/feed",
+     "about": "A personal blog about the small web, technology and life."
+    },
+    {
+     "name": "Robb Knight",
+     "site": "https://rknight.me/",
+     "feed": "https://rknight.me/subscribe/posts/rss.xml",
+     "about": "Small tools and notes for the independent web."
+    },
+    {
+     "name": "Dan Q",
+     "site": "https://danq.me/",
+     "feed": "https://danq.me/feed/",
+     "about": "A long-running personal blog: geocaching, code and everything else."
+    },
+    {
+     "name": "Tracy Durnell",
+     "site": "https://tracydurnell.com/",
+     "feed": "https://tracydurnell.com/feed/",
+     "about": "Weeknotes and a “mind garden” of ideas, books and making."
+    },
+    {
+     "name": "Chris Aldrich",
+     "site": "https://boffosocko.com/",
+     "feed": "https://boffosocko.com/feed/",
+     "about": "IndieWeb notes, reading and commonplace books."
+    },
+    {
+     "name": "Ton Zijlstra",
+     "site": "https://www.zylstra.org/blog/",
+     "feed": "https://www.zylstra.org/blog/feed/",
+     "about": "Notes on networks, knowledge work and the open web."
+    },
+    {
+     "name": "Lou Plummer",
+     "site": "https://amerpie.lol/",
+     "about": "Mac tips, music and the small web."
+    },
+    {
+     "name": "David Daniels",
+     "site": "https://daviddaniels.com/",
+     "feed": "https://daviddaniels.com/feed/",
+     "about": "Makes The Reading Room. Personal essays since 2001, and happy to answer anyone new to blogging.",
+     "maker": true
+    }
+   ]
+  },
+  {
+   "id": "tech",
+   "name": "Tech, written by people",
+   "about": "AI, platforms and the open web, from people rather than outlets.",
+   "writers": [
+    {
+     "name": "Simon Willison",
+     "site": "https://simonwillison.net/",
+     "feed": "https://simonwillison.net/atom/everything/",
+     "about": "AI, open source and data, with links to everyone worth reading."
+    },
+    {
+     "name": "Molly White",
+     "site": "https://www.mollywhite.net/",
+     "feed": "https://www.mollywhite.net/feed/feed.xml",
+     "about": "Crypto, tech power and the open web, in short notes and long posts."
+    },
+    {
+     "name": "Ben Werdmuller",
+     "site": "https://werd.io/",
+     "about": "Tech, media and the open social web; weekly notable links."
+    },
+    {
+     "name": "Anil Dash",
+     "site": "https://www.anildash.com/",
+     "feed": "https://www.anildash.com/feed.xml",
+     "about": "Essays on tech, culture and making the web humane."
+    },
+    {
+     "name": "Cory Doctorow",
+     "site": "https://pluralistic.net/",
+     "feed": "https://pluralistic.net/feed/",
+     "about": "Pluralistic: a daily post on tech, power and the internet."
+    },
+    {
+     "name": "Matt Webb",
+     "site": "https://interconnected.org/home/",
+     "feed": "https://interconnected.org/home/feed",
+     "about": "Ideas about technology, design and the near future."
+    }
+   ]
+  },
+  {
+   "id": "apple",
+   "name": "Apple and the Mac",
+   "about": "Apple writers who link to and answer each other every day.",
+   "writers": [
+    {
+     "name": "John Gruber",
+     "site": "https://daringfireball.net/",
+     "feed": "https://daringfireball.net/feeds/main",
+     "about": "Daring Fireball: Apple, design and tech, since 2002."
+    },
+    {
+     "name": "Jason Snell",
+     "site": "https://sixcolors.com/",
+     "feed": "https://sixcolors.com/feed/",
+     "about": "Six Colors: Apple news and reviews."
+    },
+    {
+     "name": "Michael Tsai",
+     "site": "https://mjtsai.com/blog/",
+     "feed": "https://mjtsai.com/blog/feed/",
+     "about": "Collects what everyone is saying about Apple and software, quotes and all."
+    },
+    {
+     "name": "Manton Reece",
+     "site": "https://www.manton.org/",
+     "feed": "https://www.manton.org/feed.xml",
+     "about": "Founder of Micro.blog; short posts on the indie web and Apple."
+    },
+    {
+     "name": "Matt Birchler",
+     "site": "https://birchtree.me/",
+     "feed": "https://birchtree.me/rss/",
+     "about": "Apps, tech and design, from a product designer."
+    },
+    {
+     "name": "Riccardo Mori",
+     "site": "https://morrick.me/",
+     "feed": "https://morrick.me/feed",
+     "about": "Thoughtful essays on Apple, software and design."
+    }
+   ]
+  },
+  {
+   "id": "ideas",
+   "name": "Books, ideas and making",
+   "about": "Writers, artists and readers who share what they are reading and making.",
+   "writers": [
+    {
+     "name": "Austin Kleon",
+     "site": "https://austinkleon.com/",
+     "feed": "https://austinkleon.com/feed/",
+     "about": "Notes on creativity, reading and making things."
+    },
+    {
+     "name": "Robin Sloan",
+     "site": "https://www.robinsloan.com/",
+     "feed": "https://www.robinsloan.com/feed.xml",
+     "about": "A novelist’s notes on books, media and technology."
+    },
+    {
+     "name": "Craig Mod",
+     "site": "https://craigmod.com/",
+     "feed": "https://craigmod.com/index.xml",
+     "about": "Walking, books and publishing, from Japan."
+    },
+    {
+     "name": "Jason Kottke",
+     "site": "https://kottke.org/",
+     "about": "kottke.org: the best of the web, since 1998."
+    },
+    {
+     "name": "Seth Godin",
+     "site": "https://seths.blog/",
+     "feed": "https://seths.blog/feed/",
+     "about": "A short daily post about marketing, work and generosity."
+    },
+    {
+     "name": "Tracy Durnell",
+     "site": "https://tracydurnell.com/",
+     "feed": "https://tracydurnell.com/feed/",
+     "about": "Weeknotes and a “mind garden” of ideas, books and making."
+    }
+   ]
+  }
+ ]
+}
