@@ -30,7 +30,7 @@ fn name(url: &str) -> String {
 
 fn is_streaming_site(url: &str) -> bool {
     let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_ascii_lowercase())).unwrap_or_default();
-    ["youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com", "vimeo.com", "player.vimeo.com", "tiktok.com"].contains(&host.as_str())
+    ["youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com", "vimeo.com", "player.vimeo.com", "tiktok.com", "rumble.com"].contains(&host.as_str())
 }
 
 #[derive(Serialize, Clone)]

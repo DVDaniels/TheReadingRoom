@@ -1,6 +1,7 @@
 //! Following people wherever they post: turn a Mastodon handle, a Bluesky profile, a YouTube channel or an
 //! Apple Podcasts link into the feed behind it. Every one of these services already publishes RSS;
-//! people just don't know where to find it.
+//! people just don't know where to find it. Rumble is the exception: it has no feeds, so a Rumble channel
+//! is followed through Open RSS (openrss.org, a nonprofit that makes feeds for sites without them).
 
 use regex::Regex;
 use std::sync::OnceLock;
@@ -54,6 +55,10 @@ pub fn plan(input: &str) -> Plan {
                 }
                 // @handle, /c/ and /user/ pages name their feed; the page itself is tried last
             }
+            // rumble.com/c/Name, rumble.com/user/Name or rumble.com/Name → its feed from Open RSS
+            "rumble.com" if !segs.is_empty() && !is_rumble_video(&with_scheme) && !RUMBLE_PAGES.contains(&segs[0]) => {
+                tries.push(format!("https://openrss.org/rumble.com/{}", segs.join("/")));
+            }
             "medium.com" if segs.first().is_some_and(|s| s.starts_with('@')) => {
                 tries.push(format!("https://medium.com/feed/{}", segs[0]));
             }
@@ -71,6 +76,43 @@ pub fn plan(input: &str) -> Plan {
     }
     tries.push(with_scheme);
     Plan { tries, podcast_id }
+}
+
+/// Rumble's own pages, which aren't channels.
+const RUMBLE_PAGES: [&str; 9] = ["category", "videos", "search", "browse", "live", "editor-picks", "account", "upload", "embed"];
+
+/// A single Rumble video's page: rumble.com/v4abcde-some-title.html
+pub fn is_rumble_video(url: &str) -> bool {
+    static V: OnceLock<Regex> = OnceLock::new();
+    re(&V, r"(?i)^https?://(?:www\.|m\.)?rumble\.com/v[0-9a-z]+-[^/?#]*\.html").is_match(url.trim())
+}
+
+/// A Rumble video's player id (the "v…" in rumble.com/embed/v…/) and picture, from Rumble's public oEmbed.
+pub struct RumbleVideo {
+    pub embed: String,
+    pub thumb: Option<String>,
+}
+pub fn rumble_embed_id(html: &str) -> Option<String> {
+    static E: OnceLock<Regex> = OnceLock::new();
+    re(&E, r"rumble\.com/embed/(?:[0-9a-z]+\.)?(v[0-9a-z]{3,16})").captures(html).map(|c| c[1].to_string())
+}
+pub async fn rumble_video(client: &reqwest::Client, url: &str) -> Option<RumbleVideo> {
+    if !is_rumble_video(url) {
+        return None;
+    }
+    let v: serde_json::Value = client
+        .get("https://rumble.com/api/Media/oembed.json")
+        .query(&[("url", url.trim())])
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let embed = rumble_embed_id(v.get("html")?.as_str()?)?;
+    let thumb = v.get("thumbnail_url").and_then(|x| x.as_str()).filter(|s| s.starts_with("https://")).map(String::from);
+    Some(RumbleVideo { embed, thumb })
 }
 
 /// Apple Podcasts show id → the podcast's own feed (Apple's public lookup, no account).
@@ -107,5 +149,23 @@ mod tests {
         assert_eq!(plan("https://podcasts.apple.com/us/podcast/the-talk-show/id528458508").podcast_id.as_deref(), Some("528458508"));
         assert_eq!(plan("https://medium.com/@someone").tries[0], "https://medium.com/feed/@someone");
         assert_eq!(plan("daviddaniels.com").tries, vec!["https://daviddaniels.com"]);
+        assert_eq!(plan("https://rumble.com/c/Reuters").tries[0], "https://openrss.org/rumble.com/c/Reuters");
+        assert_eq!(plan("rumble.com/user/someone/").tries[0], "https://openrss.org/rumble.com/user/someone");
+        assert_eq!(plan("https://rumble.com/UFC").tries[0], "https://openrss.org/rumble.com/UFC");
+        assert_eq!(plan("https://rumble.com/category/news").tries, vec!["https://rumble.com/category/news"]);
+        assert_eq!(plan("https://rumble.com/v4abcde-a-title.html").tries, vec!["https://rumble.com/v4abcde-a-title.html"]);
+        assert_eq!(plan("https://rumble.com").tries, vec!["https://rumble.com"]);
+    }
+
+    #[test]
+    fn rumble_videos_and_players() {
+        assert!(is_rumble_video("https://rumble.com/v4abcde-a-title.html"));
+        assert!(is_rumble_video("https://rumble.com/v6xyz12-another-one.html?e9s=src_v1_ucp"));
+        assert!(!is_rumble_video("https://rumble.com/c/Reuters"));
+        assert!(!is_rumble_video("https://example.com/v4abcde-a-title.html"));
+        let html = r#"<iframe class="rumble" width="640" height="360" src="https://rumble.com/embed/v70bqqu/?pub=4nvf6q" frameborder="0" allowfullscreen></iframe>"#;
+        assert_eq!(rumble_embed_id(html).as_deref(), Some("v70bqqu"));
+        assert_eq!(rumble_embed_id(r#"src="https://rumble.com/embed/uabcd.vabcd/?rel=5""#).as_deref(), Some("vabcd"));
+        assert_eq!(rumble_embed_id("<p>nothing</p>"), None);
     }
 }
