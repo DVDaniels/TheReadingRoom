@@ -1,4 +1,4 @@
-Version 1.2.10 (test build). Version 1.2.9 is waiting for App Store review; this build adds a first run for new readers and a fix for notes.
+Version 1.2.10 (test build). Version 1.2.9 is waiting for App Store review; this build adds a first run for new readers, a note you can move out of the way, and a fix for notes.
 
 NEW: A FIRST RUN FOR NEW READERS
 Someone opening The Reading Room for the first time, with no feeds yet, now gets a short welcome instead of an empty app.
@@ -8,12 +8,15 @@ Someone opening The Reading Room for the first time, with no feeds yet, now gets
 - Already have feeds? "I already have feeds to add" skips straight to adding them.
 - To try it with the feeds you already have: Help (New to RSS? How to use this app) › Start with a few people › Pick writers by topic.
 
+NEW: MOVE YOUR NOTE OUT OF THE WAY
+Writing a note about a video or a post? Drag the note by its top bar to anywhere on the screen. The video or article behind it keeps working, so you can play, rewind and scroll while you write. "Tuck away" shrinks it to just its top bar; "Open" brings it back. Double-click the bar to put it back in the middle. Close it with Close (tapping outside no longer closes it).
+
 FIXED: NOTES DON'T GET LOST
-A note you're writing about a post or video is now kept on your device as you type. Close it (or tap outside it) to rewind the video, open Note again, and it's all still there, with "Start over" if you want a blank one. It's cleared once you post it or save it as a draft.
+A note you're writing about a post or video is now kept on your device as you type. Close it to rewind the video, open Note again, and it's all still there, with "Start over" if you want a blank one. It's cleared once you post it or save it as a draft.
 
 PLEASE TRY
 - Pick writers by topic, choose a circle or two, and follow them. Did a first conversation show up? Did it make sense?
-- Start a note about a video, close it, rewind, and open Note again. Is your note still there?
+- Start a note about a video, drag it aside and keep watching. Try Tuck away, then close it and open Note again. Is your note still there, in the same spot?
 - Does anything look cramped or cut off on your iPhone, iPad or Mac?
 
 STILL IN THIS BUILD (from 1.2.9)
