@@ -1,0 +1,18 @@
+Version 1.2.10 (test build). Version 1.2.9 is waiting for App Store review; this build adds one new thing on top of it.
+
+NEW: RUMBLE CHANNELS
+Rumble doesn't publish feeds, so The Reading Room now follows Rumble channels through Open RSS, a nonprofit that makes feeds for sites without them.
+- Add feed: paste a Rumble channel's address, like rumble.com/c/Name, rumble.com/user/Name or rumble.com/Name.
+- The channel's videos show up in Videos, next to your YouTube channels, and in Up next on a Mac or iPad.
+- Open one and it plays right in the reader. If a video won't play, "Watch it on Rumble" opens it on Rumble.
+- Paste a single Rumble video instead and the app asks for the channel's address.
+
+PLEASE TRY
+- Follow one or two Rumble channels you like. Do their newest videos appear within a few minutes?
+- Play a Rumble video in the reader. Does it play, with sound, and go full screen?
+- Does anything look wrong in Videos with Rumble and YouTube mixed together?
+
+STILL IN THIS BUILD (from 1.2.9)
+Writing with The Reading Room Plus (purchases in TestFlight are Apple's free test purchases), Email with folders, Videos Up next, and everything else from the last few builds.
+
+Something not right? Send feedback from TestFlight; a screenshot helps.
