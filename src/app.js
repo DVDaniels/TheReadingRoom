@@ -116,7 +116,7 @@
   const isEmailItem = i => isEmailFeed(feedById(i.feed_id));
   const MAIL = { account: null, checking: false, last: 0, error: '', meta: {}, threads: new Map(), olderLeft: null, olderBusy: false, showPics: new Set() };
   // Videos: YouTube and Vimeo videos and video files, in a tab of their own (Settings can hide it; then they stay in Today)
-  const isVideoItem = i => !!(ytId(i.link) || isVideoFile(i.audio) || /^https?:\/\/(www\.)?vimeo\.com\/\d+/.test(i.link || '') || isRumble(i.link));
+  const isVideoItem = i => !!(ytId(i.link) || isVideoFile(i.audio) || /^https?:\/\/(www\.)?vimeo\.com\/\d+/.test(i.link || ''));
   const videosOn = () => !hiddenViews().has('videos');
   function inScope(i, view = S.view) {
     if (view === 'email') return isEmailItem(i);
@@ -634,7 +634,7 @@
   function emptyText() {
     if (S.q) return ['No matches', 'Try a different word, or clear the search.'];
     if (S.view === 'email') return MAIL.account ? (S.unreadOnly ? ['No unread email', 'Switch to “All” to see email you’ve read, or press Refresh.'] : ['No email yet', 'Press Refresh to check your inbox.']) : ['', ''];
-    if (S.view === 'videos') return S.vchan && S.unreadOnly ? ['You’ve watched everything from this channel', 'Switch to “All videos” to see them again.'] : S.unreadOnly && S.items.some(isVideoItem) ? ['You’ve watched everything', 'Switch to “All videos” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a channel to start with above, or paste any YouTube channel’s address (or a link to one of its videos) or a Rumble channel’s address into Add feed. Channels the people you read share show up above too.'];
+    if (S.view === 'videos') return S.vchan && S.unreadOnly ? ['You’ve watched everything from this channel', 'Switch to “All videos” to see them again.'] : S.unreadOnly && S.items.some(isVideoItem) ? ['You’ve watched everything', 'Switch to “All videos” to see the ones you’ve watched.'] : ['No videos yet', 'Follow a channel to start with above, or paste any YouTube channel’s address, or a link to one of its videos, into Add feed. Channels the people you read share show up above too.'];
     if (S.view === 'saved') return ['Nothing saved yet', 'Press the bookmark on any story to keep it here.'];
     if (S.view === 'recent') return ['Nothing read yet', 'Stories you open show up here, newest first.'];
     if (S.view === 'people' && !S.feeds.some(f => kindOf(f) === 'person')) return ['No people yet', 'Open any feed and set “This feed is” to A person. Discover finds more.'];
@@ -2735,16 +2735,13 @@
   // a small player page on readingroomapp.com, which hosts YouTube's privacy-enhanced player.
   const ytPlayUrl = (id, title, o = {}) => `https://readingroomapp.com/play/?v=${encodeURIComponent(id)}&title=${encodeURIComponent(title || '')}${o.t >= 1 ? `&t=${Math.floor(o.t)}` : ''}${o.auto ? '&autoplay=1' : ''}`;
   const ytPlayer = (id, title, o = {}) => `<iframe src="${esc(ytPlayUrl(id, title, o))}" title="${esc(title || 'Video')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
-  // a Rumble video's page (rumble.com/v4abcde-title.html). Rumble has no feeds; its channels come through Open RSS.
-  const isRumble = link => /^https?:\/\/(www\.|m\.)?rumble\.com\/v[0-9a-z]+-[^/?#]*\.html/i.test(link || '');
-  const rumblePlayUrl = (id, title) => `https://readingroomapp.com/play/?rumble=${encodeURIComponent(id)}&title=${encodeURIComponent(title || '')}`;
   const ytId = link => { const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(link || ''); return m ? m[1] : null; };
   const socialKind = link => /bsky\.app\/profile\/[^/]+\/post\//.test(link || '') ? 'Bluesky'
     : /^https?:\/\/[^/]+\/@[\w.]+\/\d+$/.test(link || '') ? 'Mastodon' : null;
   const isSocialFeed = f => /\/@[\w.]+\.rss$/.test(f?.url || '') || /bsky\.app\/profile\/[^/]+\/rss$/.test(f?.url || '');
   // a podcast episode or a video file the feed attaches ("#video" marks one whose address doesn't say)
   const isVideoFile = u => /#video$|\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(u || '');
-  const kindTag = it => it.audio ? `<span class="via">${isVideoFile(it.audio) ? 'Video' : 'Podcast'}</span>${OFF.has(it.audio) ? `<span class="via" title="${esc(CUES.offline)}">Saved</span>` : ''}` : ytId(it.link) || isRumble(it.link) ? '<span class="via">Video</span>' : socialKind(it.link) ? `<span class="via">${socialKind(it.link)}</span>` : '';
+  const kindTag = it => it.audio ? `<span class="via">${isVideoFile(it.audio) ? 'Video' : 'Podcast'}</span>${OFF.has(it.audio) ? `<span class="via" title="${esc(CUES.offline)}">Saved</span>` : ''}` : ytId(it.link) ? '<span class="via">Video</span>' : socialKind(it.link) ? `<span class="via">${socialKind(it.link)}</span>` : '';
 
   // ---- Save for offline: the episode or video file is downloaded to this device and plays from there.
   // Which files are saved is kept per device (localStorage), with when each was finished; finished ones are
@@ -2795,19 +2792,9 @@
   }, 6000);
 
   function paintMedia(it) {
-    const box = $('rMedia'), yt = ytId(it.link), rum = !yt && !it.audio && isRumble(it.link);
-    box.hidden = !(yt || it.audio || rum); box.innerHTML = '';
-    if (rum) {
-      // Rumble: ask Rumble for the video's player, then play it through readingroomapp.com/play like YouTube
-      box.innerHTML = `<div class="r-video r-rumble"><p class="note">Getting the video from Rumble…</p></div>`;
-      const watch = `<p class="note r-rumble-alt">Video won’t play? <button class="b-link" type="button" data-mkurl="${esc(it.link)}">Watch it on Rumble</button></p>`;
-      invoke('rumble_video', { url: it.link }).then(v => {
-        if (S.readerId !== it.id || !box.querySelector('.r-rumble')) return; // moved on to another story
-        box.innerHTML = v?.embed
-          ? `<div class="r-video"><iframe src="${esc(rumblePlayUrl(v.embed, it.title))}" title="${esc(it.title || 'Video')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>${watch}`
-          : `<div class="r-video r-rumble"><p class="note">Rumble didn’t hand over a player for this video.</p></div>${watch}`;
-      }).catch(() => { if (S.readerId === it.id) box.innerHTML = watch; });
-    } else if (yt) {
+    const box = $('rMedia'), yt = ytId(it.link);
+    box.hidden = !(yt || it.audio); box.innerHTML = '';
+    if (yt) {
       const back = miniTime(yt, it.id); // coming back from the mini player: carry on from there
       box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title, back)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
       fillFollowRows(box);

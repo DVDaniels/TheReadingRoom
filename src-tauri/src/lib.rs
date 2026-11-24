@@ -450,10 +450,6 @@ async fn add_feed(
             .map(|v| v.channel_url)
             .ok_or("Couldn't find the channel for that video. Paste the channel's address instead.")?;
     }
-    // A single Rumble video: its channel is what can be followed
-    if sources::is_rumble_video(&url) {
-        return Err("That's one Rumble video. To follow the person who made it, paste their channel's address (rumble.com/c/… or rumble.com/user/…).".into());
-    }
     // Words rather than an address: follow that search on Google News.
     let mut title = title;
     let looks_social = url.trim().starts_with('@');
@@ -534,12 +530,6 @@ async fn circles(state: State<'_, Shared>) -> Result<serde_json::Value, String> 
         return Err(format!("The circles list answered with error {}.", r.status().as_u16()));
     }
     r.json::<serde_json::Value>().await.map_err(err)
-}
-
-/// A Rumble video's player id and picture (Rumble's public oEmbed), so it can play in the reader.
-#[tauri::command]
-async fn rumble_video(state: State<'_, Shared>, url: String) -> Result<Option<serde_json::Value>, String> {
-    Ok(sources::rumble_video(&state.client, &url).await.map(|v| serde_json::json!({ "embed": v.embed, "thumb": v.thumb })))
 }
 
 /// Watch a page that has no feed: it joins your feeds, and each change to it becomes a story.
@@ -2997,7 +2987,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             reply_options,
-            rumble_video,
             circles,
             social::social_accounts,
             social::bsky_connect,
