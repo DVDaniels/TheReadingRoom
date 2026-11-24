@@ -4528,8 +4528,14 @@
     img.close?.();
     throw new Error('too big');
   }
+  // An unfinished note stays on the device until it's posted, saved as a draft or discarded (David, Nov 24: "I backed
+  // out of the note to rewind the video and the note disappeared"). One per story, plus one for a new note; a photo
+  // is kept only while the app is open.
+  const NOTE_PH = new Map();
   function openNote(it) {
     const wp = SOC.accounts.wordpress; if (!wp) { openAccounts(); return; }
+    const dkey = 'noteDraft:' + (it ? it.id : 'new');
+    let kept = null; try { kept = JSON.parse(store.get(dkey) || 'null'); } catch {}
     const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
     const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
     const f = it && feedById(it.feed_id);
@@ -4549,7 +4555,7 @@
       <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}" checked>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
       <label class="c-net n-x"><input type="checkbox" id="nX"${store.get('noteX') === '1' ? ' checked' : ''}><span class="x-mark" aria-hidden="true">X</span>Then open X with a copy <small>you press Post there</small></label>
       <p class="acct-note" id="nNote" aria-live="polite"></p>
-      <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Cancel</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
+      <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Close</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
     const text = $('nText'), boxes = () => [...el.querySelectorAll('.c-net input:checked:not(#nX)')].map(x => x.value);
     $('nX').onchange = () => store.set('noteX', $('nX').checked ? '1' : '');
     const toSite = () => $('nSite').checked;
@@ -4574,13 +4580,33 @@
     $('nPhoto').onchange = async () => {
       const file = $('nPhoto').files[0]; if (!file) return;
       $('nNote').textContent = 'Getting the photo ready…'; $('nNote').classList.remove('err');
-      try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; $('nNote').textContent = ''; $('nAlt').focus(); }
+      try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; $('nNote').textContent = ''; keep(); $('nAlt').focus(); }
       catch { photo = ''; $('nNote').textContent = 'Couldn’t open that picture. Try another one, or save it as a JPEG first.'; $('nNote').classList.add('err'); }
       $('nPhoto').value = ''; count();
     };
-    $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; $('nAlt').value = ''; count(); };
-    $('nCancel').onclick = () => { el.hidden = true; };
+    $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; $('nAlt').value = ''; keep(); count(); };
     const say = (t, err) => { $('nNote').textContent = t; $('nNote').classList.toggle('err', !!err); };
+    // Keep what's written as it's written, and bring it back next time
+    const keep = () => {
+      const d = { title: $('nTitle').value, text: text.value, link: $('nLink').hidden ? '' : $('nLink').value, alt: $('nAlt').value };
+      if (d.title.trim() || d.text.trim() || d.link.trim() || photo) store.set(dkey, JSON.stringify(d)); else store.set(dkey, '');
+      if (photo) NOTE_PH.set(dkey, photo); else NOTE_PH.delete(dkey);
+    };
+    const forget = () => { store.set(dkey, ''); NOTE_PH.delete(dkey); };
+    el.oninput = keep;
+    if (kept || NOTE_PH.has(dkey)) {
+      $('nTitle').value = kept?.title || ''; text.value = kept?.text || '';
+      if (kept?.link && $('nLinkBtn')) { $('nLink').hidden = false; $('nLinkBtn').hidden = true; $('nLink').value = kept.link; }
+      const ph = NOTE_PH.get(dkey);
+      if (ph) { photo = ph; $('nPrev').src = ph; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; }
+      $('nAlt').value = kept?.alt || '';
+      $('nNote').innerHTML = 'Your unfinished note is back. <button class="b-link" id="nDiscard" type="button">Start over</button>';
+      $('nDiscard').onclick = () => { forget(); $('nTitle').value = text.value = $('nAlt').value = ''; photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; say(''); count(); text.focus(); };
+    }
+    // Closing (the button, or a tap outside) keeps the note for next time
+    const closed = () => { if (store.get(dkey) || NOTE_PH.has(dkey)) status('Your note is kept. Open Note again to pick up where you left off.'); };
+    $('nCancel').onclick = () => { el.hidden = true; closed(); };
+    el.onmousedown = e => { if (e.target === el) setTimeout(closed, 0); };
     const go = async draft => {
       const words = text.value.trim(), alt = $('nAlt').value.trim(), picks = boxes();
       if (photo && !alt && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('nAlt').focus(); return; }
@@ -4590,8 +4616,8 @@
         if (toSite()) {
           say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
           const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft, linkImage: it && isWeb(it.image) ? it.image : '', linkSite: it ? (srcLabel(it) || f?.title || '') : '' });
-          if (draft) { el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
-          home = r.url;
+          if (draft) { forget(); el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
+          home = r.url; forget();
         }
         let shared = [], bad = [], warned = [];
         if (picks.length) {
@@ -4606,6 +4632,7 @@
           warned = res.filter(r => !r.error && r.warning).map(r => `${NET[r.network]}: ${r.warning}`);
         }
         if (it) store.set('shared:' + it.id, '1');
+        if (shared.length) forget();
         // X: free, because X's own compose window does the posting and you press Post (no API, no charge)
         const toX = !draft && $('nX').checked && (home || words || link());
         const xt = $('nTitle').value.trim();
@@ -4616,7 +4643,7 @@
           $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return;
         }
         if (warned.length) { say(`Posted to ${where.join(', ')}. ${warned.join(' ')}`, true); $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return; }
-        el.hidden = true;
+        forget(); el.hidden = true;
         const hostName = wp.site.replace(/^https?:\/\//, '');
         const xNote = toX ? ' X is open with your copy: press Post there.' : '';
         status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}${xNote}` : shared.length ? `Posted to ${shared.join(' and ')}. Replies will show in Conversations.${xNote}` : xNote.trim());
