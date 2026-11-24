@@ -2816,3 +2816,48 @@ img.mr-av.mr-ico { object-fit: cover; background: var(--card, #fff); border: 1px
 .vchans.compact .vchan-body b { font-size: 14px; }
 .vchans.compact .vchan-body span { font-size: 12.5px; }
 .vchans.compact .vchan-body .btn { padding: 4px 12px; font-size: 13px; }
+
+/* ---- First run (Nov 24): Welcome → pick what you like → follow a circle → your first conversation */
+.fr { position: fixed; inset: 0; z-index: 80; overflow-y: auto; background: var(--bg); color: var(--ink); -webkit-overflow-scrolling: touch; }
+body.fr-on { overflow: hidden; }
+.fr-page { max-width: 560px; margin: 0 auto; padding: calc(var(--top) + 24px) 24px calc(40px + env(safe-area-inset-bottom)); }
+.fr h1, .fr h2 { font-family: var(--font-read); font-weight: 600; letter-spacing: var(--tight); margin: 0 0 10px; }
+.fr h1 { font-size: 34px; line-height: 1.15; }
+.fr h2 { font-size: 26px; line-height: 1.2; }
+.fr-brand { font: 600 13px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin: 0 0 28px; }
+.fr-lede { font-family: var(--font-read); font-size: 19px; line-height: 1.45; color: var(--muted); margin: 0 0 22px; }
+.fr-small { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.fr-small .linkish, .fr-foot .linkish { font-size: 14px; }
+.fr-k { font: 600 12px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+.fr-go { font-size: 16px; padding: 12px 22px; min-height: 46px; border-radius: 12px; }
+.fr-back { font-size: 14px; margin-bottom: 18px; }
+.fr-av { --h: 160; flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font: 600 15px var(--font-ui); background: hsl(var(--h) 45% 88%); color: hsl(var(--h) 50% 28%); }
+@media (prefers-color-scheme: dark) { .fr-av { background: hsl(var(--h) 30% 26%); color: hsl(var(--h) 60% 82%); } }
+.fr-av-you { background: var(--accent); color: var(--surface); }
+.fr-demo { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin: 4px 0 28px; }
+.fr-demo-row { display: flex; align-items: center; gap: 12px; font-size: 15px; line-height: 1.35; }
+.fr-demo-line { width: 2px; height: 14px; background: var(--line); margin: 4px 0 4px 17px; }
+.fr-demo-you span:last-child { color: var(--accent); font-weight: 500; }
+.fr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fr-chip { font: 500 15px var(--font-ui); padding: 10px 16px; min-height: 44px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.fr-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.fr-hint { margin-top: 16px; }
+.fr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fr-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.4; color: var(--muted); }
+.fr-list b { color: var(--ink); font-weight: 600; }
+.fr-list small { color: var(--muted); }
+.fr-maker { background: var(--accent-soft); border-radius: 12px; padding: 8px; margin: 0 -8px; }
+.fr-foot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 0 calc(8px + env(safe-area-inset-bottom)); margin-top: 18px;
+  background: linear-gradient(transparent, var(--bg) 22%); }
+.fr-bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 18px 0; }
+.fr-bar span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.fr-chain { list-style: none; margin: 0; padding: 0; }
+.fr-chain li { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }
+.fr-chain li:not(:last-child)::before { content: ""; position: absolute; left: 17px; top: 40px; bottom: 2px; width: 2px; background: var(--line); }
+.fr-post { flex: 1; min-width: 0; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; color: var(--ink); cursor: pointer; display: grid; gap: 4px; }
+.fr-post:hover { border-color: var(--accent); }
+.fr-post small { font-size: 12px; color: var(--muted); }
+.fr-post b { font-family: var(--font-read); font-size: 18px; font-weight: 600; line-height: 1.3; }
+.fr-post span { font-size: 14px; line-height: 1.45; color: var(--muted); }
+@media (max-width: 760px) { .fr h1 { font-size: 30px; } .fr-page { padding-left: 20px; padding-right: 20px; } }

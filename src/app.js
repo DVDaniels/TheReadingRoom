@@ -972,6 +972,182 @@
   function hideBanner() { const b = $('banner'); b.hidden = true; b.dataset.kind = ''; }
 
   // ------------------------------------------------------------ data
+  // ---- First run (Nov 24): Welcome → pick what you like → follow a circle of writers → your first conversation.
+  // Only for someone with no feeds yet. Circles come from readingroomapp.com/lists/circles.json (the `circles`
+  // command), with this copy for when the site can't be reached. Each circle is writers who link to each other,
+  // so the first conversation can show up straight away.
+  const CIRCLES_BUNDLED = [
+    { id: "web", name: "The web and design", about: "People who build websites and write about how the web works. They quote each other almost every week.", writers: [
+      ["Jeremy Keith", "https://adactio.com/", "https://adactio.com/journal/rss", "Journal of a web developer in Brighton, since 2001."],
+      ["Jim Nielsen", "https://blog.jim-nielsen.com/", "https://blog.jim-nielsen.com/feed.xml", "Short, thoughtful posts about the web, design and making things."],
+      ["Chris Coyier", "https://chriscoyier.net/", "https://chriscoyier.net/feed/", "Personal blog of the CodePen co-founder."],
+      ["Dave Rupert", "https://daverupert.com/", "https://daverupert.com/atom.xml", "Web developer and podcaster; notes on building and life."],
+      ["Ethan Marcotte", "https://ethanmarcotte.com/", "https://ethanmarcotte.com/wrote/feed.xml", "The designer who coined “responsive web design.”"],
+      ["Brad Frost", "https://bradfrost.com/", "https://bradfrost.com/feed/", "Design systems, the web, and making music."],
+      ["Eric Meyer", "https://meyerweb.com/", "https://meyerweb.com/eric/thoughts/feed/", "CSS, the web platform and life, since the 1990s."],
+      ["Sophie Koonin", "https://localghost.dev/", "https://localghost.dev/feed.xml", "Front-end engineering, the indie web and side projects."]] },
+    { id: "small", name: "The small web", about: "Personal sites, blogrolls and the indie web. A good place to start if you want a blog of your own.", writers: [
+      ["Kev Quirk", "https://kevquirk.com/", "https://kevquirk.com/feed", "A personal blog about the small web, technology and life."],
+      ["Robb Knight", "https://rknight.me/", "https://rknight.me/subscribe/posts/rss.xml", "Small tools and notes for the independent web."],
+      ["Dan Q", "https://danq.me/", "https://danq.me/feed/", "A long-running personal blog: geocaching, code and everything else."],
+      ["Tracy Durnell", "https://tracydurnell.com/", "https://tracydurnell.com/feed/", "Weeknotes and a “mind garden” of ideas, books and making."],
+      ["Chris Aldrich", "https://boffosocko.com/", "https://boffosocko.com/feed/", "IndieWeb notes, reading and commonplace books."],
+      ["Ton Zijlstra", "https://www.zylstra.org/blog/", "https://www.zylstra.org/blog/feed/", "Notes on networks, knowledge work and the open web."],
+      ["Lou Plummer", "https://amerpie.lol/", "", "Mac tips, music and the small web."],
+      ["David Daniels", "https://daviddaniels.com/", "https://daviddaniels.com/feed/", "Makes The Reading Room. Personal essays since 2001, and happy to answer anyone new to blogging.", 1]] },
+    { id: "tech", name: "Tech, written by people", about: "AI, platforms and the open web, from people rather than outlets.", writers: [
+      ["Simon Willison", "https://simonwillison.net/", "https://simonwillison.net/atom/everything/", "AI, open source and data, with links to everyone worth reading."],
+      ["Molly White", "https://www.mollywhite.net/", "https://www.mollywhite.net/feed/feed.xml", "Crypto, tech power and the open web, in short notes and long posts."],
+      ["Ben Werdmuller", "https://werd.io/", "", "Tech, media and the open social web; weekly notable links."],
+      ["Anil Dash", "https://www.anildash.com/", "https://www.anildash.com/feed.xml", "Essays on tech, culture and making the web humane."],
+      ["Cory Doctorow", "https://pluralistic.net/", "https://pluralistic.net/feed/", "Pluralistic: a daily post on tech, power and the internet."],
+      ["Matt Webb", "https://interconnected.org/home/", "https://interconnected.org/home/feed", "Ideas about technology, design and the near future."]] },
+    { id: "apple", name: "Apple and the Mac", about: "Apple writers who link to and answer each other every day.", writers: [
+      ["John Gruber", "https://daringfireball.net/", "https://daringfireball.net/feeds/main", "Daring Fireball: Apple, design and tech, since 2002."],
+      ["Jason Snell", "https://sixcolors.com/", "https://sixcolors.com/feed/", "Six Colors: Apple news and reviews."],
+      ["Michael Tsai", "https://mjtsai.com/blog/", "https://mjtsai.com/blog/feed/", "Collects what everyone is saying about Apple and software, quotes and all."],
+      ["Manton Reece", "https://www.manton.org/", "https://www.manton.org/feed.xml", "Founder of Micro.blog; short posts on the indie web and Apple."],
+      ["Matt Birchler", "https://birchtree.me/", "https://birchtree.me/rss/", "Apps, tech and design, from a product designer."],
+      ["Riccardo Mori", "https://morrick.me/", "https://morrick.me/feed", "Thoughtful essays on Apple, software and design."]] },
+    { id: "ideas", name: "Books, ideas and making", about: "Writers, artists and readers who share what they are reading and making.", writers: [
+      ["Austin Kleon", "https://austinkleon.com/", "https://austinkleon.com/feed/", "Notes on creativity, reading and making things."],
+      ["Robin Sloan", "https://www.robinsloan.com/", "https://www.robinsloan.com/feed.xml", "A novelist’s notes on books, media and technology."],
+      ["Craig Mod", "https://craigmod.com/", "https://craigmod.com/index.xml", "Walking, books and publishing, from Japan."],
+      ["Jason Kottke", "https://kottke.org/", "", "kottke.org: the best of the web, since 1998."],
+      ["Seth Godin", "https://seths.blog/", "https://seths.blog/feed/", "A short daily post about marketing, work and generosity."],
+      ["Tracy Durnell", "https://tracydurnell.com/", "https://tracydurnell.com/feed/", "Weeknotes and a “mind garden” of ideas, books and making."]] }];
+  const frCircle = c => ({ id: c.id, name: c.name, about: c.about || '', writers: (c.writers || []).map(w => Array.isArray(w)
+    ? { name: w[0], site: w[1], feed: w[2] || '', about: w[3] || '', maker: !!w[4] } : { name: w.name, site: w.site, feed: w.feed || '', about: w.about || '', maker: !!w.maker }) });
+  const FR = { step: 'welcome', circles: CIRCLES_BUNDLED.map(frCircle), on: new Set(), done: 0, total: 0, failed: [] };
+  const firstRunDue = () => !store.get('firstRun') && !S.feeds.length && !$('firstRun');
+  function frWriters() {
+    const seen = new Set(), out = [];
+    for (const c of FR.circles) if (FR.on.has(c.id)) for (const w of c.writers) { const k = hostOfU(w.site); if (!seen.has(k)) { seen.add(k); out.push(w); } }
+    return out;
+  }
+  const frAv = (name, key, cls = '') => `<span class="fr-av${cls}" style="--h:${hueFor(key)}" aria-hidden="true">${esc((name || '?').trim()[0] || '?')}</span>`;
+  function frHtml() {
+    if (FR.step === 'welcome') return `<div class="fr-page fr-welcome">
+      <p class="fr-brand">The Reading Room</p>
+      <h1>Real people are still writing on the web.</h1>
+      <p class="fr-lede">And they’re answering each other.</p>
+      <div class="fr-demo" aria-hidden="true">
+        <div class="fr-demo-row">${frAv('A', 'a1')}<span><b>One writer</b> posts on their own blog</span></div>
+        <div class="fr-demo-line"></div>
+        <div class="fr-demo-row">${frAv('B', 'b2')}<span><b>Another answers</b> on theirs, with a link back</span></div>
+        <div class="fr-demo-line"></div>
+        <div class="fr-demo-row fr-demo-you"><span class="fr-av fr-av-you">✓</span><span>The Reading Room puts them together for you, as a conversation</span></div>
+      </div>
+      <button class="btn primary fr-go" data-fr="pick">Show me</button>
+      <p class="fr-small">Free. No account. No algorithm. No ads.</p>
+      <p class="fr-small"><button class="linkish" data-fr="skip">I already have feeds to add</button></p>
+    </div>`;
+    if (FR.step === 'pick') {
+      const ws = frWriters();
+      return `<div class="fr-page fr-pick">
+        <button class="linkish fr-back" data-fr="welcome">‹ Back</button>
+        <h2>What do you like reading about?</h2>
+        <p class="fr-lede">Pick one or more. Each is a small circle of writers who read and answer each other, so conversations start right away.</p>
+        <div class="fr-chips" role="group" aria-label="Topics">${FR.circles.map(c => `<button class="fr-chip" data-fr-circle="${esc(c.id)}" aria-pressed="${FR.on.has(c.id)}" title="${esc(c.about)}">${esc(c.name)}</button>`).join('')}</div>
+        ${ws.length ? `<p class="fr-k">Your circle · ${ws.length} writer${ws.length === 1 ? '' : 's'}</p>
+        <ul class="fr-list">${ws.map(w => `<li${w.maker ? ' class="fr-maker"' : ''}>${frAv(w.name, w.site)}<span><b>${esc(w.name)}</b> <small>${esc(hostOfU(w.site))}</small><br>${esc(w.about)}</span></li>`).join('')}</ul>
+        <p class="fr-small">They link to each other often. You can unfollow anyone later, or add your own.</p>`
+        : `<p class="fr-small fr-hint">Tap a topic to see who’s in it.</p>`}
+        <div class="fr-foot"><button class="btn primary fr-go" data-fr="follow"${ws.length ? '' : ' disabled'}>Follow ${ws.length ? `these ${ws.length} writers` : 'writers'}</button>
+        <button class="linkish" data-fr="skip">Skip and add my own feeds</button></div>
+      </div>`;
+    }
+    if (FR.step === 'following') return `<div class="fr-page fr-following" aria-live="polite">
+      <h2>Following ${FR.total} writers…</h2>
+      <div class="fr-bar"><span style="width:${FR.total ? Math.round(FR.done / FR.total * 100) : 0}%"></span></div>
+      <p class="fr-lede">${FR.done} of ${FR.total}. The Reading Room reads each blog and looks for the posts that answer one another.</p>
+    </div>`;
+    // The first conversation: posts that answer one another, or one writer writing about another
+    const c = frConversation();
+    const okText = FR.failed.length ? `<p class="fr-small">${FR.failed.length} blog${FR.failed.length === 1 ? '' : 's'} didn’t answer just now (${esc(FR.failed.slice(0, 3).join(', '))}${FR.failed.length > 3 ? '…' : ''}). You can add ${FR.failed.length === 1 ? 'it' : 'them'} later from Feeds.</p>` : '';
+    if (!c) return `<div class="fr-page fr-thread">
+      <h2>You’re following ${FR.total - FR.failed.length} writers</h2>
+      <p class="fr-lede">No conversation between them in their latest posts yet. When one answers another, it shows up in Conversations, and under the post they answered.</p>
+      ${okText}
+      <div class="fr-foot"><button class="btn primary fr-go" data-fr="done">Start reading</button></div></div>`;
+    const posts = c.posts, names = [...new Set(posts.map(p => frName(p)))];
+    return `<div class="fr-page fr-thread">
+      <p class="fr-k">Your first conversation</p>
+      <p class="fr-lede">${c.kind === 'answers'
+        ? `${posts.length} posts on ${names.length} blogs, answering one another. The Reading Room puts them together for you.`
+        : `${esc(frName(posts[0]))} wrote about ${esc(c.about)}, who you follow now too. The Reading Room spots that for you.`}</p>
+      <ol class="fr-chain">${posts.map(p => `<li>${frAv(frName(p), (feedById(p.feed_id) || {}).url || p.feed_id)}
+        <button class="fr-post" data-fr-open="${esc(p.id)}"><small>${esc(frName(p))} · ${esc(hostOfU(p.link))} · ${esc(fmtWhen(p.date))}</small>
+        <b>${esc(headline(p) || 'A post')}</b>${p.summary ? `<span>${esc(frSnip(p.summary))}</span>` : ''}</button></li>`).join('')}</ol>
+      ${okText}
+      <div class="fr-foot"><button class="btn primary fr-go" data-fr-open="${esc(posts[0].id)}">Read it</button>
+      <button class="linkish" data-fr="talk">See all conversations</button> · <button class="linkish" data-fr="done">Start reading</button></div>
+    </div>`;
+  }
+  const frName = p => nbWho(p)?.title || hostOfU(p.link);
+  const frSnip = t => { const s = String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); return s.length > 160 ? s.slice(0, 150).replace(/\s+\S*$/, '') + '…' : s; };
+  // The best conversation among what just arrived: a post with answers from other writers (most answers, then
+  // newest), else one writer linking to another's blog
+  function frConversation() {
+    const x = nbIndex();
+    let best = null;
+    for (const [id, ans] of x.answers) {
+      const root = item(id); if (!root || isEmailItem(root)) continue;
+      const others = ans.filter(a => personId(a.feed_id) !== personId(root.feed_id));
+      if (!others.length) continue;
+      const last = others[others.length - 1].date;
+      if (!best || others.length > best.n || (others.length === best.n && last > best.last)) best = { n: others.length, last, posts: [root, ...others.slice(0, 3)] };
+    }
+    if (best) return { kind: 'answers', posts: best.posts };
+    let m = null;
+    for (const [id, to] of x.mentions) { const i = item(id); if (i && (!m || i.date > m.i.date)) m = { i, to }; }
+    return m ? { kind: 'mention', posts: [m.i], about: m.to.f.title } : null;
+  }
+  async function frFollow() {
+    const ws = frWriters();
+    FR.step = 'following'; FR.total = ws.length; FR.done = 0; FR.failed = []; frPaint();
+    const queue = [...ws];
+    const one = async () => {
+      for (let w; (w = queue.shift());) {
+        try { await invoke('add_feed', { url: w.feed || w.site, title: w.name, folderId: null }); }
+        catch (e) {
+          if (!/already follow/i.test(msg(e)) && w.feed) { try { await invoke('add_feed', { url: w.site, title: w.name, folderId: null }); } catch (e2) { if (!/already follow/i.test(msg(e2))) FR.failed.push(w.name); } }
+          else if (!/already follow/i.test(msg(e))) FR.failed.push(w.name);
+        }
+        FR.done++; frPaint();
+      }
+    };
+    await Promise.all([one(), one(), one(), one()]);
+    store.set('firstRun', '1');
+    await load();
+    FR.step = 'thread'; frPaint();
+  }
+  function frPaint() { const el = $('firstRun'); if (el) { el.innerHTML = frHtml(); el.scrollTop = 0; } }
+  function frClose(view) {
+    store.set('firstRun', '1');
+    const el = $('firstRun'); if (el) el.remove();
+    document.body.classList.remove('fr-on');
+    if (view) selectView(view);
+  }
+  async function openFirstRun() {
+    const el = document.createElement('div'); el.id = 'firstRun'; el.className = 'fr'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Welcome to The Reading Room');
+    document.body.appendChild(el); document.body.classList.add('fr-on');
+    FR.step = 'welcome'; frPaint();
+    el.addEventListener('click', e => {
+      const c = e.target.closest('[data-fr-circle]');
+      if (c) { const id = c.dataset.frCircle; FR.on.has(id) ? FR.on.delete(id) : FR.on.add(id); frPaint(); return; }
+      const o = e.target.closest('[data-fr-open]');
+      if (o) { const id = o.dataset.frOpen; frClose('talk'); openReader(id); return; }
+      const b = e.target.closest('[data-fr]'); if (!b) return;
+      const a = b.dataset.fr;
+      if (a === 'pick' || a === 'welcome') { FR.step = a; frPaint(); }
+      else if (a === 'follow') frFollow();
+      else if (a === 'skip') { frClose('all'); openAdd(); }
+      else if (a === 'talk') frClose('talk');
+      else if (a === 'done') frClose('today');
+    });
+    try { const c = await invoke('circles'); if (Array.isArray(c?.circles) && c.circles.length) { FR.circles = c.circles.map(frCircle); if (FR.step === 'pick') frPaint(); } } catch {}
+  }
   function welcome() {
     if (store.get('guideSeen') || S.view !== 'today' || $('banner').dataset.kind === 'welcome') return;
     showBanner(`<span><b>New to RSS?</b> A five-minute guide shows how it works and where to find good writers.</span>
@@ -993,7 +1169,7 @@
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
       if (!loadedOnce && S.view === 'today' && myDayOn() && mdMorningStart() && new Date().getHours() < mdUntil()) { S.view = 'myday'; MD.auto = true; }
       loadedOnce = true;
-      render(); welcome(); processNew();
+      render(); if (firstRunDue()) openFirstRun(); else welcome(); processNew();
     } catch (e) { status(msg(e), true); }
   }
 

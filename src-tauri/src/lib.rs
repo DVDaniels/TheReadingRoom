@@ -518,6 +518,24 @@ async fn add_feed(
     Ok(Added { id, title: name })
 }
 
+/// The topic circles a new person picks from on the first run: small groups of writers who link to each other.
+/// The list lives on the app's site (readingroomapp.com/lists/circles.json) so it can change without a new build;
+/// the interface carries a copy for when the site can't be reached.
+#[tauri::command]
+async fn circles(state: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let r = state
+        .client
+        .get("https://readingroomapp.com/lists/circles.json")
+        .timeout(std::time::Duration::from_secs(8))
+        .send()
+        .await
+        .map_err(err)?;
+    if !r.status().is_success() {
+        return Err(format!("The circles list answered with error {}.", r.status().as_u16()));
+    }
+    r.json::<serde_json::Value>().await.map_err(err)
+}
+
 /// A Rumble video's player id and picture (Rumble's public oEmbed), so it can play in the reader.
 #[tauri::command]
 async fn rumble_video(state: State<'_, Shared>, url: String) -> Result<Option<serde_json::Value>, String> {
@@ -2980,6 +2998,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             reply_options,
             rumble_video,
+            circles,
             social::social_accounts,
             social::bsky_connect,
             social::masto_begin,
