@@ -1129,10 +1129,11 @@
     document.body.classList.remove('fr-on');
     if (view) selectView(view);
   }
-  async function openFirstRun() {
+  async function openFirstRun(step = 'welcome') {
+    if ($('firstRun')) return;
     const el = document.createElement('div'); el.id = 'firstRun'; el.className = 'fr'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Welcome to The Reading Room');
     document.body.appendChild(el); document.body.classList.add('fr-on');
-    FR.step = 'welcome'; frPaint();
+    FR.step = step; FR.on.clear(); frPaint();
     el.addEventListener('click', e => {
       const c = e.target.closest('[data-fr-circle]');
       if (c) { const id = c.dataset.frCircle; FR.on.has(id) ? FR.on.delete(id) : FR.on.add(id); frPaint(); return; }
@@ -1328,7 +1329,8 @@
 
       <section class="g-sec"><h2>Start with a few people</h2>
         <p>Here are some friendly places to begin. Press Follow and their posts appear in Today and People. You can unfollow any time.</p>
-        <div class="g-starts">${STARTERS.map(starter).join('')}</div></section>
+        <div class="g-starts">${STARTERS.map(starter).join('')}</div>
+        <p><button class="btn" data-fr-start>Pick writers by topic</button> <span class="muted">Small circles of writers who answer each other: the web, the small web, tech, Apple, books.</span></p></section>
 
       <section class="g-sec"><h2>Follow any site you like</h2>
         <ol class="g-steps">
@@ -7562,6 +7564,7 @@
       if (to) { to.style.scrollMarginTop = (($('listTop')?.offsetHeight || 0) + 16) + 'px'; to.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
       return;
     }
+    if (e.target.closest('[data-fr-start]')) { openFirstRun('pick'); return; }
     const gf = e.target.closest('[data-guide-follow]');
     if (gf) { guideFollow(gf.dataset.guideFollow, gf); return; }
     if (e.target.id === 'guideMutes') { openMutes(); return; }

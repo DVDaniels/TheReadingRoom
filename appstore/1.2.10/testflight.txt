@@ -1,16 +1,16 @@
 Version 1.2.10 (test build). Version 1.2.9 is waiting for App Store review; this build adds one new thing on top of it.
 
-NEW: RUMBLE CHANNELS
-Rumble doesn't publish feeds, so The Reading Room now follows Rumble channels through Open RSS, a nonprofit that makes feeds for sites without them.
-- Add feed: paste a Rumble channel's address, like rumble.com/c/Name, rumble.com/user/Name or rumble.com/Name.
-- The channel's videos show up in Videos, next to your YouTube channels, and in Up next on a Mac or iPad.
-- Open one and it plays right in the reader. If a video won't play, "Watch it on Rumble" opens it on Rumble.
-- Paste a single Rumble video instead and the app asks for the channel's address.
+NEW: A FIRST RUN FOR NEW READERS
+Someone opening The Reading Room for the first time, with no feeds yet, now gets a short welcome instead of an empty app.
+- Welcome: real people are still writing on the web, and they're answering each other.
+- Pick what you like: five small circles of writers who read and answer each other (the web and design, the small web, tech, Apple and the Mac, books and ideas). Pick one or more and see who's in them.
+- Follow them in one tap, then see your first conversation: posts from those writers that answer one another.
+- Already have feeds? "I already have feeds to add" skips straight to adding them.
+- To try it with the feeds you already have: Help (New to RSS? How to use this app) › Start with a few people › Pick writers by topic.
 
 PLEASE TRY
-- Follow one or two Rumble channels you like. Do their newest videos appear within a few minutes?
-- Play a Rumble video in the reader. Does it play, with sound, and go full screen?
-- Does anything look wrong in Videos with Rumble and YouTube mixed together?
+- Pick writers by topic, choose a circle or two, and follow them. Did a first conversation show up? Did it make sense?
+- Does anything look cramped or cut off on your iPhone, iPad or Mac?
 
 STILL IN THIS BUILD (from 1.2.9)
 Writing with The Reading Room Plus (purchases in TestFlight are Apple's free test purchases), Email with folders, Videos Up next, and everything else from the last few builds.
