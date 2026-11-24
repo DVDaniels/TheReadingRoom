@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       The Reading Room stats
  * Plugin URI:        https://readingroomapp.com/plugin/
- * Description:       Shows your blog's visitors, RSS readers and search traffic in The Reading Room app (My Day › Your blog). Counts visits without cookies and without storing IP addresses.
- * Version:           1.0.1
+ * Description:       Shows your blog's visitors, RSS readers and search traffic in The Reading Room app (Writing › Your blog). Counts visits without cookies and without storing IP addresses.
+ * Version:           1.0.2
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            David Daniels
@@ -15,7 +15,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TRR_STATS_VERSION', '1.0.1' );
+define( 'TRR_STATS_VERSION', '1.0.2' );
 define( 'TRR_STATS_DB_VERSION', 1 );
 define( 'TRR_STATS_KEEP_DAYS', 70 );   // a little more than two 28-day windows
 define( 'TRR_STATS_WINDOW', 28 );
@@ -520,7 +520,7 @@ function trr_stats_settings_page() {
 	?>
 	<div class="wrap">
 		<h1>The Reading Room stats</h1>
-		<p style="max-width:44em">This plugin lets <a href="https://readingroomapp.com/">The Reading Room</a> show your blog's visitors, RSS readers and search traffic on its My Day page. It counts on your own site, without cookies, and never stores visitors' IP addresses. Only people who can edit posts here can see the numbers.</p>
+		<p style="max-width:44em">This plugin lets <a href="https://readingroomapp.com/">The Reading Room</a> show your blog's visitors, RSS readers and search traffic in its Writing tab, under Your blog. It counts on your own site, without cookies, and never stores visitors' IP addresses. Only people who can edit posts here can see the numbers.</p>
 		<h2>So far</h2>
 		<table class="widefat striped" style="max-width:44em">
 			<tbody>
@@ -553,7 +553,7 @@ function trr_stats_settings_page() {
 		<ol style="max-width:44em">
 			<li>In your profile here (Users › Profile), make an <strong>application password</strong> called "The Reading Room".</li>
 			<li>In The Reading Room, open Settings › Your site, Mastodon &amp; Bluesky and connect this site with your username and that password.</li>
-			<li>Open <strong>My Day</strong>. Your blog's numbers show under the calendar and markets. New counts start today, so give it a few days.</li>
+			<li>Open <strong>Writing</strong>. Your blog's numbers show under <strong>Your blog</strong>. New counts start today, so give it a few days.</li>
 		</ol>
 	</div>
 	<?php

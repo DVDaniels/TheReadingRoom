@@ -4,7 +4,7 @@ Tags: stats, rss, feed readers, analytics, privacy
 Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,9 @@ See your blog's visitors, RSS readers and search traffic in The Reading Room app
 
 == Description ==
 
-The Reading Room is an RSS reader for Mac, iPhone and iPad for people who read and write on the indie web. Its My Day page can show how your own blog is doing. This plugin is what it reads.
+The Reading Room is an RSS reader for Mac, iPhone and iPad for people who read and write on the indie web. Its Writing tab can show how your own blog is doing, under Your blog. This plugin is what it reads.
+
+The plugin itself is free and counts on your own site whether or not you use the app. Writing, and Your blog in it, come with The Reading Room Plus, an optional subscription in the app.
 
 **What it counts**
 
@@ -28,7 +30,7 @@ Each visitor is counted once a day using a one-way code made from their IP addre
 
 1. In Users › Profile, make an application password called "The Reading Room".
 2. In The Reading Room, connect your site under Settings › Your site, Mastodon & Bluesky with your username and that password.
-3. Open My Day. Your blog's numbers show there. Counting starts the day you turn the plugin on.
+3. Open Writing. Your blog's numbers show under Your blog. Counting starts the day you turn the plugin on.
 
 == Frequently Asked Questions ==
 
@@ -49,6 +51,9 @@ Yes, in Settings › The Reading Room stats.
 Its table and settings are removed.
 
 == Changelog ==
+
+= 1.0.2 =
+* The numbers now show in the app's Writing tab (Your blog) instead of My Day; the readme and the settings page say so.
 
 = 1.0.1 =
 * Follows the WordPress.org plugin guidelines more closely: database queries name the table through a placeholder, the visit script is printed by WordPress, and everything uses the prefix trr_stats_. Needs WordPress 6.2 or later.
