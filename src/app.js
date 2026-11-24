@@ -8977,14 +8977,18 @@
   //   visitors: { total, prev, window, through, days: [{d, n}], label ('visits' from the plugin; people otherwise), source (a caption) }, top: [{title, url, n}],
   //   rss: { total, prev, since, apps: [{name, n}] }, search: { clicks, prevClicks, impressions, position, window, through, queries: [{q, clicks, pos}] } }
   // Any part can be missing. A connected site without the plugin gives null: the panel offers the plugin instead.
-  const BLOG = { data: null, at: 0, busy: false, failed: false, loaded: false };
-  async function loadBlog() {
-    if (BLOG.busy || (BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
-    BLOG.busy = true;
-    try { BLOG.data = await invoke('blog_stats'); BLOG.at = Date.now(); BLOG.loaded = true; BLOG.failed = !BLOG.data; if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); }
-    catch { BLOG.failed = true; }
-    finally { BLOG.busy = false; }
+  // If asking the site fails, the panel says so with Try again, and asks again by itself after five minutes
+  // (it used to go blank until the app was restarted — David, Nov 24: "There's nothing. The tiles are gone.").
+  const BLOG = { data: null, at: 0, busy: false, failed: false, loaded: false, err: '' };
+  const blogRepaint = () => { if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); };
+  async function loadBlog(force) {
+    if (BLOG.busy || (!force && BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
+    BLOG.busy = true; BLOG.err = '';
+    try { const d = await invoke('blog_stats'); BLOG.data = d || BLOG.data; BLOG.loaded = true; BLOG.failed = !d; }
+    catch (e) { BLOG.failed = true; BLOG.err = msg(e) || 'The site didn’t answer.'; }
+    finally { BLOG.busy = false; BLOG.at = Date.now(); blogRepaint(); }
   }
+  document.addEventListener('click', e => { if (e.target.closest('[data-blog-retry]')) { BLOG.failed = false; loadBlog(true); blogRepaint(); } });
   const nfmt = n => n == null ? '—' : n >= 10000 ? `${(n / 1000).toFixed(0)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
   function delta(now, before, unit) {
     if (now == null || !before) return '';
@@ -8995,8 +8999,12 @@
   function yourBlogHtml() {
     if (!plusOk()) return SOC.accounts?.wordpress ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
       <p class="day-note">See your blog’s visitors, RSS readers and search traffic here every day with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
-    if (!BLOG.data && !BLOG.failed) setTimeout(() => loadBlog(), 0);
+    if (!BLOG.busy && (!BLOG.data && !BLOG.failed || BLOG.failed && Date.now() - BLOG.at > 5 * 60 * 1000 || BLOG.data && Date.now() - BLOG.at > 30 * 60 * 1000)) setTimeout(() => loadBlog(), 0);
     const b = BLOG.data;
+    const head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>';
+    // Asking the site went wrong: say what happened instead of showing nothing
+    if (!b && BLOG.err) return `${head}<p class="day-note">Couldn’t get your blog’s numbers just now. ${esc(BLOG.err)} The app tries again in a few minutes. <button class="b-link" type="button" data-blog-retry>Try again</button></p></section>`;
+    if (!b && !BLOG.loaded) return `${head}<p class="day-note">${BLOG.busy || !BLOG.failed ? 'Getting your blog’s numbers…' : ''}</p></section>`;
     // Connected to a WordPress site that doesn't have the plugin: say where to get it
     if (!b && BLOG.loaded && SOC.accounts?.wordpress) return `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
       <p class="day-note">Your blog’s visitors, RSS readers and search traffic can show here. Add the free plugin The Reading Room stats to your WordPress site. <button class="b-link" type="button" data-mkurl="https://readingroomapp.com/plugin/">Get the plugin</button></p></section>`;
