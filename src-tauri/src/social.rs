@@ -1965,10 +1965,15 @@ pub async fn site_connect(site: String, user: String, password: String) -> Resul
 }
 
 #[derive(Serialize)]
+#[derive(Default)]
 pub struct SiteNote {
     pub url: String,
     pub id: i64,
     pub image: String,
+    /// For a reply or a repost: whether the post's site took the Webmention (None when nothing was sent)
+    pub told: Option<bool>,
+    /// Why the Webmention didn't go through, when it didn't
+    pub told_error: String,
 }
 
 fn esc_html(s: &str) -> String {
@@ -2256,7 +2261,16 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
         post["featured_media"] = json!(media_id);
     }
     let p = wp(reqwest::Method::POST, "/wp/v2/posts", Some(post)).await?;
-    Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+    let mut out = SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image, ..Default::default() };
+    // a published reply or repost tells the post's site with a Webmention, as a like does
+    // (if your site's own Webmention plugin sends one too, their site counts it once)
+    if !draft && matches!(card_kind, CardKind::Reply | CardKind::Repost) && out.url.starts_with("http") {
+        match crate::webmention::send(client(), &out.url, &link).await {
+            Ok(t) => out.told = Some(t),
+            Err(e) => { out.told = Some(false); out.told_error = e; }
+        }
+    }
+    Ok(out)
 }
 
 // ---- Writing (Plus): your site's posts, drafts and categories, and full posts written in the app
@@ -2427,7 +2441,7 @@ pub async fn site_post(id: Option<i64>, title: String, text: String, categories:
     }
     let path = match id.filter(|i| *i > 0) { Some(i) => format!("/wp/v2/posts/{i}"), None => "/wp/v2/posts".into() };
     let p = wp(reqwest::Method::POST, &path, Some(post)).await?;
-    Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image })
+    Ok(SiteNote { url: st(&p, "link"), id: p["id"].as_i64().unwrap_or(0), image, ..Default::default() })
 }
 
 /// Move a post on your site to WordPress's Trash (Delete in the Drafts folder). It isn't erased: it stays in
@@ -2457,7 +2471,7 @@ pub async fn site_post_restore(id: i64) -> Result<(), String> {
 #[tauri::command]
 pub async fn site_post_publish(id: i64) -> Result<SiteNote, String> {
     let p = wp(reqwest::Method::POST, &format!("/wp/v2/posts/{id}"), Some(json!({ "status": "publish" }))).await?;
-    Ok(SiteNote { url: st(&p, "link"), id, image: String::new() })
+    Ok(SiteNote { url: st(&p, "link"), id, ..Default::default() })
 }
 
 /// Download a post's picture to put on your site: an image under 10 MB, or nothing.

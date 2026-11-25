@@ -5371,7 +5371,7 @@
         const r = await invoke('site_note', { title: '', text: $('rpText').value.trim(), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '', repost: true });
         S.prefs.reposts = { ...(S.prefs.reposts || {}), [normU(it.link)]: { url: r.url, at: new Date().toISOString() } }; savePrefs();
         el.hidden = true; renderList(); paintReaderTalk();
-        status(`Reposted on ${host}. ${f?.title || 'Their site'} is told if it listens for that.`);
+        status(`Reposted on ${host}. ${toldLine(r, f?.title || 'their site')}`, r.told === false && !!r.told_error);
       } catch (e) { btn.disabled = false; btn.textContent = 'Repost'; status(msg(e), true); }
     };
   }
@@ -5882,11 +5882,21 @@
         try {
           const r = await invoke('site_note', { title: '', text: withMentions(ta), link: it.link, linkTitle: headline(it), photo: '', alt: '', draft: false, linkImage: isWeb(it.image) ? it.image : '', linkSite: f?.title || srcLabel(it) || '', reply: true });
           setDraft(dkey, ''); if (r.url) rememberReply(it, r.url);
-          box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
-          status(`Your reply is on ${host}. ${f?.title || 'Their site'} is told if their site listens for that.`);
+          const told = toldLine(r, f?.title || theirHost);
+          box.innerHTML = `<p class="nb-rb-done">Posted on ${esc(host)}. ${esc(told)} <button class="linkish" data-talk="open" data-url="${esc(r.url)}">See it</button></p>`;
+          status(`Your reply is on ${host}. ${told}`, r.told === false && !!r.told_error);
         } catch (err) { btn.disabled = false; btn.textContent = `Post on ${host}`; status(msg(err), true); }
       }
     };
+  }
+
+  // What happened to the Webmention the app sent after a reply or repost went up on your site
+  function toldLine(r, who) {
+    const whose = /site$/i.test(who) ? who : `${who}’s site`;
+    if (r?.told === true) return `${whose[0].toUpperCase()}${whose.slice(1)} was told, and may show it under the post (some approve replies first).`;
+    if (r?.told === false && r.told_error) return `${whose[0].toUpperCase()}${whose.slice(1)} wasn’t told: ${r.told_error}`;
+    if (r?.told === false) return `${whose[0].toUpperCase()}${whose.slice(1)} doesn’t take replies from other sites, so it stays on yours.`;
+    return '';
   }
 
   // ---- A page for each person: their posts and short posts, how you know them, who they talk with and read.
