@@ -206,6 +206,7 @@ def prepare(platform, version_string, build_no):
 
     en = next((l for l in locs if l["attributes"].get("locale") == "en-US"), locs[0])
     screenshots(platform, version_string, en)
+    previews(platform, version_string, en)
 
     notes = text(version_string, "review-notes.txt")
     if notes:
@@ -274,6 +275,45 @@ def screenshots(platform, version_string, loc):
         for sid in old:
             call("DELETE", f"/appScreenshots/{sid}")
         note("Screenshots", f"{kind}: {len(files)} new; the old ones removed")
+
+
+PREVIEW_SETS = {"IOS": (("IPHONE_67", "iphone-*.mp4"),), "MAC_OS": (("DESKTOP", "mac-*.mp4"),)}
+
+
+def previews(platform, version_string, loc):
+    """App previews (short videos shown before the screenshots) from appstore/<version>/previews/ replace that device's set.
+    Same order as screenshots: new ones up first, the old ones off after. A failed preview is reported but doesn't stop the
+    release: the version keeps its screenshots."""
+    for kind, pattern in PREVIEW_SETS[platform]:
+        files = sorted(glob.glob(f"appstore/{version_string}/previews/{pattern}"))[:3]   # Apple takes up to 3 per device
+        if not files:
+            continue
+        try:
+            sets = {x["attributes"]["previewType"]: x for x in
+                    call("GET", f"/appStoreVersionLocalizations/{loc['id']}/appPreviewSets")["data"]}
+            st = sets.get(kind) or call("POST", "/appPreviewSets", json={"data": {"type": "appPreviewSets",
+                 "attributes": {"previewType": kind},
+                 "relationships": {"appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": loc["id"]}}}}})["data"]
+            old = [x["id"] for x in call("GET", f"/appPreviewSets/{st['id']}/appPreviews")["data"]]
+            while old and len(old) + len(files) > 3:
+                call("DELETE", f"/appPreviews/{old.pop()}")
+            for f in files:
+                data = open(f, "rb").read()
+                pv = call("POST", "/appPreviews", json={"data": {"type": "appPreviews",
+                     "attributes": {"fileName": os.path.basename(f), "fileSize": len(data), "mimeType": "video/mp4"},
+                     "relationships": {"appPreviewSet": {"data": {"type": "appPreviewSets", "id": st["id"]}}}}})["data"]
+                for op in pv["attributes"]["uploadOperations"]:
+                    r = requests.request(op["method"], op["url"], data=data[op["offset"]: op["offset"] + op["length"]],
+                                         headers={h["name"]: h["value"] for h in op.get("requestHeaders", [])}, timeout=300)
+                    if r.status_code >= 300:
+                        raise RuntimeError(f"{f}: upload {r.status_code} {r.text[:300]}")
+                call("PATCH", f"/appPreviews/{pv['id']}", json={"data": {"type": "appPreviews", "id": pv["id"],
+                     "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
+            for pid in old:
+                call("DELETE", f"/appPreviews/{pid}")
+            note("App previews", f"{kind}: {len(files)} uploaded (Apple processes them, up to 24 hours)")
+        except (Exception, SystemExit) as e:
+            print(f"::warning title=App previews {kind}::Couldn't upload them ({e}); the version keeps its screenshots")
 
 
 def add_languages(locales, version_string):
