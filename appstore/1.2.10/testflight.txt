@@ -1,25 +1,25 @@
-Version 1.2.10 (test build). Version 1.2.9 is waiting for App Store review; this build adds a first run for new readers, a note you can move out of the way, and a fix for notes.
+Version 1.2.10 (test build). This build lets you post from The Reading Room Plus to Tumblr, Micro.blog, Pika and other IndieWeb sites, and tells writers when you reply. It also has the first run for new readers and the movable note.
 
-NEW: A FIRST RUN FOR NEW READERS
-Someone opening The Reading Room for the first time, with no feeds yet, now gets a short welcome instead of an empty app.
-- Welcome: real people are still writing on the web, and they're answering each other.
-- Pick what you like: five small circles of writers who read and answer each other (the web and design, the small web, tech, Apple and the Mac, books and ideas). Pick one or more and see who's in them.
-- Follow them in one tap, then see your first conversation: posts from those writers that answer one another.
-- Already have feeds? "I already have feeds to add" skips straight to adding them.
-- To try it with the feeds you already have: Help (New to RSS? How to use this app) › Start with a few people › Pick writers by topic.
+NEW: POST TO TUMBLR, MICRO.BLOG AND PIKA (PLUS)
+No WordPress site? Settings › Connections now connects:
+- Tumblr: press Connect Tumblr, sign in on Tumblr's page, approve, and paste the code the next page shows. Notes, posts, Weeknotes and drafts go to your Tumblr. Writing shows Your Tumblr: followers and the notes on your posts.
+- Micro.blog, Pika or another IndieWeb site: type your site's address and press Continue, or paste an app token from your site's settings.
+With a WordPress site connected, it stays where Writing posts, and "Also share on Tumblr" shows up next to Bluesky and Mastodon.
 
-NEW: MOVE YOUR NOTE OUT OF THE WAY
-Writing a note about a video or a post? Drag the note by its top bar to anywhere on the screen. The video or article behind it keeps working, so you can play, rewind and scroll while you write. "Tuck away" shrinks it to just its top bar; "Open" brings it back. Double-click the bar to put it back in the middle. Close it with Close (tapping outside no longer closes it).
+NEW: REPLIES TELL THE WRITER
+When you reply to or repost a post from your own site, the app now tells the writer's site itself (a Webmention), and says whether their site was told.
 
-FIXED: NOTES DON'T GET LOST
-A note you're writing about a post or video is now kept on your device as you type. Close it to rewind the video, open Note again, and it's all still there, with "Start over" if you want a blank one. It's cleared once you post it or save it as a draft.
+FIXED: YOUR BLOG NUMBERS
+If your blog's numbers can't load, the panel says why and offers Try again, instead of going blank.
+
+ALSO IN 1.2.10
+- A first run for new readers: pick circles of writers who answer each other (Help › Start with a few people › Pick writers by topic).
+- Move your note out of the way: drag it by its top bar while a video plays; Tuck away / Open.
+- Notes are kept as you type until you post or save them.
 
 PLEASE TRY
-- Pick writers by topic, choose a circle or two, and follow them. Did a first conversation show up? Did it make sense?
-- Start a note about a video, drag it aside and keep watching. Try Tuck away, then close it and open Note again. Is your note still there, in the same spot?
+- Connect Tumblr, or your Micro.blog or Pika site. Post a note, a post with a photo, and a draft. Keep writing the draft, then Post now.
+- Reply to a post from your site. Did the app say whether their site was told?
 - Does anything look cramped or cut off on your iPhone, iPad or Mac?
-
-STILL IN THIS BUILD (from 1.2.9)
-Writing with The Reading Room Plus (purchases in TestFlight are Apple's free test purchases), Email with folders, Videos Up next, and everything else from the last few builds.
 
 Something not right? Send feedback from TestFlight; a screenshot helps.
