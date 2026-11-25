@@ -72,6 +72,10 @@ strong { font-weight: 600; }
 .fine { margin-top: 12px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
 .shot { border: 1px solid var(--line); border-radius: 16px; }
 .hero-shot { padding-bottom: 96px; }
+.tour { padding-bottom: 96px; }
+.tour .h2 { font-size: clamp(30px, 4vw, 44px); margin-bottom: 10px; }
+.tour .fine { max-width: 640px; margin-bottom: 24px; }
+.tour video { display: block; width: 100%; height: auto; background: #111; }
 
 .why { background: var(--surface); border-block: 1px solid var(--line); }
 .why .wrap { display: flex; flex-wrap: wrap; gap: 48px; padding-block: 96px; }
@@ -155,7 +159,7 @@ kbd { display: inline-block; min-width: 44px; padding: 2px 8px; background: var(
   .hero, .page { padding-top: 40px; }
   .policy { padding-top: 40px; }
   .why .wrap, .features, .two-up { padding-block: 64px; }
-  .hero-shot, .devices { padding-bottom: 64px; }
+  .hero-shot, .devices, .tour { padding-bottom: 64px; }
   .private .wrap { padding-block: 64px; }
   .why .wrap { gap: 24px; }
   .why h2 { flex-basis: 100%; }
