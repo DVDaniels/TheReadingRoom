@@ -10,6 +10,7 @@ mod lists;
 mod opml;
 mod reply;
 mod social;
+mod tumblr;
 mod sources;
 mod sync;
 mod topics;
@@ -2998,6 +2999,10 @@ pub fn run() {
             social::social_thread,
             social::social_whole,
             social::site_connect,
+            tumblr::tumblr_begin,
+            tumblr::tumblr_finish,
+            tumblr::tumblr_pick_blog,
+            tumblr::tumblr_disconnect,
             social::site_avatar,
             social::site_comments,
             social::people_likes,

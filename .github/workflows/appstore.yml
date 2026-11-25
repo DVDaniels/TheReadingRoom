@@ -21,6 +21,8 @@ jobs:
     runs-on: macos-latest
     env:
       MARGINALIA_KEY: ${{ secrets.MARGINALIA_KEY }}
+      TUMBLR_KEY: ${{ secrets.TUMBLR_KEY }}
+      TUMBLR_SECRET: ${{ secrets.TUMBLR_SECRET }}
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPSTORE_CERTS: ${{ secrets.APPLE_APPSTORE_CERTS }}
       INSTALLER_CERT: ${{ secrets.APPLE_INSTALLER_CERT }}

@@ -12,7 +12,12 @@
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], lists: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
   const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'blogs', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
-  const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon' };
+  const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon', tumblr: 'Tumblr' };
+  // Where your own posts go: a WordPress site, or a Tumblr blog when no WordPress site is connected (David, Nov 25)
+  const onTumblr = () => SOC.accounts?.site?.kind === 'tumblr';
+  const siteApp = () => onTumblr() ? 'Tumblr' : 'WordPress';
+  // Copies of what you post at home: Bluesky and Mastodon, and Tumblr when your home is a WordPress site
+  const copyNets = () => ['bluesky', 'mastodon', ...(SOC.accounts?.site?.kind === 'wordpress' ? ['tumblr'] : [])].filter(n => SOC.accounts[n]);
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
@@ -496,7 +501,7 @@
     const { tabsOn, tab } = talkTabsInfo(), counts = { you: newYou() };
     const checked = SOC.checkedAt ? (ago(SOC.checkedAt) === 'now' ? 'Checked just now' : `Checked ${ago(SOC.checkedAt)} ago`) : '';
     el.innerHTML = `<div class="ttabs" role="tablist">${tabsOn.map(([k, label]) => `<button role="tab" data-talk="tab" data-tab="${k}" aria-pressed="${tab === k && !SOC.person}">${label}${counts[k] ? `<span class="tcount">${counts[k]}</span>` : ''}</button>`).join('')}</div>
-      <div class="th-acts">${anySocial() || SOC.accounts.wordpress ? `<button class="btn primary" data-talk="newpost">${SOC.accounts.wordpress ? 'New note' : 'New post'}</button>` : ''}
+      <div class="th-acts">${anySocial() || SOC.accounts.site ? `<button class="btn primary" data-talk="newpost">${SOC.accounts.site ? 'New note' : 'New post'}</button>` : ''}
         <button class="btn icon-only" id="talkRefresh" type="button" title="Check again${checked ? ' · ' + checked : ''}" aria-label="Check again"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></div>`;
   }
 
@@ -692,10 +697,10 @@
   // picked as "my site". Same host, or one a subdomain of the other (notes.example.com).
   let ownCache = { k: '', ids: new Set() };
   function ownIds() {
-    const mine = myFeed(), k = `${S.feeds.length}|${mine?.id}|${SOC.accounts.wordpress?.site || ''}`;
+    const mine = myFeed(), k = `${S.feeds.length}|${mine?.id}|${SOC.accounts.site?.site || ''}`;
     if (ownCache.k === k) return ownCache.ids;
     const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
-    const homes = new Set([mine && (hostOf(mine.site) || hostOf(mine.url)), hostOf(SOC.accounts.wordpress?.site || '')].filter(Boolean));
+    const homes = new Set([mine && (hostOf(mine.site) || hostOf(mine.url)), hostOf(SOC.accounts.site?.site || '')].filter(Boolean));
     const same = h => !!h && [...homes].some(m => h === m || h.endsWith('.' + m) || m.endsWith('.' + h));
     const ids = new Set(homes.size ? S.feeds.filter(f => f.id === mine?.id || same(hostOf(f.site)) || same(hostOf(f.url))).map(f => f.id) : []);
     ownCache = { k, ids }; return ids;
@@ -2942,7 +2947,7 @@
   // Likes, reposts and replies still happen on the post you're reading; they show here once they're on your site.
   const WR = { sub: '', cats: null, drafts: null, recent: null, future: null, at: 0, busy: false, err: '', folder: null, folderKey: '', folderBusy: false,
     cal: null, calKey: '', calMonth: null, calDay: '', draftsMore: false, draftsPage: 1, trashed: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
-  const wrSite = () => SOC.accounts?.wordpress;
+  const wrSite = () => SOC.accounts?.site;
   const wrHost = () => (wrSite()?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const wrCat = slug => (WR.cats || []).find(c => c.slug === slug);
   const wrCatName = id => (WR.cats || []).find(c => c.id === id)?.name || '';
@@ -3044,8 +3049,8 @@
   }
   function writingHtml() {
     if (!wrSite()) return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Writing is where you post to your own site: notes, full posts and Weeknotes, with your drafts, ideas and your blog’s numbers alongside.</p></div>
-      <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your WordPress site to start</h2>
-      <p>The Reading Room posts to your site with an Application Password, a sign-in WordPress makes just for one app. Nothing goes on your site until you press Post.</p>
+      <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your WordPress site or Tumblr blog to start</h2>
+      <p>No site yet? Tumblr is the quickest start: sign in to Tumblr and approve the app, and you’re ready. A WordPress site connects with an Application Password, a sign-in WordPress makes just for one app. Nothing goes on your site until you press Post.</p>
       <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
     if (!plusOk()) return wrInviteHtml();
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
@@ -3065,11 +3070,11 @@
 
   // New: a Note, a Post or Weeknotes. What you type is kept on this device until it's posted.
   function wrComposerHtml() {
-    const d = wrDraftGet(), kind = wrKind(), nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const d = wrDraftGet(), kind = wrKind(), nets = copyNets();
     const picked = new Set((store.get('wrNets') ?? 'bluesky,mastodon').split(',').filter(Boolean));
     const cats = (WR.cats || []).filter(c => !['notes', 'weeknotes'].includes(c.slug));
     const help = kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
-      : kind === 'note' ? 'A note goes on your Notes page and in its feed. Without a title, its first words are used.'
+      : kind === 'note' ? (onTumblr() ? 'A note goes on your Tumblr, tagged “notes”. A title is optional.' : 'A note goes on your Notes page and in its feed. Without a title, its first words are used.')
       : 'Step 3 of 3: add a few words under What happened (and a line under any post if you like), then Publish, or Save as a draft to finish later. Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
     const pic = WR.photo || WR.photoUrl;
     return `<section class="b-panel wr-new" aria-label="New">
@@ -3080,9 +3085,9 @@
       <textarea class="wr-body" id="wrText" rows="${kind === 'note' ? 4 : 9}" placeholder="${kind === 'note' ? 'What’s on your mind?' : kind === 'weeknotes' ? 'What happened this week?' : 'Start writing…'}" aria-label="What you’re writing">${esc(d.text || '')}</textarea>
       <p class="wr-help">${esc(help)}</p>
       ${pic ? `<div class="wr-pic"><img src="${esc(pic)}" alt=""><div><input class="n-field" id="wrAlt" maxlength="1000" value="${esc(WR.alt)}" placeholder="Describe the photo for people who can’t see it"${WR.photo ? '' : ' disabled'}>
-        <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : 'Change the picture in WordPress'}</button></div></div>` : ''}
+        <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : `Change the picture in ${siteApp()}`}</button></div></div>` : ''}
       <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>`}<input id="wrPhoto" type="file" accept="image/*" hidden>
-        ${kind === 'post' ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+        ${kind === 'post' && !onTumblr() ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
       <div class="wr-acts"><span class="note"><span class="wr-count" id="wrCount">${wrCount(d.text)}</span>${d.text || d.title ? '<span class="wr-kept">Kept on this device as you type</span>' : ''}</span>
@@ -3116,7 +3121,7 @@
       : `<ul class="wr-list">${list.slice(0, 4).map(p => `<li><span class="wr-t">${esc(p.title || p.excerpt?.slice(0, 80) || 'Untitled draft')}<small>Edited ${esc(wrWhen(p.modified))}${p.categories?.length ? ` · ${esc(wrCatName(p.categories[0]))}` : ''}</small></span><span class="wr-lacts"><button class="b-link" type="button" data-wr="pv" data-id="${p.id}">Preview</button><button class="b-link" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="b-link wr-dl" type="button" data-wr="trash" data-id="${p.id}">Delete</button></span></li>`).join('')}</ul>
         ${list.length > 4 ? `<p class="day-note"><button class="b-link" type="button" data-wrsub="drafts">All ${list.length} drafts</button></p>` : ''}`;
     return `<section class="b-panel wr-drafts" aria-label="Drafts"><div class="bp-head"><h3 class="b-sub">Drafts on your site</h3><span class="bp-meta">${list?.length ? `${list.length}${WR.draftsMore ? '+' : ''}` : ''}</span></div>${wrUndoHtml()}${body}
-      ${list?.length ? '<p class="day-note">Drafts you started here or in WordPress. Finish them in either place.</p>' : ''}</section>`;
+      ${list?.length ? `<p class="day-note">Drafts you started here or in ${siteApp()}. Finish them in either place.</p>` : ''}</section>`;
   }
   // This week: Weeknotes in three labeled steps (David, Nov 22: "Can we make it easier and label the steps?").
   // 1 Pick what you read (optional) · 2 Write · 3 Publish. Each step shows when it's done; the next one is the green button.
@@ -3184,14 +3189,14 @@
     if (!list.length) return '';
     return `<section class="b-panel wr-posted" aria-label="Recently on your site"><div class="bp-head"><h3 class="b-sub">Recently on your site</h3><span class="bp-meta">${esc(wrHost())}</span></div>
       <ul class="wr-plist">${list.map(p => { const k = wrKindOf(p); return `<li><span class="wr-kind k-${k}">${WR_KIND[k]}</span><span class="wr-pt">${esc(p.title || p.excerpt || '')}</span><span class="wr-when">${esc(wrWhen(p.date))}</span><button class="b-link" type="button" data-mkurl="${esc(p.link)}">View</button></li>`; }).join('')}</ul>
-      <p class="day-note">Likes, reposts and replies still happen right on the post you’re reading. Reposts and replies show here as notes; likes go on your Likes page.</p></section>`;
+      <p class="day-note">Likes, reposts and replies still happen right on the post you’re reading. Reposts and replies show here as notes${onTumblr() ? '; likes stay in the app, since Tumblr has no Likes page for other sites' : '; likes go on your Likes page'}.</p></section>`;
   }
   // a folder: Ideas, Drafts, Posts, Notes, Weeknotes or one of your site's categories, as a list
   function wrFolderHtml() {
     const k = WR.sub, cat = k.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === k) : null;
     const name = cat?.name || { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[k] || 'Writing';
     const note = k === 'ideas' ? 'Ideas for posts, kept in the app and synced through iCloud. Write it starts a post with the idea as its title.'
-      : k === 'drafts' ? `Drafts on ${wrHost()}, whether you started them here or in WordPress. Finish them in either place.`
+      : k === 'drafts' ? `Drafts on ${wrHost()}, whether you started them here or in ${siteApp()}. Finish them in either place.`
       : cat ? `Everything in ${cat.name} on ${wrHost()}, newest first. Categories come from your site, so they always match it.`
       : `Your ${name.toLowerCase()} on ${wrHost()}, newest first.`;
     let rows = '';
@@ -3208,6 +3213,7 @@
         : list.map(p => `<li class="wr-frow">${p.image ? `<img class="wr-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="wr-fmain"><b>${esc(p.title || (k === 'drafts' ? 'Untitled draft' : p.excerpt?.slice(0, 80) || ''))}</b>${p.excerpt && p.title ? `<p>${esc(p.excerpt)}</p>` : ''}
           <span class="wr-fmeta">${(p.categories || []).slice(0, 2).map(c => wrCatName(c)).filter(Boolean).map(c => `<span class="wr-kind">${esc(c)}</span>`).join('')}${k === 'drafts' ? `Edited ${esc(wrWhen(p.modified))}` : esc(wrWhen(p.date))}</span></div>
           <div class="wr-facts">${k === 'drafts' ? `<button class="btn wr-del" type="button" data-wr="trash" data-id="${p.id}">Delete</button><button class="btn" type="button" data-wr="pv" data-id="${p.id}">Preview</button><button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
+            : onTumblr() ? `<button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on Tumblr</button>`
             : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
     }
     return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
@@ -3274,8 +3280,10 @@
   const wrUndoHtml = () => WR.trashed ? `<p class="wr-undo" role="status">Moved “${esc(WR.trashed.title || 'Untitled draft')}” to the trash on your site. <button class="b-link" type="button" data-wr="untrash">Undo</button></p>` : '';
   async function wrTrash(id) {
     const p = (WR.drafts || []).find(x => x.id === id); if (!p) return;
+    // Tumblr has no trash: a deleted draft is gone for good, so ask first and offer no Undo
+    if (onTumblr() && !confirm(`Delete “${p.title || 'Untitled draft'}”? Tumblr doesn’t keep deleted drafts, so it can’t be brought back.`)) return;
     const at = WR.drafts.indexOf(p);
-    WR.drafts = WR.drafts.filter(x => x !== p); WR.trashed = { ...p, at }; wrPaint(); renderRail();
+    WR.drafts = WR.drafts.filter(x => x !== p); WR.trashed = onTumblr() ? null : { ...p, at }; wrPaint(); renderRail();
     try {
       await invoke('site_post_trash', { id });
       if (wrDraftGet().editId === id) { wrClear(); wrSay(''); }
@@ -3400,7 +3408,7 @@
     status('Opening your draft…');
     try {
       const p = await invoke('site_post_get', { id });
-      if (!p.simple) { invoke('open_external', { url: p.edit }).catch(() => {}); status('This draft has pictures or other blocks, so it opens in WordPress, where nothing in it gets lost.'); return; }
+      if (!p.simple) { invoke('open_external', { url: p.edit }).catch(() => {}); status(`This draft has pictures or other blocks, so it opens in ${siteApp()}, where nothing in it gets lost.`); return; }
       const nid = wrCat('notes')?.id, wid = wrCat('weeknotes')?.id;
       const cat = (p.categories || []).find(c => c !== nid && c !== wid) || '';
       const kind = nid && (p.categories || []).includes(nid) ? 'note' : wid && (p.categories || []).includes(wid) ? 'weeknotes' : 'post';
@@ -3441,7 +3449,7 @@
         // a post or Weeknotes saved as a draft stays open here, so the next save updates the same draft
         // (David, Nov 22: Weeknotes used to vanish from the page after Save, and Weeknotes then started over)
         wrDraftSet({ ...d, editId: r.id }); if (r.image) { WR.photoUrl = r.image; WR.photo = ''; }
-        wrSay('Saved to your drafts on your site. Keep writing, or finish it later here or in WordPress.');
+        wrSay(`Saved to your drafts on your site. Keep writing, or finish it later here or in ${siteApp()}.`);
         WR.posting = false; wrLoad(true); wrPaint(); return;
       }
       if (draft) { wrClear(); wrSay(''); status(kind === 'weeknotes' ? 'Saved your Weeknotes as a draft on your site.' : 'Saved as a draft on your site.'); WR.posting = false; wrLoad(true); wrPaint(); return; }
@@ -3508,7 +3516,7 @@
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }
     if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
-    if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
+    if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: onTumblr() ? `https://www.tumblr.com/blog/${wrSite().blog}/drafts` : `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
     if (k === 'preview') { wrPreviewNew(); return; }
     if (k === 'focus') { wrSetFocus(!WR.focus); return; }
     if (k === 'pv') { wrPreviewDraft(id); return; }
@@ -3614,7 +3622,7 @@
     return '';
   }
   const PLUS_FEATURES = [
-    ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site, with copies to Mastodon and Bluesky.'],
+    ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site or Tumblr blog, with copies to Mastodon and Bluesky.'],
     ['Weeknotes', 'Publish your Weeknotes and What I read this week as posts, with a featured image.'],
     ['Writing', 'Full posts, notes and Weeknotes, your ideas, the drafts on your site and a writing calendar, in one place.'],
     ['Your blog', 'Visitors, RSS readers and search traffic for your blog, in Writing.'],
@@ -3697,7 +3705,7 @@
       ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
       : body}</section>`;
     const wp = SOC.accounts.wordpress;
-    return `<h2 id="socialTitle">Your site, Mastodon &amp; Bluesky</h2>
+    return `<h2 id="socialTitle">Your site, Tumblr, Mastodon &amp; Bluesky</h2>
       <p>Connect your own site and accounts to post notes and stories with your thoughts, and to see and answer the replies in Conversations. Sign-ins are kept in Apple’s Keychain and sync to your other Apple devices through iCloud Keychain; they’re sent only to your own site and servers.</p>
       <section class="acct"><h3>${ICONS.site}Your site <small class="acct-sub">WordPress</small></h3>${wp
         ? `<p>Connected to <b>${esc(wp.name)}</b> (${esc(wp.site.replace(/^https?:\/\//, ''))}) as ${esc(wp.user)}. Notes go in a Notes category there.</p><div class="row"><button class="btn" data-disconnect="wordpress">Disconnect</button></div>`
@@ -3705,6 +3713,7 @@
         <form class="acct-form" id="wpForm"><input id="wpSite" placeholder="yoursite.com" autocapitalize="off" spellcheck="false" autocomplete="url">
         <input id="wpUser" placeholder="WordPress username" autocapitalize="off" spellcheck="false" autocomplete="username">
         <input id="wpPass" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`}</section>
+      ${tumblrAcctHtml()}
       ${row('bluesky', SOC.accounts.bluesky, `<p>Use an <b>App Password</b>, not your real password. Make one in Bluesky under Settings › Privacy and security › <button class="b-link" data-open-url="https://bsky.app/settings/app-passwords">App passwords</button>. You can revoke it anytime.</p>
         <form class="acct-form" id="bskyForm"><input id="bskyHandle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="off" spellcheck="false">
         <input id="bskyPass" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`)}
@@ -3714,7 +3723,20 @@
       <p class="acct-note" id="acctNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn primary" type="button" id="socialDone">Done</button></div>`;
   }
+  // Tumblr: Writing's home when there's no WordPress site; with one, a place to share copies (David, Nov 25)
+  function tumblrAcctHtml() {
+    const t = SOC.accounts.tumblr, wp = SOC.accounts.wordpress;
+    const blogs = t?.blogs || [];
+    return `<section class="acct"><h3>${ICON_NET.tumblr}Tumblr</h3>${t
+      ? `<p>Connected to <b>${esc(t.name || t.blog)}</b> (${esc(t.blog)}.tumblr.com). ${wp ? 'Your WordPress site stays where Writing posts; Tumblr is offered as a copy when you post.' : 'Writing posts here: notes are tagged “notes”, Weeknotes “weeknotes”.'}</p>
+        ${blogs.length > 1 ? `<label class="acct-pick">Post to <select id="tumblrBlog">${blogs.map(b => `<option value="${esc(b.blog)}"${b.blog === t.blog ? ' selected' : ''}>${esc(b.title || b.blog)}</option>`).join('')}</select></label>` : ''}
+        <div class="row"><button class="btn" data-disconnect="tumblr">Disconnect</button></div>`
+      : `<p>Post to your Tumblr blog: no site to set up and no password to make. Press Connect Tumblr, sign in on Tumblr’s page and approve The Reading Room. A page then shows a code: paste it here. ${wp ? 'With your WordPress site connected, Tumblr is offered as a copy when you post.' : ''}</p>
+        <form class="acct-form" id="tumblrForm"><button class="btn primary" type="submit">Connect Tumblr</button></form>
+        <form class="acct-form" id="tumblrCodeForm" hidden><input id="tumblrCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
+  }
   const ICON_NET = {
+    tumblr: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     bluesky: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>',
     mastodon: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M21.3 13.8c-.3 1.5-2.6 3.1-5.3 3.4-1.4.2-2.8.3-4.3.3-2.4-.1-4.3-.6-4.3-.6v.7c.3 2.4 2.4 2.5 4.3 2.6 2 .1 3.7-.5 3.7-.5l.1 1.8s-1.4.7-3.8.9c-1.4.1-3.1-.1-5.1-.6-4.3-1.1-5-5.5-5.2-10V7.6C1.4 3 4.4 1.7 4.4 1.7 5.9 1 8.6.7 11.3.7h.1c2.7 0 5.4.3 6.9 1 0 0 3 1.3 3 5.9 0 0 .1 3.4-.4 5.7zM18.2 8.4c0-1.2-.3-2.1-.9-2.8-.6-.7-1.4-1-2.4-1-1.2 0-2 .4-2.6 1.3l-.6 1-.6-1c-.6-.9-1.4-1.3-2.6-1.3-1 0-1.8.4-2.4 1-.6.7-.9 1.6-.9 2.8v5.6h2.2V8.6c0-1.1.5-1.7 1.4-1.7 1 0 1.6.7 1.6 2v3h2.2v-3c0-1.3.5-2 1.6-2 .9 0 1.4.6 1.4 1.7V14h2.2z"/></svg>',
   };
@@ -3777,8 +3799,25 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { SOC.accounts = await invoke('social_disconnect', { network: d.dataset.disconnect }); SOC.conv = null; openAccounts(); renderRail(); }
+      if (d) { SOC.accounts = await invoke(d.dataset.disconnect === 'tumblr' ? 'tumblr_disconnect' : 'social_disconnect', { network: d.dataset.disconnect }); SOC.conv = null; WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
     };
+    $('tumblrBlog')?.addEventListener('change', async e => {
+      try { SOC.accounts = await invoke('tumblr_pick_blog', { blog: e.target.value }); WR.at = 0; BLOG.data = null; note(`Posting to ${e.target.selectedOptions[0].textContent} now.`); renderRail(); }
+      catch (err) { note(msg(err), true); }
+    });
+    $('tumblrForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Opening Tumblr…');
+      try {
+        await invoke('open_external', { url: await invoke('tumblr_begin') });
+        $('tumblrForm').hidden = true; $('tumblrCodeForm').hidden = false; $('tumblrCode').focus();
+        note('Sign in on Tumblr’s page and approve The Reading Room, then paste the code the next page shows.');
+      } catch (err) { note(msg(err), true); }
+    });
+    $('tumblrCodeForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Connecting to Tumblr…');
+      try { SOC.accounts = await invoke('tumblr_finish', { code: $('tumblrCode').value }); WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      catch (err) { note(msg(err), true); }
+    });
     $('wpAppPw')?.addEventListener('click', () => {
       const raw = ($('wpSite')?.value || '').trim().replace(/\/+$/, '');
       if (!raw) { note('Type your site’s address first, then press the link again.', true); $('wpSite').focus(); return; }
@@ -4568,10 +4607,10 @@
   // is kept only while the app is open.
   const NOTE_PH = new Map();
   function openNote(it) {
-    const wp = SOC.accounts.wordpress; if (!wp) { openAccounts(); return; }
+    const wp = SOC.accounts.site; if (!wp) { openAccounts(); return; }
     const dkey = 'noteDraft:' + (it ? it.id : 'new');
     let kept = null; try { kept = JSON.parse(store.get(dkey) || 'null'); } catch {}
-    const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const nets = copyNets();
     const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
     const f = it && feedById(it.feed_id);
     let photo = '';
@@ -4590,7 +4629,7 @@
       <label class="n-home"><input type="checkbox" id="nSite" checked><span class="slim-ini n-ini" style="background:hsl(${hueFor(wp.site)} 45% 42%)">${esc((wp.name || '?').trim()[0].toUpperCase())}</span>
         <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: without a title, its first words are used. It goes on your Notes page and in its feed.</small></span></label>
       ${nets.length ? `<p class="n-also" id="nAlso">Also share a copy that links back to it</p>
-      <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}" checked>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
+      <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}"${n === 'tumblr' ? '' : ' checked'}>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
       <label class="c-net n-x"><input type="checkbox" id="nX"${store.get('noteX') === '1' ? ' checked' : ''}><span class="x-mark" aria-hidden="true">X</span>Then open X with a copy <small>you press Post there</small></label>
       <p class="acct-note" id="nNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Close</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
@@ -4662,7 +4701,7 @@
         if (toSite()) {
           say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
           const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft, linkImage: it && isWeb(it.image) ? it.image : '', linkSite: it ? (srcLabel(it) || f?.title || '') : '' });
-          if (draft) { forget(); el.hidden = true; status('Saved as a draft on your site. Finish it in WordPress whenever you like.'); return; }
+          if (draft) { forget(); el.hidden = true; status(`Saved as a draft on your site. Finish it in ${siteApp()} whenever you like.`); return; }
           home = r.url; forget();
         }
         let shared = [], bad = [], warned = [];
@@ -4925,7 +4964,7 @@
       myPics = { social: '', wp: '' };
       const redraw = () => { PV++; if (S.view === 'talk') renderList(); };
       if (anySocial()) (SOC.profiles ? Promise.resolve(SOC.profiles) : invoke('social_profiles')).then(p => { SOC.profiles = SOC.profiles || p; myPics.social = (p || []).find(x => isWeb(x.avatar))?.avatar || ''; if (myPics.social) redraw(); }).catch(() => {});
-      if (SOC.accounts.wordpress) invoke('site_avatar').then(u => { myPics.wp = isWeb(u) ? u : ''; if (myPics.wp) redraw(); }).catch(() => {});
+      if (SOC.accounts.site) invoke('site_avatar').then(u => { myPics.wp = isWeb(u) ? u : ''; if (myPics.wp) redraw(); }).catch(() => {});
     }
     return (SOC.profiles || []).find(p => isWeb(p.avatar))?.avatar || myPics.social || myPics.wp || '';
   }
@@ -5190,7 +5229,7 @@
     S.prefs.myReplies = [r, ...myReplies().filter(x => x.url !== url)].slice(0, 150); savePrefs();
   }
   function answersTo(r) {
-    const mine = ownIds(), myHost = bareHost(hostOfU(SOC.accounts.wordpress?.site || myFeed()?.site || ''));
+    const mine = ownIds(), myHost = bareHost(hostOfU(SOC.accounts.site?.site || myFeed()?.site || ''));
     const theirs = S.feeds.filter(f => friendKey(f) === r.who || (r.who && f.url === r.who)).map(f => f.id);
     const ids = new Set(S.feeds.filter(f => theirs.includes(f.id) || theirs.includes(personId(f.id))).map(f => f.id));
     const u = normU(r.url);
@@ -5323,7 +5362,7 @@
   // told (the Webmention plugin sends it), so it can show the repost. Kept by the post's address (synced).
   const repostOf = it => (S.prefs.reposts || {})[normU(it.link)];
   const repostBtn = it => {
-    if (!SOC.accounts.wordpress || !isWeb(it.link)) return '';
+    if (!SOC.accounts.site || !isWeb(it.link)) return '';
     if (!repostOf(it)) return `<button class="linkish nb-rp" data-talk="repost" data-id="${esc(it.id)}">Repost</button>`;
     if (!rpSwept) { rpSwept = true; setTimeout(sweepReposts, 4000); }
     return `<button class="linkish nb-rp on" data-talk="repost" data-id="${esc(it.id)}" title="See your repost, or repost it again">Reposted ✓</button>`;
@@ -5340,7 +5379,7 @@
     if (changed) { savePrefs(); renderList(); paintReaderTalk(); }
   }
   async function openRepost(it) {
-    const f = nbWho(it), host = SOC.accounts.wordpress.site.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const f = nbWho(it), host = SOC.accounts.site.site.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const prev = repostOf(it);
     // already reposted: if that post is gone from your site, start fresh; if not, offer to see it or repost again
     if (prev && await invoke('site_post_gone', { url: prev.url }).catch(() => false)) {
@@ -5835,7 +5874,7 @@
     document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
     const sel = `.n-box[data-box="nb:${CSS.escape(it.id)}"]`;
     const box = b?.closest('.r-talk, .nb-main')?.querySelector(sel) || document.querySelector(sel); if (!box) return;
-    const f = nbWho(it), wp = SOC.accounts.wordpress, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, ''), vsite = videoSite(it);
+    const f = nbWho(it), wp = SOC.accounts.site, host = wp?.site?.replace(/^https?:\/\//, '').replace(/\/$/, ''), vsite = videoSite(it);
     box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Write back to ${esc(f?.title || 'them')}…"></textarea>
       <div class="row">
         ${wp ? `<button class="btn primary" type="button" data-rb="site">Post on ${esc(host)}</button>` : ''}
@@ -5997,7 +6036,7 @@
   // One quiet line on what a connection adds, until you connect or close it
   function nbHintHtml() {
     if (store.get('nbHinted') === '1') return '';
-    const site = !!SOC.accounts.wordpress, social = anySocial();
+    const site = !!SOC.accounts.site, social = anySocial();
     if (site && social) return '';
     const what = !site && !social ? 'Connect your site to like and reply from it, or Mastodon or Bluesky to see the short posts of the people you read.'
       : !site ? 'Connect your site to like and reply from it, so the writer hears about it.'
@@ -6057,7 +6096,7 @@
   }
   function youHtml() {
     const chip = SOC.youChip || '';
-    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.wordpress).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
       .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
     if (chip === 'myreplies') return chips + myRepliesHtml();
@@ -6084,9 +6123,9 @@
       if (f) ev.push({ date: i.date, html: `<article class="yu-ev${i.read ? '' : ' new'}">${nbFace(f, 'nb-av md')}<div class="nb-main"><div class="nb-by"><button class="nb-name" data-talk="nbwho" data-feed="${esc(f.id)}">${esc(f.title)}</button><span>emailed you</span><time>${esc(fmtWhen(i.date))}</time></div><button class="nb-title sm" data-open="${esc(i.id)}">${esc(i.title)}</button><div class="nb-acts"><button class="linkish" data-open="${esc(i.id)}">Read</button></div></div></article>` });
     }
     ev.sort((a, b) => b.date.localeCompare(a.date));
-    const loading = (anySocial() && !SOC.conv) || (SOC.accounts.wordpress && !SOC.comments);
+    const loading = (anySocial() && !SOC.conv) || (SOC.accounts.site && !SOC.comments);
     const empty = loading ? '<p class="note">Checking for replies, comments and mentions…</p>'
-      : `<p class="nb-end">Nothing yet.<small>${anySocial() || SOC.accounts.wordpress ? 'Replies, comments and links to your site show up here.' : 'Connect your site or a Mastodon or Bluesky account (Settings › Connections) to see replies here. Blogs linking to you show up either way.'}</small></p>`;
+      : `<p class="nb-end">Nothing yet.<small>${anySocial() || SOC.accounts.site ? 'Replies, comments and links to your site show up here.' : 'Connect your site or a Mastodon or Bluesky account (Settings › Connections) to see replies here. Blogs linking to you show up either way.'}</small></p>`;
     return chips + waiting + (ev.length ? ev.slice(0, 50).map(e => e.html).join('') : empty);
   }
 
@@ -6100,7 +6139,7 @@
   };
   // Your site's comments: when Conversations opens, and every 15 minutes for alerts
   function loadComments() {
-    if (!SOC.accounts.wordpress) return;
+    if (!SOC.accounts.site) return;
     invoke('site_comments').then(c => { SOC.comments = c; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } }).catch(() => { if (!SOC.comments) SOC.comments = { comments: [], waiting: 0 }; });
   }
   async function loadTalk() {
@@ -6632,7 +6671,7 @@
     if (k === 'srch') { runSearch(b.dataset.q); return; }
     if (k === 'srdrop') { setSearches(searches().filter(q => q !== b.dataset.q)); renderList(); return; }
     if (k === 'srfeeds') { SOC.srAllFeeds = true; renderList(); return; }
-    if (k === 'newpost') { if (SOC.accounts.wordpress) openNote(null); else openCompose(null); }
+    if (k === 'newpost') { if (SOC.accounts.site) openNote(null); else openCompose(null); }
     if (k === 'sharemine') { const it = item(b.dataset.id); if (it) openCompose(it, null, true); }
     if (k === 'dismiss') { setHidden(b.dataset.k, b.dataset.key, true); status('Removed from the list. “Hidden” at the bottom of the box brings it back.'); }
     if (k === 'unhide') setHidden(b.dataset.k, b.dataset.key, false);
@@ -7299,7 +7338,7 @@
       .slice(0, 30);
   }
   function openRoundup() {
-    const picks = roundupPicks(), wp = SOC.accounts.wordpress;
+    const picks = roundupPicks(), wp = SOC.accounts.site;
     // with your site connected (and Writing not hidden), your picks go into Writing: your Weeknotes or a post of their own
     const wrTo = !!wp && !hiddenViews().has('write'), weekOpen = wrTo && !wrWeekDone(mdWeek());
     if (!picks.length) { status('Nothing read this week yet. Read, save or highlight a few posts, then make your roundup.'); return; }
@@ -7568,7 +7607,7 @@
   async function share(kind) {
     const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
     if (kind === 'dayone') { journalItem(it); return; }
-    if (kind === 'note') { if (SOC.accounts.wordpress) openNote(it); else { openAccounts().then(() => $('wpSite')?.focus()); status('Connect your site first, then write your note.'); } return; }
+    if (kind === 'note') { if (SOC.accounts.site) openNote(it); else { openAccounts().then(() => $('wpSite')?.focus()); status('Connect your site first, then write your note.'); } return; }
     if (kind === 'bluesky' || kind === 'mastodon') { openCompose(it, kind); return; }
     if (kind === 'sheet') { navigator.share?.({ title: it.title, url: it.link }).catch(() => {}); return; }
     const u = encodeURIComponent(it.link), t = encodeURIComponent(it.title);
@@ -8996,9 +9035,21 @@
     return `<span class="bl-d ${dir}">${dir === 'up' ? '▲' : dir === 'down' ? '▼' : ''} ${Math.abs(pct).toFixed(0)}%</span> <span class="bl-vs">${esc(unit)}</span>`;
   }
   const blDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  // Your Tumblr: what Tumblr gives apps (followers, and the notes on your recent posts). It has no visits or search
+  // numbers for apps, and the panel says so.
+  function tumblrBlogHtml(b) {
+    const when = BLOG.at ? new Date(BLOG.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    const top = (b.top || []).map(t => `<li><button class="b-link" type="button" data-mkurl="${esc(t.link)}">${esc((t.title || 'A post').slice(0, 90))}</button><span class="bl-n">${nfmt(t.notes)}</span></li>`).join('');
+    return `<section class="b-panel md-blog" aria-label="Your Tumblr">
+      <div class="bp-head"><h3 class="b-sub">Your Tumblr</h3><span class="bp-meta">${esc(b.site || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
+      <div class="bl-cols"><div class="bl-col"><h4>Followers</h4><p class="bl-big">${nfmt(b.followers)} <small>following your blog</small></p><p class="bl-sub">${nfmt(b.posts)} posts on your blog</p></div>
+        <div class="bl-col"><h4>Notes</h4><p class="bl-big">${nfmt(b.recentNotes)} <small>on your last ${b.recentCount || 0} posts</small></p><p class="bl-sub">Likes, reblogs and replies, as Tumblr counts them.</p>
+          ${top ? `<h5>Most notes</h5><ul class="bl-list">${top}</ul>` : ''}</div></div>
+      <p class="bl-cap">Tumblr doesn’t share visits or search numbers with apps, so those stay in Tumblr’s own Activity page. <button class="b-link" type="button" data-mkurl="https://www.tumblr.com/blog/${esc(b.site || '')}/activity">Open Activity on Tumblr</button></p></section>`;
+  }
   function yourBlogHtml() {
-    if (!plusOk()) return SOC.accounts?.wordpress ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
-      <p class="day-note">See your blog’s visitors, RSS readers and search traffic here every day with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
+    if (!plusOk()) return SOC.accounts?.site ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
+      <p class="day-note">${onTumblr() ? 'See your followers and the notes on your posts here' : 'See your blog’s visitors, RSS readers and search traffic here every day'} with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.busy && (!BLOG.data && !BLOG.failed || BLOG.failed && Date.now() - BLOG.at > 5 * 60 * 1000 || BLOG.data && Date.now() - BLOG.at > 30 * 60 * 1000)) setTimeout(() => loadBlog(), 0);
     const b = BLOG.data;
     const head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>';
@@ -9006,6 +9057,7 @@
     if (!b && BLOG.err) return `${head}<p class="day-note">Couldn’t get your blog’s numbers just now. ${esc(BLOG.err)} The app tries again in a few minutes. <button class="b-link" type="button" data-blog-retry>Try again</button></p></section>`;
     if (!b && !BLOG.loaded) return `${head}<p class="day-note">${BLOG.busy || !BLOG.failed ? 'Getting your blog’s numbers…' : ''}</p></section>`;
     // Connected to a WordPress site that doesn't have the plugin: say where to get it
+    if (b?.kind === 'tumblr') return tumblrBlogHtml(b);
     if (!b && BLOG.loaded && SOC.accounts?.wordpress) return `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">Your blog</h3></div>
       <p class="day-note">Your blog’s visitors, RSS readers and search traffic can show here. Add the free plugin The Reading Room stats to your WordPress site. <button class="b-link" type="button" data-mkurl="https://readingroomapp.com/plugin/">Get the plugin</button></p></section>`;
     if (!b || !(b.visitors || b.rss || b.search)) return '';
@@ -9351,7 +9403,7 @@
   }
   const wkTitle = wk => `Weeknotes: ${fmtRange(wk.mon, wk.sun)}`;
   function wkShare(wk, w) {
-    const wp = SOC.accounts?.wordpress, notes = weeknotes(wk, w, false), sh = w.share;
+    const wp = SOC.accounts?.site, notes = weeknotes(wk, w, false), sh = w.share;
     const box = (k, l) => `<label><input type="checkbox" data-md="share" data-k="${k}"${sh[k] ? ' checked' : ''}> ${l}</label>`;
     return `<div class="md-grid">
       <section class="b-panel" aria-label="Your journal">
@@ -9429,7 +9481,7 @@
       note(draft ? 'Saving the draft…' : 'Publishing…');
       invoke('site_note', { title: wkTitle(wk), text, link: '', linkTitle: '', photo: ph?.data || '', alt: ph?.alt || '', draft, linkImage: '', linkSite: '', category: 'weeknotes', featuredOnly: true })
         .then(r => {
-          if (draft) { w.drafted = Date.now(); status('Saved your Weeknotes as a draft post in Weeknotes on your site. Finish and publish it in WordPress.'); }
+          if (draft) { w.drafted = Date.now(); status(`Saved your Weeknotes as a draft post in Weeknotes on your site. Finish and publish it in ${siteApp()}.`); }
           else { w.published = Date.now(); w.pubUrl = r?.url || ''; MD.wkPhoto = null; status('Your Weeknotes are on your site.'); }
           savePrefs(); note(''); mdRender();
         })

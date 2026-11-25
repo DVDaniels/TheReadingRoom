@@ -21,7 +21,7 @@ const MASTO_SCOPES: &str = "read write:statuses write:media write:follows write:
 /// Bluesky's own moderation service, which receives reports
 const BSKY_MODERATION: &str = "did:plc:ar7c4by46qjdydhdevvrndac#atproto_labeler";
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static C: OnceLock<reqwest::Client> = OnceLock::new();
     C.get_or_init(crate::feeds::client)
 }
@@ -146,9 +146,9 @@ pub(crate) fn secret_delete(key: &str) {
 
 // ------------------------------------------------------------------ small helpers
 
-type Fail = (u16, String);
+pub(crate) type Fail = (u16, String);
 
-async fn call(req: reqwest::RequestBuilder) -> Result<Value, Fail> {
+pub(crate) async fn call(req: reqwest::RequestBuilder) -> Result<Value, Fail> {
     let resp = req
         .timeout(Duration::from_secs(25))
         .send()
@@ -162,12 +162,12 @@ async fn call(req: reqwest::RequestBuilder) -> Result<Value, Fail> {
     Ok(if text.trim().is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap_or(Value::Null) })
 }
 
-fn with_json(req: reqwest::RequestBuilder, body: &Value) -> reqwest::RequestBuilder {
+pub(crate) fn with_json(req: reqwest::RequestBuilder, body: &Value) -> reqwest::RequestBuilder {
     req.header("Content-Type", "application/json").body(body.to_string())
 }
 
 /// A server's error, in words a person can use.
-fn explain((status, body): Fail) -> String {
+pub(crate) fn explain((status, body): Fail) -> String {
     if status == 0 {
         return body;
     }
@@ -181,7 +181,7 @@ fn explain((status, body): Fail) -> String {
     }
 }
 
-fn st(v: &Value, path: &str) -> String {
+pub(crate) fn st(v: &Value, path: &str) -> String {
     let mut cur = v;
     for k in path.split('.') {
         cur = match cur.get(k) {
@@ -534,6 +534,10 @@ pub struct Accounts {
     mastodon: Option<Value>,
     /// your own WordPress site, for notes
     wordpress: Option<Value>,
+    /// your Tumblr blog: Writing's home when no WordPress site is connected, else a place to copy posts to
+    tumblr: Option<Value>,
+    /// where Writing, notes, replies and reposts go: the WordPress site, else the Tumblr blog ({kind, site, name})
+    site: Option<Value>,
 }
 
 #[tauri::command]
@@ -542,6 +546,10 @@ pub fn social_accounts() -> Accounts {
         bluesky: secret_get("bluesky").map(|v| json!({ "handle": format!("@{}", st(&v, "handle")) })),
         mastodon: secret_get("mastodon").map(|v| json!({ "handle": format!("@{}@{}", st(&v, "acct"), st(&v, "instance")) })),
         wordpress: secret_get("wordpress").map(|v| json!({ "site": st(&v, "site"), "name": st(&v, "name"), "user": st(&v, "user") })),
+        tumblr: crate::tumblr::account(),
+        site: secret_get("wordpress")
+            .map(|v| json!({ "kind": "wordpress", "site": st(&v, "site"), "name": st(&v, "name") }))
+            .or_else(|| crate::tumblr::account().map(|t| json!({ "kind": "tumblr", "site": st(&t, "site").trim_end_matches('/'), "name": st(&t, "name"), "blog": st(&t, "blog") }))),
     }
 }
 
@@ -1545,6 +1553,9 @@ fn wp_fail(e: Fail) -> String {
 /// "The Reading Room stats" snippet; a site without it (or no site connected) gives null, and My Day hides the panel.
 #[tauri::command]
 pub async fn blog_stats() -> Result<Value, String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::stats().await;
+    }
     let Some(s) = secret_get("wordpress") else { return Ok(Value::Null) };
     let site = st(&s, "site");
     let req = wp_auth(client().get(format!("{site}/wp-json/reading-room/v1/stats")), &st(&s, "user"), &st(&s, "password"));
@@ -1773,6 +1784,9 @@ pub async fn people_likes(sites: Vec<String>) -> Vec<TheirLikes> {
 /// and how many are waiting for approval.
 #[tauri::command]
 pub async fn site_comments() -> Result<SiteComments, String> {
+    if crate::tumblr::is_home() {
+        return Ok(SiteComments::default()); // Tumblr's replies and reblogs stay on Tumblr
+    }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
     let me = wp(reqwest::Method::GET, "/wp/v2/users/me", None).await.ok().map(|m| m["id"].as_i64().unwrap_or(0)).unwrap_or(0);
     let list = wp(reqwest::Method::GET, "/wp/v2/comments?per_page=40&orderby=date&order=desc", None).await?;
@@ -1868,6 +1882,9 @@ fn likes_update(raw: &str, target: &str, title: &str, author: &str, on: bool, no
 /// Like (or un-like) a post: add it to your Likes page on your site, then tell the post's site with a Webmention.
 #[tauri::command]
 pub async fn site_like(url: String, title: String, author: String, on: bool) -> Result<Liked, String> {
+    if crate::tumblr::is_home() {
+        return Err("Likes go on a Likes page on a WordPress site. Tumblr doesn't have one, so use Repost to pass a post along.".into());
+    }
     let target = url::Url::parse(&url).map_err(|_| "That post has no web address.".to_string())?.to_string();
     let Some((id, link, raw)) = likes_page(on).await? else { return Ok(Liked::default()) };
     let body = likes_update(&raw, &target, &title, &author, on, chrono::Utc::now());
@@ -1933,6 +1950,9 @@ async fn masto_refused(e: String, scope: &str, doing: &str, what: &str) -> Strin
 /// "d=404" so a missing Gravatar fails to load (and the app falls back) instead of showing the grey silhouette.
 #[tauri::command]
 pub async fn site_avatar() -> String {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::avatar().await;
+    }
     let Ok(me) = wp(reqwest::Method::GET, "/wp/v2/users/me", None).await else { return String::new() };
     let urls = &me["avatar_urls"];
     let best = ["96", "48", "24"].iter().map(|k| st(urls, k)).find(|u| !u.is_empty()).unwrap_or_default();
@@ -2160,7 +2180,7 @@ async fn site_category(slug: &str, name: &str, description: &str) -> Result<i64,
     made["id"].as_i64().ok_or_else(|| format!("Couldn't make the {name} category on your site."))
 }
 
-fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     let b64 = photo.split_once(',').map(|(_, b)| b).unwrap_or(photo);
     base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| "Couldn't read that photo.".to_string())
@@ -2173,6 +2193,10 @@ fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// site, unpublished.
 #[tauri::command]
 pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>, category: Option<String>, featured_only: Option<bool>) -> Result<SiteNote, String> {
+    if crate::tumblr::is_home() {
+        let _ = (link_image, link_site, featured_only);
+        return crate::tumblr::note(title.unwrap_or_default(), text, link.clone(), link_title, photo, alt, draft, repost.unwrap_or(false), reply.unwrap_or(false), category).await;
+    }
     let repost = repost.unwrap_or(false) && link.starts_with("http");
     // a reply answers the post's author (u-in-reply-to); a repost passes it along; otherwise the note is about it (a bookmark)
     let card_kind = if repost { CardKind::Repost } else if reply.unwrap_or(false) && link.starts_with("http") { CardKind::Reply } else { CardKind::Bookmark };
@@ -2278,6 +2302,9 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
 /// Your site's categories, for the Writing tab's folders and the category picker (empty ones too).
 #[tauri::command]
 pub async fn site_categories() -> Result<Value, String> {
+    if crate::tumblr::is_home() {
+        return Ok(crate::tumblr::categories());
+    }
     let v = wp(reqwest::Method::GET, "/wp/v2/categories?per_page=100&orderby=name&_fields=id,name,slug,count", None).await?;
     let list: Vec<Value> = v.as_array().cloned().unwrap_or_default().into_iter()
         .map(|c| json!({ "id": c["id"].as_i64().unwrap_or(0), "name": html_escape::decode_html_entities(&st(&c, "name")).to_string(), "slug": st(&c, "slug"), "count": c["count"].as_i64().unwrap_or(0) }))
@@ -2311,6 +2338,9 @@ fn writing_item(p: &Value) -> Value {
 /// first. Drafts need the sign-in (an Application Password for an account that can edit posts).
 #[tauri::command]
 pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, exclude: Option<Vec<i64>>, per_page: Option<u32>, after: Option<String>, page: Option<u32>) -> Result<Value, String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::posts(status, categories, exclude, per_page, after, page).await;
+    }
     let status = match status.as_deref() { Some("draft") => "draft", Some("future") => "future", _ => "publish" };
     let join = |v: &Vec<i64>| v.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
     let mut q = format!("/wp/v2/posts?status={status}&per_page={}&orderby={}&_embed=wp:featuredmedia&context=edit",
@@ -2328,6 +2358,9 @@ pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, ex
 /// opens it in WordPress instead, so nothing in it gets lost.
 #[tauri::command]
 pub async fn site_post_get(id: i64) -> Result<Value, String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::post_get(id).await;
+    }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
     let p = wp(reqwest::Method::GET, &format!("/wp/v2/posts/{id}?context=edit&_embed=wp:featuredmedia"), None).await?;
     let raw = st(&p, "content.raw");
@@ -2374,6 +2407,11 @@ pub fn site_preview(text: String) -> String {
     preview_html(&note_html(&text), &base)
 }
 
+/// The app's preview of words written for your site, without a site's address (for Tumblr).
+pub(crate) fn preview_for(text: &str) -> String {
+    preview_html(&note_html(text), "")
+}
+
 fn preview_html(html: &str, base: &str) -> String {
     static EMBED: OnceLock<regex::Regex> = OnceLock::new();
     let re = EMBED.get_or_init(|| regex::Regex::new(r#"(?s)<figure class="wp-block-embed[^"]*"><div class="wp-block-embed__wrapper">\s*(https?://[^\s<]+)\s*</div>(?:<figcaption[^>]*>.*?</figcaption>)?</figure>"#).unwrap());
@@ -2385,6 +2423,9 @@ fn preview_html(html: &str, base: &str) -> String {
 /// pictures as WordPress shows them, cleaned like an article.
 #[tauri::command]
 pub async fn site_post_view(id: i64) -> Result<Value, String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::post_view(id).await;
+    }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
     let p = wp(reqwest::Method::GET, &format!("/wp/v2/posts/{id}?context=edit&_embed=wp:featuredmedia"), None).await?;
     let mut item = writing_item(&p);
@@ -2402,6 +2443,10 @@ pub async fn site_post_view(id: i64) -> Result<Value, String> {
 /// site unpublished; `id` updates a post you're still writing. Notes and Weeknotes go through site_note.
 #[tauri::command]
 pub async fn site_post(id: Option<i64>, title: String, text: String, categories: Vec<i64>, photo: String, alt: String, draft: bool, kind: Option<String>) -> Result<SiteNote, String> {
+    if crate::tumblr::is_home() {
+        let _ = categories;
+        return crate::tumblr::post(id, title, text, photo, alt, draft, kind).await;
+    }
     if title.trim().is_empty() && text.trim().is_empty() {
         return Err("Write something first.".into());
     }
@@ -2448,6 +2493,9 @@ pub async fn site_post(id: Option<i64>, title: String, text: String, categories:
 /// Posts › Trash in WordPress, where you can restore it, until WordPress empties the trash (after 30 days).
 #[tauri::command]
 pub async fn site_post_trash(id: i64) -> Result<(), String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::delete(id).await;
+    }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
     let req = wp_auth(client().request(reqwest::Method::DELETE, format!("{}/wp-json/wp/v2/posts/{id}", st(&s, "site"))), &st(&s, "user"), &st(&s, "password"));
     match call(req).await {
@@ -2463,6 +2511,9 @@ pub async fn site_post_trash(id: i64) -> Result<(), String> {
 /// Bring a post back out of the Trash as a draft (Undo after Delete).
 #[tauri::command]
 pub async fn site_post_restore(id: i64) -> Result<(), String> {
+    if crate::tumblr::is_home() {
+        return Err("Tumblr doesn't keep deleted drafts, so this one can't come back.".into());
+    }
     wp(reqwest::Method::POST, &format!("/wp/v2/posts/{id}"), Some(json!({ "status": "draft" }))).await?;
     Ok(())
 }
@@ -2470,6 +2521,9 @@ pub async fn site_post_restore(id: i64) -> Result<(), String> {
 /// Publish a draft that's on your site as it is (Post now in the Drafts folder).
 #[tauri::command]
 pub async fn site_post_publish(id: i64) -> Result<SiteNote, String> {
+    if crate::tumblr::is_home() {
+        return crate::tumblr::publish(id).await;
+    }
     let p = wp(reqwest::Method::POST, &format!("/wp/v2/posts/{id}"), Some(json!({ "status": "publish" }))).await?;
     Ok(SiteNote { url: st(&p, "link"), id, ..Default::default() })
 }
@@ -2679,6 +2733,8 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                 masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(body)).await.map(|v| st(&v, "url"))
             }
             .await,
+            // a copy on Tumblr when your home is a WordPress site: your words, the photo, and the link home as a card
+            "tumblr" => crate::tumblr::share(&text, &link, &title, &photo, &alt).await,
             _ => Err("Unknown network.".into()),
         };
         out.push(match r {
