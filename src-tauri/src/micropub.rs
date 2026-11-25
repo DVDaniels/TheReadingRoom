@@ -46,6 +46,7 @@ struct Pending {
     micropub: String,
     token_endpoint: String,
     verifier: String,
+    #[allow(dead_code)] // kept for a later check of the answer's state
     state: String,
     name: String,
 }
@@ -424,11 +425,12 @@ fn item(p: &Value) -> Value {
     }
     let status = match first(p, "post-status").as_str() { "draft" => "draft", _ => "publish" };
     let when = first(p, "published");
+    let modified = [first(p, "updated"), when.clone()].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
     json!({
         "id": local_id(&url),
         "title": title.trim(),
         "excerpt": crate::social::html_text(&text).replace('\n', " ").chars().take(240).collect::<String>().trim(),
-        "date": when, "modified": [first(p, "updated"), when.clone()].into_iter().find(|x| !x.is_empty()).unwrap_or_default(),
+        "date": when, "modified": modified,
         "link": url,
         "status": status,
         "categories": ids,
