@@ -534,8 +534,10 @@ pub struct Accounts {
     mastodon: Option<Value>,
     /// your own WordPress site, for notes
     wordpress: Option<Value>,
-    /// your Tumblr blog: Writing's home when no WordPress site is connected, else a place to copy posts to
+    /// your Tumblr blog: Writing's home when no WordPress or Micropub site is connected, else a place to copy posts to
     tumblr: Option<Value>,
+    /// your Micro.blog, Pika or other IndieWeb site (Micropub): Writing's home when no WordPress site is connected
+    micropub: Option<Value>,
     /// where Writing, notes, replies and reposts go: the WordPress site, else the Tumblr blog ({kind, site, name})
     site: Option<Value>,
 }
@@ -549,7 +551,9 @@ pub fn social_accounts() -> Accounts {
         tumblr: crate::tumblr::account(),
         site: secret_get("wordpress")
             .map(|v| json!({ "kind": "wordpress", "site": st(&v, "site"), "name": st(&v, "name") }))
+            .or_else(|| crate::micropub::account().map(|m| json!({ "kind": "micropub", "site": st(&m, "site"), "name": st(&m, "name"), "service": st(&m, "service") })))
             .or_else(|| crate::tumblr::account().map(|t| json!({ "kind": "tumblr", "site": st(&t, "site").trim_end_matches('/'), "name": st(&t, "name"), "blog": st(&t, "blog") }))),
+        micropub: crate::micropub::account(),
     }
 }
 
@@ -1553,6 +1557,9 @@ fn wp_fail(e: Fail) -> String {
 /// "The Reading Room stats" snippet; a site without it (or no site connected) gives null, and My Day hides the panel.
 #[tauri::command]
 pub async fn blog_stats() -> Result<Value, String> {
+    if crate::micropub::is_home() {
+        return Ok(Value::Null); // Micropub sites have no stats to share
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::stats().await;
     }
@@ -1784,8 +1791,8 @@ pub async fn people_likes(sites: Vec<String>) -> Vec<TheirLikes> {
 /// and how many are waiting for approval.
 #[tauri::command]
 pub async fn site_comments() -> Result<SiteComments, String> {
-    if crate::tumblr::is_home() {
-        return Ok(SiteComments::default()); // Tumblr's replies and reblogs stay on Tumblr
+    if crate::tumblr::is_home() || crate::micropub::is_home() {
+        return Ok(SiteComments::default()); // replies there stay on Tumblr or your Micropub site
     }
     let s = secret_get("wordpress").ok_or("Connect your site first.")?;
     let me = wp(reqwest::Method::GET, "/wp/v2/users/me", None).await.ok().map(|m| m["id"].as_i64().unwrap_or(0)).unwrap_or(0);
@@ -1882,8 +1889,8 @@ fn likes_update(raw: &str, target: &str, title: &str, author: &str, on: bool, no
 /// Like (or un-like) a post: add it to your Likes page on your site, then tell the post's site with a Webmention.
 #[tauri::command]
 pub async fn site_like(url: String, title: String, author: String, on: bool) -> Result<Liked, String> {
-    if crate::tumblr::is_home() {
-        return Err("Likes go on a Likes page on a WordPress site. Tumblr doesn't have one, so use Repost to pass a post along.".into());
+    if crate::tumblr::is_home() || crate::micropub::is_home() {
+        return Err("Likes go on a Likes page on a WordPress site. Your site doesn't have one, so use Repost to pass a post along.".into());
     }
     let target = url::Url::parse(&url).map_err(|_| "That post has no web address.".to_string())?.to_string();
     let Some((id, link, raw)) = likes_page(on).await? else { return Ok(Liked::default()) };
@@ -1950,6 +1957,9 @@ async fn masto_refused(e: String, scope: &str, doing: &str, what: &str) -> Strin
 /// "d=404" so a missing Gravatar fails to load (and the app falls back) instead of showing the grey silhouette.
 #[tauri::command]
 pub async fn site_avatar() -> String {
+    if crate::micropub::is_home() {
+        return String::new();
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::avatar().await;
     }
@@ -2193,6 +2203,10 @@ pub(crate) fn photo_bytes(photo: &str) -> Result<Vec<u8>, String> {
 /// site, unpublished.
 #[tauri::command]
 pub async fn site_note(title: Option<String>, text: String, link: String, link_title: String, photo: String, alt: String, draft: bool, link_image: Option<String>, link_site: Option<String>, repost: Option<bool>, reply: Option<bool>, category: Option<String>, featured_only: Option<bool>) -> Result<SiteNote, String> {
+    if crate::micropub::is_home() {
+        let _ = (link_image, link_site, featured_only);
+        return crate::micropub::note(title.unwrap_or_default(), text, link.clone(), link_title, photo, alt, draft, repost.unwrap_or(false), reply.unwrap_or(false), category).await;
+    }
     if crate::tumblr::is_home() {
         let _ = (link_image, link_site, featured_only);
         return crate::tumblr::note(title.unwrap_or_default(), text, link.clone(), link_title, photo, alt, draft, repost.unwrap_or(false), reply.unwrap_or(false), category).await;
@@ -2302,6 +2316,9 @@ pub async fn site_note(title: Option<String>, text: String, link: String, link_t
 /// Your site's categories, for the Writing tab's folders and the category picker (empty ones too).
 #[tauri::command]
 pub async fn site_categories() -> Result<Value, String> {
+    if crate::micropub::is_home() {
+        return Ok(crate::micropub::categories());
+    }
     if crate::tumblr::is_home() {
         return Ok(crate::tumblr::categories());
     }
@@ -2338,6 +2355,9 @@ fn writing_item(p: &Value) -> Value {
 /// first. Drafts need the sign-in (an Application Password for an account that can edit posts).
 #[tauri::command]
 pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, exclude: Option<Vec<i64>>, per_page: Option<u32>, after: Option<String>, page: Option<u32>) -> Result<Value, String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::posts(status, categories, exclude, per_page, after, page).await;
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::posts(status, categories, exclude, per_page, after, page).await;
     }
@@ -2358,6 +2378,9 @@ pub async fn site_posts(status: Option<String>, categories: Option<Vec<i64>>, ex
 /// opens it in WordPress instead, so nothing in it gets lost.
 #[tauri::command]
 pub async fn site_post_get(id: i64) -> Result<Value, String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::post_get(id).await;
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::post_get(id).await;
     }
@@ -2423,6 +2446,9 @@ fn preview_html(html: &str, base: &str) -> String {
 /// pictures as WordPress shows them, cleaned like an article.
 #[tauri::command]
 pub async fn site_post_view(id: i64) -> Result<Value, String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::post_view(id).await;
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::post_view(id).await;
     }
@@ -2443,6 +2469,10 @@ pub async fn site_post_view(id: i64) -> Result<Value, String> {
 /// site unpublished; `id` updates a post you're still writing. Notes and Weeknotes go through site_note.
 #[tauri::command]
 pub async fn site_post(id: Option<i64>, title: String, text: String, categories: Vec<i64>, photo: String, alt: String, draft: bool, kind: Option<String>) -> Result<SiteNote, String> {
+    if crate::micropub::is_home() {
+        let _ = categories;
+        return crate::micropub::post(id, title, text, photo, alt, draft, kind).await;
+    }
     if crate::tumblr::is_home() {
         let _ = categories;
         return crate::tumblr::post(id, title, text, photo, alt, draft, kind).await;
@@ -2493,6 +2523,9 @@ pub async fn site_post(id: Option<i64>, title: String, text: String, categories:
 /// Posts › Trash in WordPress, where you can restore it, until WordPress empties the trash (after 30 days).
 #[tauri::command]
 pub async fn site_post_trash(id: i64) -> Result<(), String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::delete(id).await;
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::delete(id).await;
     }
@@ -2511,6 +2544,9 @@ pub async fn site_post_trash(id: i64) -> Result<(), String> {
 /// Bring a post back out of the Trash as a draft (Undo after Delete).
 #[tauri::command]
 pub async fn site_post_restore(id: i64) -> Result<(), String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::undelete(id).await;
+    }
     if crate::tumblr::is_home() {
         return Err("Tumblr doesn't keep deleted drafts, so this one can't come back.".into());
     }
@@ -2521,6 +2557,9 @@ pub async fn site_post_restore(id: i64) -> Result<(), String> {
 /// Publish a draft that's on your site as it is (Post now in the Drafts folder).
 #[tauri::command]
 pub async fn site_post_publish(id: i64) -> Result<SiteNote, String> {
+    if crate::micropub::is_home() {
+        return crate::micropub::publish(id).await;
+    }
     if crate::tumblr::is_home() {
         return crate::tumblr::publish(id).await;
     }

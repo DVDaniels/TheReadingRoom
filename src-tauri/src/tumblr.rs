@@ -4,7 +4,7 @@
 //!   sends you to readingroomapp.com/connect/tumblr/, which shows a code to copy back into the app (the page only
 //!   shows the code; it keeps nothing). The app trades the code for a sign-in that is kept in the Keychain, like
 //!   the other accounts, and renews it by itself.
-//! - When Tumblr is your home (no WordPress site connected), Writing's commands (site_note, site_post, site_posts…)
+//! - When Tumblr is your home (no WordPress or Micropub site connected), Writing's commands (site_note, site_post, site_posts…)
 //!   come here: Notes, Posts and Weeknotes become text posts on your Tumblr blog, drafts go to Tumblr's drafts,
 //!   and "notes" and "weeknotes" are tags, standing in for WordPress's categories.
 //! - Your Tumblr: followers and the notes (likes and reblogs) on your recent posts. Tumblr doesn't give apps
@@ -36,9 +36,9 @@ fn app_key() -> Result<(&'static str, &'static str), String> {
     Ok((k, s))
 }
 
-/// Tumblr is where Writing posts: it's connected and no WordPress site is (WordPress stays home when both are).
+/// Tumblr is where Writing posts: it's connected and no WordPress or Micropub site is (those stay home when both are).
 pub fn is_home() -> bool {
-    secret_get("wordpress").is_none() && secret_get(KEY).is_some()
+    secret_get("wordpress").is_none() && secret_get("micropub").is_none() && secret_get(KEY).is_some()
 }
 
 /// The connected blog, for the accounts list: its name, title and address.

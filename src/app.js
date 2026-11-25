@@ -14,10 +14,13 @@
   const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'blogs', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon', tumblr: 'Tumblr' };
   // Where your own posts go: a WordPress site, or a Tumblr blog when no WordPress site is connected (David, Nov 25)
+  // …or a Micro.blog, Pika or other IndieWeb site, through Micropub (David, Nov 25)
   const onTumblr = () => SOC.accounts?.site?.kind === 'tumblr';
-  const siteApp = () => onTumblr() ? 'Tumblr' : 'WordPress';
-  // Copies of what you post at home: Bluesky and Mastodon, and Tumblr when your home is a WordPress site
-  const copyNets = () => ['bluesky', 'mastodon', ...(SOC.accounts?.site?.kind === 'wordpress' ? ['tumblr'] : [])].filter(n => SOC.accounts[n]);
+  const onWp = () => SOC.accounts?.site?.kind === 'wordpress';
+  const siteApp = () => { const s = SOC.accounts?.site; if (!s || s.kind === 'wordpress') return 'WordPress'; if (s.kind === 'tumblr') return 'Tumblr';
+    const h = s.service || ''; return /micro\.blog$/.test(h) ? 'Micro.blog' : /pika\.page$/.test(h) ? 'Pika' : 'your site’s own editor'; };
+  // Copies of what you post at home: Bluesky and Mastodon, and Tumblr when your home is somewhere else
+  const copyNets = () => ['bluesky', 'mastodon', ...(SOC.accounts?.site && !onTumblr() ? ['tumblr'] : [])].filter(n => SOC.accounts[n]);
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
@@ -3049,8 +3052,8 @@
   }
   function writingHtml() {
     if (!wrSite()) return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Writing is where you post to your own site: notes, full posts and Weeknotes, with your drafts, ideas and your blog’s numbers alongside.</p></div>
-      <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your WordPress site or Tumblr blog to start</h2>
-      <p>No site yet? Tumblr is the quickest start: sign in to Tumblr and approve the app, and you’re ready. A WordPress site connects with an Application Password, a sign-in WordPress makes just for one app. Nothing goes on your site until you press Post.</p>
+      <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your site to start</h2>
+      <p>WordPress, Micro.blog, Pika, other IndieWeb sites, or Tumblr. No site yet? Tumblr and Micro.blog are the quickest starts: sign in and approve the app. Nothing goes on your site until you press Post.</p>
       <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
     if (!plusOk()) return wrInviteHtml();
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
@@ -3074,7 +3077,7 @@
     const picked = new Set((store.get('wrNets') ?? 'bluesky,mastodon').split(',').filter(Boolean));
     const cats = (WR.cats || []).filter(c => !['notes', 'weeknotes'].includes(c.slug));
     const help = kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
-      : kind === 'note' ? (onTumblr() ? 'A note goes on your Tumblr, tagged “notes”. A title is optional.' : 'A note goes on your Notes page and in its feed. Without a title, its first words are used.')
+      : kind === 'note' ? (onTumblr() ? 'A note goes on your Tumblr, tagged “notes”. A title is optional.' : !onWp() ? 'A note goes on your site as a short post. A title is optional.' : 'A note goes on your Notes page and in its feed. Without a title, its first words are used.')
       : 'Step 3 of 3: add a few words under What happened (and a line under any post if you like), then Publish, or Save as a draft to finish later. Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
     const pic = WR.photo || WR.photoUrl;
     return `<section class="b-panel wr-new" aria-label="New">
@@ -3087,7 +3090,7 @@
       ${pic ? `<div class="wr-pic"><img src="${esc(pic)}" alt=""><div><input class="n-field" id="wrAlt" maxlength="1000" value="${esc(WR.alt)}" placeholder="Describe the photo for people who can’t see it"${WR.photo ? '' : ' disabled'}>
         <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : `Change the picture in ${siteApp()}`}</button></div></div>` : ''}
       <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>`}<input id="wrPhoto" type="file" accept="image/*" hidden>
-        ${kind === 'post' && !onTumblr() ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+        ${kind === 'post' && onWp() ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
       <div class="wr-acts"><span class="note"><span class="wr-count" id="wrCount">${wrCount(d.text)}</span>${d.text || d.title ? '<span class="wr-kept">Kept on this device as you type</span>' : ''}</span>
@@ -3189,7 +3192,7 @@
     if (!list.length) return '';
     return `<section class="b-panel wr-posted" aria-label="Recently on your site"><div class="bp-head"><h3 class="b-sub">Recently on your site</h3><span class="bp-meta">${esc(wrHost())}</span></div>
       <ul class="wr-plist">${list.map(p => { const k = wrKindOf(p); return `<li><span class="wr-kind k-${k}">${WR_KIND[k]}</span><span class="wr-pt">${esc(p.title || p.excerpt || '')}</span><span class="wr-when">${esc(wrWhen(p.date))}</span><button class="b-link" type="button" data-mkurl="${esc(p.link)}">View</button></li>`; }).join('')}</ul>
-      <p class="day-note">Likes, reposts and replies still happen right on the post you’re reading. Reposts and replies show here as notes${onTumblr() ? '; likes stay in the app, since Tumblr has no Likes page for other sites' : '; likes go on your Likes page'}.</p></section>`;
+      <p class="day-note">Likes, reposts and replies still happen right on the post you’re reading. Reposts and replies show here as notes${!onWp() ? '; likes stay in the app, since only a WordPress site gets a Likes page' : '; likes go on your Likes page'}.</p></section>`;
   }
   // a folder: Ideas, Drafts, Posts, Notes, Weeknotes or one of your site's categories, as a list
   function wrFolderHtml() {
@@ -3213,7 +3216,7 @@
         : list.map(p => `<li class="wr-frow">${p.image ? `<img class="wr-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="wr-fmain"><b>${esc(p.title || (k === 'drafts' ? 'Untitled draft' : p.excerpt?.slice(0, 80) || ''))}</b>${p.excerpt && p.title ? `<p>${esc(p.excerpt)}</p>` : ''}
           <span class="wr-fmeta">${(p.categories || []).slice(0, 2).map(c => wrCatName(c)).filter(Boolean).map(c => `<span class="wr-kind">${esc(c)}</span>`).join('')}${k === 'drafts' ? `Edited ${esc(wrWhen(p.modified))}` : esc(wrWhen(p.date))}</span></div>
           <div class="wr-facts">${k === 'drafts' ? `<button class="btn wr-del" type="button" data-wr="trash" data-id="${p.id}">Delete</button><button class="btn" type="button" data-wr="pv" data-id="${p.id}">Preview</button><button class="btn" type="button" data-wr="edit" data-id="${p.id}">Keep writing</button><button class="btn primary" type="button" data-wr="publish" data-id="${p.id}">Post now</button>`
-            : onTumblr() ? `<button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on Tumblr</button>`
+            : !onWp() ? `<button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on ${onTumblr() ? 'Tumblr' : 'your site'}</button>`
             : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
     }
     return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
@@ -3516,7 +3519,7 @@
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }
     if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
-    if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: onTumblr() ? `https://www.tumblr.com/blog/${wrSite().blog}/drafts` : `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
+    if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: onTumblr() ? `https://www.tumblr.com/blog/${wrSite().blog}/drafts` : !onWp() ? wrSite().site : `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
     if (k === 'preview') { wrPreviewNew(); return; }
     if (k === 'focus') { wrSetFocus(!WR.focus); return; }
     if (k === 'pv') { wrPreviewDraft(id); return; }
@@ -3622,7 +3625,7 @@
     return '';
   }
   const PLUS_FEATURES = [
-    ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site or Tumblr blog, with copies to Mastodon and Bluesky.'],
+    ['Post to your site', 'Notes, reposts, replies and likes, straight to your own WordPress site, Micro.blog, Pika or Tumblr, with copies to Mastodon and Bluesky.'],
     ['Weeknotes', 'Publish your Weeknotes and What I read this week as posts, with a featured image.'],
     ['Writing', 'Full posts, notes and Weeknotes, your ideas, the drafts on your site and a writing calendar, in one place.'],
     ['Your blog', 'Visitors, RSS readers and search traffic for your blog, in Writing.'],
@@ -3714,6 +3717,7 @@
         <input id="wpUser" placeholder="WordPress username" autocapitalize="off" spellcheck="false" autocomplete="username">
         <input id="wpPass" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`}</section>
       ${tumblrAcctHtml()}
+      ${micropubAcctHtml()}
       ${row('bluesky', SOC.accounts.bluesky, `<p>Use an <b>App Password</b>, not your real password. Make one in Bluesky under Settings › Privacy and security › <button class="b-link" data-open-url="https://bsky.app/settings/app-passwords">App passwords</button>. You can revoke it anytime.</p>
         <form class="acct-form" id="bskyForm"><input id="bskyHandle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="off" spellcheck="false">
         <input id="bskyPass" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`)}
@@ -3734,6 +3738,17 @@
       : `<p>Post to your Tumblr blog: no site to set up and no password to make. Press Connect Tumblr, sign in on Tumblr’s page and approve The Reading Room. A page then shows a code: paste it here. ${wp ? 'With your WordPress site connected, Tumblr is offered as a copy when you post.' : ''}</p>
         <form class="acct-form" id="tumblrForm"><button class="btn primary" type="submit">Connect Tumblr</button></form>
         <form class="acct-form" id="tumblrCodeForm" hidden><input id="tumblrCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
+  }
+  // Micro.blog, Pika and other IndieWeb sites, through Micropub (David, Nov 25): sign in on your own site, or paste an app token
+  function micropubAcctHtml() {
+    const m = SOC.accounts.micropub, wp = SOC.accounts.wordpress;
+    return `<section class="acct"><h3>${ICONS.site}Micro.blog, Pika or your IndieWeb site <small class="acct-sub">Micropub</small></h3>${m
+      ? `<p>Connected to <b>${esc(m.name || m.handle)}</b> (${esc(m.handle)}). ${wp ? 'Your WordPress site stays where Writing posts.' : 'Writing posts here.'}</p><div class="row"><button class="btn" data-disconnect="micropub">Disconnect</button></div>`
+      : `<p>Type your site’s address. If your site has its own sign-in page, it opens: approve The Reading Room and paste the code the next page shows. Micro.blog and Pika can also give you an <b>app token</b> to paste (Micro.blog: Account › Edit Apps; Pika: Settings › App tokens).</p>
+        <form class="acct-form" id="mpForm"><input id="mpSite" placeholder="you.micro.blog or you.pika.page" autocapitalize="off" spellcheck="false" autocomplete="url"><button class="btn primary" type="submit">Continue</button></form>
+        <form class="acct-form" id="mpCodeForm" hidden><input id="mpCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>
+        <form class="acct-form" id="mpTokenForm" hidden><input id="mpToken" type="password" placeholder="Paste the app token" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>
+        <p class="note"><button class="b-link" type="button" id="mpUseToken">Use an app token instead</button></p>`}</section>`;
   }
   const ICON_NET = {
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
@@ -3799,8 +3814,27 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { SOC.accounts = await invoke(d.dataset.disconnect === 'tumblr' ? 'tumblr_disconnect' : 'social_disconnect', { network: d.dataset.disconnect }); SOC.conv = null; WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
     };
+    // Micropub: find the site, then its sign-in page (and a code) or an app token
+    const mpBegin = async wantToken => {
+      note('Looking at your site…');
+      try {
+        const url = await invoke('micropub_begin', { site: $('mpSite').value });
+        $('mpForm').hidden = true;
+        if (url && !wantToken) { await invoke('open_external', { url }); $('mpCodeForm').hidden = false; $('mpCode').focus(); note('Approve The Reading Room on your site’s page, then paste the code the next page shows.'); }
+        else { $('mpTokenForm').hidden = false; $('mpToken').focus(); note(url ? 'Paste an app token from your site’s settings.' : 'Your site doesn’t have a sign-in page for apps. Paste an app token from its settings.'); }
+      } catch (err) { note(msg(err), true); }
+    };
+    $('mpForm')?.addEventListener('submit', e => { e.preventDefault(); mpBegin(false); });
+    $('mpUseToken')?.addEventListener('click', () => { if (!($('mpSite')?.value || '').trim()) { note('Type your site’s address first.', true); $('mpSite').focus(); return; } mpBegin(true); });
+    const mpFinish = async args => {
+      note('Connecting to your site…');
+      try { SOC.accounts = await invoke('micropub_finish', args); WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      catch (err) { note(msg(err), true); }
+    };
+    $('mpCodeForm')?.addEventListener('submit', e => { e.preventDefault(); mpFinish({ code: $('mpCode').value, token: null }); });
+    $('mpTokenForm')?.addEventListener('submit', e => { e.preventDefault(); mpFinish({ code: null, token: $('mpToken').value }); });
     $('tumblrBlog')?.addEventListener('change', async e => {
       try { SOC.accounts = await invoke('tumblr_pick_blog', { blog: e.target.value }); WR.at = 0; BLOG.data = null; note(`Posting to ${e.target.selectedOptions[0].textContent} now.`); renderRail(); }
       catch (err) { note(msg(err), true); }
@@ -9048,7 +9082,7 @@
       <p class="bl-cap">Tumblr doesn’t share visits or search numbers with apps, so those stay in Tumblr’s own Activity page. <button class="b-link" type="button" data-mkurl="https://www.tumblr.com/blog/${esc(b.site || '')}/activity">Open Activity on Tumblr</button></p></section>`;
   }
   function yourBlogHtml() {
-    if (!plusOk()) return SOC.accounts?.site ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
+    if (!plusOk()) return SOC.accounts?.site && (onWp() || onTumblr()) ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
       <p class="day-note">${onTumblr() ? 'See your followers and the notes on your posts here' : 'See your blog’s visitors, RSS readers and search traffic here every day'} with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.busy && (!BLOG.data && !BLOG.failed || BLOG.failed && Date.now() - BLOG.at > 5 * 60 * 1000 || BLOG.data && Date.now() - BLOG.at > 30 * 60 * 1000)) setTimeout(() => loadBlog(), 0);
     const b = BLOG.data;

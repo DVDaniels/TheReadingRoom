@@ -11,6 +11,7 @@ mod opml;
 mod reply;
 mod social;
 mod tumblr;
+mod micropub;
 mod sources;
 mod sync;
 mod topics;
@@ -3003,6 +3004,9 @@ pub fn run() {
             tumblr::tumblr_finish,
             tumblr::tumblr_pick_blog,
             tumblr::tumblr_disconnect,
+            micropub::micropub_begin,
+            micropub::micropub_finish,
+            micropub::micropub_disconnect,
             social::site_avatar,
             social::site_comments,
             social::people_likes,

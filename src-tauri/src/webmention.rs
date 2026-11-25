@@ -8,12 +8,17 @@ use std::time::Duration;
 
 /// The Webmention address a page gives, from its Link header or its HTML. An empty href means the page itself.
 pub fn endpoint_in(link_header: &str, html: &str, base: &url::Url) -> Option<String> {
+    rel_in(link_header, html, base, "webmention")
+}
+
+/// The address a page gives for a rel (webmention, micropub, authorization_endpoint…), from its Link header or its HTML.
+pub fn rel_in(link_header: &str, html: &str, base: &url::Url, want: &str) -> Option<String> {
     static LH: OnceLock<Regex> = OnceLock::new();
     static TAG: OnceLock<Regex> = OnceLock::new();
     static ATTR: OnceLock<Regex> = OnceLock::new();
     for c in LH.get_or_init(|| Regex::new(r#"<([^>]*)>\s*((?:;\s*[^,;]+)*)"#).unwrap()).captures_iter(link_header) {
         let params = c[2].to_ascii_lowercase();
-        if Regex::new(r#"rel\s*=\s*"?([^";]*)"?"#).ok()?.captures(&params).is_some_and(|r| r[1].split_whitespace().any(|x| x == "webmention")) {
+        if Regex::new(r#"rel\s*=\s*"?([^";]*)"?"#).ok()?.captures(&params).is_some_and(|r| r[1].split_whitespace().any(|x| x == want)) {
             return base.join(&c[1]).ok().map(|u| u.to_string());
         }
     }
@@ -26,7 +31,7 @@ pub fn endpoint_in(link_header: &str, html: &str, base: &url::Url) -> Option<Str
     for m in TAG.get_or_init(|| Regex::new(r#"(?is)<(?:link|a)\b[^>]*>"#).unwrap()).find_iter(html) {
         let tag = m.as_str();
         let Some(rel) = attr(tag, "rel") else { continue };
-        if !rel.to_ascii_lowercase().split_whitespace().any(|x| x == "webmention") { continue; }
+        if !rel.to_ascii_lowercase().split_whitespace().any(|x| x == want) { continue; }
         let Some(href) = attr(tag, "href") else { continue };
         let href = html_escape::decode_html_entities(&href).to_string();
         return base.join(&href).ok().map(|u| u.to_string());
