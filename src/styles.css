@@ -2999,3 +2999,6 @@ body.fr-on { overflow: hidden; }
 }
 .tr-tile-go { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .tr-tile-go:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Plus once, on the Write heading, right after the name (the rows carry no badge) */
+.grp-name:has(+ .grp-plus) { flex: none; }
+.grp .grp-plus { margin: 0 auto 0 8px; text-transform: uppercase; }

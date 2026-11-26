@@ -393,13 +393,13 @@
     // Folding is off in the icon-only sidebar and the narrow chip strip, which show every view.
     const canFold = !document.body.classList.contains('rail-slim') && !(phoneSize.matches && !document.documentElement.classList.contains('ios'));
     const hid = hiddenViews();
-    const group = (id, name, all) => {
+    const group = (id, name, all, badge = '') => {
       const items = all.filter(it => !hid.has(it.view) || String(S.view) === it.view);
       const open = !canFold || !foldedGroups.has(id);
       const total = items.reduce((n, it) => n + (Number(it.count) || 0), 0);
       const shown = open ? items : isPhone() ? [] : items.filter(it => !it.sub && String(S.view) === it.view);
       return `<button class="grp" type="button" data-group="${id}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${name}">`
-        + `<span class="grp-chev">${ICONS.chev}</span><span class="grp-name">${name}</span>`
+        + `<span class="grp-chev">${ICONS.chev}</span><span class="grp-name">${name}</span>${badge}`
         + `<span class="count">${open || !total ? '' : fmtCount(total)}</span></button>`
         + shown.map(it => it.html || navButton(it.view, it.label, it.count, { icon: it.icon })).join('');
     };
@@ -414,7 +414,7 @@
         ...mailNavItems()]) +
       '<hr class="nav-gap">' +
       // Read, then Write (David, Nov 22)
-      group('write', 'Write', [...wrNavItems(), tbNavItem()]) +
+      group('write', 'Write', [...wrNavItems(), tbNavItem()], plusLive() ? '<span class="wr-plus grp-plus" title="Writing, your site, Tumblr and YouTube are part of The Reading Room Plus">Plus</span>' : '') +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
@@ -3044,7 +3044,7 @@
   const siteTabName = () => { const s = wrSite(); return !s ? 'Your site' : s.kind === 'wordpress' ? 'WordPress' : siteApp() === 'your site’s own editor' ? (wrHost() || 'Your site') : siteApp(); };
   const siteIcon = () => wrSite()?.kind === 'wordpress' ? ICONS.wordpress : ICONS.site;
   function wrNavItems() {
-    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    const mark = ''; // Plus shows once, on the Write heading (David, Nov 26)
     const it = { view: 'write', label: 'Writing', count: '', icon: ICONS.write, html: navButton('write', 'Writing', '', { icon: ICONS.write, mark }) };
     if (!wrSite()) return [it];
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
@@ -6267,7 +6267,7 @@
   const tbDraft = () => { try { return JSON.parse(store.get('tbDraft') || '{}') || {}; } catch { return {}; } };
   const tbBlog = () => SOC.accounts?.tumblr?.blog || '';
   function tbNavItem() {
-    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    const mark = '';
     return { view: 'tumblr', label: 'Tumblr', count: '', icon: ICONS.tumblr, html: navButton('tumblr', 'Tumblr', '', { icon: ICONS.tumblr, mark }) };
   }
   async function tbLoadList(page = 1) {
