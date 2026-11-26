@@ -118,9 +118,9 @@ html.ios .tagline { font-size: 14px; }
 .b-lead img { display: block; width: 100%; aspect-ratio: 3 / 2; max-height: 62vh; object-fit: cover; object-position: 50% 30%; }
 /* A photo taller than it is wide is shown whole, over a soft blurred copy of itself, instead of losing its top and
    bottom (David, Nov 26: "great in landscape mode but really cut off in portrait mode") */
-.b-lead.tall::before { content: ''; position: absolute; inset: -40px; background: var(--pic) center / cover no-repeat; filter: blur(30px) brightness(.72) saturate(1.1); }
-.b-lead.tall img { position: relative; object-fit: contain; }
-.b-lead.tall .b-lead-text { z-index: 2; }
+.b-lead.fit::before { content: ''; position: absolute; inset: -40px; background: var(--pic) center / cover no-repeat; filter: blur(30px) brightness(.72) saturate(1.1); }
+.b-lead.fit img { position: relative; object-fit: contain; }
+.b-lead.fit .b-lead-text { z-index: 2; }
 .b-item img { object-position: 50% 30%; }
 .b-lead-text { position: absolute; inset: auto 0 0 0; padding: 48px 18px 16px; display: flex; flex-direction: column; gap: 4px;
   background: linear-gradient(to top, rgba(4, 14, 12, .92) 0%, rgba(4, 14, 12, .72) 40%, rgba(4, 14, 12, 0) 100%); padding-top: 96px; }
@@ -601,7 +601,7 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   body.home .b-line { grid-area: line; font-size: 16px; }
   body.home .b-lead { grid-area: lead; align-self: stretch; min-height: 380px; }
   body.home .b-lead img { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; max-height: none; }
-  body.home .b-lead.tall img { position: absolute; }
+  body.home .b-lead.fit img { position: absolute; }
   body.home .b-lead.no-pic { display: flex; align-items: flex-end; }
   body.home .b-head { font-size: 28px; }
   body.home .b-foot { grid-area: foot; align-self: end; display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--b-line); }

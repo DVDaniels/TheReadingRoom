@@ -9448,13 +9448,25 @@
   document.addEventListener('click', e => { const t = e.target.closest('[data-trend]'); if (t) openTrend(Number(t.dataset.trend)); });
 
 
-  // The lead photo on Today: a tall photo is shown whole over a blurred copy of itself, not cropped (see .b-lead.tall)
+  // The lead photo on Today is never cut down to a sliver (David, Nov 26: portrait photos "make no sense", and on a
+  // 13" MacBook the photo box grows tall beside a long list of headlines, cropping wide photos to their middle).
+  // When filling the box would cut away more than a little of the photo, it's shown whole over a blurred copy of
+  // itself (.b-lead.fit). Checked again whenever the box changes size. .tall marks a photo taller than it is wide
+  // (phones give those a taller frame).
+  function fitLead(lead) {
+    const img = lead.querySelector('img'); if (!img || !img.naturalWidth || !lead.clientHeight) return;
+    const r = img.naturalWidth / img.naturalHeight, b = lead.clientWidth / lead.clientHeight;
+    const cut = 1 - Math.min(r / b, b / r); // how much of the photo filling the box would hide
+    lead.classList.toggle('tall', img.naturalHeight > img.naturalWidth * 1.05);
+    const fit = cut > 0.2;
+    if (fit) lead.style.setProperty('--pic', `url("${img.currentSrc || img.src}")`);
+    lead.classList.toggle('fit', fit);
+  }
+  const leadSizes = typeof ResizeObserver === 'function' ? new ResizeObserver(es => { for (const e of es) fitLead(e.target); }) : null;
   document.addEventListener('load', e => {
     const img = e.target; if (!(img instanceof HTMLImageElement) || !img.closest) return;
-    const lead = img.closest('.b-lead'); if (!lead || !img.naturalWidth) return;
-    const tall = img.naturalHeight > img.naturalWidth * 1.05;
-    lead.classList.toggle('tall', tall);
-    if (tall) lead.style.setProperty('--pic', `url("${img.currentSrc || img.src}")`);
+    const lead = img.closest('.b-lead'); if (!lead) return;
+    fitLead(lead); leadSizes?.observe(lead);
   }, true);
 
   // ------------------------------------------------------------ Your year in reading
