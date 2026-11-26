@@ -278,6 +278,123 @@ fn urlencoding(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
+// ------------------------------------------------------------------ your channel's numbers
+
+const ANALYTICS: &str = "https://youtubeanalytics.googleapis.com/v2/reports";
+
+/// One YouTube Analytics report for your channel (YouTube Analytics API; read-only, its own allowance).
+async fn report(start: &str, end: &str, metrics: &str, extra: &str) -> Result<Value, String> {
+    let path = format!("{ANALYTICS}?ids=channel%3D%3DMINE&startDate={start}&endDate={end}&metrics={metrics}{extra}");
+    for attempt in 0..2 {
+        let tok = token(attempt > 0).await?;
+        match call(client().get(&path).bearer_auth(&tok)).await {
+            Ok(v) => return Ok(v),
+            Err(e) if e.0 == 401 && attempt == 0 => continue,
+            Err(e) if e.0 == 403 => return Err("YouTube didn't let the app read your channel's numbers. Disconnect YouTube and connect it again to allow it.".into()),
+            Err(e) => return Err(yt_fail(e)),
+        }
+    }
+    Err("YouTube didn't accept the sign-in.".into())
+}
+
+/// The rows of a report as (first column as text, the other columns as numbers).
+fn rows(r: &Value) -> Vec<(String, Vec<f64>)> {
+    r["rows"].as_array().cloned().unwrap_or_default().iter().filter_map(|row| {
+        let a = row.as_array()?;
+        let key = match a.first()? { Value::String(s) => s.clone(), v => v.to_string() };
+        Some((key, a.iter().skip(1).map(|x| x.as_f64().unwrap_or(0.0)).collect()))
+    }).collect()
+}
+
+/// The totals row of a report with no dimension.
+fn totals(r: &Value) -> Vec<f64> {
+    r["rows"][0].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect()).unwrap_or_default()
+}
+
+/// What YouTube calls each way people found a video, in plain words.
+fn source_name(k: &str) -> &'static str {
+    match k {
+        "YT_SEARCH" => "YouTube search",
+        "SUBSCRIBER" => "Subscribers' feeds",
+        "RELATED_VIDEO" => "Suggested next to other videos",
+        "BROWSE" | "YT_CHANNEL" => "Your channel and Home",
+        "EXT_URL" => "Links from other sites",
+        "NO_LINK_OTHER" | "NO_LINK_EMBEDDED" => "Typed in or embedded",
+        "PLAYLIST" | "YT_PLAYLIST_PAGE" => "Playlists",
+        "SHORTS" => "The Shorts feed",
+        "NOTIFICATION" => "Notifications",
+        "END_SCREEN" | "ANNOTATION" => "End screens",
+        "HASHTAGS" => "Hashtags",
+        _ => "Other",
+    }
+}
+
+/// Your channel's numbers for the last 28 days, like Your blog's: views each day (and the 28 days before, to
+/// compare), watch time, subscribers gained and lost, the videos watched most, how people found them and the
+/// YouTube searches that brought them. YouTube's numbers run two or three days behind; `through` says to when.
+#[tauri::command]
+pub async fn youtube_stats() -> Result<Value, String> {
+    let s = secret_get(KEY).ok_or("Connect YouTube first.")?;
+    let today = chrono::Utc::now().date_naive();
+    let end = today - chrono::Duration::days(1);
+    let start = end - chrono::Duration::days(27);
+    let (pend, pstart) = (start - chrono::Duration::days(1), start - chrono::Duration::days(28));
+    let (a, b) = (start.to_string(), end.to_string());
+    let m = "views,estimatedMinutesWatched,subscribersGained,subscribersLost";
+    let (pa, pb) = (pstart.to_string(), pend.to_string());
+    let (daily, before, vids, srcs, terms) = tokio::join!(
+        report(&a, &b, m, "&dimensions=day&sort=day"),
+        report(&pa, &pb, m, ""),
+        report(&a, &b, "views,estimatedMinutesWatched", "&dimensions=video&sort=-views&maxResults=5"),
+        report(&a, &b, "views", "&dimensions=insightTrafficSourceType&sort=-views"),
+        report(&a, &b, "views", "&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType%3D%3DYT_SEARCH&sort=-views&maxResults=6"),
+    );
+    let daily = daily?;
+    let days: Vec<(String, Vec<f64>)> = rows(&daily).into_iter().filter(|(_, v)| v.iter().any(|x| *x > 0.0)).collect::<Vec<_>>();
+    let all_days = rows(&daily);
+    let sum = |i: usize| all_days.iter().map(|(_, v)| v.get(i).copied().unwrap_or(0.0)).sum::<f64>();
+    let prev = before.ok().map(|r| totals(&r)).unwrap_or_default();
+    let through = days.last().map(|(d, _)| d.clone()).unwrap_or_default();
+    // the top videos' titles (one cheap call for all of them)
+    let top_rows = vids.ok().map(|r| rows(&r)).unwrap_or_default();
+    let mut titles: HashMap<String, (String, String)> = HashMap::new();
+    if !top_rows.is_empty() {
+        let ids: Vec<String> = top_rows.iter().map(|(id, _)| id.clone()).collect();
+        if let Ok(v) = api(reqwest::Method::GET, &format!("/videos?part=snippet&id={}", ids.join(",")), None).await {
+            for it in v["items"].as_array().cloned().unwrap_or_default() {
+                let thumbs = &it["snippet"]["thumbnails"];
+                titles.insert(st(&it, "id"), (st(&it, "snippet.title"), st(&thumbs["default"], "url")));
+            }
+        }
+    }
+    let top: Vec<Value> = top_rows.iter().map(|(id, v)| {
+        let (title, thumb) = titles.get(id).cloned().unwrap_or_default();
+        json!({ "id": id, "title": title, "thumb": thumb, "views": v.first().copied().unwrap_or(0.0) as i64,
+            "minutes": v.get(1).copied().unwrap_or(0.0) as i64, "link": format!("https://www.youtube.com/watch?v={id}") })
+    }).collect();
+    let mut found: Vec<(String, i64)> = Vec::new();
+    for (k, v) in srcs.ok().map(|r| rows(&r)).unwrap_or_default() {
+        let name = source_name(&k).to_string();
+        let n = v.first().copied().unwrap_or(0.0) as i64;
+        match found.iter_mut().find(|(f, _)| *f == name) { Some(f) => f.1 += n, None => found.push((name, n)) }
+    }
+    found.sort_by(|x, y| y.1.cmp(&x.1));
+    let searches: Vec<Value> = terms.ok().map(|r| rows(&r)).unwrap_or_default().into_iter()
+        .map(|(q, v)| json!({ "q": q, "views": v.first().copied().unwrap_or(0.0) as i64 })).collect();
+    let p = |i: usize| prev.get(i).map(|x| *x as i64);
+    Ok(json!({
+        "kind": "youtube",
+        "name": st(&s, "title"), "url": st(&s, "url"), "studio": format!("https://studio.youtube.com/channel/{}/analytics", st(&s, "channel")),
+        "window": 28, "through": through,
+        "views": { "total": sum(0) as i64, "prev": p(0), "days": all_days.iter().map(|(d, v)| json!({ "d": d, "n": v.first().copied().unwrap_or(0.0) as i64 })).collect::<Vec<_>>() },
+        "hours": { "total": (sum(1) / 60.0).round() as i64, "prev": p(1).map(|m| (m as f64 / 60.0).round() as i64) },
+        "subs": { "gained": sum(2) as i64, "lost": sum(3) as i64, "prevNet": match (p(2), p(3)) { (Some(g), Some(l)) => Some(g - l), _ => None } },
+        "top": top,
+        "found": found.iter().take(5).map(|(n, v)| json!({ "name": n, "views": v })).collect::<Vec<_>>(),
+        "searches": searches,
+    }))
+}
+
 // ------------------------------------------------------------------ uploading
 
 /// Upload sessions in progress, by file path, so a second try picks up where the first stopped.
@@ -449,6 +566,18 @@ async fn send_pieces(app: &tauri::AppHandle, path: &str, session: &str, total: u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn report_rows_and_sources() {
+        let r = json!({ "rows": [["2026-11-20", 10, 30.0, 1, 0], ["2026-11-21", 5, 12.5, 0, 1]] });
+        let x = rows(&r);
+        assert_eq!(x.len(), 2);
+        assert_eq!(x[1].0, "2026-11-21");
+        assert_eq!(x[0].1, vec![10.0, 30.0, 1.0, 0.0]);
+        assert_eq!(totals(&json!({ "rows": [[40, 90]] })), vec![40.0, 90.0]);
+        assert_eq!(source_name("YT_SEARCH"), "YouTube search");
+        assert_eq!(source_name("SOMETHING_NEW"), "Other");
+    }
 
     #[test]
     fn resume_point_from_range() {

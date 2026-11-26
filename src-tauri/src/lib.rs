@@ -3017,6 +3017,7 @@ pub fn run() {
             ychannel::youtube_disconnect,
             ychannel::youtube_channel,
             ychannel::youtube_upload,
+            ychannel::youtube_stats,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

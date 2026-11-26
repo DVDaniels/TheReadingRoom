@@ -904,7 +904,7 @@
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? (S.q || S.vchan ? '' : ytChannelHtml()) + myChannelsHtml() + (S.q || S.vchan ? '' : starterChannelsHtml() + sharedChannelsHtml()) : briefHtml();
+    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? (S.q || S.vchan ? '' : ytChannelHtml() + (ytStatsHtml() && `<div class="myday yt-vstats">${ytStatsHtml()}</div>`)) + myChannelsHtml() + (S.q || S.vchan ? '' : starterChannelsHtml() + sharedChannelsHtml()) : briefHtml();
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
@@ -3986,7 +3986,7 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'youtube' ? 'youtube_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; YT.data = null; YT.at = 0; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'youtube' ? 'youtube_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; YT.data = null; YT.at = 0; YTS.data = null; YTS.at = 0; openAccounts(); renderRail(); }
     };
     // Micropub: find the site, then its sign-in page (and a code) or an app token
     const mpBegin = async wantToken => {
@@ -9481,6 +9481,46 @@
     return `${head}<p class="day-note">Getting your Tumblr’s numbers…</p></section>`;
   }
   function yourBlogHtml() { return homeBlogHtml(); } // Tumblr's numbers are in the Tumblr tab
+  // Your YouTube (Plus): your channel's numbers, like Your blog's, from YouTube Analytics (Rust: youtube_stats).
+  // In Writing under Your blog / Your Tumblr, and in Videos under Your channel.
+  const YTS = { data: null, at: 0, busy: false, err: '' };
+  async function ytStatsLoad(force) {
+    if (YTS.busy || (!force && YTS.data && Date.now() - YTS.at < 30 * 60 * 1000)) return;
+    YTS.busy = true; YTS.err = '';
+    try { YTS.data = await tauriInvoke('youtube_stats'); }
+    catch (e) { YTS.err = msg(e) || 'YouTube didn’t answer.'; }
+    finally { YTS.busy = false; YTS.at = Date.now(); if (S.view === 'write') wrPaint(); else if (S.view === 'videos') renderList(); }
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-yts-retry]')) { YTS.err = ''; ytStatsLoad(true); if (S.view === 'write') wrPaint(); else renderList(); } });
+  function ytStatsHtml() {
+    if (!plusOk() || !SOC.accounts?.youtube) return '';
+    if (!YTS.busy && (!YTS.data && (!YTS.at || Date.now() - YTS.at > 5 * 60 * 1000) || YTS.data && Date.now() - YTS.at > 30 * 60 * 1000)) setTimeout(() => ytStatsLoad(), 0);
+    const y = YTS.data, head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your YouTube"><div class="bp-head"><h3 class="b-sub">Your YouTube</h3></div>';
+    if (!y) return YTS.err ? `${head}<p class="day-note">Couldn’t get your channel’s numbers just now. ${esc(YTS.err)} <button class="b-link" type="button" data-yts-retry>Try again</button></p></section>` : `${head}<p class="day-note">Getting your channel’s numbers…</p></section>`;
+    const v = y.views || {}, days = v.days || [], max = Math.max(1, ...days.map(x => x.n));
+    const bars = days.map((x, i) => { const h = Math.max(2, Math.round(x.n / max * 46));
+      return `<rect x="${i * 10 + 1}" y="${48 - h}" width="7" height="${h}" rx="1.5" class="${i === days.length - 1 ? 'now' : ''}"><title>${esc(blDay(x.d))}: ${x.n} views</title></rect>`; }).join('');
+    const top = (y.top || []).slice(0, 4).map(t => `<li><button class="b-link" type="button" data-yt="open" data-url="${esc(t.link)}">${esc(t.title || 'A video')}</button><span class="bl-n">${nfmt(t.views)}</span></li>`).join('');
+    const net = (y.subs?.gained || 0) - (y.subs?.lost || 0);
+    const fmax = Math.max(1, ...(y.found || []).map(f => f.views));
+    const found = (y.found || []).map(f => `<li><span class="bl-app">${esc(f.name)}</span><span class="bl-hbar"><i style="width:${Math.round(f.views / fmax * 100)}%"></i></span><span class="bl-n">${nfmt(f.views)}</span></li>`).join('');
+    const q = (y.searches || []).slice(0, 4).map(x => `<li><span class="bl-q">${esc(x.q)}</span><span class="bl-n">${nfmt(x.views)}</span></li>`).join('');
+    const through = y.through ? `, through ${esc(blDay(y.through))}` : '';
+    const when = YTS.at ? new Date(YTS.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<section class="b-panel md-blog yt-stats-panel" aria-label="Your YouTube">
+      <div class="bp-head"><h3 class="b-sub">Your YouTube</h3><span class="bp-meta">${esc(y.name || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
+      <div class="bl-cols">
+        <div class="bl-col"><h4>Views</h4><p class="bl-big">${nfmt(v.total)} <small>${y.window || 28} days</small></p><p class="bl-sub">${delta(v.total, v.prev, `vs. the ${y.window || 28} days before`)}</p>
+          ${bars ? `<svg class="bl-bars" viewBox="0 0 ${days.length * 10} 48" preserveAspectRatio="none" role="img" aria-label="Views each day, the last ${days.length} days">${bars}</svg><p class="bl-cap">Views each day${through}.</p>` : ''}
+          ${top ? `<h5>Watched most</h5><ul class="bl-list">${top}</ul>` : ''}</div>
+        <div class="bl-col"><h4>Watch time</h4><p class="bl-big">${nfmt(y.hours?.total)} <small>hours</small></p><p class="bl-sub">${delta(y.hours?.total, y.hours?.prev, 'vs. the 28 days before')}</p>
+          <h4 class="yt-sub-h">Subscribers</h4><p class="bl-big">${net >= 0 ? '+' : '−'}${nfmt(Math.abs(net))} <small>${nfmt(y.subs?.gained)} new, ${nfmt(y.subs?.lost)} left</small></p>
+          ${y.subs?.prevNet != null ? `<p class="bl-sub">${y.subs.prevNet >= 0 ? '+' : '−'}${nfmt(Math.abs(y.subs.prevNet))} the 28 days before</p>` : ''}</div>
+        <div class="bl-col"><h4>How people found you</h4>${found ? `<ul class="bl-apps">${found}</ul>` : '<p class="bl-sub">Not enough views yet to say.</p>'}
+          ${q ? `<h5>YouTube searches that brought them</h5><ul class="bl-list bl-qs">${q}</ul>` : ''}</div>
+      </div>
+      <p class="bl-cap">From YouTube Analytics${through}. YouTube’s numbers run a day or two behind. <button class="b-link" type="button" data-yt="open" data-url="${esc(y.studio)}">More in YouTube Studio</button></p></section>`;
+  }
   function homeBlogHtml() {
     if (!plusOk()) return SOC.accounts?.site && (onWp() || onTumblr()) ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
       <p class="day-note">${onTumblr() ? 'See your followers and the notes on your posts here' : 'See your blog’s visitors, RSS readers and search traffic here every day'} with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
