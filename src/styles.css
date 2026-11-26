@@ -2951,3 +2951,4 @@ body.fr-on { overflow: hidden; }
 .yt-when { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 @media (max-width: 640px) { .yt-thumb { width: 96px; } }
 .myday .bl-col h4.yt-sub-h { margin-top: 16px; }
+.yt-acts .linkish { color: var(--accent); }

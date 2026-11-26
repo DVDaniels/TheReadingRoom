@@ -61,6 +61,7 @@
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
+    channel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>',
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
@@ -156,7 +157,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'tumblr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'tumblr', 'channel'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -352,7 +353,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['channel', 'Your channel', 'Manage your YouTube channel: upload, and see how your videos are doing'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -412,7 +413,7 @@
         ...mailNavItems()]) +
       '<hr class="nav-gap">' +
       // Read, then Write (David, Nov 22)
-      group('write', 'Write', [...wrNavItems(), tbNavItem()]) +
+      group('write', 'Write', [...wrNavItems(), tbNavItem(), chNavItem()]) +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
@@ -479,7 +480,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { write: 'Writing', tumblr: 'Tumblr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { write: 'Writing', tumblr: 'Tumblr', channel: 'Your channel', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -492,9 +493,9 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'tumblr') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'tumblr' || S.view === 'channel') && !S.readerId));
     // Writing uses My Day's width and panels
-    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'tumblr');
+    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'tumblr' || S.view === 'channel');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -525,6 +526,7 @@
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
       : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
+      : S.view === 'channel' ? `<span class="sun" aria-hidden="true">${ICONS.channel}</span>Your channel`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     if (S.view === 'today') paintGoalChip();
@@ -542,6 +544,7 @@
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
       : S.view === 'tumblr' ? (SOC.accounts?.tumblr ? `${SOC.accounts.tumblr.blog}.tumblr.com: write, queue and schedule, and see who’s talking` : 'Work your Tumblr from here')
+      : S.view === 'channel' ? (SOC.accounts?.youtube ? `${SOC.accounts.youtube.name} on YouTube: upload, and see how your videos are doing` : 'Manage your YouTube channel from here')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -554,7 +557,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'tumblr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'tumblr', 'channel'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -900,11 +903,12 @@
     if (S.view === 'myday') { paintMyDay(); return; }
     if (S.view === 'write') { wrPaint(); return; }
     if (S.view === 'tumblr') { tbPaint(); return; }
+    if (S.view === 'channel') { chPaint(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
     const all = visible(), list = all.slice(0, S.shown);
-    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? (S.q || S.vchan ? '' : ytChannelHtml() + (ytStatsHtml() && `<div class="myday yt-vstats">${ytStatsHtml()}</div>`)) + myChannelsHtml() + (S.q || S.vchan ? '' : starterChannelsHtml() + sharedChannelsHtml()) : briefHtml();
+    const brief = S.view === 'email' ? mailBarHtml() : S.view === 'videos' ? myChannelsHtml() + (S.q || S.vchan ? '' : starterChannelsHtml() + sharedChannelsHtml()) : briefHtml();
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
@@ -1186,7 +1190,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'myday', 'write', 'tumblr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'myday', 'write', 'tumblr', 'channel', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -2549,7 +2553,7 @@
     YT.busy = true; YT.err = '';
     try { YT.data = await tauriInvoke('youtube_channel', { page: null }); }
     catch (e) { YT.err = msg(e) || 'YouTube didn’t answer.'; }
-    finally { YT.busy = false; YT.at = Date.now(); if (S.view === 'videos') renderList(); }
+    finally { YT.busy = false; YT.at = Date.now(); if (S.view === 'channel') renderList(); }
   }
   const ytWhen = d => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: new Date(d).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '';
   const YT_SEEN = { public: 'Public', unlisted: 'Unlisted', private: 'Private' };
@@ -2568,7 +2572,7 @@
     if (!plusOk()) return `<section class="b-panel yt-panel"><div class="bp-head"><h3 class="b-sub">Your channel</h3></div><p class="day-note">Upload to ${esc(acct.name)} and keep an eye on your videos from here with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>`;
     if (!YT.busy && (!YT.data && (!YT.at || Date.now() - YT.at > 5 * 60 * 1000) || YT.data && Date.now() - YT.at > 10 * 60 * 1000)) setTimeout(() => ytLoad(), 0);
     const d = YT.data, up = YT.up;
-    const head = `<div class="bp-head"><h3 class="b-sub">Your channel</h3><span class="bp-meta">${esc(acct.name)}${YT.at ? ` · As of ${esc(new Date(YT.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}` : ''}</span></div>`;
+    const head = `<div class="bp-head"><h3 class="b-sub">Your videos</h3><span class="bp-meta">${esc(acct.name)}${YT.at ? ` · As of ${esc(new Date(YT.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}` : ''}</span></div>`;
     if (!d) return `<section class="b-panel yt-panel" aria-label="Your channel">${head}<p class="day-note">${YT.err ? `Couldn’t get your channel just now. ${esc(YT.err)} <button class="b-link" type="button" data-yt="reload">Try again</button>` : 'Getting your channel from YouTube…'}</p></section>`;
     const vids = d.videos || [], list = YT.all ? vids : vids.slice(0, 4);
     const upLine = up ? `<div class="yt-up${up.err ? ' err' : ''}"><div class="yt-up-top"><b>${esc(up.title)}</b><span>${up.err ? esc(up.err) : up.done ? 'Uploaded.' : `${Math.round(100 * (up.sent || 0) / (up.total || 1))}% · ${mbs(up.sent)} of ${mbs(up.total)}`}</span></div>
@@ -2617,20 +2621,20 @@
   }
   async function ytSend(info) {
     YT.up = { info, title: info.title, sent: 0, total: 0, done: null, err: '' }; YT.all = false;
-    if (S.view === 'videos') renderList();
+    if (S.view === 'channel') renderList(); renderRail();
     try {
       const v = await invoke('youtube_upload', { info });
       YT.up.done = v; YT.up.sent = YT.up.total; status(`“${info.title}” is on your channel.`);
       YT.data = null; YT.at = 0; ytLoad(true);
     } catch (e) { YT.up.err = msg(e); }
-    if (S.view === 'videos') renderList();
+    if (S.view === 'channel') renderList(); renderRail();
   }
   listen('youtube-upload', e => {
     const p = e.payload || {}; if (!YT.up || YT.up.info.path !== p.path) return;
     YT.up.sent = p.sent; YT.up.total = p.total;
     const bar = document.querySelector('.yt-bar i'), line = document.querySelector('.yt-up-top span');
     if (bar && line) { bar.style.width = `${(100 * p.sent / (p.total || 1)).toFixed(1)}%`; line.textContent = `${Math.round(100 * p.sent / (p.total || 1))}% · ${mbs(p.sent)} of ${mbs(p.total)}`; }
-    else if (S.view === 'videos') renderList();
+    else if (S.view === 'channel') renderList();
   });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-yt]'); if (!b) return;
@@ -2641,6 +2645,29 @@
     if (k === 'upload') { if (!plusOk()) { openPlus(); return; } ytUploadSheet(); }
     if (k === 'retry' && YT.up) ytSend(YT.up.info);
   });
+
+  // ---- the Your channel tab (Plus): your own YouTube channel, apart from Writing (David, Nov 26: "a separate tab that
+  // you use to manage your videos"). Videos stays for watching the channels you follow.
+  function chNavItem() {
+    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    const n = YT.up && !YT.up.done && !YT.up.err && YT.up.total ? `${Math.round(100 * YT.up.sent / YT.up.total)}%` : '';
+    return { view: 'channel', label: 'Your channel', count: '', icon: ICONS.channel, html: navButton('channel', 'Your channel', n, { icon: ICONS.channel, mark }) };
+  }
+  function chPaint() {
+    const y = $('main').scrollTop, ly = $('listView').scrollTop;
+    const acct = SOC.accounts?.youtube;
+    const body = !acct
+      ? `<section class="b-panel wr-invite"><p class="b-sub">Your channel</p><h2>Connect your YouTube channel to start</h2>
+          <p>Upload videos, schedule them, and see how they’re doing: views, watch time, subscribers and the searches that bring people. Press Connect YouTube, sign in on Google’s page and approve The Reading Room.</p>
+          <div class="wr-acts"><button class="btn primary" type="button" data-yt="connect">Connect YouTube</button></div></section>`
+      : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">Your channel</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
+          <p>Upload and schedule videos and see how your channel is doing, next to your reading.</p>
+          <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
+      : ytChannelHtml() + ytStatsHtml();
+    $('list').innerHTML = `<section class="brief myday channel" aria-label="Your channel">${body}</section>`;
+    $('main').scrollTop = y; $('listView').scrollTop = ly;
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-yt="connect"]')) openAccounts(); });
 
   function myChannelsHtml() {
     const by = new Map(); // feed id → { f, latest item, unwatched }
@@ -3905,8 +3932,8 @@
   function ytAcctHtml() {
     const y = SOC.accounts.youtube;
     return `<section class="acct"><h3>${ICON_NET.youtube}YouTube <small class="acct-sub">Plus</small></h3>${y
-      ? `<p>Connected to <b>${esc(y.name)}</b>${y.handle ? ` (${esc(y.handle)})` : ''}. Your channel shows at the top of Videos, where you can upload.</p><div class="row"><button class="btn" data-disconnect="youtube">Disconnect</button></div>`
-      : `<p>Manage your own YouTube channel from Videos: upload, schedule, and see how your videos are doing. Press Connect YouTube, sign in on Google’s page and approve The Reading Room. A page then shows a code: paste it here.</p>
+      ? `<p>Connected to <b>${esc(y.name)}</b>${y.handle ? ` (${esc(y.handle)})` : ''}. Manage it in Your channel, under Writing in the sidebar.</p><div class="row"><button class="btn" data-disconnect="youtube">Disconnect</button></div>`
+      : `<p>Manage your own YouTube channel from the app, in its own tab: upload, schedule, and see how your videos are doing. Press Connect YouTube, sign in on Google’s page and approve The Reading Room. A page then shows a code: paste it here.</p>
         <form class="acct-form" id="ytForm"><button class="btn primary" type="submit">Connect YouTube</button></form>
         <form class="acct-form" id="ytCodeForm" hidden><input id="ytCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
   }
@@ -9481,21 +9508,21 @@
     return `${head}<p class="day-note">Getting your Tumblr’s numbers…</p></section>`;
   }
   function yourBlogHtml() { return homeBlogHtml(); } // Tumblr's numbers are in the Tumblr tab
-  // Your YouTube (Plus): your channel's numbers, like Your blog's, from YouTube Analytics (Rust: youtube_stats).
-  // In Writing under Your blog / Your Tumblr, and in Videos under Your channel.
+  // Your numbers (Plus): your YouTube channel's numbers, like Your blog's, from YouTube Analytics (Rust: youtube_stats).
+  // Shown in the Your channel tab, under Your videos.
   const YTS = { data: null, at: 0, busy: false, err: '' };
   async function ytStatsLoad(force) {
     if (YTS.busy || (!force && YTS.data && Date.now() - YTS.at < 30 * 60 * 1000)) return;
     YTS.busy = true; YTS.err = '';
     try { YTS.data = await tauriInvoke('youtube_stats'); }
     catch (e) { YTS.err = msg(e) || 'YouTube didn’t answer.'; }
-    finally { YTS.busy = false; YTS.at = Date.now(); if (S.view === 'write') wrPaint(); else if (S.view === 'videos') renderList(); }
+    finally { YTS.busy = false; YTS.at = Date.now(); if (S.view === 'channel') renderList(); }
   }
-  document.addEventListener('click', e => { if (e.target.closest('[data-yts-retry]')) { YTS.err = ''; ytStatsLoad(true); if (S.view === 'write') wrPaint(); else renderList(); } });
+  document.addEventListener('click', e => { if (e.target.closest('[data-yts-retry]')) { YTS.err = ''; ytStatsLoad(true); renderList(); } });
   function ytStatsHtml() {
     if (!plusOk() || !SOC.accounts?.youtube) return '';
     if (!YTS.busy && (!YTS.data && (!YTS.at || Date.now() - YTS.at > 5 * 60 * 1000) || YTS.data && Date.now() - YTS.at > 30 * 60 * 1000)) setTimeout(() => ytStatsLoad(), 0);
-    const y = YTS.data, head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your YouTube"><div class="bp-head"><h3 class="b-sub">Your YouTube</h3></div>';
+    const y = YTS.data, head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your numbers"><div class="bp-head"><h3 class="b-sub">Your numbers</h3></div>';
     if (!y) return YTS.err ? `${head}<p class="day-note">Couldn’t get your channel’s numbers just now. ${esc(YTS.err)} <button class="b-link" type="button" data-yts-retry>Try again</button></p></section>` : `${head}<p class="day-note">Getting your channel’s numbers…</p></section>`;
     const v = y.views || {}, days = v.days || [], max = Math.max(1, ...days.map(x => x.n));
     const bars = days.map((x, i) => { const h = Math.max(2, Math.round(x.n / max * 46));
@@ -9507,8 +9534,8 @@
     const q = (y.searches || []).slice(0, 4).map(x => `<li><span class="bl-q">${esc(x.q)}</span><span class="bl-n">${nfmt(x.views)}</span></li>`).join('');
     const through = y.through ? `, through ${esc(blDay(y.through))}` : '';
     const when = YTS.at ? new Date(YTS.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
-    return `<section class="b-panel md-blog yt-stats-panel" aria-label="Your YouTube">
-      <div class="bp-head"><h3 class="b-sub">Your YouTube</h3><span class="bp-meta">${esc(y.name || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
+    return `<section class="b-panel md-blog yt-stats-panel" aria-label="Your numbers">
+      <div class="bp-head"><h3 class="b-sub">Your numbers</h3><span class="bp-meta">${esc(y.name || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
       <div class="bl-cols">
         <div class="bl-col"><h4>Views</h4><p class="bl-big">${nfmt(v.total)} <small>${y.window || 28} days</small></p><p class="bl-sub">${delta(v.total, v.prev, `vs. the ${y.window || 28} days before`)}</p>
           ${bars ? `<svg class="bl-bars" viewBox="0 0 ${days.length * 10} 48" preserveAspectRatio="none" role="img" aria-label="Views each day, the last ${days.length} days">${bars}</svg><p class="bl-cap">Views each day${through}.</p>` : ''}
