@@ -168,7 +168,7 @@ jobs:
   # Runs on a cheap Linux machine after the upload: waits for Apple, then hands the build to the testers.
   testers:
     needs: ios
-    if: ${{ inputs.upload && inputs.testers }}
+    if: ${{ inputs.upload }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -181,4 +181,4 @@ jobs:
       - run: |
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
-          python .github/scripts/asc_testers.py IOS "${{ github.run_number }}"
+          python .github/scripts/asc_testers.py IOS "${{ github.run_number }}" "${{ inputs.testers && 'RSS Testers' || 'none' }}"
