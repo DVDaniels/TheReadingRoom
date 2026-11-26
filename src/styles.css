@@ -2877,3 +2877,16 @@ body.fr-on { overflow: hidden; }
 /* Tumblr: which of your blogs Writing posts to */
 .acct-pick { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 13px; }
 .acct-pick select { font: inherit; }
+
+/* Post to: your site, Tumblr or both (Writing and the note sheet) */
+.post-to { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0 4px; }
+.post-to .pt-l { font-size: 13px; font-weight: 600; }
+.post-to .pt-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; background: color-mix(in srgb, currentColor 8%, transparent); }
+.post-to .pt-seg button { border: 0; border-radius: 7px; padding: 5px 12px; font: inherit; font-size: 13px; background: transparent; color: inherit; opacity: .75; cursor: pointer; }
+.post-to .pt-seg button[aria-pressed="true"] { background: var(--card, #fff); opacity: 1; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.post-to .pt-seg button:disabled { opacity: .35; cursor: default; }
+.post-to .pt-n { font-size: 12.5px; opacity: .7; }
+.n-pt { display: block; }
+.n-home[hidden] { display: none; }
+.n-pt { cursor: default; }
+.n-pt .post-to { margin: 0; }

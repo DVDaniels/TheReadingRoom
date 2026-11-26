@@ -3004,6 +3004,7 @@ pub fn run() {
             tumblr::tumblr_finish,
             tumblr::tumblr_pick_blog,
             tumblr::tumblr_disconnect,
+            tumblr::tumblr_write,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

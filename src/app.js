@@ -4,7 +4,7 @@
   // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read),
   // site_post and site_post_publish (full posts from Writing)
   // and liking (taking a like back stays free). Everything else goes straight through.
-  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
+  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -19,8 +19,18 @@
   const onWp = () => SOC.accounts?.site?.kind === 'wordpress';
   const siteApp = () => { const s = SOC.accounts?.site; if (!s || s.kind === 'wordpress') return 'WordPress'; if (s.kind === 'tumblr') return 'Tumblr';
     const h = s.service || ''; return /micro\.blog$/.test(h) ? 'Micro.blog' : /pika\.page$/.test(h) ? 'Pika' : 'your site’s own editor'; };
-  // Copies of what you post at home: Bluesky and Mastodon, and Tumblr when your home is somewhere else
-  const copyNets = () => ['bluesky', 'mastodon', ...(SOC.accounts?.site && !onTumblr() ? ['tumblr'] : [])].filter(n => SOC.accounts[n]);
+  // Copies of what you post at home: Bluesky and Mastodon (Tumblr is a "Post to" choice instead, below)
+  const copyNets = () => ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+  // Post to: your site, Tumblr or both, when Tumblr is connected beside a WordPress or Micropub site (David, Nov 25:
+  // "can I just post to tumblr?"). Remembered; Both sends Tumblr the full post, not a copy that links home.
+  const postToChoice = () => !!(SOC.accounts?.tumblr && SOC.accounts?.site && !onTumblr());
+  const postTo = () => postToChoice() ? (['site', 'tumblr', 'both'].includes(store.get('postTo')) ? store.get('postTo') : 'site') : 'site';
+  const postToHtml = (attr, lockTumblr) => {
+    const host = (SOC.accounts.site?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, ''), pt = lockTumblr && postTo() === 'tumblr' ? 'both' : postTo();
+    return `<div class="post-to" role="group" aria-label="Post to"><span class="pt-l">Post to</span><div class="pt-seg">${[['site', host], ['tumblr', 'Tumblr'], ['both', 'Both']].map(([k, l]) =>
+      `<button type="button" ${attr}="${k}" aria-pressed="${pt === k}"${lockTumblr && k === 'tumblr' ? ' disabled title="This draft is on your site"' : ''}>${esc(l)}</button>`).join('')}</div>
+      <span class="pt-n">${pt === 'both' ? `The full post goes on ${esc(host)} and on Tumblr.` : pt === 'tumblr' ? `Only on your Tumblr (${esc(SOC.accounts.tumblr.blog)}).` : `Only on ${esc(host)}.`}</span></div>`;
+  };
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
@@ -3076,7 +3086,8 @@
     const d = wrDraftGet(), kind = wrKind(), nets = copyNets();
     const picked = new Set((store.get('wrNets') ?? 'bluesky,mastodon').split(',').filter(Boolean));
     const cats = (WR.cats || []).filter(c => !['notes', 'weeknotes'].includes(c.slug));
-    const help = kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
+    const pt = postToChoice() ? (d.editId && postTo() === 'tumblr' ? 'both' : postTo()) : 'site';
+    const help = pt === 'tumblr' && kind !== 'post' ? (kind === 'note' ? 'A note goes on your Tumblr, tagged “notes”. A title is optional.' : 'Your Weeknotes go on your Tumblr, tagged “weeknotes”.') : kind === 'post' ? 'Leave a blank line between paragraphs. A line starting with ## is a heading, with > a quote. [Words](https://…) makes a link; a video’s address on its own line becomes a player.'
       : kind === 'note' ? (onTumblr() ? 'A note goes on your Tumblr, tagged “notes”. A title is optional.' : !onWp() ? 'A note goes on your site as a short post. A title is optional.' : 'A note goes on your Notes page and in its feed. Without a title, its first words are used.')
       : 'Step 3 of 3: add a few words under What happened (and a line under any post if you like), then Publish, or Save as a draft to finish later. Your Weeknotes go in the Weeknotes category, with the photo as the featured image.';
     const pic = WR.photo || WR.photoUrl;
@@ -3089,13 +3100,14 @@
       <p class="wr-help">${esc(help)}</p>
       ${pic ? `<div class="wr-pic"><img src="${esc(pic)}" alt=""><div><input class="n-field" id="wrAlt" maxlength="1000" value="${esc(WR.alt)}" placeholder="Describe the photo for people who can’t see it"${WR.photo ? '' : ' disabled'}>
         <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : `Change the picture in ${siteApp()}`}</button></div></div>` : ''}
+      ${postToChoice() ? postToHtml('data-wrpt', !!d.editId) : ''}
       <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>`}<input id="wrPhoto" type="file" accept="image/*" hidden>
         ${kind === 'post' && onWp() ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
       <div class="wr-acts"><span class="note"><span class="wr-count" id="wrCount">${wrCount(d.text)}</span>${d.text || d.title ? '<span class="wr-kept">Kept on this device as you type</span>' : ''}</span>
         <button class="btn" type="button" data-wr="preview"${WR.posting ? ' disabled' : ''} title="See how it will look on your site">Preview</button>
-        <button class="btn" type="button" data-wr="draft"${WR.posting ? ' disabled' : ''}>${d.editId ? 'Save the draft' : 'Save as a draft on your site'}</button>
+        <button class="btn" type="button" data-wr="draft"${WR.posting ? ' disabled' : ''}>${d.editId ? 'Save the draft' : pt === 'tumblr' ? 'Save as a draft on Tumblr' : 'Save as a draft on your site'}</button>
         <button class="btn primary" type="button" data-wr="post"${WR.posting ? ' disabled' : ''}>${kind === 'post' ? 'Post now' : kind === 'weeknotes' ? 'Publish' : 'Post'}</button></div></section>`;
   }
   // "312 words · 2 min read" by the buttons (about 230 words a minute)
@@ -3439,9 +3451,26 @@
     if (kind !== 'note' && !title && !draft) { wrSay('Give it a title first.', true); wrPaint(); $('wrTitle')?.focus(); return; }
     if (!draft && kind !== 'note' && !confirm(`Publish “${title}” on your site now? Everyone who follows your blog will see it.`)) return;
     if (WR.photo && !WR.alt.trim() && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('wrAlt')?.focus(); return; }
-    WR.posting = true; wrSay(draft ? 'Saving the draft…' : `Posting to ${wrHost()}…`); wrPaint();
+    const pt = postToChoice() ? (d.editId && postTo() === 'tumblr' ? 'both' : postTo()) : 'site';
+    WR.posting = true; wrSay(draft ? 'Saving the draft…' : `Posting to ${pt === 'tumblr' ? 'Tumblr' : wrHost()}…`); wrPaint();
     try {
       let r;
+      if (pt === 'tumblr') {
+        // only on Tumblr: a full post there; its drafts stay in Tumblr's drafts
+        r = await invoke('tumblr_write', { kind, title, text: words, photo: WR.photo, alt: WR.alt.trim(), draft, link: null, linkTitle: null });
+        if (draft) { wrClear(); wrSay(''); status('Saved to your Tumblr drafts. Finish it on Tumblr whenever you like.'); WR.posting = false; wrPaint(); return; }
+        if (kind === 'weeknotes') { const wk = mdWeek(), w = mdWk(wk.key); w.published = Date.now(); w.pubUrl = r?.url || ''; savePrefs(); }
+        if (d.idea) { S.prefs.ideas = wrIdeas().filter(i => i.id !== d.idea); savePrefs(); }
+        const picks = [...document.querySelectorAll('[data-wrnet]:checked')].map(x => x.dataset.wrnet).filter(n => SOC.accounts[n]);
+        let shared = [];
+        if (picks.length && r?.url) {
+          const copy = kind === 'note' ? (title && words ? `${title}\n\n${words}` : words || title) : title;
+          const res = await invoke('social_share_note', { networks: picks, text: copy, link: r.url, title: title || 'A note on Tumblr', photo: WR.photo, alt: WR.alt.trim(), video: '', videoTitle: '', about: '', aboutTitle: '', aboutSite: '', aboutImage: '' }).catch(() => []);
+          shared = (res || []).filter(x => !x.error).map(x => NET[x.network]);
+        }
+        wrClear(); wrSay(''); status(`Posted to your Tumblr${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.`);
+        WR.posting = false; wrPaint(); renderRail(); return;
+      }
       if (kind === 'post' || d.editId) {
         const cats = kind === 'post' && d.cat ? [Number(d.cat)] : [];
         r = await invoke('site_post', { id: d.editId || null, title, text: words, categories: cats, photo: WR.photo, alt: WR.alt.trim(), draft, kind });
@@ -3458,6 +3487,13 @@
       if (draft) { wrClear(); wrSay(''); status(kind === 'weeknotes' ? 'Saved your Weeknotes as a draft on your site.' : 'Saved as a draft on your site.'); WR.posting = false; wrLoad(true); wrPaint(); return; }
       if (kind === 'weeknotes') { const wk = mdWeek(), w = mdWk(wk.key); w.published = Date.now(); w.pubUrl = r?.url || ''; savePrefs(); }
       if (d.idea) { S.prefs.ideas = wrIdeas().filter(i => i.id !== d.idea); savePrefs(); }
+      // Both: the full post on Tumblr too (published together; a draft on your site goes to Tumblr when you post it here)
+      let tumblrOk = '', tumblrErr = '';
+      if (pt === 'both') {
+        wrSay('Posted on your site. Posting it on Tumblr…'); wrPaint();
+        try { await invoke('tumblr_write', { kind, title, text: words, photo: WR.photo || '', alt: WR.alt.trim(), draft: false, link: null, linkTitle: null }); tumblrOk = 'Tumblr'; }
+        catch (err) { tumblrErr = `Tumblr: ${msg(err)}`; }
+      }
       // copies to Bluesky and Mastodon that link home
       const picks = [...document.querySelectorAll('[data-wrnet]:checked')].map(x => x.dataset.wrnet).filter(n => SOC.accounts[n]);
       let shared = [], bad = [];
@@ -3470,11 +3506,16 @@
         if (shared.length) setTimeout(() => { loadConversations(true); }, 4000);
       }
       wrClear();
-      wrSay(bad.length ? `Posted to ${wrHost()}${shared.length ? ` and ${shared.join(' and ')}` : ''}. ${bad.map(x => x.network ? `${NET[x.network]}: ${x.error}` : `The copies weren’t shared: ${x.error}`).join(' ')}` : '', !!bad.length);
-      status(`Posted to ${wrHost()}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.`);
+      const errs = [...(tumblrErr ? [tumblrErr] : []), ...bad.map(x => x.network ? `${NET[x.network]}: ${x.error}` : `The copies weren’t shared: ${x.error}`)];
+      wrSay(errs.length ? `Posted to ${[wrHost(), tumblrOk, ...shared].filter(Boolean).join(' and ')}. ${errs.join(' ')}` : '', !!errs.length);
+      status(`Posted to ${wrHost()}${tumblrOk ? ' and Tumblr' : ''}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.`);
       WR.posting = false; wrLoad(true); wrPaint(); renderRail();
     } catch (e) { WR.posting = false; wrSay(msg(e), true); wrPaint(); }
   }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-wrpt]'); if (!b || b.disabled) return;
+    store.set('postTo', b.dataset.wrpt); wrPaint();
+  });
   // Writing in the sidebar is always a fresh start, a blank composer (David, Nov 22: "the draft stays with you when
   // you click on the writing tab"; then "When clicking on write we should be taken back to a blank composer").
   // Anything you wrote yourself is saved as a draft on your site first, so nothing is lost; an empty composer or a
@@ -4660,7 +4701,8 @@
         <span class="n-room" id="nRoom"></span><input id="nPhoto" type="file" accept="image/*" hidden></div>
       <input class="n-field" id="nLink" type="url" placeholder="https:// a link to add" hidden autocapitalize="off" spellcheck="false">
       <div class="n-photo" id="nPhotoBox" hidden><img id="nPrev" alt=""><div><input class="n-field" id="nAlt" placeholder="Describe the photo for people who can’t see it" maxlength="1000"><button class="b-link" id="nPhotoX" type="button">Remove photo</button></div></div>
-      <label class="n-home"><input type="checkbox" id="nSite" checked><span class="slim-ini n-ini" style="background:hsl(${hueFor(wp.site)} 45% 42%)">${esc((wp.name || '?').trim()[0].toUpperCase())}</span>
+      ${postToChoice() ? `<div class="n-home n-pt">${postToHtml('data-npt', false)}</div>` : ''}
+      <label class="n-home"${postToChoice() ? ' hidden' : ''}><input type="checkbox" id="nSite"${postToChoice() ? ' disabled' : ' checked'}><span class="slim-ini n-ini" style="background:hsl(${hueFor(wp.site)} 45% 42%)">${esc((wp.name || '?').trim()[0].toUpperCase())}</span>
         <span><b>Post to ${esc(wp.site.replace(/^https?:\/\//, ''))}</b><small>As a note: without a title, its first words are used. It goes on your Notes page and in its feed.</small></span></label>
       ${nets.length ? `<p class="n-also" id="nAlso">Also share a copy that links back to it</p>
       <div class="c-nets">${nets.map(n => `<label class="c-net"><input type="checkbox" value="${n}"${n === 'tumblr' ? '' : ' checked'}>${ICON_NET[n]}${NET[n]} <small>${esc(SOC.accounts[n].handle)}</small></label>`).join('')}</div>` : ''}
@@ -4669,7 +4711,12 @@
       <div class="row sheet-foot"><button class="btn" type="button" id="nCancel">Close</button><button class="btn" type="button" id="nDraft">Save as draft</button><button class="btn primary" type="button" id="nPost">Post</button></div>`, it ? 'Note about this' : 'New note');
     const text = $('nText'), boxes = () => [...el.querySelectorAll('.c-net input:checked:not(#nX)')].map(x => x.value);
     $('nX').onchange = () => store.set('noteX', $('nX').checked ? '1' : '');
-    const toSite = () => $('nSite').checked;
+    const ptBox = el.querySelector('.n-pt');
+    let npt = postTo();
+    const toSite = () => ptBox ? npt !== 'tumblr' : $('nSite').checked;
+    const toTumblr = () => !!ptBox && npt !== 'site';
+    const wirePt = () => el.querySelectorAll('[data-npt]').forEach(b => b.onclick = () => { npt = b.dataset.npt; store.set('postTo', npt); el.querySelector('.n-pt .post-to').outerHTML = postToHtml('data-npt', false); wirePt(); count(); });
+    wirePt();
     const link = () => it ? it.link : ($('nLink').hidden ? '' : $('nLink').value.trim());
     const count = () => {
       const n = [...text.value].length, picks = boxes();
@@ -4677,9 +4724,10 @@
       const over = picks.length && n > room;
       $('nRoom').textContent = !picks.length ? '' : toSite() ? (over ? 'Copies will be shortened, with the link to the full note' : `${room - n}`) : `${room - n}`;
       $('nRoom').classList.toggle('over', !toSite() && over);
-      $('nAlso').textContent = toSite() ? 'Also share a copy that links back to it' : 'Post only to';
-      $('nDraft').hidden = !toSite();
-      $('nPost').disabled = (!toSite() && !picks.length && !$('nX').checked) || (!toSite() && over) || (!text.value.trim() && !photo);
+      const home = toSite() || toTumblr();
+      $('nAlso').textContent = home ? 'Also share a copy that links back to it' : 'Post only to';
+      $('nDraft').hidden = !home;
+      $('nPost').disabled = (!home && !picks.length && !$('nX').checked) || (!home && over) || (!text.value.trim() && !photo);
     };
     if (!nets.length) $('nAlso')?.remove();
     const also = $('nAlso'); if (!also) { const p = document.createElement('p'); p.id = 'nAlso'; p.hidden = true; el.querySelector('.n-home').after(p); }
@@ -4730,13 +4778,20 @@
       const words = text.value.trim(), alt = $('nAlt').value.trim(), picks = boxes();
       if (photo && !alt && !draft && !confirm('Post the photo without a description? People using screen readers won’t know what it shows.')) { $('nAlt').focus(); return; }
       $('nPost').disabled = $('nDraft').disabled = true;
-      let home = '';
+      let home = '', onTumblrToo = false;
       try {
         if (toSite()) {
           say(draft ? 'Saving the draft…' : `Posting to ${wp.site.replace(/^https?:\/\//, '')}…`);
           const r = await invoke('site_note', { title: $('nTitle').value.trim(), text: words, link: link(), linkTitle: it ? headline(it) : '', photo, alt, draft, linkImage: it && isWeb(it.image) ? it.image : '', linkSite: it ? (srcLabel(it) || f?.title || '') : '' });
-          if (draft) { forget(); el.hidden = true; status(`Saved as a draft on your site. Finish it in ${siteApp()} whenever you like.`); return; }
+          if (draft && !toTumblr()) { forget(); el.hidden = true; status(`Saved as a draft on your site. Finish it in ${siteApp()} whenever you like.`); return; }
           home = r.url; forget();
+        }
+        // Post to Tumblr or Both: the full note on Tumblr (not a copy that links home)
+        if (toTumblr()) {
+          say(draft ? 'Saving the draft on Tumblr…' : 'Posting to Tumblr…');
+          const r = await invoke('tumblr_write', { kind: 'note', title: $('nTitle').value.trim(), text: words, photo, alt, draft, link: link(), linkTitle: it ? headline(it) : '' });
+          if (draft) { forget(); el.hidden = true; status(toSite() ? 'Saved as a draft on your site and on Tumblr.' : 'Saved to your Tumblr drafts.'); return; }
+          if (!home) home = r.url; onTumblrToo = true; forget();
         }
         let shared = [], bad = [], warned = [];
         if (picks.length) {
@@ -4756,7 +4811,7 @@
         const toX = !draft && $('nX').checked && (home || words || link());
         const xt = $('nTitle').value.trim();
         if (toX) await openXCopy(home && xt && words ? `${xt}\n\n${words}` : (words || xt), home || link());
-        const where = [home ? wp.site.replace(/^https?:\/\//, '') : '', ...shared].filter(Boolean);
+        const where = [toSite() && home ? wp.site.replace(/^https?:\/\//, '') : '', onTumblrToo ? 'Tumblr' : '', ...shared].filter(Boolean);
         if (bad.length) {
           say(`${where.length ? `Posted to ${where.join(', ')}. ` : ''}${bad.map(r => `${NET[r.network]}: ${r.error}`).join(' ')}${warned.length ? ' ' + warned.join(' ') : ''}`, true);
           $('nPost').disabled = true; $('nCancel').textContent = 'Close'; return;
@@ -4765,6 +4820,7 @@
         forget(); el.hidden = true;
         const hostName = wp.site.replace(/^https?:\/\//, '');
         const xNote = toX ? ' X is open with your copy: press Post there.' : '';
+        if (onTumblrToo) { status(`Posted to ${where.join(', ').replace(/, ([^,]*)$/, ' and $1')}.${shared.length ? ' Replies will show in Conversations.' : ''}${xNote}`); if (shared.length) setTimeout(() => { loadConversations(true); if (S.view === 'talk') renderList(); }, 4000); return; }
         status(home ? `Posted to ${hostName}${shared.length ? `, then shared to ${shared.join(' and ')}` : ''}.${shared.length ? ' Replies will show in Conversations.' : ''}${xNote}` : shared.length ? `Posted to ${shared.join(' and ')}. Replies will show in Conversations.${xNote}` : xNote.trim());
         if (shared.length) setTimeout(() => { loadConversations(true); if (S.view === 'talk') renderList(); }, 4000);
       } catch (err) { say(msg(err), true); $('nPost').disabled = $('nDraft').disabled = false; }

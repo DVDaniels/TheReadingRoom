@@ -4,7 +4,7 @@ NEW: POST TO TUMBLR, MICRO.BLOG AND PIKA (PLUS)
 No WordPress site? Settings › Connections now connects:
 - Tumblr: press Connect Tumblr, sign in on Tumblr's page, approve, and paste the code the next page shows. Notes, posts, Weeknotes and drafts go to your Tumblr. Writing shows Your Tumblr: followers and the notes on your posts.
 - Micro.blog, Pika or another IndieWeb site: type your site's address and press Continue, or paste an app token from your site's settings.
-With a WordPress site connected, it stays where Writing posts, and "Also share on Tumblr" shows up next to Bluesky and Mastodon.
+Have a site and Tumblr both? A new "Post to" choice in Writing and in the note sheet sends it to your site, to Tumblr, or Both (the full post on each). It remembers your choice. The Share menu's note item is now "Write a note…".
 
 NEW: REPLIES TELL THE WRITER
 When you reply to or repost a post from your own site, the app now tells the writer's site itself (a Webmention), and says whether their site was told.

@@ -437,6 +437,16 @@ pub async fn note(title: String, text: String, link: String, link_title: String,
     Ok(out)
 }
 
+/// Writing to Tumblr when your home is another site ("Post to: Tumblr" or "Both"): a full post on Tumblr, not a
+/// copy that links home. kind "post" is a post; "note" is tagged notes; "weeknotes" is tagged weeknotes.
+#[tauri::command]
+pub async fn tumblr_write(kind: String, title: String, text: String, photo: String, alt: String, draft: bool, link: Option<String>, link_title: Option<String>) -> Result<SiteNote, String> {
+    match kind.as_str() {
+        "post" => post(None, title, text, photo, alt, draft, Some("post".into())).await,
+        _ => note(title, text, link.unwrap_or_default(), link_title.unwrap_or_default(), photo, alt, draft, false, false, if kind == "weeknotes" { Some("weeknotes".into()) } else { None }).await,
+    }
+}
+
 /// site_categories: Notes and Weeknotes, which are tags on Tumblr.
 pub fn categories() -> Value {
     json!(TAGS.iter().map(|(id, slug, name)| json!({ "id": id, "name": name, "slug": slug, "count": 0 })).collect::<Vec<_>>())
