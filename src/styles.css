@@ -2933,6 +2933,27 @@ body.fr-on { overflow: hidden; }
 .tumblr-tab .tb-sure { color: var(--muted); }
 .tumblr-tab .b-link.danger { color: #b03a2e; }
 .tb-sun svg { width: .8em; height: .8em; }
+/* the Flickr tab: photos in a grid (contacts' and yours), comments, uploads */
+.flickr-tab .fl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin: 10px 0 6px; }
+.flickr-tab .fl-tile { display: flex; flex-direction: column; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card, #fff); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.flickr-tab .fl-tile:hover { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
+.flickr-tab .fl-tile:focus-visible { outline: 2px solid var(--accent, #0063DC); outline-offset: 2px; }
+.flickr-tab .fl-pic { position: relative; display: block; aspect-ratio: 4 / 3; background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.flickr-tab .fl-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.flickr-tab .fl-lock { position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.62); color: #fff; font-size: 11.5px; }
+.flickr-tab .fl-cap { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 10px; min-width: 0; }
+.flickr-tab .fl-cap b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flickr-tab .fl-by { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flickr-tab .fl-by.fl-nums { white-space: normal; }
+.flickr-tab .fl-cap time { font-size: 12px; color: var(--muted); }
+.flickr-tab .fl-av { width: 18px; height: 18px; font-size: 10px; flex: none; }
+.flickr-tab .fl-ev { display: flex; gap: 12px; align-items: flex-start; }
+.flickr-tab .fl-ev .nb-main { flex: 1; min-width: 0; }
+.flickr-tab .fl-evpic { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; }
+.flickr-tab .fl-see { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-right: auto; }
+.flickr-tab .fl-see select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, #fff); color: var(--ink); font: inherit; font-size: 13px; }
+.flickr-tab .fl-up .tb-meta { font-size: 13px; color: var(--muted); }
+@media (max-width: 600px) { .flickr-tab .fl-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } .flickr-tab .fl-cap b { font-size: 13px; } }
 /* Writing: "Also post to Tumblr" */
 .post-to.pt-also .pt-box { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: inherit; cursor: pointer; }
 .post-to.pt-also .pt-tick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 5px; font-size: 12px; line-height: 1; opacity: .8; }

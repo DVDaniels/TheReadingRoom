@@ -11,6 +11,7 @@ mod opml;
 mod reply;
 mod social;
 mod tumblr;
+mod flickr;
 mod micropub;
 mod sources;
 mod sync;
@@ -3011,6 +3012,13 @@ pub fn run() {
             tumblr::tumblr_list,
             tumblr::tumblr_publish,
             tumblr::tumblr_delete,
+            flickr::flickr_begin,
+            flickr::flickr_finish,
+            flickr::flickr_disconnect,
+            flickr::flickr_contacts,
+            flickr::flickr_mine,
+            flickr::flickr_activity,
+            flickr::flickr_upload,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

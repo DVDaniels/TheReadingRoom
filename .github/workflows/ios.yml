@@ -22,6 +22,8 @@ jobs:
       MARGINALIA_KEY: ${{ secrets.MARGINALIA_KEY }}
       TUMBLR_KEY: ${{ secrets.TUMBLR_KEY }}
       TUMBLR_SECRET: ${{ secrets.TUMBLR_SECRET }}
+      FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
+      FLICKR_SECRET: ${{ secrets.FLICKR_SECRET }}
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
       API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}

@@ -4,7 +4,7 @@
   // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read),
   // site_post and site_post_publish (full posts from Writing)
   // and liking (taking a like back stays free). Everything else goes straight through.
-  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || cmd === 'tumblr_post' || cmd === 'tumblr_publish' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
+  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || cmd === 'tumblr_post' || cmd === 'tumblr_publish' || cmd === 'flickr_upload' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -60,6 +60,7 @@
     videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
+    flickr: '<svg viewBox="0 0 24 24"><circle cx="6.6" cy="12" r="4.6" fill="#0063DC"/><circle cx="17.4" cy="12" r="4.6" fill="#FF0084"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     wordpress: '<svg viewBox="0 0 24 24" fill="none" stroke="#21759B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M5.6 8.4h2.6M7 8.4l3.1 9 2-5.6M10.4 8.4h2.4M11.6 8.4l3.2 9 2.4-7.3c.4-1.1.1-1.7-.6-1.9"/></svg>', // the WordPress tab: WordPress's W, in WordPress blue (David, Nov 26)
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
@@ -158,7 +159,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'trending', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'trending', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr', 'flickr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -356,7 +357,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['site', 'Your site', 'Your WordPress, Micro.blog or Pika site: its posts, drafts and numbers'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['site', 'Your site', 'Your WordPress, Micro.blog or Pika site: its posts, drafts and numbers'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['flickr', 'Flickr', 'Your contacts’ latest photos, your own photos, comments, and uploads'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['trending', 'Trending', 'Topics several of your feeds are writing about'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -416,7 +417,7 @@
         ...mailNavItems()]) +
       '<hr class="nav-gap">' +
       // Read, then Write (David, Nov 22)
-      group('write', 'Write', [...wrNavItems(), tbNavItem()], plusLive() ? '<span class="wr-plus grp-plus" title="Writing, your site, Tumblr and YouTube are part of The Reading Room Plus">Plus</span>' : '') +
+      group('write', 'Write', [...wrNavItems(), tbNavItem(), flNavItem()], plusLive() ? '<span class="wr-plus grp-plus" title="Writing, your site, Tumblr and uploading to Flickr are part of The Reading Room Plus">Plus</span>' : '') +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
@@ -484,7 +485,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { trending: 'Trending', write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { trending: 'Trending', write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', flickr: 'Flickr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -497,9 +498,9 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'trending', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'trending', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'flickr') && !S.readerId));
     // Writing uses My Day's width and panels
-    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr');
+    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'flickr');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -532,6 +533,7 @@
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
       : S.view === 'trending' ? `<span class="sun" aria-hidden="true">${ICONS.trending}</span>Trending`
       : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
+      : S.view === 'flickr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.flickr}</span>Flickr`
       : S.view === 'site' ? `<span class="sun" aria-hidden="true">${siteIcon()}</span>${esc(siteTabName())}`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
@@ -552,6 +554,7 @@
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
       : S.view === 'site' ? (WR.sub && isSiteSub(WR.sub) ? `${siteTabName()} › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub] || ''}` : wrSite() ? `${wrHost()}: your posts, drafts and numbers` : 'Your own site')
       : S.view === 'tumblr' ? (SOC.accounts?.tumblr ? `${SOC.accounts.tumblr.blog}.tumblr.com: write, queue and schedule, and see who’s talking` : 'Work your Tumblr from here')
+      : S.view === 'flickr' ? (SOC.accounts?.flickr ? `${SOC.accounts.flickr.handle} on Flickr: your contacts’ photos, your photos and comments` : 'Your Flickr, next to your reading')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -564,7 +567,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'trending', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'trending', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr', 'flickr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -911,6 +914,7 @@
     if (S.view === 'myday') { paintMyDay(); return; }
     if (S.view === 'write' || S.view === 'site') { wrPaint(); return; }
     if (S.view === 'tumblr') { tbPaint(); return; }
+    if (S.view === 'flickr') { flPaint(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
@@ -1197,7 +1201,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'trending', 'myday', 'write', 'site', 'tumblr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'trending', 'myday', 'write', 'site', 'tumblr', 'flickr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -3823,7 +3827,7 @@
       ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
       : body}</section>`;
     const wp = SOC.accounts.wordpress;
-    return `<h2 id="socialTitle">Your site, Tumblr, Mastodon &amp; Bluesky</h2>
+    return `<h2 id="socialTitle">Your site, Tumblr, Flickr, Mastodon &amp; Bluesky</h2>
       <p>Connect your own site and accounts to post notes and stories with your thoughts, and to see and answer the replies in Conversations. Sign-ins are kept in Apple’s Keychain and sync to your other Apple devices through iCloud Keychain; they’re sent only to your own site and servers.</p>
       <section class="acct"><h3>${ICONS.site}Your site <small class="acct-sub">WordPress</small></h3>${wp
         ? `<p>Connected to <b>${esc(wp.name)}</b> (${esc(wp.site.replace(/^https?:\/\//, ''))}) as ${esc(wp.user)}. Notes go in a Notes category there.</p><div class="row"><button class="btn" data-disconnect="wordpress">Disconnect</button></div>`
@@ -3832,6 +3836,7 @@
         <input id="wpUser" placeholder="WordPress username" autocapitalize="off" spellcheck="false" autocomplete="username">
         <input id="wpPass" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" autocomplete="off"><button class="btn primary" type="submit">Connect</button></form>`}</section>
       ${tumblrAcctHtml()}
+      ${flickrAcctHtml()}
       ${micropubAcctHtml()}
       ${row('bluesky', SOC.accounts.bluesky, `<p>Use an <b>App Password</b>, not your real password. Make one in Bluesky under Settings › Privacy and security › <button class="b-link" data-open-url="https://bsky.app/settings/app-passwords">App passwords</button>. You can revoke it anytime.</p>
         <form class="acct-form" id="bskyForm"><input id="bskyHandle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="off" spellcheck="false">
@@ -3854,6 +3859,17 @@
         <form class="acct-form" id="tumblrForm"><button class="btn primary" type="submit">Connect Tumblr</button></form>
         <form class="acct-form" id="tumblrCodeForm" hidden><input id="tumblrCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
   }
+  // Flickr: its own tab (contacts' photos, comments, your photos; uploads with Plus). Flickr's page shows a code to paste.
+  function flickrAcctHtml() {
+    const f = SOC.accounts.flickr;
+    return `<section class="acct"><h3>${ICON_NET.flickr}Flickr</h3>${f
+      ? `<p>Connected as <b>${esc(f.name || f.handle)}</b> (${esc(f.handle)}). The Flickr tab shows your contacts’ photos, comments on your photos and your own photos${plusOk() ? ', and uploads photos' : ''}.</p>
+        <p class="note">Disconnecting forgets the sign-in on your devices. To take back the app’s access on Flickr too, open <button class="b-link" data-open-url="https://www.flickr.com/services/auth/list.gne">Flickr’s list of apps you’ve allowed</button>.</p>
+        <div class="row"><button class="btn" data-disconnect="flickr">Disconnect</button></div>`
+      : `<p>See the latest photos from the people you follow on Flickr (friends-only ones too), the comments on your photos and your own photos, and with Plus, upload photos. Press Connect Flickr, sign in on Flickr’s page and approve The Reading Room. A page then shows a code: paste it here.</p>
+        <form class="acct-form" id="flickrForm"><button class="btn primary" type="submit">Connect Flickr</button></form>
+        <form class="acct-form" id="flickrCodeForm" hidden><input id="flickrCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
+  }
   // Micro.blog, Pika and other IndieWeb sites, through Micropub (David, Nov 25): sign in on your own site, or paste an app token
   function micropubAcctHtml() {
     const m = SOC.accounts.micropub, wp = SOC.accounts.wordpress;
@@ -3866,6 +3882,7 @@
         <p class="note"><button class="b-link" type="button" id="mpUseToken">Use an app token instead</button></p>`}</section>`;
   }
   const ICON_NET = {
+    flickr: '<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="6.6" cy="12" r="4.6" fill="#0063DC"/><circle cx="17.4" cy="12" r="4.6" fill="#FF0084"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     bluesky: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>',
     mastodon: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M21.3 13.8c-.3 1.5-2.6 3.1-5.3 3.4-1.4.2-2.8.3-4.3.3-2.4-.1-4.3-.6-4.3-.6v.7c.3 2.4 2.4 2.5 4.3 2.6 2 .1 3.7-.5 3.7-.5l.1 1.8s-1.4.7-3.8.9c-1.4.1-3.1-.1-5.1-.6-4.3-1.1-5-5.5-5.2-10V7.6C1.4 3 4.4 1.7 4.4 1.7 5.9 1 8.6.7 11.3.7h.1c2.7 0 5.4.3 6.9 1 0 0 3 1.3 3 5.9 0 0 .1 3.4-.4 5.7zM18.2 8.4c0-1.2-.3-2.1-.9-2.8-.6-.7-1.4-1-2.4-1-1.2 0-2 .4-2.6 1.3l-.6 1-.6-1c-.6-.9-1.4-1.3-2.6-1.3-1 0-1.8.4-2.4 1-.6.7-.9 1.6-.9 2.8v5.6h2.2V8.6c0-1.1.5-1.7 1.4-1.7 1 0 1.6.7 1.6 2v3h2.2v-3c0-1.3.5-2 1.6-2 .9 0 1.4.6 1.4 1.7V14h2.2z"/></svg>',
@@ -3929,7 +3946,7 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'flickr' ? 'flickr_disconnect' : 'social_disconnect', { network: n }); if (n === 'flickr') { FL.contacts = FL.act = FL.mine = null; FL.at = 0; } SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
     };
     // Micropub: find the site, then its sign-in page (and a code) or an app token
     const mpBegin = async wantToken => {
@@ -3961,6 +3978,19 @@
         $('tumblrForm').hidden = true; $('tumblrCodeForm').hidden = false; $('tumblrCode').focus();
         note('Sign in on Tumblr’s page and approve The Reading Room, then paste the code the next page shows.');
       } catch (err) { note(msg(err), true); }
+    });
+    $('flickrForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Opening Flickr…');
+      try {
+        await invoke('open_external', { url: await invoke('flickr_begin') });
+        $('flickrForm').hidden = true; $('flickrCodeForm').hidden = false; $('flickrCode').focus();
+        note('Sign in on Flickr’s page and approve The Reading Room, then paste the code the next page shows.');
+      } catch (err) { note(msg(err), true); }
+    });
+    $('flickrCodeForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Connecting to Flickr…');
+      try { SOC.accounts = await invoke('flickr_finish', { code: $('flickrCode').value }); FL.contacts = FL.act = FL.mine = null; FL.cErr = FL.aErr = FL.mErr = ''; openAccounts(); renderRail(); if (S.view === 'flickr') flPaint(); }
+      catch (err) { note(msg(err), true); }
     });
     $('tumblrCodeForm')?.addEventListener('submit', async e => {
       e.preventDefault(); note('Connecting to Tumblr…');
@@ -6414,6 +6444,153 @@
       catch (err) { status(msg(err), true); }
       tbPaint();
     }
+  });
+
+  // ---- the Flickr tab (David, Nov 26: "access my flickr account from the app", the full sign-in): your contacts'
+  // latest photos (friends-only and family-only ones too, which Flickr's public feeds leave out), comments on your
+  // photos, your own photos with their numbers, and uploads (Plus). Reading here is free; uploading is Plus.
+  // Rust: flickr_contacts, flickr_activity, flickr_mine, flickr_upload (flickr.rs).
+  const FL = { who: store.get('flWho') === 'friends' ? 'friends' : 'all', contacts: null, cErr: '', cBusy: false, cShow: 24,
+    act: null, aErr: '', aBusy: false, mine: null, mErr: '', mBusy: false, page: 1, pages: 1, total: 0,
+    file: '', preview: '', name: '', mime: '', size: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
+  const flDraft = () => { try { return JSON.parse(store.get('flDraft') || '{}') || {}; } catch { return {}; } };
+  function flNavItem() {
+    return { view: 'flickr', label: 'Flickr', count: '', icon: ICONS.flickr, html: navButton('flickr', 'Flickr', '', { icon: ICONS.flickr }) };
+  }
+  const flRepaint = () => { if (S.view === 'flickr') flPaint(); };
+  function flLoad(force) {
+    if (!SOC.accounts?.flickr) return;
+    if (force) { FL.contacts = FL.act = FL.mine = null; FL.cErr = FL.aErr = FL.mErr = ''; }
+    if (FL.contacts == null && !FL.cBusy && !FL.cErr) {
+      FL.cBusy = true;
+      tauriInvoke('flickr_contacts', { friends: FL.who === 'friends' }).then(r => { FL.contacts = r || []; }).catch(e => { FL.cErr = msg(e) || 'Flickr didn’t answer.'; })
+        .finally(() => { FL.cBusy = false; FL.at = Date.now(); flRepaint(); });
+    }
+    if (FL.act == null && !FL.aBusy && !FL.aErr) {
+      FL.aBusy = true;
+      tauriInvoke('flickr_activity').then(r => { FL.act = r || []; }).catch(e => { FL.aErr = msg(e) || 'Flickr didn’t answer.'; })
+        .finally(() => { FL.aBusy = false; flRepaint(); });
+    }
+    if (FL.mine == null && !FL.mBusy && !FL.mErr) flMine(1);
+  }
+  function flMine(page) {
+    FL.mBusy = true;
+    tauriInvoke('flickr_mine', { page }).then(r => {
+      FL.mine = page > 1 ? [...(FL.mine || []), ...(r.photos || [])] : (r.photos || []); FL.page = r.page || page; FL.pages = r.pages || 1; FL.total = r.total || 0;
+    }).catch(e => { if (page === 1) { FL.mine = null; FL.mErr = msg(e) || 'Flickr didn’t answer.'; } else status(msg(e), true); })
+      .finally(() => { FL.mBusy = false; flRepaint(); });
+  }
+  const flWhoSees = p => p.public ? '' : p.friend && p.family ? 'Friends & family' : p.friend ? 'Friends only' : p.family ? 'Family only' : 'Private';
+  function flTileHtml(p, mine) {
+    const lock = flWhoSees(p);
+    const meta = mine ? `${nfmt(p.views)} views · ${nfmt(p.faves)} faves · ${nfmt(p.comments)} comments`
+      : `<span class="nb-av fl-av"><img class="nb-face-img" src="${esc(p.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((p.name || '?')[0].toUpperCase())}</span>${esc(p.name)}`;
+    return `<button class="fl-tile" type="button" data-fl="open" data-url="${esc(p.page)}" title="Open on Flickr">
+      <span class="fl-pic"><img src="${esc(p.img || p.thumb)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer">${lock ? `<span class="fl-lock">${esc(lock)}</span>` : ''}</span>
+      <span class="fl-cap"><b>${esc(p.title || 'Untitled')}</b><span class="fl-by${mine ? ' fl-nums' : ''}">${meta}</span>${p.date ? `<time>${esc(fmtWhen(p.date))}</time>` : ''}</span></button>`;
+  }
+  function flContactsHtml() {
+    const list = FL.contacts || [];
+    const body = FL.contacts == null ? `<p class="day-note">${FL.cErr ? `Couldn’t get your contacts’ photos just now. ${esc(FL.cErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your contacts’ latest photos from Flickr…'}</p>`
+      : list.length ? `<div class="fl-grid">${list.slice(0, FL.cShow).map(p => flTileHtml(p, false)).join('')}</div>${list.length > FL.cShow ? `<button class="b-link" type="button" data-fl="cmore">Show ${list.length - FL.cShow} more</button>` : ''}`
+      : `<p class="day-note">${FL.who === 'friends' ? 'No new photos from your friends and family.' : 'No new photos from the people you follow on Flickr.'}</p>`;
+    return `<section class="b-panel" aria-label="From your contacts"><div class="bp-head"><h3 class="b-sub">From your contacts</h3><span class="bp-meta">Their latest photos, newest first, including the ones only friends or family can see</span></div>
+      <div class="nb-chips">${[['all', 'Everyone you follow'], ['friends', 'Friends & family']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="who" data-k="${k}" aria-pressed="${FL.who === k}">${l}</button>`).join('')}</div>${body}</section>`;
+  }
+  function flCommentsHtml() {
+    const list = (FL.act || []).slice(0, 8);
+    const body = FL.act == null ? `<p class="day-note">${FL.aErr ? `Couldn’t get the comments just now. ${esc(FL.aErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Looking for comments on your photos…'}</p>`
+      : list.length ? list.map(c => `<article class="yu-ev fl-ev"><span class="nb-av md"><img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span><div class="nb-main">
+          <div class="nb-by"><b>${esc(c.name)}</b><span>on “${esc(c.photo || 'your photo')}”</span><time>${esc(fmtWhen(c.date))}</time></div>
+          <p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>
+          <div class="nb-acts"><button class="linkish" type="button" data-fl="open" data-url="${esc(c.link)}">Reply on Flickr</button><button class="linkish" type="button" data-fl="open" data-url="${esc(c.profile)}">Their photos</button></div>
+        </div>${c.thumb ? `<img class="fl-evpic" src="${esc(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</article>`).join('')
+      : '<p class="day-note">No comments on your photos in the last 30 days. Faves are counted on each photo below.</p>';
+    return `<section class="b-panel" aria-label="Comments on your photos"><div class="bp-head"><h3 class="b-sub">Comments on your photos</h3><span class="bp-meta">The last 30 days</span></div>${body}</section>`;
+  }
+  function flUploadHtml() {
+    if (!plusOk()) return `<section class="b-panel wr-invite fl-up"><p class="b-sub">Upload to Flickr</p><h2>Upload photos with The Reading Room Plus</h2>
+      <p>Send a photo to Flickr at the size you took it, with a title, a description, tags and who can see it. Everything else in this tab is free.</p>
+      <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`;
+    const d = flDraft();
+    const see = [['public', 'Everyone'], ['friends', 'Friends'], ['family', 'Family'], ['both', 'Friends & family'], ['private', 'Only you']];
+    return `<section class="b-panel fl-up" aria-label="Upload a photo to Flickr"><div class="bp-head"><h3 class="b-sub">Upload a photo</h3><span class="bp-meta">Sent as it is, not made smaller</span></div>
+      ${FL.file ? `<div class="tb-photo"><img src="${esc(FL.preview)}" alt=""><div><span class="tb-meta">${esc(FL.name)} · ${(FL.size / 1048576).toFixed(1)} MB</span><button class="b-link" type="button" data-fl="nophoto">Pick another photo</button></div></div>`
+        : `<button class="btn" type="button" data-fl="pick">＋ Pick a photo</button>`}<input id="flFile" type="file" accept="image/*" hidden>
+      <input id="flTitle" class="tb-in" placeholder="Title" value="${esc(d.title || '')}">
+      <textarea id="flDesc" class="tb-in" rows="3" placeholder="Description (optional)">${esc(d.desc || '')}</textarea>
+      <input id="flTags" class="tb-in" placeholder="Tags, separated by commas" value="${esc(d.tags || '')}" autocapitalize="off">
+      <div class="tb-acts"><label class="fl-see">Who can see it <select id="flSee">${see.map(([k, l]) => `<option value="${k}"${FL.see === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <button class="btn primary" type="button" data-fl="send"${FL.sending ? ' disabled' : ''}>${FL.sending ? 'Uploading…' : 'Upload to Flickr'}</button></div>
+      ${FL.say ? `<p class="tm-tip tb-say${FL.sayErr ? ' err' : ''}" role="status">${esc(FL.say)}${FL.link ? ` <button class="b-link" type="button" data-fl="open" data-url="${esc(FL.link)}">See it on Flickr</button>` : ''}</p>` : ''}
+      <p class="tm-tip">The title, description and tags are kept on this device until the photo is uploaded.</p></section>`;
+  }
+  function flMineHtml() {
+    const a = SOC.accounts.flickr;
+    const list = FL.mine || [];
+    const body = FL.mine == null ? `<p class="day-note">${FL.mErr ? `Couldn’t get your photos just now. ${esc(FL.mErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your photos from Flickr…'}</p>`
+      : list.length ? `<div class="fl-grid">${list.map(p => flTileHtml(p, true)).join('')}</div>${FL.page < FL.pages ? `<button class="b-link" type="button" data-fl="mmore"${FL.mBusy ? ' disabled' : ''}>Show more</button>` : ''}`
+      : '<p class="day-note">No photos on your Flickr yet.</p>';
+    return `<section class="b-panel" aria-label="Your photos on Flickr"><div class="bp-head"><h3 class="b-sub">Your photos</h3><span class="bp-meta">${FL.total ? `${nfmt(FL.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(a.site)}">Open on Flickr</button></span></div>${body}</section>`;
+  }
+  function flPaint() {
+    const a = document.activeElement, id = a && a.id && a.closest?.('#list') ? a.id : '';
+    const sel = id && typeof a.selectionStart === 'number' ? a.selectionStart : null;
+    const y = $('main').scrollTop, ly = $('listView').scrollTop;
+    if (SOC.accounts?.flickr && FL.at && Date.now() - FL.at > 15 * 60 * 1000 && !FL.cBusy) flLoad(true);
+    const body = !SOC.accounts?.flickr
+      ? `<section class="b-panel wr-invite"><p class="b-sub">Flickr</p><h2>Connect your Flickr to start</h2>
+          <p>See the latest photos from the people you follow, including the ones only friends or family can see, the comments on your photos, and your own photos with their views and faves. With Plus, upload photos too. Press Connect Flickr, sign in on Flickr’s page and approve The Reading Room.</p>
+          <div class="wr-acts"><button class="btn primary" type="button" data-fl="connect">Connect Flickr</button></div></section>`
+      : (flLoad(false), flContactsHtml() + flCommentsHtml() + flUploadHtml() + flMineHtml());
+    $('list').innerHTML = `<section class="brief myday tumblr-tab flickr-tab" aria-label="Flickr">${body}</section>`;
+    $('main').scrollTop = y; $('listView').scrollTop = ly;
+    const el = id && $(id);
+    if (el) { el.focus(); if (sel != null) try { el.setSelectionRange(sel, sel); } catch {} }
+  }
+  const flKeep = () => { const d = flDraft(); for (const [k, i] of [['title', 'flTitle'], ['desc', 'flDesc'], ['tags', 'flTags']]) if ($(i)) d[k] = $(i).value; store.set('flDraft', JSON.stringify(d)); };
+  document.addEventListener('input', e => { if (['flTitle', 'flDesc', 'flTags'].includes(e.target.id)) flKeep(); });
+  document.addEventListener('change', async e => {
+    if (e.target.id === 'flSee') { FL.see = e.target.value; store.set('flSee', FL.see); return; }
+    if (e.target.id !== 'flFile') return;
+    const file = e.target.files[0]; if (!file) return;
+    flKeep(); FL.say = ''; FL.link = '';
+    if (file.size > 200 * 1048576) { FL.say = 'Flickr takes photos up to 200 MB. This one is bigger.'; FL.sayErr = true; flPaint(); return; }
+    FL.say = 'Getting the photo ready…'; FL.sayErr = false; flPaint();
+    try {
+      FL.file = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
+      FL.preview = await shrinkPhoto(file).catch(() => FL.file);
+      FL.name = file.name || 'photo.jpg'; FL.mime = file.type || 'image/jpeg'; FL.size = file.size; FL.say = '';
+      if (!($('flTitle')?.value || '').trim()) { const d = flDraft(); d.title = FL.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '); store.set('flDraft', JSON.stringify(d)); }
+    } catch { FL.file = ''; FL.say = 'Couldn’t open that picture. Try another one.'; FL.sayErr = true; }
+    flPaint(); $('flTitle')?.focus();
+  });
+  async function flSend() {
+    flKeep();
+    if (!FL.file) { FL.say = 'Pick a photo first.'; FL.sayErr = true; FL.link = ''; flPaint(); return; }
+    const d = flDraft();
+    FL.sending = true; FL.say = FL.size > 8 * 1048576 ? 'Uploading… a big photo can take a minute.' : ''; FL.sayErr = false; flPaint();
+    try {
+      const r = await invoke('flickr_upload', { photo: FL.file, name: FL.name, mime: FL.mime, title: (d.title || '').trim(), description: (d.desc || '').trim(), tags: d.tags || '', who: FL.see });
+      store.set('flDraft', '{}');
+      FL.file = FL.preview = FL.name = ''; FL.size = 0; FL.sayErr = false; FL.link = r?.url || '';
+      FL.say = FL.see === 'public' ? 'Uploaded to your Flickr. It can take a moment to show up there.' : 'Uploaded to your Flickr, visible only to the people you chose.';
+      FL.mine = null; FL.mErr = '';
+    } catch (e) { FL.say = msg(e); FL.sayErr = true; FL.link = ''; }
+    FL.sending = false; flPaint();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-fl]'); if (!b) return;
+    const k = b.dataset.fl;
+    if (k === 'connect') { openAccounts(); return; }
+    if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
+    if (k === 'who') { FL.who = b.dataset.k; store.set('flWho', FL.who); FL.contacts = null; FL.cErr = ''; FL.cShow = 24; flPaint(); return; }
+    if (k === 'cmore') { FL.cShow += 24; flPaint(); return; }
+    if (k === 'mmore') { if (!FL.mBusy) flMine(FL.page + 1); flPaint(); return; }
+    if (k === 'reload') { flLoad(true); flPaint(); return; }
+    if (k === 'pick') { flKeep(); $('flFile')?.click(); return; }
+    if (k === 'nophoto') { flKeep(); FL.file = FL.preview = FL.name = ''; FL.size = 0; $('flFile')?.click(); flPaint(); return; }
+    if (k === 'send') { if (!plusOk()) { openPlus(); return; } flSend(); }
   });
 
   const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;

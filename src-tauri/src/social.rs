@@ -538,6 +538,8 @@ pub struct Accounts {
     tumblr: Option<Value>,
     /// your Micro.blog, Pika or other IndieWeb site (Micropub): Writing's home when no WordPress site is connected
     micropub: Option<Value>,
+    /// your Flickr account, for the Flickr tab (photos from your contacts, your photos, uploads)
+    flickr: Option<Value>,
     /// where Writing, notes, replies and reposts go: the WordPress site, else the Tumblr blog ({kind, site, name})
     site: Option<Value>,
 }
@@ -554,6 +556,7 @@ pub fn social_accounts() -> Accounts {
             .or_else(|| crate::micropub::account().map(|m| json!({ "kind": "micropub", "site": st(&m, "site"), "name": st(&m, "name"), "service": st(&m, "service") })))
             .or_else(|| crate::tumblr::account().map(|t| json!({ "kind": "tumblr", "site": st(&t, "site").trim_end_matches('/'), "name": st(&t, "name"), "blog": st(&t, "blog") }))),
         micropub: crate::micropub::account(),
+        flickr: crate::flickr::account(),
     }
 }
 

@@ -10,6 +10,9 @@ NEW: A TUMBLR TAB (PLUS)
 Tumblr has its own tab under Writing. Write a note or a post (photo, tags), then Post now, Save as draft, Add to queue or Schedule it. See Your numbers, the people talking to you, and your Posts, Drafts and Queue (open, post a draft now, or delete).
 Writing is for your own site. Have Tumblr too? Tick "Also post to Tumblr" in Writing or the note sheet to send the full post there as well.
 
+NEW: A FLICKR TAB
+Settings › Connections › Connect Flickr, approve on Flickr's page, paste the code. The Flickr tab shows your contacts' latest photos (friends-only ones too), comments on your photos, and your photos with views and faves. With Plus, upload a photo at full size.
+
 NEW: TUMBLR IN CONVERSATIONS
 Replies, reblogs with words, mentions and asks from Tumblr show in Conversations › You, with a Tumblr chip. Reply on Tumblr opens your browser.
 
