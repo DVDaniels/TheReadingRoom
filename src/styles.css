@@ -3044,3 +3044,6 @@ body.fr-on { overflow: hidden; }
 /* Comment on YouTube as: which channel, when you've connected several */
 .nb-rbox .nb-rb-ch { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, transparent); color: var(--ink); margin-left: 6px; }
 .yu-ev .nb-acts .nb-rb-done { margin: 0; font-weight: 500; }
+/* Plus once, on the Write heading, right after the name (the rows carry no badge) */
+.grp-name:has(+ .grp-plus) { flex: none; }
+.grp .grp-plus { margin: 0 auto 0 8px; text-transform: uppercase; }
