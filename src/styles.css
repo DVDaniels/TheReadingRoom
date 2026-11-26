@@ -115,7 +115,13 @@ html.ios .tagline { font-size: 14px; }
 .b-link { border: 0; background: none; padding: 0; color: var(--accent) !important; font-weight: 600; text-decoration: underline; text-decoration-color: var(--b-line); text-underline-offset: 3px; cursor: pointer; }
 .b-link:hover { text-decoration-color: var(--accent); }
 .b-lead { position: relative; display: block; width: 100%; border: 0; padding: 0; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, .2); cursor: pointer; }
-.b-lead img { display: block; width: 100%; aspect-ratio: 16 / 8; object-fit: cover; }
+.b-lead img { display: block; width: 100%; aspect-ratio: 3 / 2; max-height: 62vh; object-fit: cover; object-position: 50% 30%; }
+/* A photo taller than it is wide is shown whole, over a soft blurred copy of itself, instead of losing its top and
+   bottom (David, Nov 26: "great in landscape mode but really cut off in portrait mode") */
+.b-lead.tall::before { content: ''; position: absolute; inset: -40px; background: var(--pic) center / cover no-repeat; filter: blur(30px) brightness(.72) saturate(1.1); }
+.b-lead.tall img { position: relative; object-fit: contain; }
+.b-lead.tall .b-lead-text { z-index: 2; }
+.b-item img { object-position: 50% 30%; }
 .b-lead-text { position: absolute; inset: auto 0 0 0; padding: 48px 18px 16px; display: flex; flex-direction: column; gap: 4px;
   background: linear-gradient(to top, rgba(4, 14, 12, .92) 0%, rgba(4, 14, 12, .72) 40%, rgba(4, 14, 12, 0) 100%); padding-top: 96px; }
 .b-lead .b-head { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 2px 18px rgba(0, 0, 0, .45); }
@@ -149,7 +155,8 @@ html.ios .tagline { font-size: 14px; }
 @media (max-width: 760px) {
   .brief { padding: 18px 16px 14px; border-radius: 16px; }
   .brief h2 { font-size: 26px; }
-  .b-lead img { aspect-ratio: 4 / 3; }
+  .b-lead img { aspect-ratio: 4 / 3; max-height: 70vh; }
+  .b-lead.tall img { aspect-ratio: 4 / 5; }
   .b-head { font-size: 19px; }
   .b-more { grid-template-columns: 1fr; gap: 10px; }
   .b-item { flex-direction: row; align-items: center; gap: 12px; }
@@ -593,7 +600,8 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   body.home .brief h2 { font-size: 38px; }
   body.home .b-line { grid-area: line; font-size: 16px; }
   body.home .b-lead { grid-area: lead; align-self: stretch; min-height: 380px; }
-  body.home .b-lead img { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
+  body.home .b-lead img { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; max-height: none; }
+  body.home .b-lead.tall img { position: absolute; }
   body.home .b-lead.no-pic { display: flex; align-items: flex-end; }
   body.home .b-head { font-size: 28px; }
   body.home .b-foot { grid-area: foot; align-self: end; display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--b-line); }

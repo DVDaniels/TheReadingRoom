@@ -9448,6 +9448,15 @@
   document.addEventListener('click', e => { const t = e.target.closest('[data-trend]'); if (t) openTrend(Number(t.dataset.trend)); });
 
 
+  // The lead photo on Today: a tall photo is shown whole over a blurred copy of itself, not cropped (see .b-lead.tall)
+  document.addEventListener('load', e => {
+    const img = e.target; if (!(img instanceof HTMLImageElement) || !img.closest) return;
+    const lead = img.closest('.b-lead'); if (!lead || !img.naturalWidth) return;
+    const tall = img.naturalHeight > img.naturalWidth * 1.05;
+    lead.classList.toggle('tall', tall);
+    if (tall) lead.style.setProperty('--pic', `url("${img.currentSrc || img.src}")`);
+  }, true);
+
   // ------------------------------------------------------------ Your year in reading
   // Counted from the day this arrived: each story you open, per device (so Mac and iPhone add up when prefs sync).
   let statsTimer = 0;
