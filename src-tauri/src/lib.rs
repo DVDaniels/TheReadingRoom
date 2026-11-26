@@ -3006,6 +3006,7 @@ pub fn run() {
             tumblr::tumblr_disconnect,
             tumblr::tumblr_write,
             tumblr::tumblr_stats,
+            tumblr::tumblr_activity,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

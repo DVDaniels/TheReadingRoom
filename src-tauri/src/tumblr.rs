@@ -545,6 +545,72 @@ pub async fn avatar() -> String {
     secret_get(KEY).map(|s| format!("{API}/blog/{}/avatar/128", st(&s, "blog"))).unwrap_or_default()
 }
 
+/// People talking to you on Tumblr, for Conversations › You: replies on your posts, reblogs where someone added
+/// words, mentions and asks. Likes, follows and plain reblogs are left out on purpose (David, Nov 25: "keep
+/// conversations about people talking"). Empty when Tumblr isn't connected. Replying happens on Tumblr itself;
+/// Tumblr doesn't let apps post replies.
+#[tauri::command]
+pub async fn tumblr_activity() -> Result<Vec<crate::social::SiteComment>, String> {
+    let Some(s) = secret_get(KEY) else { return Ok(Vec::new()) };
+    let me = st(&s, "blog");
+    let types = ["reply", "reblog_with_content", "mention_in_reply", "mention_in_post", "ask"];
+    let q: String = types.iter().map(|t| format!("types[]={t}&")).collect();
+    let r = api(reqwest::Method::GET, &format!("/blog/{{blog}}/notifications?{q}rollups=false"), None).await?;
+    Ok(activity_items(&r, &me))
+}
+
+fn activity_items(r: &Value, me: &str) -> Vec<crate::social::SiteComment> {
+    let list = r["notifications"].as_array().cloned().unwrap_or_default();
+    list.iter()
+        .filter_map(|n| {
+            let kind = st(n, "type");
+            let from = st(n, "from_tumblelog_name");
+            if from.is_empty() || from == me {
+                return None;
+            }
+            let text = match kind.as_str() {
+                "reply" | "mention_in_reply" => st(n, "reply_text"),
+                "reblog_with_content" => st(n, "added_text"),
+                _ => {
+                    let t = st(n, "added_text");
+                    if t.is_empty() { st(n, "reply_text") } else { t }
+                }
+            };
+            let when = n["timestamp"].as_i64().and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map(|d| d.to_rfc3339()).unwrap_or_default();
+            let mine = id_str(&n["target_post_id"]);
+            let theirs = id_str(&n["post_id"]);
+            // where to answer: your post for replies, their post for reblogs and mentions, your inbox for asks
+            let link = match kind.as_str() {
+                "reply" if !mine.is_empty() => format!("https://www.tumblr.com/{me}/{mine}"),
+                "ask" => format!("https://www.tumblr.com/blog/{me}/messages"),
+                _ if !theirs.is_empty() => format!("https://www.tumblr.com/{from}/{theirs}"),
+                _ if !mine.is_empty() => format!("https://www.tumblr.com/{me}/{mine}"),
+                _ => format!("https://www.tumblr.com/{from}"),
+            };
+            Some(crate::social::SiteComment {
+                id: 0,
+                kind: format!("tumblr-{kind}"),
+                name: from.clone(),
+                url: format!("https://{from}.tumblr.com/"),
+                avatar: format!("{API}/blog/{from}/avatar/64"),
+                text: text.trim().to_string(),
+                date: when,
+                link,
+                post_title: st(n, "target_post_summary").chars().take(90).collect(),
+            })
+        })
+        .collect()
+}
+
+/// Tumblr's ids come as numbers or strings; keep them as text so none are rounded.
+fn id_str(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => String::new(),
+    }
+}
+
 /// Your Tumblr beside Your blog, when another site is home and Tumblr is connected too (null when it isn't connected).
 #[tauri::command]
 pub async fn tumblr_stats() -> Result<Value, String> {
@@ -596,6 +662,23 @@ pub async fn share(text: &str, link: &str, title: &str, photo: &str, alt: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn activity_keeps_people_talking() {
+        let r = json!({ "notifications": [
+            { "type": "reply", "timestamp": 1764100000, "from_tumblelog_name": "quietcorner", "target_post_id": "7712345678901234567", "reply_text": "What reader is this?", "target_post_summary": "Starting over" },
+            { "type": "reblog_with_content", "timestamp": 1764090000, "from_tumblelog_name": "alexwalks", "post_id": 7712345678901234999u64, "added_text": "Same here." },
+            { "type": "reply", "timestamp": 1764080000, "from_tumblelog_name": "daviddaniels", "reply_text": "me" }
+        ]});
+        let a = activity_items(&r, "daviddaniels");
+        assert_eq!(a.len(), 2);
+        assert_eq!(a[0].kind, "tumblr-reply");
+        assert_eq!(a[0].link, "https://www.tumblr.com/daviddaniels/7712345678901234567");
+        assert_eq!(a[0].post_title, "Starting over");
+        assert_eq!(a[1].link, "https://www.tumblr.com/alexwalks/7712345678901234999");
+        assert_eq!(a[1].text, "Same here.");
+        assert!(a[1].date.starts_with("2025-11-25"));
+    }
 
     #[test]
     fn words_go_to_blocks_and_back() {

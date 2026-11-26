@@ -6183,8 +6183,23 @@
 
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
-  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
-  const newComments = () => (SOC.comments?.comments || []).filter(c => Date.parse(c.date) > socialSeen()).length;
+  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
+  // People talking to you on Tumblr (Rust tumblr_activity): replies, reblogs with words, mentions and asks. No likes,
+  // follows or plain reblogs (David, Nov 25: "keep conversations about people talking"). Answering happens on Tumblr.
+  const TUMBLR_SAID = { 'tumblr-reply': 'replied to', 'tumblr-reblog_with_content': 'reblogged', 'tumblr-mention_in_reply': 'mentioned you in a reply', 'tumblr-mention_in_post': 'mentioned you in a post', 'tumblr-ask': 'sent you an ask' };
+  function tumblrEvHtml(c) {
+    const said = TUMBLR_SAID[c.kind] || 'wrote to you';
+    const onPost = ['tumblr-reply', 'tumblr-reblog_with_content'].includes(c.kind);
+    const what = onPost ? `${said} ${c.post_title ? `“${esc(c.post_title)}”` : 'your post'}${c.kind === 'tumblr-reblog_with_content' ? ' and added' : ''}` : said;
+    const face = `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>`;
+    const f = S.feeds.find(x => bareHost(hostOfU(isWeb(x.site) ? x.site : x.url)) === bareHost(hostOfU(c.url)));
+    return `<article class="yu-ev${Date.parse(c.date) > socialSeen() ? ' new' : ''}">${face}<div class="nb-main">
+      <div class="nb-by"><b>${esc(c.name)}</b><span>${what} · on Tumblr</span><time>${esc(fmtWhen(c.date))}</time></div>
+      ${c.text ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
+      <div class="nb-acts"><button class="linkish" data-talk="xopen" data-url="${esc(c.link)}">${c.kind === 'tumblr-ask' ? 'Answer on Tumblr' : 'Reply on Tumblr'}</button>${f ? '' : `<button class="linkish" data-talk="tfollow" data-url="${esc(c.url)}">Follow their Tumblr</button>`}</div>
+    </div></article>`;
+  }
   const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;
   function commentHtml(c) {
     const wm = c.kind !== 'comment';
@@ -6199,13 +6214,14 @@
   }
   function youHtml() {
     const chip = SOC.youChip || '';
-    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
       .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
     if (chip === 'myreplies') return chips + myRepliesHtml();
     if (chip === 'replies') return chips + repliesHtml();
     if (chip === 'posts') return chips + postsHtml();
     if (chip === 'mentions') return chips + blogHtml();
+    if (chip === 'tumblr') return chips + (SOC.tumblr ? (SOC.tumblr.length ? SOC.tumblr.map(tumblrEvHtml).join('') : '<p class="note">No replies, reblogs with words, mentions or asks on your Tumblr yet. Likes and follows stay on Tumblr.</p>') : SOC.tumblrErr ? `<p class="note">Couldn’t reach Tumblr just now. ${esc(SOC.tumblrErr)}</p>` : '<p class="note">Looking at your Tumblr…</p>');
     if (chip === 'comments') return chips + waiting + (SOC.comments ? (SOC.comments.comments.length ? SOC.comments.comments.map(commentHtml).join('') : '<p class="note">No comments or Webmentions on your site yet.</p>') : '<p class="note">Looking at your site’s comments…</p>');
     // Everything, newest first
     const x = nbIndex(), soc = nbSocial(), mine = myFeed(), host = mine ? bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)) : '';
@@ -6217,6 +6233,7 @@
     const linking = S.items.filter(i => x.toMe.has(i.id));
     const dupe = c => c.kind !== 'comment' && linking.some(i => bareHost(hostOfU(i.link)) === bareHost(hostOfU(c.url)) && Math.abs(Date.parse(i.date) - Date.parse(c.date)) < 3 * DAY);
     for (const c of SOC.comments?.comments || []) if (!dupe(c)) ev.push({ date: c.date, html: commentHtml(c) });
+    for (const c of SOC.tumblr || []) ev.push({ date: c.date, html: tumblrEvHtml(c) });
     for (const i of linking) ev.push({ date: i.date, html: nbCard(i, x, soc) });
     // emails from the people you read (their address on their own site's domain)
     const people = new Map();
@@ -6244,6 +6261,9 @@
   function loadComments() {
     if (!SOC.accounts.site) return;
     invoke('site_comments').then(c => { SOC.comments = c; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } }).catch(() => { if (!SOC.comments) SOC.comments = { comments: [], waiting: 0 }; });
+    if (SOC.accounts.tumblr) invoke('tumblr_activity').then(t => { SOC.tumblr = t || []; SOC.tumblrErr = ''; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
+      .catch(e => { SOC.tumblrErr = msg(e); if (!SOC.tumblr && S.view === 'talk') renderList(); });
+    else SOC.tumblr = null;
   }
   async function loadTalk() {
     SOC.checkedAt = new Date().toISOString();
@@ -6704,7 +6724,7 @@
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
     if (e.target.id === 'talkRefresh' && SOC.tab === 'search' && SOC.sq) { runSearch(SOC.sq); return; }
-    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.tumblr = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; }
@@ -6759,6 +6779,11 @@
     if (k === 'whole') { const n = (SOC.conv?.replies || []).find(x => x.id === b.dataset.id); if (n) { SOC.whole.delete(convKey(n)); loadWhole(n); renderList(); } }
     if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
     if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
+    // Tumblr's own pages open in your browser, where you're signed in to Tumblr
+    if (k === 'xopen' && isWeb(b.dataset.url)) invoke('open_external', { url: b.dataset.url }).catch(e => status(msg(e), true));
+    if (k === 'tfollow') { b.disabled = true; b.textContent = 'Adding…';
+      invoke('add_feed', { url: b.dataset.url, title: null, folderId: null }).then(r => { status(`Following ${r.title}.`); b.textContent = 'Following'; load(); })
+        .catch(e => { if (/already follow/i.test(msg(e))) { b.textContent = 'Following'; return; } b.disabled = false; b.textContent = 'Follow their Tumblr'; status(msg(e), true); }); }
     if (k === 'reply') replyBox(b);
     if (k === 'cancel') { const nb = b.closest('.n-box'); setDraft(nb.dataset.box, ''); nb.innerHTML = ''; }
     if (k === 'more') moreMenu(b);
