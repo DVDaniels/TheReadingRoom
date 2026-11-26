@@ -29,6 +29,7 @@ ALSO IN 1.2.10
 - Your site's categories fold away under On your site in that tab. Tap the heading to open it.
 - Trending, under Explore: topics two or more of your feeds wrote about today or this week, in all your feeds or one folder, with Rising when more feeds than usual are on it. Today has a Trending in your feeds card: the top five today or this week, who wrote about each, how many feeds, and how it built up over the days.
 - The Trending page has less text: the same chart as Today's card at the top (tap a row to jump to it), then a card per topic with a photo, the writers' faces and a small chart. Tap Headlines to see the stories.
+- A story opened from Trending takes the whole window, with a Back button, and the up and down arrows go through Trending's stories.
 - Plus shows once, on the Write heading in the sidebar.
 
 PLEASE TRY
