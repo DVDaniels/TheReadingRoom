@@ -3010,11 +3010,11 @@ body.fr-on { overflow: hidden; }
 .trp-bub small { font-size: 11px; font-weight: 700; color: var(--accent); }
 .trp-bub.up::after { content: "▲"; font-size: 10px; color: var(--accent); }
 .trp-bub:hover { background: color-mix(in srgb, var(--accent) 38%, transparent); }
-.trp-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.trp-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .trp-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card, var(--surface, transparent)); scroll-margin: 90px; }
 .trp-card.flash { animation: trpFlash 1.2s ease; }
 @keyframes trpFlash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.trp-pic { display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; cursor: pointer; background: var(--accent-soft); }
+.trp-pic { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; padding: 0; border: 0; cursor: pointer; background: var(--accent-soft); }
 .trp-pic img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; }
 .trp-pic.none { display: grid; place-items: center; aspect-ratio: auto; height: 64px; cursor: default; background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent) 28%, transparent)); }
 .trp-pic.none span { font-family: var(--font-serif, Georgia, serif); font-size: 30px; font-weight: 600; color: var(--accent); opacity: .75; }
