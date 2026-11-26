@@ -24,6 +24,7 @@ ALSO IN 1.2.10
 - Move your note out of the way: drag it by its top bar while a video plays; Tuck away / Open.
 - Notes are kept as you type until you post or save them.
 - Writing's Notes, Posts and Weeknotes folders each have a button to write a new one.
+- Today's big photo isn't cut off in portrait any more: a fuller frame on iPad and iPhone, and tall photos are shown whole.
 - Writing is now your notebook: what you're writing, ideas, drafts and this week. Your site has its own tab under it (WordPress, or Micro.blog, Pika or your site's name) with your numbers, drafts, posts and categories.
 - Your site's categories fold away under On your site in that tab. Tap the heading to open it.
 - Trending, under Explore: topics two or more of your feeds wrote about today or this week, in all your feeds or one folder, with Rising when more feeds than usual are on it. Today has a Trending in your feeds card: the top five today or this week, who wrote about each, how many feeds, and how it built up over the days.
