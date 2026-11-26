@@ -5944,12 +5944,13 @@
     for (const n of SOC.conv?.replies || []) ev.push({ k: 'r:' + n.network + ':' + n.id, date: n.created_at, who: n.author?.name || n.author?.handle, what: 'replied to you', text: n.text });
     for (const n of SOC.mentions || []) ev.push({ k: 'm:' + n.network + ':' + n.id, date: n.created_at, who: n.author?.name || n.author?.handle, what: 'mentioned your blog', text: n.text });
     for (const c of SOC.comments?.comments || []) ev.push({ k: 'c:' + c.id + ':' + c.date, date: c.date, who: c.name || 'Someone', what: c.kind === 'comment' ? `commented on “${c.post_title || 'your post'}”` : c.kind === 'like' ? `liked “${c.post_title || 'your post'}”` : `mentioned “${c.post_title || 'your post'}”`, text: c.text });
+    for (const c of SOC.yt || []) ev.push({ k: 'y:' + c.id, date: c.date, who: c.name || 'Someone', what: c.kind === 'yt-comment' ? `commented on “${c.video_title || 'your video'}”` : 'replied on YouTube', text: c.text });
     for (const i of S.items) if (x.toMe.has(i.id)) ev.push({ k: 'l:' + i.id, date: i.date, who: nbWho(i)?.title || hostOfU(i.link), what: 'linked to you', text: headline(i) });
     const had = alertedSet() || new Set();
     const save = () => store.set('youAlerted', JSON.stringify([...had].slice(-ALERT_MAX)));
     // The first time each kind has loaded, just remember what's there: no burst of old news
     let seeded; try { seeded = new Set(JSON.parse(store.get('youSeeded') || '[]')); } catch { seeded = new Set(); }
-    const loaded = { r: !!SOC.conv, m: !!SOC.mentions, c: !!SOC.comments, l: true };
+    const loaded = { r: !!SOC.conv, m: !!SOC.mentions, c: !!SOC.comments, y: !!SOC.yt, l: true };
     let changed = false;
     for (const k of Object.keys(loaded)) if (loaded[k] && !seeded.has(k)) { ev.filter(e => e.k[0] === k).forEach(e => had.add(e.k)); seeded.add(k); changed = true; }
     if (changed) { store.set('youSeeded', JSON.stringify([...seeded])); save(); }
@@ -6194,6 +6195,22 @@
     const hit = VIDEO_SITES.find(([n, re]) => n !== 'YouTube' && re.test(u.hostname));
     return hit ? { name: hit[0], url: link } : null;
   }
+  // With YouTube connected (Plus), the comment is posted under the video as your channel, and the app keeps it so
+  // replies to it show in Conversations › You (David, Nov 26: "can I see any replies to comments I have made").
+  const ytCanPost = it => !!(ytId(it?.link || '') && SOC.accounts?.youtube && plusOk());
+  const ytChans = () => { const y = SOC.accounts?.youtube; return y ? (y.channels?.length ? y.channels : [y]) : []; };
+  const ytPosted = () => (S.prefs.ytPosted || []).filter(p => Date.now() - Date.parse(p.at) < 60 * DAY);
+  async function ytPostComment(it, text, channel, btn) {
+    if (!text) { status('Write a few words first.'); return false; }
+    const name = ytChans().find(c => c.channel === channel)?.name || SOC.accounts.youtube?.name || 'your channel';
+    if (btn) { btn.disabled = true; btn.textContent = 'Posting…'; }
+    try {
+      const r = await invoke('youtube_comment', { videoId: ytId(it.link), text, channel });
+      S.prefs.ytPosted = [{ id: r.id, channel: r.channel, video: ytId(it.link), title: headline(it), text, at: new Date().toISOString() }, ...ytPosted()].slice(0, 60); savePrefs();
+      status(`Posted under the video as ${name}. Replies to it will show in Conversations › You.`);
+      return r;
+    } catch (e) { if (btn) { btn.disabled = false; btn.textContent = `Comment as ${name}`; } status(msg(e), true); return false; }
+  }
   async function videoComment(it, text) {
     const v = videoSite(it); if (!v) return;
     let copied = false;
@@ -6201,6 +6218,12 @@
     try { await invoke('open_external', { url: v.url }); }
     catch (e) { status(msg(e), true); return; }
     status(copied ? `Your words are copied. Paste them into the comments under the video on ${v.name}.` : text ? `Opened the video on ${v.name}. Copying didn’t work, so copy your words from the reply box.` : `Opened the video on ${v.name}. Its comments are under the video.`);
+  }
+  function ytPostBtns() {
+    const all = ytChans(), cur = SOC.accounts.youtube?.channel;
+    const name = all.find(c => c.channel === cur)?.name || SOC.accounts.youtube?.name || 'your channel';
+    const pick = all.length > 1 ? `<select class="nb-rb-ch" aria-label="Post as">${all.map(c => `<option value="${esc(c.channel)}"${c.channel === cur ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : '';
+    return `<button class="btn" type="button" data-rb="ytpost" title="Posts your words under the video on YouTube, as your channel">${all.length > 1 ? 'Comment on YouTube as' : `Comment as ${esc(name)}`}</button>${pick}`;
   }
   // ---- Reply right in the card: post a reply on your own site (their site is told), or email them
   async function nbReplyBox(b, it, keep) {
@@ -6211,7 +6234,7 @@
     box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Write back to ${esc(f?.title || 'them')}…"></textarea>
       <div class="row">
         ${wp ? `<button class="btn primary" type="button" data-rb="site">Post on ${esc(host)}</button>` : ''}
-        <span class="nb-rb-mail">${vsite ? `<button class="btn" type="button" data-rb="yt" title="${esc(CUES.ytc(vsite.name))}">Comment on ${esc(vsite.name)}</button>` : ''}</span>
+        <span class="nb-rb-mail">${ytCanPost(it) ? ytPostBtns() : vsite ? `<button class="btn" type="button" data-rb="yt" title="${esc(CUES.ytc(vsite.name))}">Comment on ${esc(vsite.name)}</button>` : ''}</span>
         <button class="btn" type="button" data-rb="more" aria-haspopup="menu">More ways</button>
         <button class="btn ghost" type="button" data-rb="cancel">Cancel</button>
       </div>
@@ -6247,6 +6270,12 @@
       if (k === 'cancel') { setDraft(dkey, ''); box.innerHTML = ''; renderList(); paintReaderTalk(); return; }
       if (k === 'more') { openReply(e.target, it); return; }
       if (k === 'yt') { videoComment(it, text); return; }
+      if (k === 'ytpost') {
+        const ch = box.querySelector('.nb-rb-ch')?.value || SOC.accounts.youtube?.channel || null;
+        const r = await ytPostComment(it, text, ch, e.target);
+        if (r) { setDraft(dkey, ''); box.innerHTML = `<p class="nb-rb-done">Posted under the video. Replies to it will show in Conversations › You. <button class="linkish" data-talk="xopen" data-url="${esc(r.url)}">See it on YouTube</button></p>`; }
+        return;
+      }
       if (k === 'mail') { box.innerHTML = ''; openMailCompose({ to: e.target.dataset.to, toName: f?.title || '', subject: `Re: ${headline(it)}`, body: `${text}\n\n—\nIn reply to “${headline(it)}”\n${it.link}` }); return; }
       if (k === 'site') {
         if (!text) { ta.focus(); status('Write a few words first.'); return; }
@@ -6413,8 +6442,8 @@
 
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
-  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
-  const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
+  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['youtube', 'YouTube'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || []), ...(SOC.yt || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
   // People talking to you on Tumblr (Rust tumblr_activity): replies, reblogs with words, mentions and asks. No likes,
   // follows or plain reblogs (David, Nov 25: "keep conversations about people talking"). Answering happens on Tumblr.
   const TUMBLR_SAID = { 'tumblr-reply': 'replied to', 'tumblr-reblog_with_content': 'reblogged', 'tumblr-mention_in_reply': 'mentioned you in a reply', 'tumblr-mention_in_post': 'mentioned you in a post', 'tumblr-ask': 'sent you an ask' };
@@ -6429,6 +6458,42 @@
       ${c.text ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
       <div class="nb-acts"><button class="linkish" data-talk="xopen" data-url="${esc(c.link)}">${c.kind === 'tumblr-ask' ? 'Answer on Tumblr' : 'Reply on Tumblr'}</button>${f ? '' : `<button class="linkish" data-talk="tfollow" data-url="${esc(c.url)}">Follow their Tumblr</button>`}</div>
     </div></article>`;
+  }
+  // ---- YouTube in Conversations › You (Plus): comments on your videos, replies under them, and replies to comments
+  // you posted from the app. Reply from here, as the channel it came to. Rust: youtube_activity, youtube_reply.
+  function ytEvHtml(c) {
+    const on = c.video_title ? `“${esc(clipT(c.video_title, 70))}”` : 'a video';
+    const what = c.kind === 'yt-comment' ? `commented on ${on}` : c.kind === 'yt-reply' ? `replied to your comment on ${on}` : `replied in the comments on ${on}`;
+    const chans = ytChans(), to = chans.length > 1 ? chans.find(x => x.channel === c.channel)?.name : '';
+    const face = `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?').replace(/^@/, '')[0]?.toUpperCase() || '?')}</span>`;
+    const done = SOC.ytDone?.get(c.id);
+    return `<article class="yu-ev${Date.parse(c.date) > socialSeen() ? ' new' : ''}">${face}<div class="nb-main">
+      <div class="nb-by"><b>${esc(c.name)}</b><span>${what} · on YouTube${to ? ` (${esc(to)})` : ''}</span><time>${esc(fmtWhen(c.date))}</time></div>
+      ${c.text ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
+      <div class="nb-acts">${done ? `<span class="nb-rb-done">You replied: “${esc(clipT(done, 80))}”</span>` : `<button class="linkish" data-talk="ytreply" data-k="${esc(c.id)}">Reply</button>`}<button class="linkish" data-talk="xopen" data-url="${esc(c.link)}">Open on YouTube</button></div>
+      <div class="n-box" data-ybox="${esc(c.id)}"></div>
+    </div></article>`;
+  }
+  function ytReplyBox(b) {
+    const c = (SOC.yt || []).find(x => x.id === b.dataset.k); if (!c) return;
+    document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
+    const box = b.closest('.nb-main')?.querySelector('[data-ybox]'); if (!box) return;
+    const name = ytChans().find(x => x.channel === c.channel)?.name || 'your channel';
+    box.innerHTML = `<form class="nb-rbox"><textarea rows="3" placeholder="Reply to ${esc(c.name)}…"></textarea>
+      <div class="row"><button class="btn primary" type="button" data-yr="post">Reply as ${esc(name)}</button><button class="btn ghost" type="button" data-yr="cancel">Cancel</button></div>
+      <p class="note">Posts under their comment on YouTube.</p></form>`;
+    const ta = box.querySelector('textarea'); ta.focus();
+    box.querySelector('form').onclick = async e => {
+      const k = e.target.closest('[data-yr]')?.dataset.yr; if (!k) return;
+      if (k === 'cancel') { box.innerHTML = ''; return; }
+      const text = ta.value.trim(); if (!text) { ta.focus(); status('Write a few words first.'); return; }
+      const btn = e.target; btn.disabled = true; btn.textContent = 'Posting…';
+      try {
+        await invoke('youtube_reply', { parent: c.thread, text, channel: c.channel });
+        (SOC.ytDone ||= new Map()).set(c.id, text);
+        status(`Replied on YouTube as ${name}.`); renderList();
+      } catch (err) { btn.disabled = false; btn.textContent = `Reply as ${name}`; status(msg(err), true); }
+    };
   }
   // ---- the Tumblr tab (Plus): work your Tumblr from its own tab (David, Nov 26: "go into the tumblr tab and work the
   // site from there. I can always cross promote to other sites but this would make it easy to manage each individual
@@ -6599,7 +6664,7 @@
   }
   function youHtml() {
     const chip = SOC.youChip || '';
-    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => k !== 'youtube' || (SOC.accounts.youtube && plusOk())).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
       .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
     if (chip === 'myreplies') return chips + myRepliesHtml();
@@ -6607,6 +6672,7 @@
     if (chip === 'posts') return chips + postsHtml();
     if (chip === 'mentions') return chips + blogHtml();
     if (chip === 'tumblr') return chips + (SOC.tumblr ? (SOC.tumblr.length ? SOC.tumblr.map(tumblrEvHtml).join('') : '<p class="note">No replies, reblogs with words, mentions or asks on your Tumblr yet. Likes and follows stay on Tumblr.</p>') : SOC.tumblrErr ? `<p class="note">Couldn’t reach Tumblr just now. ${esc(SOC.tumblrErr)}</p>` : '<p class="note">Looking at your Tumblr…</p>');
+    if (chip === 'youtube') return chips + (SOC.yt ? (SOC.yt.length ? SOC.yt.map(ytEvHtml).join('') : '<p class="note">No comments on your videos yet, and no replies to comments you posted from here. Comments you post with Comment on YouTube are checked for replies for two months.</p>') : SOC.ytErr ? `<p class="note">Couldn’t reach YouTube just now. ${esc(SOC.ytErr)}</p>` : '<p class="note">Looking at your YouTube comments…</p>');
     if (chip === 'comments') return chips + waiting + (SOC.comments ? (SOC.comments.comments.length ? SOC.comments.comments.map(commentHtml).join('') : '<p class="note">No comments or Webmentions on your site yet.</p>') : '<p class="note">Looking at your site’s comments…</p>');
     // Everything, newest first
     const x = nbIndex(), soc = nbSocial(), mine = myFeed(), host = mine ? bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)) : '';
@@ -6619,6 +6685,7 @@
     const dupe = c => c.kind !== 'comment' && linking.some(i => bareHost(hostOfU(i.link)) === bareHost(hostOfU(c.url)) && Math.abs(Date.parse(i.date) - Date.parse(c.date)) < 3 * DAY);
     for (const c of SOC.comments?.comments || []) if (!dupe(c)) ev.push({ date: c.date, html: commentHtml(c) });
     for (const c of SOC.tumblr || []) ev.push({ date: c.date, html: tumblrEvHtml(c) });
+    for (const c of SOC.yt || []) ev.push({ date: c.date, html: ytEvHtml(c) });
     for (const i of linking) ev.push({ date: i.date, html: nbCard(i, x, soc) });
     // emails from the people you read (their address on their own site's domain)
     const people = new Map();
@@ -6643,7 +6710,14 @@
     return (isWeb(f.site) && h(f.site)) || h(f.url);
   };
   // Your site's comments: when Conversations opens, and every 15 minutes for alerts
+  function loadYouTube() {
+    if (!SOC.accounts.youtube || !plusOk()) { SOC.yt = null; return; }
+    invoke('youtube_activity', { posted: ytPosted().map(p => ({ id: p.id, channel: p.channel })) })
+      .then(t => { SOC.yt = t || []; SOC.ytErr = ''; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
+      .catch(e => { SOC.ytErr = msg(e); if (!SOC.yt && S.view === 'talk') renderList(); });
+  }
   function loadComments() {
+    loadYouTube();
     if (!SOC.accounts.site) return;
     invoke('site_comments').then(c => { SOC.comments = c; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } }).catch(() => { if (!SOC.comments) SOC.comments = { comments: [], waiting: 0 }; });
     if (SOC.accounts.tumblr) invoke('tumblr_activity').then(t => { SOC.tumblr = t || []; SOC.tumblrErr = ''; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
@@ -7109,7 +7183,7 @@
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
     if (e.target.id === 'talkRefresh' && SOC.tab === 'search' && SOC.sq) { runSearch(SOC.sq); return; }
-    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.tumblr = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.tumblr = null; SOC.yt = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; }
@@ -7165,6 +7239,7 @@
     if (k === 'wide') { SOC.wideOpen.add(b.dataset.k); renderList(); }
     if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
     // Tumblr's own pages open in your browser, where you're signed in to Tumblr
+    if (k === 'ytreply') { ytReplyBox(b); return; }
     if (k === 'xopen' && isWeb(b.dataset.url)) invoke('open_external', { url: b.dataset.url }).catch(e => status(msg(e), true));
     if (k === 'tfollow') { b.disabled = true; b.textContent = 'Adding…';
       invoke('add_feed', { url: b.dataset.url, title: null, folderId: null }).then(r => { status(`Following ${r.title}.`); b.textContent = 'Following'; load(); })

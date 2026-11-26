@@ -3041,3 +3041,6 @@ body.fr-on { overflow: hidden; }
 }
 .tr-tile-go { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .tr-tile-go:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Comment on YouTube as: which channel, when you've connected several */
+.nb-rbox .nb-rb-ch { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, transparent); color: var(--ink); margin-left: 6px; }
+.yu-ev .nb-acts .nb-rb-done { margin: 0; font-weight: 500; }

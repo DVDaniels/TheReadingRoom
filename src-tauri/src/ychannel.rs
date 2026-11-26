@@ -671,6 +671,163 @@ async fn send_pieces(app: &tauri::AppHandle, path: &str, skey: &str, session: &s
     }
 }
 
+// ------------------------------------------------------------------ comments
+
+/// Post a comment under a video, as one of your channels (50 units of the day's allowance). Returns the new comment
+/// thread's id, so the app can check it for replies later.
+#[tauri::command]
+pub async fn youtube_comment(video_id: String, text: String, channel: Option<String>) -> Result<Value, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Write a few words first.".into());
+    }
+    if video_id.is_empty() || !video_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("That doesn't look like a YouTube video.".into());
+    }
+    let ch = pick(channel.as_deref())?;
+    let body = json!({ "snippet": { "videoId": video_id, "topLevelComment": { "snippet": { "textOriginal": text } } } });
+    let r = api(&ch, reqwest::Method::POST, "/commentThreads?part=snippet", Some(&body)).await.map_err(comment_fail)?;
+    let id = st(&r, "id");
+    Ok(json!({ "id": id, "channel": ch, "url": format!("https://www.youtube.com/watch?v={video_id}&lc={id}") }))
+}
+
+/// Reply to a comment (a thread's top comment), as one of your channels (50 units).
+#[tauri::command]
+pub async fn youtube_reply(parent: String, text: String, channel: Option<String>) -> Result<Value, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Write a few words first.".into());
+    }
+    let ch = pick(channel.as_deref())?;
+    let body = json!({ "snippet": { "parentId": parent, "textOriginal": text } });
+    let r = api(&ch, reqwest::Method::POST, "/comments?part=snippet", Some(&body)).await.map_err(comment_fail)?;
+    Ok(json!({ "id": st(&r, "id"), "channel": ch }))
+}
+
+fn comment_fail(e: String) -> String {
+    if e.contains("commentsDisabled") || e.contains("disabled comments") {
+        "Comments are turned off on that video.".into()
+    } else {
+        e
+    }
+}
+
+/// A comment you posted from the app, kept by the app so it can look for replies.
+#[derive(serde::Deserialize)]
+pub struct Posted {
+    pub id: String,
+    pub channel: String,
+}
+
+/// One comment as an event for Conversations › You.
+fn comment_event(c: &Value, kind: &str, video: &str, thread: &str, mine: &str) -> Value {
+    let id = st(c, "id");
+    let sn = &c["snippet"];
+    let text = st(sn, "textOriginal");
+    let text = if text.is_empty() { strip_tags(&st(sn, "textDisplay")) } else { text };
+    json!({
+        "id": id, "kind": kind, "name": st(sn, "authorDisplayName"), "avatar": st(sn, "authorProfileImageUrl"),
+        "author_url": st(sn, "authorChannelUrl"), "text": text, "date": st(sn, "publishedAt"),
+        "video": video, "link": format!("https://www.youtube.com/watch?v={video}&lc={id}"),
+        "thread": thread, "channel": mine,
+    })
+}
+
+fn strip_tags(s: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for ch in s.chars() {
+        match ch {
+            '<' => inside = true,
+            '>' => inside = false,
+            _ if !inside => out.push(ch),
+            _ => {}
+        }
+    }
+    out.replace("&#39;", "'").replace("&quot;", "\"").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+}
+
+fn author_is(c: &Value, ch: &str) -> bool {
+    st(c, "snippet.authorChannelId.value") == ch
+}
+
+/// What's new around your channels: comments on your videos and replies under them, and replies to comments you
+/// posted from the app on other people's videos. Your own words are left out. About 1 unit per channel, plus 1 per
+/// comment checked for replies, so the app only checks recent ones.
+#[tauri::command]
+pub async fn youtube_activity(posted: Vec<Posted>) -> Result<Vec<Value>, String> {
+    let s = store().ok_or("Connect YouTube first.")?;
+    let chans: Vec<String> = s["channels"].as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+    let mut ev: Vec<Value> = Vec::new();
+    let mut first_err = String::new();
+    for ch in &chans {
+        let path = format!("/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId={ch}&maxResults=50&order=time&textFormat=plainText");
+        match api(ch, reqwest::Method::GET, &path, None).await {
+            Ok(r) => {
+                for t in r["items"].as_array().cloned().unwrap_or_default() {
+                    let thread = st(&t, "id");
+                    let video = st(&t, "snippet.videoId");
+                    let top = &t["snippet"]["topLevelComment"];
+                    let top_mine = author_is(top, ch);
+                    if !top_mine {
+                        ev.push(comment_event(top, "yt-comment", &video, &thread, ch));
+                    }
+                    for rp in t["replies"]["comments"].as_array().cloned().unwrap_or_default() {
+                        if !author_is(&rp, ch) {
+                            ev.push(comment_event(&rp, if top_mine { "yt-reply" } else { "yt-thread" }, &video, &thread, ch));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                if first_err.is_empty() {
+                    first_err = e;
+                }
+            }
+        }
+    }
+    // replies to your comments on other people's videos (threads on your own videos are already covered above)
+    let mut seen: std::collections::HashSet<String> = ev.iter().map(|e| st(e, "thread")).collect();
+    for p in posted.iter().take(30) {
+        if !chans.contains(&p.channel) || !seen.insert(p.id.clone()) {
+            continue;
+        }
+        let path = format!("/comments?part=snippet&parentId={}&maxResults=20&textFormat=plainText", urlencoding(&p.id));
+        if let Ok(r) = api(&p.channel, reqwest::Method::GET, &path, None).await {
+            for rp in r["items"].as_array().cloned().unwrap_or_default() {
+                if !author_is(&rp, &p.channel) {
+                    let video = st(&rp, "snippet.videoId");
+                    ev.push(comment_event(&rp, "yt-reply", &video, &p.id, &p.channel));
+                }
+            }
+        }
+    }
+    if ev.is_empty() && !first_err.is_empty() {
+        return Err(first_err);
+    }
+    // the videos' titles, 50 at a time (1 unit each)
+    let mut vids: Vec<String> = ev.iter().map(|e| st(e, "video")).filter(|v| !v.is_empty()).collect();
+    vids.sort();
+    vids.dedup();
+    let mut titles: HashMap<String, String> = HashMap::new();
+    if let Some(ch) = chans.first() {
+        for part in vids.chunks(50) {
+            if let Ok(r) = api(ch, reqwest::Method::GET, &format!("/videos?part=snippet&id={}", part.join(",")), None).await {
+                for v in r["items"].as_array().cloned().unwrap_or_default() {
+                    titles.insert(st(&v, "id"), st(&v, "snippet.title"));
+                }
+            }
+        }
+    }
+    for e in ev.iter_mut() {
+        let t = titles.get(&st(e, "video")).cloned().unwrap_or_default();
+        e["video_title"] = json!(t);
+    }
+    ev.sort_by(|a, b| st(b, "date").cmp(&st(a, "date")));
+    ev.truncate(100);
+    Ok(ev)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +854,16 @@ mod tests {
         let s = json!({ "current": "gone", "channels": { "UC2": {}, "UC3": {} } });
         assert_eq!(current_id(&s), "UC2", "a removed channel falls back to the first one left");
         assert_eq!(current_id(&json!({ "current": "UC3", "channels": { "UC2": {}, "UC3": {} } })), "UC3");
+    }
+
+    #[test]
+    fn comment_events() {
+        let c = json!({ "id": "Ug1", "snippet": { "authorDisplayName": "Ann", "authorChannelId": { "value": "UCa" }, "textDisplay": "Nice <b>walk</b> &amp; talk", "publishedAt": "2026-11-26T10:00:00Z" } });
+        let e = comment_event(&c, "yt-comment", "vid1", "Ug1", "UCme");
+        assert_eq!(e["text"], "Nice walk & talk");
+        assert_eq!(e["link"], "https://www.youtube.com/watch?v=vid1&lc=Ug1");
+        assert!(author_is(&c, "UCa"));
+        assert!(!author_is(&c, "UCme"));
     }
 
     #[test]
