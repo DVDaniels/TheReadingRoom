@@ -1,8 +1,8 @@
 Version 1.3.0 (internal test build). Everything in 1.2.10, plus YouTube for The Reading Room Plus.
 
-NEW: YOUR CHANNEL (PLUS)
+NEW: A YOUTUBE TAB (PLUS)
 Connect YouTube in Settings › Connections: sign in on Google's page, approve, and paste the code the next page shows. "Google hasn't verified this app" is expected while YouTube is in testing: press Continue.
-Your channel sits under Writing: your videos, Upload, and Your numbers (views, watch time, subscribers, top videos, where viewers came from, what they searched).
+The YouTube tab sits under Writing: your videos, Upload, and Your numbers (views, watch time, subscribers, top videos, where viewers came from, what they searched).
 Uploads start as Private until YouTube approves the app. Open the video on YouTube to make it public.
 
 PLEASE TRY

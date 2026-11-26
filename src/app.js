@@ -61,7 +61,7 @@
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
-    channel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>',
+    channel: '<svg viewBox="0 0 24 24" class="yt-mark"><path fill="#FF0000" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8z"/><path fill="#FFFFFF" d="M9.7 15.1V8.9l5.8 3.1-5.8 3.1z"/></svg>', // the YouTube tab: YouTube's own mark in its own red, as YouTube's brand rules ask (David, Nov 26)
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
@@ -353,7 +353,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['channel', 'Your channel', 'Manage your YouTube channel: upload, and see how your videos are doing'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['channel', 'YouTube', 'Manage your YouTube channel: upload, and see how your videos are doing'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -480,7 +480,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { write: 'Writing', tumblr: 'Tumblr', channel: 'Your channel', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { write: 'Writing', tumblr: 'Tumblr', channel: 'YouTube', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -526,7 +526,7 @@
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
       : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
-      : S.view === 'channel' ? `<span class="sun" aria-hidden="true">${ICONS.channel}</span>Your channel`
+      : S.view === 'channel' ? `<span class="sun" aria-hidden="true">${ICONS.channel}</span>YouTube`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     if (S.view === 'today') paintGoalChip();
@@ -2595,7 +2595,7 @@
     const path = typeof picked === 'string' ? picked : picked?.path; if (!path) return;
     const name = path.split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
     const to = SOC.accounts.youtube || {};
-    const el = sheet('ytUp', `<h2>Upload to ${esc(to.name || 'your channel')}</h2>${(to.channels || []).length > 1 ? `<p class="tm-tip">It goes to this channel. To upload to another, pick it at the top of Your channel first.</p>` : ''}
+    const el = sheet('ytUp', `<h2>Upload to ${esc(to.name || 'your channel')}</h2>${(to.channels || []).length > 1 ? `<p class="tm-tip">It goes to this channel. To upload to another, pick it at the top of the YouTube tab first.</p>` : ''}
       <p class="tm-tip">${esc(path.split(/[\\/]/).pop())}</p>
       <label class="yt-f">Title <input id="ytTitle" maxlength="100" value="${esc(name)}"></label>
       <label class="yt-f">Description <textarea id="ytDesc" rows="5" placeholder="What it’s about. Links and timestamps work here."></textarea></label>
@@ -2654,20 +2654,20 @@
   function chNavItem() {
     const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
     const n = YT.up && !YT.up.done && !YT.up.err && YT.up.total ? `${Math.round(100 * YT.up.sent / YT.up.total)}%` : '';
-    return { view: 'channel', label: 'Your channel', count: '', icon: ICONS.channel, html: navButton('channel', 'Your channel', n, { icon: ICONS.channel, mark }) };
+    return { view: 'channel', label: 'YouTube', count: '', icon: ICONS.channel, html: navButton('channel', 'YouTube', n, { icon: ICONS.channel, mark }) };
   }
   function chPaint() {
     const y = $('main').scrollTop, ly = $('listView').scrollTop;
     const acct = SOC.accounts?.youtube;
     const body = !acct
-      ? `<section class="b-panel wr-invite"><p class="b-sub">Your channel</p><h2>Connect your YouTube channel to start</h2>
+      ? `<section class="b-panel wr-invite"><p class="b-sub">YouTube</p><h2>Connect your YouTube channel to start</h2>
           <p>Upload videos, schedule them, and see how they’re doing: views, watch time, subscribers and the searches that bring people. Press Connect YouTube, sign in on Google’s page and approve The Reading Room.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-yt="connect">Connect YouTube</button></div></section>`
-      : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">Your channel</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
+      : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">YouTube</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
           <p>Upload and schedule videos and see how your channel is doing, next to your reading.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
       : ytPickHtml() + ytChannelHtml() + ytStatsHtml();
-    $('list').innerHTML = `<section class="brief myday channel" aria-label="Your channel">${body}</section>`;
+    $('list').innerHTML = `<section class="brief myday channel" aria-label="YouTube">${body}</section>`;
     $('main').scrollTop = y; $('listView').scrollTop = ly;
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-yt="connect"]')) openAccounts(); });
@@ -2675,7 +2675,7 @@
   function ytPickHtml() {
     const a = SOC.accounts?.youtube, all = a?.channels || [];
     if (all.length < 2) return `<div class="yt-pick"><button class="b-link" type="button" data-yt="connect">Add another channel</button></div>`;
-    return `<div class="yt-pick" role="group" aria-label="Your channels"><span class="yt-pick-l">Your channels</span>${all.map(c => `<button type="button" class="yt-chip${c.channel === a.channel ? ' on' : ''}" data-ytuse="${esc(c.channel)}" aria-pressed="${c.channel === a.channel}">${c.avatar ? `<img src="${esc(c.avatar)}" alt="" referrerpolicy="no-referrer">` : ''}${esc(c.name || c.handle)}</button>`).join('')}<button class="b-link" type="button" data-yt="connect">Add another</button></div>`;
+    return `<div class="yt-pick" role="group" aria-label="Your YouTube channels"><span class="yt-pick-l">Channel</span>${all.map(c => `<button type="button" class="yt-chip${c.channel === a.channel ? ' on' : ''}" data-ytuse="${esc(c.channel)}" aria-pressed="${c.channel === a.channel}">${c.avatar ? `<img src="${esc(c.avatar)}" alt="" referrerpolicy="no-referrer">` : ''}${esc(c.name || c.handle)}</button>`).join('')}<button class="b-link" type="button" data-yt="connect">Add another</button></div>`;
   }
   document.addEventListener('click', async e => {
     const b = e.target.closest('[data-ytuse]'); if (!b || b.getAttribute('aria-pressed') === 'true') return;
@@ -3960,7 +3960,7 @@
     const form = `<form class="acct-form" id="ytForm"><button class="btn${y ? '' : ' primary'}" type="submit">${y ? 'Add another channel' : 'Connect YouTube'}</button></form>
         <form class="acct-form" id="ytCodeForm" hidden><input id="ytCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`;
     return `<section class="acct"><h3>${ICON_NET.youtube}YouTube <small class="acct-sub">Plus</small></h3>${y
-      ? `<p>Manage ${all.length > 1 ? 'these channels' : 'it'} in Your channel, under Writing in the sidebar${all.length > 1 ? ', one at a time. Each keeps its own sign-in, videos and numbers' : ''}.</p>
+      ? `<p>Manage ${all.length > 1 ? 'these channels' : 'it'} in the YouTube tab, under Writing in the sidebar${all.length > 1 ? ', one at a time. Each keeps its own sign-in, videos and numbers' : ''}.</p>
         <ul class="yt-accts">${all.map(c => `<li>${c.avatar ? `<img src="${esc(c.avatar)}" alt="" referrerpolicy="no-referrer">` : ''}<span><b>${esc(c.name)}</b>${c.handle ? ` <small>${esc(c.handle)}</small>` : ''}</span><button class="btn" data-disconnect="youtube" data-ch="${esc(c.channel)}">Disconnect</button></li>`).join('')}</ul>
         <p class="tm-tip">To add a Brand Account channel you manage, press Add another channel and pick it on Google’s page.</p>${form}`
       : `<p>Manage your own YouTube channel from the app, in its own tab: upload, schedule, and see how your videos are doing. Press Connect YouTube, sign in on Google’s page and approve The Reading Room. A page then shows a code: paste it here.</p>
