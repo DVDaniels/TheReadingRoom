@@ -1,4 +1,4 @@
 Fixes:
-• Today's big photo is no longer cut off when your iPad is upright or on iPhone. Tall photos are shown whole.
+• Today's big photo is never cut down to a sliver any more, on iPad upright or sideways and on iPhone: when it doesn't fit its frame, it's shown whole.
 • Your blog's numbers never go blank: if they can't load, Writing says why, offers Try again, and tries again by itself.
 • A note you've started is kept until you post it, save it as a draft or start over, even if you close it or move around the app.

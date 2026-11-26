@@ -1,6 +1,6 @@
 Version 1.2.10: a small update to the version in the App Store, with three fixes. (The bigger update with Tumblr, Micro.blog, Trending and more is now 1.2.11.)
 
 FIXED
-- Today's big photo is no longer cut off in portrait (iPad upright, iPhone, narrow Mac windows). Tall photos are shown whole.
+- Today's big photo is never cut down to a sliver: when it doesn't fit its frame (portrait, or a tall box on a wide screen), it's shown whole.
 - Your blog's numbers never go blank: if they can't load, Writing says why, offers Try again, and tries again by itself.
 - A note you've started is kept until you post it, save it as a draft or start over.

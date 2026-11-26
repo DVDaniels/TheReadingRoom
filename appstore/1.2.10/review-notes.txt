@@ -1,6 +1,6 @@
 The Reading Room is an RSS, Atom and JSON Feed reader. It needs no account: open it and it starts with sample feeds that refresh automatically. No login is needed to review it.
 
-NEW IN 1.2.10: three small fixes, nothing new to test. Today's big photo is no longer cut off in portrait (tall photos shown whole); Writing's blog numbers say why and offer Try again if they can't load; an unfinished note is kept until it's posted, saved or started over.
+NEW IN 1.2.10: three small fixes, nothing new to test. Today's big photo is never cropped to a sliver (shown whole when it doesn't fit its frame); Writing's blog numbers say why and offer Try again if they can't load; an unfinished note is kept until it's posted, saved or started over.
 
 SINCE 1.2.9: THE READING ROOM PLUS (auto-renewing subscription "Plus yearly", com.daviddaniels.readingroom.plus.yearly, free first week)
 - Reading stays free. Plus unlocks posting to the user's own WordPress site from the Writing tab (notes, posts, Weeknotes, likes and replies kept on their site) and their blog's stats.
