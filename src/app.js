@@ -3868,7 +3868,7 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
     };
     // Micropub: find the site, then its sign-in page (and a code) or an app token
     const mpBegin = async wantToken => {
@@ -3884,13 +3884,13 @@
     $('mpUseToken')?.addEventListener('click', () => { if (!($('mpSite')?.value || '').trim()) { note('Type your site’s address first.', true); $('mpSite').focus(); return; } mpBegin(true); });
     const mpFinish = async args => {
       note('Connecting to your site…');
-      try { SOC.accounts = await invoke('micropub_finish', args); WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      try { SOC.accounts = await invoke('micropub_finish', args); WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
       catch (err) { note(msg(err), true); }
     };
     $('mpCodeForm')?.addEventListener('submit', e => { e.preventDefault(); mpFinish({ code: $('mpCode').value, token: null }); });
     $('mpTokenForm')?.addEventListener('submit', e => { e.preventDefault(); mpFinish({ code: null, token: $('mpToken').value }); });
     $('tumblrBlog')?.addEventListener('change', async e => {
-      try { SOC.accounts = await invoke('tumblr_pick_blog', { blog: e.target.value }); WR.at = 0; BLOG.data = null; note(`Posting to ${e.target.selectedOptions[0].textContent} now.`); renderRail(); }
+      try { SOC.accounts = await invoke('tumblr_pick_blog', { blog: e.target.value }); WR.at = 0; BLOG.data = null; TBL.data = null; note(`Posting to ${e.target.selectedOptions[0].textContent} now.`); renderRail(); }
       catch (err) { note(msg(err), true); }
     });
     $('tumblrForm')?.addEventListener('submit', async e => {
@@ -3903,7 +3903,7 @@
     });
     $('tumblrCodeForm')?.addEventListener('submit', async e => {
       e.preventDefault(); note('Connecting to Tumblr…');
-      try { SOC.accounts = await invoke('tumblr_finish', { code: $('tumblrCode').value }); WR.at = 0; BLOG.data = null; openAccounts(); renderRail(); }
+      try { SOC.accounts = await invoke('tumblr_finish', { code: $('tumblrCode').value }); WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
       catch (err) { note(msg(err), true); }
     });
     $('wpAppPw')?.addEventListener('click', () => {
@@ -9140,8 +9140,8 @@
   const blDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   // Your Tumblr: what Tumblr gives apps (followers, and the notes on your recent posts). It has no visits or search
   // numbers for apps, and the panel says so.
-  function tumblrBlogHtml(b) {
-    const when = BLOG.at ? new Date(BLOG.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  function tumblrBlogHtml(b, at = BLOG.at) {
+    const when = at ? new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     const top = (b.top || []).map(t => `<li><button class="b-link" type="button" data-mkurl="${esc(t.link)}">${esc((t.title || 'A post').slice(0, 90))}</button><span class="bl-n">${nfmt(t.notes)}</span></li>`).join('');
     return `<section class="b-panel md-blog" aria-label="Your Tumblr">
       <div class="bp-head"><h3 class="b-sub">Your Tumblr</h3><span class="bp-meta">${esc(b.site || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
@@ -9150,7 +9150,27 @@
           ${top ? `<h5>Most notes</h5><ul class="bl-list">${top}</ul>` : ''}</div></div>
       <p class="bl-cap">Tumblr doesn’t share visits or search numbers with apps, so those stay in Tumblr’s own Activity page. <button class="b-link" type="button" data-mkurl="https://www.tumblr.com/blog/${esc(b.site || '')}/activity">Open Activity on Tumblr</button></p></section>`;
   }
-  function yourBlogHtml() {
+  // Your Tumblr beside Your blog: when a WordPress (or Micropub) site is home and Tumblr is connected too, Writing shows
+  // both panels (David, Nov 25: "Where are the tumblr stats?" — they only showed when Tumblr was the only site).
+  const TBL = { data: null, at: 0, busy: false, err: '' };
+  async function loadTumblrStats(force) {
+    if (TBL.busy || (!force && TBL.data && Date.now() - TBL.at < 30 * 60 * 1000)) return;
+    TBL.busy = true; TBL.err = '';
+    try { TBL.data = (await invoke('tumblr_stats')) || null; }
+    catch (e) { TBL.err = msg(e) || 'Tumblr didn’t answer.'; }
+    finally { TBL.busy = false; TBL.at = Date.now(); blogRepaint(); }
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-tbl-retry]')) { TBL.err = ''; loadTumblrStats(true); blogRepaint(); } });
+  function alsoTumblrHtml() {
+    if (!plusOk() || !SOC.accounts?.tumblr || onTumblr()) return '';
+    if (!TBL.busy && (!TBL.data && (!TBL.at || Date.now() - TBL.at > 5 * 60 * 1000) || TBL.data && Date.now() - TBL.at > 30 * 60 * 1000)) setTimeout(() => loadTumblrStats(), 0);
+    if (TBL.data) return tumblrBlogHtml(TBL.data, TBL.at);
+    const head = '<section class="b-panel md-blog md-blog-invite" aria-label="Your Tumblr"><div class="bp-head"><h3 class="b-sub">Your Tumblr</h3></div>';
+    if (TBL.err) return `${head}<p class="day-note">Couldn’t get your Tumblr’s numbers just now. ${esc(TBL.err)} The app tries again in a few minutes. <button class="b-link" type="button" data-tbl-retry>Try again</button></p></section>`;
+    return `${head}<p class="day-note">Getting your Tumblr’s numbers…</p></section>`;
+  }
+  function yourBlogHtml() { return homeBlogHtml() + alsoTumblrHtml(); }
+  function homeBlogHtml() {
     if (!plusOk()) return SOC.accounts?.site && (onWp() || onTumblr()) ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
       <p class="day-note">${onTumblr() ? 'See your followers and the notes on your posts here' : 'See your blog’s visitors, RSS readers and search traffic here every day'} with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
     if (!BLOG.busy && (!BLOG.data && !BLOG.failed || BLOG.failed && Date.now() - BLOG.at > 5 * 60 * 1000 || BLOG.data && Date.now() - BLOG.at > 30 * 60 * 1000)) setTimeout(() => loadBlog(), 0);

@@ -545,6 +545,15 @@ pub async fn avatar() -> String {
     secret_get(KEY).map(|s| format!("{API}/blog/{}/avatar/128", st(&s, "blog"))).unwrap_or_default()
 }
 
+/// Your Tumblr beside Your blog, when another site is home and Tumblr is connected too (null when it isn't connected).
+#[tauri::command]
+pub async fn tumblr_stats() -> Result<Value, String> {
+    if secret_get(KEY).is_none() {
+        return Ok(Value::Null);
+    }
+    stats().await
+}
+
 /// Your Tumblr, in Writing: followers and the notes (likes and reblogs) on your recent posts.
 /// Tumblr doesn't give apps visits or search numbers; the panel says so.
 pub async fn stats() -> Result<Value, String> {
