@@ -11,6 +11,7 @@ mod opml;
 mod reply;
 mod social;
 mod tumblr;
+mod ychannel;
 mod micropub;
 mod sources;
 mod sync;
@@ -3011,6 +3012,11 @@ pub fn run() {
             tumblr::tumblr_list,
             tumblr::tumblr_publish,
             tumblr::tumblr_delete,
+            ychannel::youtube_begin,
+            ychannel::youtube_finish,
+            ychannel::youtube_disconnect,
+            ychannel::youtube_channel,
+            ychannel::youtube_upload,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

@@ -23,6 +23,8 @@ jobs:
       MARGINALIA_KEY: ${{ secrets.MARGINALIA_KEY }}
       TUMBLR_KEY: ${{ secrets.TUMBLR_KEY }}
       TUMBLR_SECRET: ${{ secrets.TUMBLR_SECRET }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPSTORE_CERTS: ${{ secrets.APPLE_APPSTORE_CERTS }}
       INSTALLER_CERT: ${{ secrets.APPLE_INSTALLER_CERT }}

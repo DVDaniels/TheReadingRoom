@@ -219,18 +219,18 @@ fn random_string(n: usize) -> String {
     bytes.iter().map(|b| ABC[*b as usize % ABC.len()] as char).collect()
 }
 
-fn getrandom(buf: &mut [u8]) -> std::io::Result<()> {
+pub(crate) fn getrandom(buf: &mut [u8]) -> std::io::Result<()> {
     use std::io::Read;
     std::fs::File::open("/dev/urandom")?.read_exact(buf)
 }
 
-fn b64url(b: &[u8]) -> String {
+pub(crate) fn b64url(b: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b)
 }
 
 /// SHA-256 (for the PKCE code challenge), so the app needs no new library for one hash.
-fn sha256(data: &[u8]) -> [u8; 32] {
+pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
         0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,

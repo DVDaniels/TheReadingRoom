@@ -2921,3 +2921,32 @@ body.fr-on { overflow: hidden; }
 .post-to.pt-also .pt-tick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 5px; font-size: 12px; line-height: 1; opacity: .8; }
 .post-to.pt-also .pt-box[aria-pressed="true"] .pt-tick { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 .tumblr-tab .nb-acts .linkish { color: var(--accent); }
+
+/* Your channel (Plus): your own YouTube channel at the top of Videos */
+.yt-panel { margin-bottom: 14px; }
+.yt-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 10px; }
+.yt-av { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+.yt-stats { flex: 1; min-width: 200px; color: var(--muted); font-size: 14px; }
+.yt-stats b { color: var(--ink); font-weight: 600; }
+.yt-topacts { display: flex; gap: 8px; }
+.yt-list { list-style: none; margin: 0 0 6px; padding: 0; }
+.yt-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+.yt-thumb { width: 112px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; flex: none; background: var(--line); }
+.yt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.yt-title { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.yt-meta, .yt-nums { font-size: 13px; color: var(--muted); }
+.yt-vis { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--ink); margin-right: 4px; }
+.yt-vis.yt-public { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.yt-acts { display: flex; gap: 14px; font-size: 13px; }
+.yt-up { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
+.yt-up.err { border-color: color-mix(in srgb, #c0392b 50%, var(--line)); }
+.yt-up-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.yt-up-top span { color: var(--muted); }
+.yt-bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.yt-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.yt-f { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; border: 0; padding: 0; font-size: 14px; }
+.yt-f legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
+.yt-f small { color: var(--muted); font-size: 12.5px; }
+.yt-f input[type=text], .yt-f input:not([type]), .yt-f textarea { width: 100%; }
+.yt-when { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .yt-thumb { width: 96px; } }
