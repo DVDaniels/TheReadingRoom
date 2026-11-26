@@ -1,0 +1,4 @@
+Fixes:
+• Today's big photo is no longer cut off in a narrow window. Tall photos are shown whole.
+• Your blog's numbers never go blank: if they can't load, Writing says why, offers Try again, and tries again by itself.
+• A note you've started is kept until you post it, save it as a draft or start over, even if you close it or move around the app.
