@@ -10188,6 +10188,14 @@
         ${trSpark(x.spread || [])}</button></li>`).join('')}</ol>
       <p class="tr-tf">${t.list.length} ${t.list.length === 1 ? 'topic' : 'topics'}${rising ? ` · ${rising} rising` : ''} · from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds ${when} · worked out on this device</p></section>`;
   }
+  // The lead photo on Today: a tall photo is shown whole over a blurred copy of itself, not cropped (see .b-lead.tall)
+  document.addEventListener('load', e => {
+    const img = e.target; if (!(img instanceof HTMLImageElement) || !img.closest) return;
+    const lead = img.closest('.b-lead'); if (!lead || !img.naturalWidth) return;
+    const tall = img.naturalHeight > img.naturalWidth * 1.05;
+    lead.classList.toggle('tall', tall);
+    if (tall) lead.style.setProperty('--pic', `url("${img.currentSrc || img.src}")`);
+  }, true);
   document.addEventListener('click', e => { const b = e.target.closest('[data-trendtile]'); if (b) openTrend(Number(b.dataset.trendtile), TRT); });
   function trendingHtml() {
     const t = trendAll(), days = trDays(), fid = trFolder();
