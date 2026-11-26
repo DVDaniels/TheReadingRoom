@@ -327,6 +327,8 @@
   const isFolded = (i, view = S.view) => foldsIn(view) && folds().hidden.has(i.id);
 
   function visible() {
+    // Trending: the stories on the page, topic by topic, so the reader's up and down arrows (and j/k) walk through them
+    if (S.view === 'trending') { const seen = new Set(), out = []; for (const x of trendAll().list) for (const i of x.firsts) if (!seen.has(i.id)) { seen.add(i.id); out.push(i); } S.also = new Map(); S.hiddenMuted = 0; return out; }
     let list = S.items.filter(i => inScope(i));
     if (foldsIn(S.view)) { const F = folds(); list = list.filter(i => !F.hidden.has(i.id)); }
     S.hiddenMuted = 0;
@@ -502,7 +504,8 @@
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
-    document.body.classList.toggle('talk-reading', S.view === 'talk' && !!S.readerId);
+    // (Trending too: a story opened from it takes the whole window, with Back, instead of squeezing the page aside)
+    document.body.classList.toggle('talk-reading', (S.view === 'talk' || S.view === 'trending') && !!S.readerId);
     document.body.classList.toggle('talk-view', S.view === 'talk');
   }
   // Conversations' title row: the tabs, New note and a refresh icon, pinned as you scroll
@@ -7478,7 +7481,7 @@
     const it = item(id); if (!it) return;
     if (S.readerId && S.readerId !== id) toMini(); // what's playing keeps going in the corner
     if (!S.readerId && !isSplit()) listScroll = $('main').scrollTop;
-    if (!S.readerId && S.view === 'talk') talkScroll = [$('main').scrollTop, $('listView').scrollTop];
+    if (!S.readerId && (S.view === 'talk' || S.view === 'trending')) talkScroll = [$('main').scrollTop, $('listView').scrollTop];
     S.readerId = S.selId = id; S.keep.add(id);
     hidePops();
     $('listView').hidden = !isSplit(); $('reader').hidden = false; $('readerEmpty').hidden = true; syncWide();
@@ -7502,7 +7505,7 @@
     $('reader').hidden = true; $('listView').hidden = false; $('readerEmpty').hidden = false; syncWide(); paintUpNext();
     if (isPhone()) setScreen('list');
     if (!silent) { renderList(); if (!isSplit()) $('main').scrollTo({ top: listScroll }); }
-    if (S.view === 'talk' && talkScroll) { const [m, l] = talkScroll; requestAnimationFrame(() => { $('main').scrollTop = m; $('listView').scrollTop = l; }); talkScroll = null; }
+    if ((S.view === 'talk' || S.view === 'trending') && talkScroll) { const [m, l] = talkScroll; requestAnimationFrame(() => { $('main').scrollTop = m; $('listView').scrollTop = l; }); talkScroll = null; }
   }
   let talkScroll = null;
 
@@ -10574,13 +10577,15 @@
           <button class="trp-t" type="button" data-trendall="${n}">${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</button>
           <div class="trp-who"><span class="trp-faces">${faces}</span><span class="trp-names">${esc(who)}</span></div>
           <div class="trp-meta">${trSpark(x.spread || [])}<span>${x.feeds.size} feeds · ${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span></div>
-          <details class="trp-more"><summary>Headlines</summary>
+          <details class="trp-more" data-trkey="${esc(x.label)}"${TRA.open?.has(x.label) ? ' open' : ''}><summary>Headlines</summary>
             <ul class="trp-heads">${x.firsts.slice(0, 3).map(i => `<li><button class="b-link" type="button" data-open="${esc(i.id)}">${esc(headline(i))}</button></li>`).join('')}</ul>
             <button class="b-link trp-all" type="button" data-trendall="${n}">All ${x.items.length} side by side</button></details>
         </div></li>`;
     };
     return `<section class="trending-page">${head}${chart}<ol class="trp-grid">${t.list.map(card).join('')}</ol></section>`;
   }
+  // Headlines you opened stay open when you come Back from a story
+  document.addEventListener('toggle', e => { const d = e.target; if (!d.matches?.('.trp-more')) return; (TRA.open ||= new Set())[d.open ? 'add' : 'delete'](d.dataset.trkey); }, true);
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-trgo]'); if (!g) return;
     const c = document.getElementById('trp-' + g.dataset.trgo); if (!c) return;
