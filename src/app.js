@@ -10209,21 +10209,46 @@
     fitLead(lead); leadSizes?.observe(lead);
   }, true);
   document.addEventListener('click', e => { const b = e.target.closest('[data-trendtile]'); if (b) openTrend(Number(b.dataset.trendtile), TRT); });
+  // The Trending page (David, Nov 26: "very text heavy"): a strip of bubbles sized by how many feeds share each topic,
+  // then a grid of cards led by the top story's photo, the writers' faces and a small chart. Headlines open on a tap.
   function trendingHtml() {
     const t = trendAll(), days = trDays(), fid = trFolder();
     const tops = S.folders.filter(f => !f.parent_id || !folderById(f.parent_id));
     const when = days === 1 ? 'today' : 'this week';
     const head = `<div class="trp-bar"><div class="seg" role="group" aria-label="How far back"><button type="button" data-trdays="1" aria-pressed="${days === 1}">Today</button><button type="button" data-trdays="7" aria-pressed="${days === 7}">This week</button></div>
       <label class="trp-f">In <select id="trFolderSel" aria-label="Which feeds"><option value="">all your feeds</option>${tops.map(f => `<option value="${esc(f.id)}"${String(f.id) === fid ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label></div>
-      <p class="trp-note">Topics two or more of your feeds wrote about ${when}, most feeds first. <b class="trp-rise">Rising</b> means more of them than usual. Worked out on this device from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds.</p>`;
+      <p class="trp-note">What two or more of your feeds wrote about ${when}. Worked out on this device from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds.</p>`;
     if (!t.list.length) return `<section class="trending-page">${head}<p class="empty-note">Nothing is shared by two or more feeds ${when}${fid ? ' in this folder' : ''} yet. ${days === 1 ? 'Try This week.' : 'Check back as more stories come in.'}</p></section>`;
-    return `<section class="trending-page">${head}<ol class="trp-list">${t.list.map((x, n) => `<li class="trp-item">
-      <div class="trp-top"><span class="trp-n">${n + 1}</span><button class="trp-t" type="button" data-trendall="${n}">${x.kind === 'link' ? '🔗 ' : ''}${esc(x.kind === 'topic' && !x.label.startsWith('#') ? x.label.charAt(0).toUpperCase() + x.label.slice(1) : x.label)}</button>${x.rising ? '<span class="trp-rise">Rising</span>' : ''}
-        <span class="trp-c">${x.feeds.size} feeds · ${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span></div>
-      <div class="trp-src">${x.firsts.slice(0, 6).map(i => `<span class="trp-who">${nbFace(nbWho(i), 'nb-av sm')}${esc(feedById(i.feed_id)?.title || '')}</span>`).join('')}${x.firsts.length > 6 ? `<span class="trp-more">and ${x.firsts.length - 6} more</span>` : ''}</div>
-      <ul class="trp-heads">${x.firsts.slice(0, 3).map(i => `<li><button class="b-link" type="button" data-open="${esc(i.id)}">${esc(headline(i))}</button></li>`).join('')}</ul>
-      ${x.items.length > 3 ? `<button class="b-link trp-all" type="button" data-trendall="${n}">All ${x.items.length} stories side by side</button>` : ''}</li>`).join('')}</ol></section>`;
+    const max = Math.max(...t.list.map(x => x.feeds.size)), min = Math.min(...t.list.slice(0, 10).map(x => x.feeds.size));
+    const size = x => max === min ? 1 : (x.feeds.size - min) / (max - min);
+    const bubbles = `<div class="trp-bubbles" aria-label="The biggest topics ${when}">${t.list.slice(0, 10).map((x, n) => { const z = size(x);
+      return `<button type="button" class="trp-bub${x.rising ? ' up' : ''}" data-trgo="${n}" style="--z:${z.toFixed(2)}" title="${esc(`${x.feeds.size} feeds, ${x.items.length} stories`)}"><span>${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</span><small>${x.feeds.size}</small></button>`; }).join('')}</div>`;
+    const used = new Set();
+    const card = (x, n) => {
+      const pic = x.items.find(i => isWeb(i.image) && !used.has(i.image)) || x.items.find(i => isWeb(i.image)); if (pic) used.add(pic.image); // a different photo on each card when there is one
+      const faces = x.firsts.slice(0, 5).map(i => nbFace(nbWho(i), 'nb-av sm')).join('');
+      const names = x.firsts.slice(0, 2).map(i => feedById(i.feed_id)?.title || '').filter(Boolean);
+      const who = names.join(', ') + (x.feeds.size > names.length ? ` and ${x.feeds.size - names.length} more` : '');
+      const rise = x.rising ? `<span class="trp-rise">▲ ${Math.round(x.usual) < 1 ? 'New' : 'Rising'}</span>` : '';
+      return `<li class="trp-card" id="trp-${n}">
+        ${pic ? `<button class="trp-pic" type="button" data-open="${esc(pic.id)}" aria-label="Open the top story"><img src="${esc(pic.image)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>` : `<div class="trp-pic none" aria-hidden="true"><span>${esc(trNice(x).replace(/^#/, '').charAt(0).toUpperCase())}</span></div>`}
+        <div class="trp-body">
+          <div class="trp-top"><span class="trp-n">${n + 1}</span>${rise}</div>
+          <button class="trp-t" type="button" data-trendall="${n}">${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</button>
+          <div class="trp-who"><span class="trp-faces">${faces}</span><span class="trp-names">${esc(who)}</span></div>
+          <div class="trp-meta">${trSpark(x.spread || [])}<span>${x.feeds.size} feeds · ${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span></div>
+          <details class="trp-more"><summary>Headlines</summary>
+            <ul class="trp-heads">${x.firsts.slice(0, 3).map(i => `<li><button class="b-link" type="button" data-open="${esc(i.id)}">${esc(headline(i))}</button></li>`).join('')}</ul>
+            <button class="b-link trp-all" type="button" data-trendall="${n}">All ${x.items.length} side by side</button></details>
+        </div></li>`;
+    };
+    return `<section class="trending-page">${head}${bubbles}<ol class="trp-grid">${t.list.map(card).join('')}</ol></section>`;
   }
+  document.addEventListener('click', e => {
+    const g = e.target.closest('[data-trgo]'); if (!g) return;
+    const c = document.getElementById('trp-' + g.dataset.trgo); if (!c) return;
+    c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+  });
   document.addEventListener('click', e => {
     const d = e.target.closest('[data-trdays]'); if (d) { store.set('trDays', d.dataset.trdays); renderHead(); renderList(); return; }
     const a = e.target.closest('[data-trendall]'); if (a) openTrend(Number(a.dataset.trendall), TRA.list);
