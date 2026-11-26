@@ -294,7 +294,7 @@ fn yt_fail(e: (u16, String)) -> String {
         (404, _) => "YouTube couldn't find that video. It may have been deleted on YouTube.".into(),
         _ => {
             let said = st(&v, "error.message");
-            if said.is_empty() { explain(e) } else { format!("YouTube said: {said}") }
+            if said.is_empty() { explain(e) } else { format!("YouTube said: {}", strip_tags(&said)) }
         }
     }
 }
@@ -751,6 +751,43 @@ fn author_is(c: &Value, ch: &str) -> bool {
     st(c, "snippet.authorChannelId.value") == ch
 }
 
+/// Comment threads on a channel's videos, newest first. YouTube's one-call way (allThreadsRelatedToChannelId) fails
+/// for the whole channel if any of its videos has comments turned off (made for kids, or turned off by you), so then
+/// the app asks video by video for the latest 15 uploads instead (1 unit each), skipping videos without comments.
+async fn channel_threads(ch: &str) -> Result<Vec<Value>, String> {
+    let path = format!("/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId={ch}&maxResults=50&order=time&textFormat=plainText");
+    match api(ch, reqwest::Method::GET, &path, None).await {
+        Ok(r) => return Ok(r["items"].as_array().cloned().unwrap_or_default()),
+        Err(e) if is_comments_off(&e) => {}
+        Err(e) => return Err(e),
+    }
+    let mut uploads = channel_of(ch).map(|c| st(&c, "uploads")).unwrap_or_default();
+    if uploads.is_empty() {
+        let c = api(ch, reqwest::Method::GET, "/channels?part=contentDetails&mine=true", None).await?;
+        uploads = st(&c["items"][0], "contentDetails.relatedPlaylists.uploads");
+    }
+    if uploads.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = api(ch, reqwest::Method::GET, &format!("/playlistItems?part=contentDetails&maxResults=15&playlistId={uploads}"), None).await?;
+    let mut out = Vec::new();
+    for v in list["items"].as_array().cloned().unwrap_or_default() {
+        let vid = st(&v, "contentDetails.videoId");
+        if vid.is_empty() {
+            continue;
+        }
+        let path = format!("/commentThreads?part=snippet,replies&videoId={vid}&maxResults=20&order=time&textFormat=plainText");
+        if let Ok(r) = api(ch, reqwest::Method::GET, &path, None).await {
+            out.extend(r["items"].as_array().cloned().unwrap_or_default());
+        }
+    }
+    Ok(out)
+}
+
+fn is_comments_off(e: &str) -> bool {
+    e.contains("disabled comments") || e.contains("Comments are turned off")
+}
+
 /// What's new around your channels: comments on your videos and replies under them, and replies to comments you
 /// posted from the app on other people's videos. Your own words are left out. About 1 unit per channel, plus 1 per
 /// comment checked for replies, so the app only checks recent ones.
@@ -761,10 +798,9 @@ pub async fn youtube_activity(posted: Vec<Posted>) -> Result<Vec<Value>, String>
     let mut ev: Vec<Value> = Vec::new();
     let mut first_err = String::new();
     for ch in &chans {
-        let path = format!("/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId={ch}&maxResults=50&order=time&textFormat=plainText");
-        match api(ch, reqwest::Method::GET, &path, None).await {
-            Ok(r) => {
-                for t in r["items"].as_array().cloned().unwrap_or_default() {
+        match channel_threads(ch).await {
+            Ok(threads) => {
+                for t in threads {
                     let thread = st(&t, "id");
                     let video = st(&t, "snippet.videoId");
                     let top = &t["snippet"]["topLevelComment"];
@@ -858,6 +894,8 @@ mod tests {
 
     #[test]
     fn comment_events() {
+        assert_eq!(strip_tags("The <code><a href=\"/x\">videoId</a></code> parameter"), "The videoId parameter");
+        assert!(is_comments_off(&yt_fail((403, r#"{"error":{"message":"The video identified by the <code>videoId</code> parameter has disabled comments.","errors":[{"reason":"commentsDisabled"}]}}"#.into()))));
         let c = json!({ "id": "Ug1", "snippet": { "authorDisplayName": "Ann", "authorChannelId": { "value": "UCa" }, "textDisplay": "Nice <b>walk</b> &amp; talk", "publishedAt": "2026-11-26T10:00:00Z" } });
         let e = comment_event(&c, "yt-comment", "vid1", "Ug1", "UCme");
         assert_eq!(e["text"], "Nice walk & talk");

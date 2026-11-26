@@ -5381,7 +5381,7 @@
   const alsoHtml = key => (ALSO.get(key) || []).map(a => `<button class="linkish" data-talk="open" data-url="${esc(a.url)}">Also on ${a.net === 'blog' ? 'their blog' : NET[a.net] || a.net}</button>`).join('');
   function sharesHtml(i, soc) {
     const people = new Map();
-    for (const n of soc.shares.get(i.id) || []) if (!people.has(n.author.handle)) people.set(n.author.handle, { name: n.author.name, url: n.url, net: n.network });
+    for (const n of soc?.shares?.get(i.id) || []) if (!people.has(n.author.handle)) people.set(n.author.handle, { name: n.author.name, url: n.url, net: n.network });
     for (const { item: c, feed: f } of folds().on?.get(i.id) || []) { if (f && !people.has(f.url)) people.set(f.url, { name: f.title, url: c.link, net: socialNet(f) }); }
     if (!people.size) return '';
     const list = [...people.values()], first = list[0], nets = [...new Set(list.map(p => p.net).filter(Boolean))];
@@ -6937,7 +6937,7 @@
     if (!d) return '<p class="note">Mark your own site first: open its feed and choose “This is my site.”</p>';
     // Blogs you read that link to you come first: those are the replies that live on people's own sites
     const x = nbIndex(), fromBlogs = S.items.filter(i => x.toMe.has(i.id)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
-    const blogs = fromBlogs.length ? `<h3 class="nb-sub">From blogs you read</h3>${fromBlogs.map(i => nbCard(i, x)).join('')}<h3 class="nb-sub">On Mastodon and Bluesky</h3>` : '';
+    const blogs = fromBlogs.length ? `<h3 class="nb-sub">From blogs you read</h3>${fromBlogs.map(i => nbCard(i, x, nbSocial())).join('')}<h3 class="nb-sub">On Mastodon and Bluesky</h3>` : '';
     if (!anySocial()) return blogs || `<p class="note">No blogs you read have linked to ${esc(d)} lately.</p>`;
     const m = SOC.mentions;
     if (!m) return blogs + '<p class="note">Looking for people linking to your site…</p>';
