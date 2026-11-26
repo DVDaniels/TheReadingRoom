@@ -2,9 +2,16 @@ Version 1.2.10 (test build). This build lets you post from The Reading Room Plus
 
 NEW: POST TO TUMBLR, MICRO.BLOG AND PIKA (PLUS)
 No WordPress site? Settings › Connections now connects:
-- Tumblr: press Connect Tumblr, sign in on Tumblr's page, approve, and paste the code the next page shows. Notes, posts, Weeknotes and drafts go to your Tumblr. Writing shows Your Tumblr: followers and the notes on your posts.
+- Tumblr: press Connect Tumblr, sign in on Tumblr's page, approve, and paste the code the next page shows.
 - Micro.blog, Pika or another IndieWeb site: type your site's address and press Continue, or paste an app token from your site's settings.
-Have a site and Tumblr both? A new "Post to" choice in Writing and in the note sheet sends it to your site, to Tumblr, or Both (the full post on each). It remembers your choice. The Share menu's note item is now "Write a note…".
+The Share menu's note item is now "Write a note…".
+
+NEW: A TUMBLR TAB (PLUS)
+Tumblr has its own tab under Writing. Write a note or a post (photo, tags), then Post now, Save as draft, Add to queue or Schedule it. See Your numbers, the people talking to you, and your Posts, Drafts and Queue (open, post a draft now, or delete).
+Writing is for your own site. Have Tumblr too? Tick "Also post to Tumblr" in Writing or the note sheet to send the full post there as well.
+
+NEW: TUMBLR IN CONVERSATIONS
+Replies, reblogs with words, mentions and asks from Tumblr show in Conversations › You, with a Tumblr chip. Reply on Tumblr opens your browser.
 
 NEW: REPLIES TELL THE WRITER
 When you reply to or repost a post from your own site, the app now tells the writer's site itself (a Webmention), and says whether their site was told.
@@ -20,6 +27,7 @@ ALSO IN 1.2.10
 
 PLEASE TRY
 - Connect Tumblr, or your Micro.blog or Pika site. Post a note, a post with a photo, and a draft. Keep writing the draft, then Post now.
+- In the Tumblr tab: add a post to your queue, schedule one, and delete a draft. Does Conversations › You show your Tumblr replies?
 - Reply to a post from your site. Did the app say whether their site was told?
 - Does anything look cramped or cut off on your iPhone, iPad or Mac?
 
