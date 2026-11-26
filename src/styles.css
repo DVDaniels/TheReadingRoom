@@ -3047,3 +3047,10 @@ body.fr-on { overflow: hidden; }
 /* Plus once, on the Write heading, right after the name (the rows carry no badge) */
 .grp-name:has(+ .grp-plus) { flex: none; }
 .grp .grp-plus { margin: 0 auto 0 8px; text-transform: uppercase; }
+/* how many are new on a pill of Conversations › You */
+.nb-chip .nb-chip-n { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; color: #fff; background: var(--accent); }
+/* New comments at the top of the YouTube tab */
+.channel .yt-fresh .yu-ev:first-of-type { border-top: 0; }
+.channel .yt-fresh .wr-acts { margin-top: 8px; gap: 16px; }
+.channel .yt-fresh .nb-acts .linkish { color: var(--accent); }
+.channel .yt-fresh .nb-acts .linkish:first-child { font-weight: 600; }

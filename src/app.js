@@ -1254,6 +1254,7 @@
     if (S.view === 'discover') openDiscover();
     if (S.view === 'today') welcome();
     if (S.view === 'talk') loadTalk();
+    if (S.view === 'channel' && SOC.yt == null) loadYouTube();
     if (typeof S.view === 'number' && anySocial()) loadReaders();
     if (S.view === 'books') B.open = null;
     if (S.view === 'jobs') { store.set('jobsSeen', String(Date.now())); setTimeout(renderRail, 50); upgradeLocalSearch(); }
@@ -2662,7 +2663,8 @@
   function chNavItem() {
     const mark = '';
     const n = YT.up && !YT.up.done && !YT.up.err && YT.up.total ? `${Math.round(100 * YT.up.sent / YT.up.total)}%` : '';
-    return { view: 'channel', label: 'YouTube', count: '', icon: ICONS.channel, html: navButton('channel', 'YouTube', n, { icon: ICONS.channel, mark }) };
+    const fresh = plusOk() ? ytNew().length : 0;
+    return { view: 'channel', label: 'YouTube', count: '', icon: ICONS.channel, html: navButton('channel', 'YouTube', n || (fresh ? String(fresh) : ''), { icon: ICONS.channel, mark, title: fresh ? `YouTube: ${fresh} new ${fresh === 1 ? 'comment' : 'comments'}` : '' }) };
   }
   function chPaint() {
     const y = $('main').scrollTop, ly = $('listView').scrollTop;
@@ -2674,11 +2676,25 @@
       : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">YouTube</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
           <p>Upload and schedule videos and see how your channel is doing, next to your reading.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
-      : ytPickHtml() + ytChannelHtml() + ytStatsHtml();
+      : ytPickHtml() + ytFreshHtml() + ytChannelHtml() + ytStatsHtml();
     $('list').innerHTML = `<section class="brief myday channel" aria-label="YouTube">${body}</section>`;
     $('main').scrollTop = y; $('listView').scrollTop = ly;
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-yt="connect"]')) openAccounts(); });
+  // New comments on your channels since you last looked (here or in Conversations › You › YouTube), with Reply
+  function ytFreshHtml() {
+    const list = ytNew();
+    if (!list.length) return '';
+    const shown = list.slice(0, 5);
+    return `<section class="b-panel yt-fresh" aria-label="New comments"><p class="b-sub">New comments · ${list.length}</p>
+      ${shown.map(ytEvHtml).join('')}
+      <div class="wr-acts"><button class="b-link" type="button" data-yt="seen">Mark as seen</button>${list.length > shown.length ? `<button class="b-link" type="button" data-yt="all">See all ${list.length} in Conversations</button>` : ''}</div></section>`;
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-yt="all"]')) { SOC.tab = 'you'; SOC.youChip = 'youtube'; selectView('talk'); return; }
+    if (!e.target.closest('[data-yt="seen"]')) return;
+    markChipSeen('youtube'); renderRail(); if (S.view === 'channel') renderList();
+  });
   // several channels (David, Nov 26): one at a time on screen, each kept apart; uploads name their channel
   function ytPickHtml() {
     const a = SOC.accounts?.youtube, all = a?.channels || [];
@@ -3949,7 +3965,7 @@
 
   // ------------------------------------------------------------ Mastodon and Bluesky: share with a note, and talk
   // Accounts belong to the person: they sign in to their own server, and the sign-in stays in this device's Keychain.
-  async function loadAccounts() { try { SOC.accounts = await invoke('social_accounts'); } catch { SOC.accounts = {}; } PLUS.accountsReady = true; plusGraceCheck(); }
+  async function loadAccounts() { try { SOC.accounts = await invoke('social_accounts'); } catch { SOC.accounts = {}; } PLUS.accountsReady = true; plusGraceCheck(); if (SOC.accounts?.youtube && SOC.yt == null) setTimeout(() => { if (SOC.yt == null) loadYouTube(); }, 2500); }
   async function loadConversations(quiet) {
     if (!anySocial() || SOC.loading) return;
     SOC.loading = true; if (!quiet && S.view === 'talk') renderList();
@@ -6443,6 +6459,35 @@
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
   const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['youtube', 'YouTube'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  // ---- how many are new on each pill of Conversations › You (David, Nov 26: "know when I have a new comment … without
+  // having to click each pill"). Each pill remembers when you last opened it; Everything counts as opening them all.
+  // Counting starts the first time this runs, so nothing old shows up as new.
+  const chipSeenAll = () => { try { return JSON.parse(store.get('chipSeen') || '{}') || {}; } catch { return {}; } };
+  const chipBase = () => { let b = Number(store.get('chipBase')); if (!b) { b = Date.now(); store.set('chipBase', String(b)); } return b; };
+  const chipSeen = k => Math.max(chipBase(), Number(chipSeenAll()[k]) || 0);
+  function markChipSeen(k) {
+    const all = chipSeenAll(), now = Date.now();
+    for (const x of k ? [k] : YOU_CHIPS.map(c => c[0]).filter(Boolean)) all[x] = now;
+    store.set('chipSeen', JSON.stringify(all));
+  }
+  // what you're looking at counts as seen after a couple of seconds (the numbers don't vanish under your finger)
+  function seeChip(k) {
+    setTimeout(() => {
+      if (S.view !== 'talk' || SOC.tab !== 'you' || (SOC.youChip || '') !== k) return;
+      markChipSeen(k || null); renderRail();
+    }, 2500);
+  }
+  function chipDates(k) {
+    if (k === 'myreplies') return myReplies().flatMap(r => answersTo(r).map(i => i.date));
+    if (k === 'replies') return (SOC.conv?.replies || []).map(n => n.created_at);
+    if (k === 'comments') return (SOC.comments?.comments || []).map(c => c.date);
+    if (k === 'tumblr') return (SOC.tumblr || []).map(c => c.date);
+    if (k === 'youtube') return (SOC.yt || []).map(c => c.date);
+    if (k === 'mentions') { const x = nbIndex(); return [...(SOC.mentions || []).map(n => n.created_at), ...S.items.filter(i => x.toMe.has(i.id)).map(i => i.date)]; }
+    return [];
+  }
+  const chipNew = k => { const t = chipSeen(k); return chipDates(k).filter(d => Date.parse(d) > t).length; };
+  const ytNew = () => (SOC.yt || []).filter(c => Date.parse(c.date) > chipSeen('youtube'));
   const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || []), ...(SOC.yt || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
   // People talking to you on Tumblr (Rust tumblr_activity): replies, reblogs with words, mentions and asks. No likes,
   // follows or plain reblogs (David, Nov 25: "keep conversations about people talking"). Answering happens on Tumblr.
@@ -6665,7 +6710,7 @@
   function youHtml() {
     const chip = SOC.youChip || '';
     const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => k !== 'youtube' || (SOC.accounts.youtube && plusOk())).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
-      .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
+      .map(([k, l]) => { const n = k && k !== 'posts' && chip !== k ? chipNew(k) : 0; return `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}${n ? `<span class="nb-chip-n" aria-label="${n} new">${fmtCount(n)}</span>` : ''}</button>`; }).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
     if (chip === 'myreplies') return chips + myRepliesHtml();
     if (chip === 'replies') return chips + repliesHtml();
@@ -6713,7 +6758,7 @@
   function loadYouTube() {
     if (!SOC.accounts.youtube || !plusOk()) { SOC.yt = null; return; }
     invoke('youtube_activity', { posted: ytPosted().map(p => ({ id: p.id, channel: p.channel })) })
-      .then(t => { SOC.yt = t || []; SOC.ytErr = ''; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
+      .then(t => { SOC.yt = t || []; SOC.ytErr = ''; youAlerts(); renderRail(); if (S.view === 'talk' || S.view === 'channel') renderList(); })
       .catch(e => { SOC.ytErr = msg(e); if (!SOC.yt && S.view === 'talk') renderList(); });
   }
   function loadComments() {
@@ -7253,9 +7298,9 @@
       SOC.tab = old !== undefined ? 'you' : b.dataset.tab;
       if (old !== undefined) SOC.youChip = old; else if (b.dataset.chip !== undefined) SOC.youChip = b.dataset.chip;
       renderList(); $('main').scrollTo({ top: 0 });
-      if (SOC.tab === 'you') setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000);
+      if (SOC.tab === 'you') { setTimeout(() => { store.set('socialSeen', String(Date.now())); renderRail(); }, 3000); seeChip(SOC.youChip || ''); }
     }
-    if (k === 'youchip') { SOC.youChip = b.dataset.k; renderList(); return; }
+    if (k === 'youchip') { SOC.youChip = b.dataset.k; renderList(); seeChip(b.dataset.k); return; }
     if (k === 'srch') { runSearch(b.dataset.q); return; }
     if (k === 'srdrop') { setSearches(searches().filter(q => q !== b.dataset.q)); renderList(); return; }
     if (k === 'srfeeds') { SOC.srAllFeeds = true; renderList(); return; }
@@ -7289,7 +7334,7 @@
     }
   });
   loadAccounts().then(() => { renderRail(); loadConversations(true); });
-  setInterval(() => { if (!document.hidden) loadConversations(true); if (S.prefs.youAlerts !== false) loadComments(); }, 15 * 60 * 1000);
+  setInterval(() => { if (!document.hidden) loadConversations(true); if (S.prefs.youAlerts !== false) loadComments(); else loadYouTube(); }, 15 * 60 * 1000);
 
   // ------------------------------------------------------------ Write back: reply to the writer, not the algorithm
   let replyFor = null;
