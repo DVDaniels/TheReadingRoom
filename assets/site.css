@@ -190,3 +190,22 @@ kbd { display: inline-block; min-width: 44px; padding: 2px 8px; background: var(
 .beta-note h3 { margin-top: 0; }
 .beta-note ul { margin: 8px 0 0; padding-left: 1.2em; }
 .beta-note li { margin: 6px 0; }
+
+/* Trending (home page) */
+.trend-sec { display: grid; gap: 40px; align-items: center; padding-block: 72px; }
+@media (min-width: 860px) { .trend-sec { grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr); } }
+.trend-copy p { max-width: 62ch; }
+.trend-points { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 12px; }
+.trend-points li { padding-left: 18px; border-left: 3px solid var(--accent); }
+.trend-card { margin: 0; border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px 14px; background: var(--surface, #fff); box-shadow: 0 10px 30px rgba(20, 40, 35, .06); }
+.trend-card .tc-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+.trend-card .tc-all { text-transform: none; letter-spacing: 0; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.trend-card ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.trend-card li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px, 1fr) 2ch; gap: 12px; align-items: center; }
+.trend-card .tc-l { font-weight: 600; font-size: 15px; }
+.trend-card .tc-up { color: var(--accent); font-size: 10px; margin-right: 6px; vertical-align: 1px; }
+.trend-card .tc-bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 14%, transparent); overflow: hidden; }
+.trend-card .tc-bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.trend-card .tc-n { font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.trend-card .tc-f { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+.trend-card figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); font-style: italic; }
