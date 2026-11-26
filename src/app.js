@@ -2688,10 +2688,10 @@
     const shown = list.slice(0, 5);
     return `<section class="b-panel yt-fresh" aria-label="New comments"><p class="b-sub">New comments · ${list.length}</p>
       ${shown.map(ytEvHtml).join('')}
-      <div class="wr-acts"><button class="b-link" type="button" data-yt="seen">Mark as seen</button>${list.length > shown.length ? `<button class="b-link" type="button" data-yt="all">See all ${list.length} in Conversations</button>` : ''}</div></section>`;
+      <div class="wr-acts"><button class="b-link" type="button" data-yt="seen">Mark as seen</button>${list.length > shown.length ? `<button class="b-link" type="button" data-yt="talk">See all ${list.length} in Conversations</button>` : ''}</div></section>`;
   }
   document.addEventListener('click', e => {
-    if (e.target.closest('[data-yt="all"]')) { SOC.tab = 'you'; SOC.youChip = 'youtube'; selectView('talk'); return; }
+    if (e.target.closest('[data-yt="talk"]')) { SOC.tab = 'you'; SOC.youChip = 'youtube'; selectView('talk'); return; }
     if (!e.target.closest('[data-yt="seen"]')) return;
     markChipSeen('youtube'); renderRail(); if (S.view === 'channel') renderList();
   });
