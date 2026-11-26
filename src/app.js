@@ -884,7 +884,7 @@
         <button class="brief-x" id="briefClose" type="button" aria-label="Hide the briefing for today" title="Hide for today">×</button></div>
       <p class="b-line">${line}</p>
       ${myDayOn() ? glanceHtml() : ''}
-      ${inBriefHtml}${leadHtml}${mkToday() ? mkLineHtml() : ''}${trendHtml()}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
+      ${inBriefHtml}${leadHtml}${mkToday() ? mkLineHtml() : ''}${(() => { const a = trendHtml(), b = trendTileHtml(); return a || b ? `<div class="b-trend-area${a && b ? ' two' : ''}">${a}${b}</div>` : ''; })()}${peopleHtml}${moreHtml}<div class="b-foot">${statsHtml}${mineHtml}${laterHtml}</div>
     </section>`;
   }
 
@@ -10079,14 +10079,14 @@
     const list = trendTopics(); if (!list.length) return '';
     // Just one topic: a single line, no section
     if (list.length === 1) { const t = list[0]; return `<div class="b-trend one"><span class="b-sub">Trending</span><button class="tr-chip" type="button" data-trend="0"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span><span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button><button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></div>`; }
-    return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button>${hiddenViews().has('trending') ? '' : ' <button class="b-link tr-all" type="button" data-view-go="trending">See what all your feeds are writing about</button>'}</h3>
+    return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button>${hiddenViews().has('trending') || trendCompute(7, '').list.length ? '' : ' <button class="b-link tr-all" type="button" data-view-go="trending">See what all your feeds are writing about</button>'}</h3>
       <div class="tr-row">${list.map((t, n) => `<button class="tr-chip" type="button" data-trend="${n}"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span>
         <span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button>`).join('')}</div></div>`;
   }
   function openTrend(n, from) {
     const t = (from || TRX?.list)?.[n]; if (!t) return;
     const el = sheet('trendPanel', `<h2>${esc(t.label)}</h2>
-      <p>${from ? `${t.feeds.size} of your feeds wrote about this ${trDays() === 1 ? 'today' : 'this week'}` : `${t.writers.size} people you read wrote about this in the last week`}${t.kind === 'link' ? ', all linking to the same page' : ''}. ${from ? 'The stories' : 'Their posts'}, side by side:</p>
+      <p>${from ? `${t.feeds.size} of your feeds wrote about this ${from === TRT || trDays() !== 1 ? 'this week' : 'today'}` : `${t.writers.size} people you read wrote about this in the last week`}${t.kind === 'link' ? ', all linking to the same page' : ''}. ${from ? 'The stories' : 'Their posts'}, side by side:</p>
       <div class="tr-posts">${t.items.map(i => `<button class="tr-post" type="button" data-open="${esc(i.id)}">
         <span class="tr-who">${nbFace(nbWho(i), 'nb-av sm')}<b>${nbName(i)}</b><time>${esc(fmtWhen(i.date))}</time></span>
         <span class="tr-title">${esc(headline(i))}</span>${i.summary ? `<span class="tr-sum">${esc(i.summary.slice(0, 220))}${i.summary.length > 220 ? '…' : ''}</span>` : ''}</button>`).join('')}</div>
@@ -10104,10 +10104,12 @@
   const TRA = { list: [], key: '' };
   const trDays = () => store.get('trDays') === '1' ? 1 : 7;
   const trFolder = () => { const id = store.get('trFolder') || ''; return id && folderById(id) ? id : ''; };
-  function trendAll() {
-    const days = trDays(), fid = trFolder(), folder = fid ? folderById(fid) : null;
+  const TRC = new Map(); // worked-out lists, by window and folder (the page and Today's card share them)
+  function trendAll() { Object.assign(TRA, trendCompute(trDays(), trFolder())); return TRA; }
+  function trendCompute(days, fid) {
+    const folder = fid ? folderById(fid) : null;
     const key = [days, fid, S.items.length, S.feeds.length, Math.floor(Date.now() / (10 * 60e3))].join('|');
-    if (TRA.key === key) return TRA;
+    const hit = TRC.get(key); if (hit) return hit;
     const now = Date.now(), win = days * DAY, inFolder = folder ? new Set(folderIdsIn(folder)) : null;
     const recent = [], older = [];
     for (const i of S.items) {
@@ -10146,9 +10148,28 @@
       x.writers = x.feeds;
       if (x.kind === 'link') { const page = S.items.find(i => normU(i.link) === x.key.slice(2)); x.label = page ? headline(page) : `${bareHost(hostOfU(x.label))}${new URL(x.label).pathname.replace(/\/$/, '').slice(0, 40)}`; x.url = x.key.slice(2); }
     }
-    Object.assign(TRA, { key, list: out, stories: recent.length, feeds: new Set(recent.map(i => i.feed_id)).size });
-    return TRA;
+    const res = { key, list: out, stories: recent.length, feeds: new Set(recent.map(i => i.feed_id)).size };
+    if (TRC.size > 8) TRC.clear();
+    TRC.set(key, res);
+    return res;
   }
+  // Today's card (David, Nov 26: "a small visual on the today page that could lead into that"): this week's top
+  // three across all your feeds as little bars (how many feeds), ▲ when rising, and the count; it opens Trending.
+  let TRT = [];
+  function trendTileHtml() {
+    if (hiddenViews().has('trending')) return '';
+    const t = trendCompute(7, ''), top = t.list.slice(0, 3);
+    if (!top.length) return '';
+    TRT = t.list;
+    const max = Math.max(...top.map(x => x.feeds.size)), rising = t.list.filter(x => x.rising).length;
+    const nice = x => x.kind === 'topic' && !x.label.startsWith('#') ? x.label.charAt(0).toUpperCase() + x.label.slice(1) : x.label;
+    return `<section class="tr-tile" aria-label="Trending in your feeds"><div class="tr-tile-h"><h3 class="b-sub">Trending in your feeds</h3><button class="b-link" type="button" data-view-go="trending">See all ${t.list.length}</button></div>
+      <ol class="tr-bars">${top.map((x, n) => `<li><button type="button" data-trendtile="${n}" title="${esc(`${x.feeds.size} feeds, ${x.items.length} stories this week${x.rising ? ', more than usual' : ''}`)}">
+        <span class="tr-bl">${x.rising ? '<span class="tr-up" aria-label="Rising">▲</span>' : ''}${x.kind === 'link' ? '🔗 ' : ''}${esc(nice(x))}</span>
+        <span class="tr-bar"><i style="width:${Math.max(12, Math.round(100 * x.feeds.size / max))}%"></i></span><span class="tr-bn">${x.feeds.size}</span></button></li>`).join('')}</ol>
+      <p class="tr-tf">${t.list.length} ${t.list.length === 1 ? 'topic' : 'topics'}${rising ? ` · ${rising} rising` : ''} · from ${fmtCount(t.stories)} stories this week</p></section>`;
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-trendtile]'); if (b) openTrend(Number(b.dataset.trendtile), TRT); });
   function trendingHtml() {
     const t = trendAll(), days = trDays(), fid = trFolder();
     const tops = S.folders.filter(f => !f.parent_id || !folderById(f.parent_id));
