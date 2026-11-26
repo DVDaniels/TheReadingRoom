@@ -598,6 +598,7 @@ html.ios .voice { padding: 12px 8px; font-size: 16px; }
   body.home .brief > .b-glance { grid-area: glance; margin: 0; }
   body.home .brief > .b-mk, body.home .brief > .b-mkline { grid-area: mk; margin: 4px 0 0; }
   body.home .brief > .b-trend { grid-area: trend; margin: 4px 0 0; }
+  body.home .brief > .b-trend-area { grid-area: trend; margin: 4px 0 0; }
   /* Stocks and Crypto side by side when Markets runs the full width under the top story */
   body.home .brief > .b-mk { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); column-gap: 28px; align-items: start; }
   body.home .brief > .b-mk .bp-head { grid-column: 1 / -1; }
@@ -2972,3 +2973,44 @@ body.fr-on { overflow: hidden; }
 @media (max-width: 640px) { .yt-thumb { width: 96px; } }
 .myday .bl-col h4.yt-sub-h { margin-top: 16px; }
 .yt-acts .linkish { color: var(--accent); }
+/* Trending (Explore): topics across all your feeds */
+.trending-page { max-width: 860px; }
+.trp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 4px 0 8px; }
+.trp-f { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.trp-f select { font: inherit; color: var(--ink); padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); }
+.trp-note { font-size: 13.5px; color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+.trp-list { list-style: none; padding: 0; margin: 0; }
+.trp-item { padding: 14px 0 16px; border-top: 1px solid var(--line); }
+.trp-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; }
+.trp-n { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; min-width: 1.6em; }
+.trp-t { background: none; border: 0; padding: 0; font: inherit; font-size: 19px; font-weight: 650; color: var(--ink); cursor: pointer; text-align: left; }
+.trp-t:hover { color: var(--accent); }
+.trp-c { margin-left: auto; font-size: 13px; color: var(--muted); }
+.trp-rise { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 2px 7px; border-radius: 999px; }
+.trp-note .trp-rise { font-size: 10.5px; }
+.trp-src { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 6px 2.6em; font-size: 13px; color: var(--muted); }
+.trp-who { display: inline-flex; align-items: center; gap: 6px; }
+.trp-heads { list-style: none; padding: 0; margin: 4px 0 0 2.6em; display: grid; gap: 4px; }
+.trp-heads .b-link { text-align: left; font-size: 15px; }
+.trp-all { margin: 6px 0 0 2.6em; font-size: 13.5px; }
+
+/* Today: trending — the neighborhood row and the Trending in your feeds card side by side when both show */
+.b-trend-area { grid-column: 1 / -1; display: grid; gap: 14px; align-items: start; }
+.b-trend-area .b-trend { margin: 0; grid-column: auto; min-width: 0; }
+.b-trend-area .tr-row { flex-wrap: wrap; }
+@media (min-width: 900px) { .b-trend-area.two { grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); } }
+.tr-tile { border: 1px solid var(--b-line, var(--line)); border-radius: 14px; padding: 12px 14px 10px; background: var(--card, transparent); }
+.tr-tile-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.tr-tile-h .b-sub { margin: 0; }
+.tr-tile-h .b-link { font-size: 13px; }
+.tr-bars { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+.tr-bars button { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(60px, 1fr) 2ch; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 5px 2px; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.tr-bars button:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.tr-bl { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-up { color: var(--accent); font-size: 10px; margin-right: 5px; vertical-align: 1px; }
+.tr-bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 12%, transparent); overflow: hidden; }
+.tr-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.tr-bn { font-size: 12.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.tr-tf { margin: 6px 2px 0; font-size: 12.5px; color: var(--muted); }
+.tr-tile-go { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.tr-tile-go:hover { text-decoration: underline; text-underline-offset: 3px; }
