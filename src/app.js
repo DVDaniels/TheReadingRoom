@@ -10163,7 +10163,7 @@
     TRT = t.list;
     const max = Math.max(...top.map(x => x.feeds.size)), rising = t.list.filter(x => x.rising).length;
     const nice = x => x.kind === 'topic' && !x.label.startsWith('#') ? x.label.charAt(0).toUpperCase() + x.label.slice(1) : x.label;
-    return `<section class="tr-tile" aria-label="Trending in your feeds"><div class="tr-tile-h"><h3 class="b-sub">Trending in your feeds</h3><button class="b-link" type="button" data-view-go="trending">See all ${t.list.length}</button></div>
+    return `<section class="tr-tile" aria-label="Trending in your feeds"><div class="tr-tile-h"><h3 class="b-sub"><button class="tr-tile-go" type="button" data-view-go="trending" title="Open Trending: every topic your feeds share">Trending in your feeds</button></h3><button class="b-link" type="button" data-view-go="trending">See all ${t.list.length}</button></div>
       <ol class="tr-bars">${top.map((x, n) => `<li><button type="button" data-trendtile="${n}" title="${esc(`${x.feeds.size} feeds, ${x.items.length} stories this week${x.rising ? ', more than usual' : ''}`)}">
         <span class="tr-bl">${x.rising ? '<span class="tr-up" aria-label="Rising">▲</span>' : ''}${x.kind === 'link' ? '🔗 ' : ''}${esc(nice(x))}</span>
         <span class="tr-bar"><i style="width:${Math.max(12, Math.round(100 * x.feeds.size / max))}%"></i></span><span class="tr-bn">${x.feeds.size}</span></button></li>`).join('')}</ol>

@@ -2970,3 +2970,5 @@ body.fr-on { overflow: hidden; }
 .tr-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
 .tr-bn { font-size: 12.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .tr-tf { margin: 6px 2px 0; font-size: 12.5px; color: var(--muted); }
+.tr-tile-go { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.tr-tile-go:hover { text-decoration: underline; text-underline-offset: 3px; }
