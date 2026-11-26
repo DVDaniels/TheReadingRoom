@@ -24,7 +24,8 @@ ALSO IN 1.2.10
 - Move your note out of the way: drag it by its top bar while a video plays; Tuck away / Open.
 - Notes are kept as you type until you post or save them.
 - Writing's Notes, Posts and Weeknotes folders each have a button to write a new one.
-- Writing's On your site list (your site's categories) folds away under its heading. Tap the heading to open it.
+- Writing is now your notebook: what you're writing, ideas, drafts and this week. Your site has its own tab under it (WordPress, or Micro.blog, Pika or your site's name) with your numbers, drafts, posts and categories.
+- Your site's categories fold away under On your site in that tab. Tap the heading to open it.
 
 PLEASE TRY
 - Connect Tumblr, or your Micro.blog or Pika site. Post a note, a post with a photo, and a draft. Keep writing the draft, then Post now.
