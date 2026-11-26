@@ -3231,7 +3231,10 @@
             : !onWp() ? `<button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on ${onTumblr() ? 'Tumblr' : 'your site'}</button>`
             : `<button class="btn" type="button" data-mkurl="${esc(wrSite().site.replace(/\/$/, ''))}/wp-admin/post.php?post=${p.id}&amp;action=edit">Edit in WordPress</button><button class="btn" type="button" data-mkurl="${esc(p.link)}">Open on your site</button>`}</div></li>`).join('');
     }
-    return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p></div>
+    // a way to write a new one from its own folder (David, Nov 25: "no way to post a new note from the notes tab")
+    const newK = { notes: 'note', posts: 'post', weeknotes: 'weeknotes' }[k];
+    const newBtn = newK ? `<div class="wr-acts wr-fnew"><button class="btn primary" type="button" data-wr="new" data-k="${newK}">${newK === 'note' ? 'Write a note' : newK === 'post' ? 'Write a post' : 'Start this week’s Weeknotes'}</button></div>` : '';
+    return `<section class="brief myday writing" aria-label="${esc(name)}">${wrHead(name)}<p class="b-line">${esc(note)}</p>${newBtn}</div>
       ${WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : ''}
       ${k === 'drafts' ? wrUndoHtml() : ''}<section class="b-panel wr-folder"><ul class="wr-flist">${rows}</ul>
       ${k === 'drafts' && WR.draftsMore ? `<p class="wr-more"><button class="btn" type="button" data-wr="moredrafts"${WR.folderBusy ? ' disabled' : ''}>${WR.folderBusy ? 'Loading…' : 'Show more drafts'}</button></p>` : ''}</section></section>`;
@@ -3555,6 +3558,16 @@
     const k = b.dataset.wr, id = Number(b.dataset.id) || b.dataset.id;
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
     if (k === 'back') { wrToTop(); return; }
+    // Write a note / post / Weeknotes from its folder: the composer at the top, set to that kind. What you were
+    // writing stays (only its kind changes); a draft from your site is saved back there first.
+    if (k === 'new') {
+      const kind = b.dataset.k;
+      if (kind === 'weeknotes') { wrStartWeeknotes(); return; }
+      const go = () => { const d = wrDraftGet(); if (d.editId) { WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; } wrDraftSet(d.editId || (d.kind === 'weeknotes' && wrUntouched(d)) ? { kind } : { ...d, kind, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrToTop(); setTimeout(() => $('wrText')?.focus(), 0); };
+      const d = wrDraftGet();
+      if (d.editId) { wrPutAside().then(ok => ok && go()); return; }
+      go(); return;
+    }
     if (k === 'reload') { WR.err = ''; WR.folderKey = ''; wrLoad(true); return; }
     if (k === 'kind') { const d = wrDraftGet(); if (d.editId) { wrDraftSet({ ...d, kind: b.dataset.k }); wrSay(`Saves as ${b.dataset.k === 'note' ? 'a Note' : b.dataset.k === 'weeknotes' ? 'Weeknotes' : 'a Post'} on your site.`); wrPaint(); return; } if (b.dataset.k === 'weeknotes') { wrStartWeeknotes(); return; } wrDraftSet(d.kind === 'weeknotes' && wrUntouched(d) ? { kind: b.dataset.k } : { ...d, kind: b.dataset.k, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrPaint(); return; }
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }

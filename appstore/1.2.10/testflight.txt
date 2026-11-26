@@ -16,6 +16,7 @@ ALSO IN 1.2.10
 - A first run for new readers: pick circles of writers who answer each other (Help › Start with a few people › Pick writers by topic).
 - Move your note out of the way: drag it by its top bar while a video plays; Tuck away / Open.
 - Notes are kept as you type until you post or save them.
+- Writing's Notes, Posts and Weeknotes folders each have a button to write a new one.
 
 PLEASE TRY
 - Connect Tumblr, or your Micro.blog or Pika site. Post a note, a post with a photo, and a draft. Keep writing the draft, then Post now.

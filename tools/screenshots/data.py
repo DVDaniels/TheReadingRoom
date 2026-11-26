@@ -110,7 +110,7 @@ def wpost(i, title, hours, cats, excerpt='', status='publish', slug='x'):
     return {'id': i, 'title': title, 'excerpt': excerpt, 'date': wp(hours), 'modified': wp(hours), 'categories': cats, 'status': status,
             'link': f'https://alexmoreno.net/{slug}/', 'image': ''}
 SITE = {
-    'accounts': {'wordpress': {'site': 'https://alexmoreno.net', 'name': 'Alex Moreno'}, 'bluesky': {'handle': 'alexmoreno.net'}, 'mastodon': {'handle': '@alex@social.example'}},
+    'accounts': {'site': {'kind': 'wordpress', 'site': 'https://alexmoreno.net', 'name': 'Alex Moreno'}, 'wordpress': {'site': 'https://alexmoreno.net', 'name': 'Alex Moreno'}, 'bluesky': {'handle': 'alexmoreno.net'}, 'mastodon': {'handle': '@alex@social.example'}},
     'draft': [wpost(301, 'A year of walking to the library', 26, [4], status='draft'), wpost(302, 'Small sites I keep coming back to', 75, [5], status='draft'),
                wpost(303, 'The bean soup, my way', 140, [3], status='draft')],
     'publish': [wpost(290, 'Finally planted the garlic. Forty cloves, one row, see you in July.', 20, [7], excerpt='Finally planted the garlic. Forty cloves, one row, see you in July.'),
