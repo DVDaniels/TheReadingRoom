@@ -28,6 +28,8 @@ ALSO IN 1.2.10
 - Writing is now your notebook: what you're writing, ideas, drafts and this week. Your site has its own tab under it (WordPress, or Micro.blog, Pika or your site's name) with your numbers, drafts, posts and categories.
 - Your site's categories fold away under On your site in that tab. Tap the heading to open it.
 - Trending, under Explore: topics two or more of your feeds wrote about today or this week, in all your feeds or one folder, with Rising when more feeds than usual are on it. Today has a Trending in your feeds card: the top five today or this week, who wrote about each, how many feeds, and how it built up over the days.
+- The Trending page has less text: the same chart as Today's card at the top (tap a row to jump to it), then a card per topic with a photo, the writers' faces and a small chart. Tap Headlines to see the stories.
+- Plus shows once, on the Write heading in the sidebar.
 
 PLEASE TRY
 - Connect Tumblr, or your Micro.blog or Pika site. Post a note, a post with a photo, and a draft. Keep writing the draft, then Post now.
