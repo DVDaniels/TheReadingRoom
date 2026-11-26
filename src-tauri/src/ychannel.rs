@@ -8,6 +8,10 @@
 //! - Upload: YouTube's resumable upload, in 8 MB pieces. If the connection drops (or iOS pauses the app), the next
 //!   try asks YouTube how much arrived and carries on from there instead of starting over.
 //!
+//! - Several channels: each channel you connect (your own, or a Brand Account channel you manage) keeps its own
+//!   sign-in, and Your channel shows one at a time. Everything you do (lists, numbers, uploads) names its channel, so
+//!   switching mid-upload never sends a video to the wrong one.
+//!
 //! Until YouTube audits the app, YouTube makes every upload from it Private; the interface says so where you upload.
 //! The whole app shares one daily allowance from YouTube (100 uploads, 10,000 units for everything else), so lists
 //! ask only for what they show.
@@ -40,10 +44,90 @@ fn app_key() -> Result<(&'static str, &'static str), String> {
     Ok((k, s))
 }
 
-/// The connected channel, for the accounts list.
-pub fn account() -> Option<Value> {
+// ------------------------------------------------------------------ the channels you've connected
+
+/// Everything kept in the Keychain under "youtube": every connected channel, by its id, and which one is in use.
+/// Version 1.3.0's first builds kept one channel at the top level; that reads as a list of one.
+fn store() -> Option<Value> {
     let s = secret_get(KEY)?;
-    Some(json!({ "channel": st(&s, "channel"), "name": st(&s, "title"), "handle": st(&s, "handle"), "site": st(&s, "url"), "avatar": st(&s, "avatar") }))
+    if s["channels"].is_object() {
+        return Some(s);
+    }
+    let id = st(&s, "channel");
+    if id.is_empty() {
+        return None;
+    }
+    let mut chans = serde_json::Map::new();
+    chans.insert(id.clone(), s);
+    Some(json!({ "current": id, "channels": chans }))
+}
+
+/// The channel in use (the first one if the one in use was removed).
+fn current_id(s: &Value) -> String {
+    let cur = st(s, "current");
+    if s["channels"].get(&cur).is_some() {
+        return cur;
+    }
+    s["channels"].as_object().and_then(|m| m.keys().next().cloned()).unwrap_or_default()
+}
+
+/// The channel to work with: the one named, or the one in use.
+fn pick(channel: Option<&str>) -> Result<String, String> {
+    let s = store().ok_or("Connect YouTube first.")?;
+    match channel.filter(|c| !c.is_empty()) {
+        Some(c) if s["channels"].get(c).is_some() => Ok(c.to_string()),
+        Some(_) => Err("That channel isn't connected any more. Pick another in Your channel.".into()),
+        None => Ok(current_id(&s)),
+    }
+}
+
+fn channel_of(id: &str) -> Result<Value, String> {
+    store().and_then(|s| s["channels"].get(id).cloned()).ok_or_else(|| "That channel isn't connected any more. Connect it again in Settings › Connections.".to_string())
+}
+
+/// Save one channel. `add` connects a new one and makes it the one in use; otherwise it only updates a channel that
+/// is still connected (a sign-in renewed after you disconnected doesn't bring the channel back).
+fn put_channel(c: &Value, add: bool) -> Result<(), String> {
+    let id = st(c, "channel");
+    let mut s = store().unwrap_or_else(|| json!({ "current": "", "channels": {} }));
+    if !add && s["channels"].get(&id).is_none() {
+        return Ok(());
+    }
+    s["channels"][id.as_str()] = c.clone();
+    if add || current_id(&s).is_empty() {
+        s["current"] = json!(id);
+    }
+    secret_set(KEY, &s)
+}
+
+fn brief(c: &Value) -> Value {
+    json!({ "channel": st(c, "channel"), "name": st(c, "title"), "handle": st(c, "handle"), "site": st(c, "url"), "avatar": st(c, "avatar") })
+}
+
+/// The channel in use, for the accounts list, with every connected channel in `channels` (by name).
+pub fn account() -> Option<Value> {
+    let s = store()?;
+    let cur = current_id(&s);
+    let mut all: Vec<Value> = s["channels"].as_object()?.values().map(brief).collect();
+    if all.is_empty() {
+        return None;
+    }
+    all.sort_by_key(|c| st(c, "name").to_lowercase());
+    let mut me = all.iter().find(|c| st(c, "channel") == cur).cloned().unwrap_or_else(|| all[0].clone());
+    me["channels"] = json!(all);
+    Some(me)
+}
+
+/// Use another connected channel in Your channel.
+#[tauri::command]
+pub fn youtube_use(channel: String) -> Result<Accounts, String> {
+    let mut s = store().ok_or("Connect YouTube first.")?;
+    if s["channels"].get(&channel).is_none() {
+        return Err("That channel isn't connected any more.".into());
+    }
+    s["current"] = json!(channel);
+    secret_set(KEY, &s)?;
+    Ok(social_accounts())
 }
 
 // ------------------------------------------------------------------ connecting
@@ -70,14 +154,15 @@ pub async fn youtube_begin() -> Result<String, String> {
         .append_pair("response_type", "code")
         .append_pair("scope", SCOPES)
         .append_pair("access_type", "offline")
-        .append_pair("prompt", "consent")
+        .append_pair("prompt", "select_account consent")
         .append_pair("include_granted_scopes", "true")
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256");
     Ok(u.to_string())
 }
 
-/// Step two: the code readingroomapp.com showed after you approved the app (the whole address works too).
+/// Step two: the code readingroomapp.com showed after you approved the app (the whole address works too). The channel
+/// joins the ones already connected and becomes the one in use; connecting a channel again renews its sign-in.
 #[tauri::command]
 pub async fn youtube_finish(code: String) -> Result<Accounts, String> {
     let (id, secret) = app_key()?;
@@ -105,19 +190,31 @@ pub async fn youtube_finish(code: String) -> Result<Accounts, String> {
     s["token"] = json!(token);
     s["refresh"] = json!(st(&tok, "refresh_token"));
     s["expires"] = json!(expires_at(&tok));
-    secret_set(KEY, &s)?;
+    put_channel(&s, true)?;
     *pending().lock().await = None;
     Ok(social_accounts())
 }
 
-/// Disconnect: forget the sign-in here and ask Google to cancel it too.
+/// Disconnect one channel (the one in use if none is named): forget its sign-in here and ask Google to cancel it too.
+/// The others stay connected.
 #[tauri::command]
-pub async fn youtube_disconnect() -> Accounts {
-    if let Some(s) = secret_get(KEY) {
-        let t = if st(&s, "refresh").is_empty() { st(&s, "token") } else { st(&s, "refresh") };
+pub async fn youtube_disconnect(channel: Option<String>) -> Accounts {
+    let Some(mut s) = store() else { return social_accounts() };
+    let id = channel.filter(|c| !c.is_empty()).unwrap_or_else(|| current_id(&s));
+    if let Some(c) = s["channels"].get(&id).cloned() {
+        let t = if st(&c, "refresh").is_empty() { st(&c, "token") } else { st(&c, "refresh") };
         let _ = client().post("https://oauth2.googleapis.com/revoke").form(&[("token", t.as_str())]).timeout(Duration::from_secs(10)).send().await;
     }
-    secret_delete(KEY);
+    if let Some(m) = s["channels"].as_object_mut() {
+        m.remove(&id);
+    }
+    if s["channels"].as_object().map_or(true, |m| m.is_empty()) {
+        secret_delete(KEY);
+    } else {
+        let next = current_id(&s);
+        s["current"] = json!(next);
+        let _ = secret_set(KEY, &s);
+    }
     social_accounts()
 }
 
@@ -148,9 +245,9 @@ fn expires_at(tok: &Value) -> i64 {
     chrono::Utc::now().timestamp() + tok["expires_in"].as_i64().unwrap_or(3600)
 }
 
-/// A sign-in that's good for the next minute, renewed with the refresh token when it's about to run out.
-async fn token(force: bool) -> Result<String, String> {
-    let mut s = secret_get(KEY).ok_or("Connect YouTube first.")?;
+/// A channel's sign-in that's good for the next minute, renewed with its refresh token when it's about to run out.
+async fn token(ch: &str, force: bool) -> Result<String, String> {
+    let mut s = channel_of(ch)?;
     if !force && s["expires"].as_i64().unwrap_or(0) > chrono::Utc::now().timestamp() + 60 {
         return Ok(st(&s, "token"));
     }
@@ -164,14 +261,14 @@ async fn token(force: bool) -> Result<String, String> {
         .map_err(|e| if e.0 == 400 || e.0 == 401 { "Google signed the app out. Connect YouTube again in Settings › Connections.".to_string() } else { explain(e) })?;
     s["token"] = json!(st(&tok, "access_token"));
     s["expires"] = json!(expires_at(&tok));
-    secret_set(KEY, &s)?;
+    put_channel(&s, false)?;
     Ok(st(&s, "token"))
 }
 
-/// Call the YouTube Data API. A refused sign-in is renewed once.
-async fn api(method: reqwest::Method, path: &str, body: Option<&Value>) -> Result<Value, String> {
+/// Call the YouTube Data API as one channel. A refused sign-in is renewed once.
+async fn api(ch: &str, method: reqwest::Method, path: &str, body: Option<&Value>) -> Result<Value, String> {
     for attempt in 0..2 {
-        let tok = token(attempt > 0).await?;
+        let tok = token(ch, attempt > 0).await?;
         let mut req = client().request(method.clone(), format!("{API}{path}")).bearer_auth(&tok);
         if let Some(b) = body {
             req = with_json(req, b);
@@ -204,28 +301,30 @@ fn yt_fail(e: (u16, String)) -> String {
 
 // ------------------------------------------------------------------ your channel
 
-/// Your channel and your latest uploads (newest first, 25 at a time; `page` continues a list).
+/// A channel (the one in use if none is named) and its latest uploads (newest first, 25 at a time; `page` continues
+/// a list). `channel` in the answer says which channel it is, so a list that arrives after you switched is ignored.
 #[tauri::command]
-pub async fn youtube_channel(page: Option<String>) -> Result<Value, String> {
-    let mut s = secret_get(KEY).ok_or("Connect YouTube first.")?;
-    let ch = api(reqwest::Method::GET, "/channels?part=snippet,statistics,contentDetails&mine=true", None).await?;
+pub async fn youtube_channel(page: Option<String>, channel: Option<String>) -> Result<Value, String> {
+    let id = pick(channel.as_deref())?;
+    let mut s = channel_of(&id)?;
+    let ch = api(&id, reqwest::Method::GET, "/channels?part=snippet,statistics,contentDetails&mine=true", None).await?;
     let c = ch["items"][0].clone();
     if !c.is_null() {
         let f = channel_fields(&c);
         for k in ["title", "handle", "url", "avatar", "uploads"] {
             s[k] = f[k].clone();
         }
-        let _ = secret_set(KEY, &s);
+        let _ = put_channel(&s, false);
     }
     let uploads = st(&s, "uploads");
     let mut path = format!("/playlistItems?part=contentDetails&maxResults=25&playlistId={uploads}");
     if let Some(p) = page.filter(|p| !p.is_empty()) {
         path.push_str(&format!("&pageToken={}", urlencoding(&p)));
     }
-    let list = if uploads.is_empty() { json!({}) } else { api(reqwest::Method::GET, &path, None).await? };
+    let list = if uploads.is_empty() { json!({}) } else { api(&id, reqwest::Method::GET, &path, None).await? };
     let ids: Vec<String> = list["items"].as_array().cloned().unwrap_or_default().iter().map(|i| st(i, "contentDetails.videoId")).filter(|i| !i.is_empty()).collect();
     let vids = if ids.is_empty() { json!({ "items": [] }) } else {
-        api(reqwest::Method::GET, &format!("/videos?part=snippet,status,statistics,contentDetails&id={}", ids.join(",")), None).await?
+        api(&id, reqwest::Method::GET, &format!("/videos?part=snippet,status,statistics,contentDetails&id={}", ids.join(",")), None).await?
     };
     let mut by: HashMap<String, Value> = HashMap::new();
     for v in vids["items"].as_array().cloned().unwrap_or_default() {
@@ -283,10 +382,10 @@ fn urlencoding(s: &str) -> String {
 const ANALYTICS: &str = "https://youtubeanalytics.googleapis.com/v2/reports";
 
 /// One YouTube Analytics report for your channel (YouTube Analytics API; read-only, its own allowance).
-async fn report(start: &str, end: &str, metrics: &str, extra: &str) -> Result<Value, String> {
+async fn report(ch: &str, start: &str, end: &str, metrics: &str, extra: &str) -> Result<Value, String> {
     let path = format!("{ANALYTICS}?ids=channel%3D%3DMINE&startDate={start}&endDate={end}&metrics={metrics}{extra}");
     for attempt in 0..2 {
-        let tok = token(attempt > 0).await?;
+        let tok = token(ch, attempt > 0).await?;
         match call(client().get(&path).bearer_auth(&tok)).await {
             Ok(v) => return Ok(v),
             Err(e) if e.0 == 401 && attempt == 0 => continue,
@@ -333,8 +432,9 @@ fn source_name(k: &str) -> &'static str {
 /// compare), watch time, subscribers gained and lost, the videos watched most, how people found them and the
 /// YouTube searches that brought them. YouTube's numbers run two or three days behind; `through` says to when.
 #[tauri::command]
-pub async fn youtube_stats() -> Result<Value, String> {
-    let s = secret_get(KEY).ok_or("Connect YouTube first.")?;
+pub async fn youtube_stats(channel: Option<String>) -> Result<Value, String> {
+    let id = pick(channel.as_deref())?;
+    let s = channel_of(&id)?;
     let today = chrono::Utc::now().date_naive();
     let end = today - chrono::Duration::days(1);
     let start = end - chrono::Duration::days(27);
@@ -343,11 +443,11 @@ pub async fn youtube_stats() -> Result<Value, String> {
     let m = "views,estimatedMinutesWatched,subscribersGained,subscribersLost";
     let (pa, pb) = (pstart.to_string(), pend.to_string());
     let (daily, before, vids, srcs, terms) = tokio::join!(
-        report(&a, &b, m, "&dimensions=day&sort=day"),
-        report(&pa, &pb, m, ""),
-        report(&a, &b, "views,estimatedMinutesWatched", "&dimensions=video&sort=-views&maxResults=5"),
-        report(&a, &b, "views", "&dimensions=insightTrafficSourceType&sort=-views"),
-        report(&a, &b, "views", "&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType%3D%3DYT_SEARCH&sort=-views&maxResults=6"),
+        report(&id, &a, &b, m, "&dimensions=day&sort=day"),
+        report(&id, &pa, &pb, m, ""),
+        report(&id, &a, &b, "views,estimatedMinutesWatched", "&dimensions=video&sort=-views&maxResults=5"),
+        report(&id, &a, &b, "views", "&dimensions=insightTrafficSourceType&sort=-views"),
+        report(&id, &a, &b, "views", "&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType%3D%3DYT_SEARCH&sort=-views&maxResults=6"),
     );
     let daily = daily?;
     let days: Vec<(String, Vec<f64>)> = rows(&daily).into_iter().filter(|(_, v)| v.iter().any(|x| *x > 0.0)).collect::<Vec<_>>();
@@ -360,7 +460,7 @@ pub async fn youtube_stats() -> Result<Value, String> {
     let mut titles: HashMap<String, (String, String)> = HashMap::new();
     if !top_rows.is_empty() {
         let ids: Vec<String> = top_rows.iter().map(|(id, _)| id.clone()).collect();
-        if let Ok(v) = api(reqwest::Method::GET, &format!("/videos?part=snippet&id={}", ids.join(",")), None).await {
+        if let Ok(v) = api(&id, reqwest::Method::GET, &format!("/videos?part=snippet&id={}", ids.join(",")), None).await {
             for it in v["items"].as_array().cloned().unwrap_or_default() {
                 let thumbs = &it["snippet"]["thumbnails"];
                 titles.insert(st(&it, "id"), (st(&it, "snippet.title"), st(&thumbs["default"], "url")));
@@ -383,7 +483,7 @@ pub async fn youtube_stats() -> Result<Value, String> {
         .map(|(q, v)| json!({ "q": q, "views": v.first().copied().unwrap_or(0.0) as i64 })).collect();
     let p = |i: usize| prev.get(i).map(|x| *x as i64);
     Ok(json!({
-        "kind": "youtube",
+        "kind": "youtube", "channel": id,
         "name": st(&s, "title"), "url": st(&s, "url"), "studio": format!("https://studio.youtube.com/channel/{}/analytics", st(&s, "channel")),
         "window": 28, "through": through,
         "views": { "total": sum(0) as i64, "prev": p(0), "days": all_days.iter().map(|(d, v)| json!({ "d": d, "n": v.first().copied().unwrap_or(0.0) as i64 })).collect::<Vec<_>>() },
@@ -423,6 +523,9 @@ pub struct UploadInfo {
     /// RFC 3339 time to go public (the video stays private until then)
     #[serde(default)]
     pub publish_at: Option<String>,
+    /// the channel it goes to (the one in use if empty)
+    #[serde(default)]
+    pub channel: Option<String>,
 }
 
 fn snippet_status(i: &UploadInfo) -> Value {
@@ -448,8 +551,9 @@ fn mime_for(path: &str) -> &'static str {
     }
 }
 
-/// Upload a video from a file on this device. Progress goes out as "youtube-upload" events ({path, sent, total}).
-/// Returns the new video (as in Your channel's list).
+/// Upload a video from a file on this device to the channel named in `info` (fixed when the upload starts, so
+/// switching channels meanwhile changes nothing). Progress goes out as "youtube-upload" events ({path, sent, total}).
+/// Returns the new video (as in Your channel's list), with `channel`.
 #[tauri::command]
 pub async fn youtube_upload(app: tauri::AppHandle, info: UploadInfo) -> Result<Value, String> {
     if info.title.trim().is_empty() {
@@ -464,12 +568,14 @@ pub async fn youtube_upload(app: tauri::AppHandle, info: UploadInfo) -> Result<V
         return Err("That video file is empty.".into());
     }
     let mime = mime_for(&info.path);
-    // a session already started for this file carries on; otherwise start one
-    let known = sessions().lock().await.get(&info.path).cloned();
+    let ch = pick(info.channel.as_deref())?;
+    // a session already started for this file and channel carries on; otherwise start one
+    let skey = format!("{ch}\n{}", info.path);
+    let known = sessions().lock().await.get(&skey).cloned();
     let session = match known {
         Some(s) => s,
         None => {
-            let tok = token(false).await?;
+            let tok = token(&ch, false).await?;
             let resp = client()
                 .post(format!("{UPLOAD}?uploadType=resumable&part=snippet,status"))
                 .bearer_auth(&tok)
@@ -486,13 +592,15 @@ pub async fn youtube_upload(app: tauri::AppHandle, info: UploadInfo) -> Result<V
             if code >= 400 || loc.is_empty() {
                 return Err(yt_fail((code, resp.text().await.unwrap_or_default())));
             }
-            sessions().lock().await.insert(info.path.clone(), loc.clone());
+            sessions().lock().await.insert(skey.clone(), loc.clone());
             loc
         }
     };
-    let done = send_pieces(&app, &info.path, &session, total, mime).await?;
-    sessions().lock().await.remove(&info.path);
-    Ok(video_row(&done))
+    let done = send_pieces(&app, &info.path, &skey, &session, total, mime).await?;
+    sessions().lock().await.remove(&skey);
+    let mut row = video_row(&done);
+    row["channel"] = json!(ch);
+    Ok(row)
 }
 
 /// How much of the file YouTube already has (after a dropped connection), from the Range header of a 308.
@@ -500,7 +608,7 @@ fn received(range: &str) -> u64 {
     range.rsplit('-').next().and_then(|n| n.trim().parse::<u64>().ok()).map(|n| n + 1).unwrap_or(0)
 }
 
-async fn send_pieces(app: &tauri::AppHandle, path: &str, session: &str, total: u64, mime: &str) -> Result<Value, String> {
+async fn send_pieces(app: &tauri::AppHandle, path: &str, skey: &str, session: &str, total: u64, mime: &str) -> Result<Value, String> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
     // ask where to start (0 for a new session)
     let mut from = {
@@ -509,7 +617,7 @@ async fn send_pieces(app: &tauri::AppHandle, path: &str, session: &str, total: u
             Ok(r) if r.status().as_u16() == 308 => r.headers().get("range").and_then(|h| h.to_str().ok()).map(received).unwrap_or(0),
             Ok(r) if r.status().is_success() => return Ok(r.json::<Value>().await.unwrap_or(Value::Null)),
             Ok(r) if r.status().as_u16() == 404 || r.status().as_u16() == 410 => {
-                sessions().lock().await.remove(path);
+                sessions().lock().await.remove(skey);
                 return Err("YouTube let that upload go after it stopped for too long. Press Upload again to start it over.".into());
             }
             _ => 0,
@@ -580,6 +688,18 @@ mod tests {
     }
 
     #[test]
+    fn channel_briefs_for_the_list() {
+        let c = json!({ "channel": "UC1", "title": "Walks", "handle": "@walks", "url": "https://www.youtube.com/@walks", "avatar": "a.jpg", "token": "secret" });
+        let b = brief(&c);
+        assert_eq!(b["name"], "Walks");
+        assert_eq!(b["site"], "https://www.youtube.com/@walks");
+        assert!(b.get("token").is_none(), "sign-ins never go to the interface");
+        let s = json!({ "current": "gone", "channels": { "UC2": {}, "UC3": {} } });
+        assert_eq!(current_id(&s), "UC2", "a removed channel falls back to the first one left");
+        assert_eq!(current_id(&json!({ "current": "UC3", "channels": { "UC2": {}, "UC3": {} } })), "UC3");
+    }
+
+    #[test]
     fn resume_point_from_range() {
         assert_eq!(received("bytes=0-8388607"), 8388608);
         assert_eq!(received(""), 0);
@@ -587,7 +707,7 @@ mod tests {
 
     #[test]
     fn scheduled_uploads_start_private() {
-        let i = UploadInfo { path: "/a.mov".into(), title: " Hi ".into(), description: String::new(), tags: vec!["blog".into()], category: None, for_kids: false, privacy: "public".into(), publish_at: Some("2026-12-01T15:00:00Z".into()) };
+        let i = UploadInfo { path: "/a.mov".into(), title: " Hi ".into(), description: String::new(), tags: vec!["blog".into()], category: None, for_kids: false, privacy: "public".into(), publish_at: Some("2026-12-01T15:00:00Z".into()), channel: None };
         let b = snippet_status(&i);
         assert_eq!(b["status"]["privacyStatus"], "private");
         assert_eq!(b["status"]["publishAt"], "2026-12-01T15:00:00Z");

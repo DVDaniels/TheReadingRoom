@@ -2932,6 +2932,18 @@ body.fr-on { overflow: hidden; }
 
 /* Your channel (Plus): your own YouTube channel at the top of Videos */
 .yt-panel { margin-bottom: 14px; }
+.yt-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.yt-pick-l { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.yt-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px 5px 6px; border: 1px solid var(--line); border-radius: 999px; background: none; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.yt-chip img { width: 22px; height: 22px; border-radius: 50%; }
+.yt-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; cursor: default; }
+.yt-up-top small { font-weight: 400; color: var(--muted); }
+.yt-accts { list-style: none; padding: 0; margin: 8px 0; }
+.yt-accts li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.yt-accts li:last-child { border-bottom: 0; }
+.yt-accts img { width: 28px; height: 28px; border-radius: 50%; }
+.yt-accts span { flex: 1; min-width: 0; }
+.yt-accts small { color: var(--muted); }
 .yt-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 10px; }
 .yt-av { width: 40px; height: 40px; border-radius: 50%; flex: none; }
 .yt-stats { flex: 1; min-width: 200px; color: var(--muted); font-size: 14px; }

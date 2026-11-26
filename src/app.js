@@ -2551,7 +2551,8 @@
   async function ytLoad(force) {
     if (YT.busy || (!force && YT.data && Date.now() - YT.at < 10 * 60 * 1000)) return;
     YT.busy = true; YT.err = '';
-    try { YT.data = await tauriInvoke('youtube_channel', { page: null }); }
+    const ch = SOC.accounts?.youtube?.channel || null;
+    try { const d = await tauriInvoke('youtube_channel', { page: null, channel: ch }); if (!d.channel || d.channel === (SOC.accounts?.youtube?.channel || null)) YT.data = d; }
     catch (e) { YT.err = msg(e) || 'YouTube didn’t answer.'; }
     finally { YT.busy = false; YT.at = Date.now(); if (S.view === 'channel') renderList(); }
   }
@@ -2575,7 +2576,7 @@
     const head = `<div class="bp-head"><h3 class="b-sub">Your videos</h3><span class="bp-meta">${esc(acct.name)}${YT.at ? ` · As of ${esc(new Date(YT.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}` : ''}</span></div>`;
     if (!d) return `<section class="b-panel yt-panel" aria-label="Your channel">${head}<p class="day-note">${YT.err ? `Couldn’t get your channel just now. ${esc(YT.err)} <button class="b-link" type="button" data-yt="reload">Try again</button>` : 'Getting your channel from YouTube…'}</p></section>`;
     const vids = d.videos || [], list = YT.all ? vids : vids.slice(0, 4);
-    const upLine = up ? `<div class="yt-up${up.err ? ' err' : ''}"><div class="yt-up-top"><b>${esc(up.title)}</b><span>${up.err ? esc(up.err) : up.done ? 'Uploaded.' : `${Math.round(100 * (up.sent || 0) / (up.total || 1))}% · ${mbs(up.sent)} of ${mbs(up.total)}`}</span></div>
+    const upLine = up ? `<div class="yt-up${up.err ? ' err' : ''}"><div class="yt-up-top"><b>${esc(up.title)}${up.channel && up.channel !== acct.channel ? ` <small>to ${esc(up.chName)}</small>` : ''}</b><span>${up.err ? esc(up.err) : up.done ? 'Uploaded.' : `${Math.round(100 * (up.sent || 0) / (up.total || 1))}% · ${mbs(up.sent)} of ${mbs(up.total)}`}</span></div>
       ${up.done || up.err ? '' : `<div class="yt-bar"><i style="width:${(100 * (up.sent || 0) / (up.total || 1)).toFixed(1)}%"></i></div>`}
       ${up.err ? `<button class="b-link" type="button" data-yt="retry">Try again</button> <span class="tm-tip">It carries on where it stopped.</span>` : ''}${up.done && !YT_AUDITED ? `<p class="tm-tip">YouTube keeps uploads from The Reading Room Private for now. <button class="b-link" type="button" data-yt="open" data-url="${esc(up.done.studio)}">Make it public in YouTube Studio</button></p>` : ''}</div>` : '';
     return `<section class="b-panel yt-panel" aria-label="Your channel">${head}
@@ -2593,7 +2594,8 @@
     catch (e) { status(msg(e), true); return; }
     const path = typeof picked === 'string' ? picked : picked?.path; if (!path) return;
     const name = path.split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
-    const el = sheet('ytUp', `<h2>Upload to ${esc(SOC.accounts.youtube?.name || 'your channel')}</h2>
+    const to = SOC.accounts.youtube || {};
+    const el = sheet('ytUp', `<h2>Upload to ${esc(to.name || 'your channel')}</h2>${(to.channels || []).length > 1 ? `<p class="tm-tip">It goes to this channel. To upload to another, pick it at the top of Your channel first.</p>` : ''}
       <p class="tm-tip">${esc(path.split(/[\\/]/).pop())}</p>
       <label class="yt-f">Title <input id="ytTitle" maxlength="100" value="${esc(name)}"></label>
       <label class="yt-f">Description <textarea id="ytDesc" rows="5" placeholder="What it’s about. Links and timestamps work here."></textarea></label>
@@ -2614,17 +2616,18 @@
       if ($('ytSched').checked && (!at || new Date(at) <= new Date())) { $('ytErr').textContent = 'Pick a time in the future to schedule it.'; return; }
       const info = { path, title, description: $('ytDesc').value, tags: $('ytTags').value.split(',').map(t => t.trim()).filter(Boolean),
         category: null, forKids: document.querySelector('input[name=ytKids]:checked')?.value === 'yes',
-        privacy: document.querySelector('input[name=ytVis]:checked')?.value || 'public', publishAt: at ? new Date(at).toISOString() : null };
+        privacy: document.querySelector('input[name=ytVis]:checked')?.value || 'public', publishAt: at ? new Date(at).toISOString() : null, channel: to.channel || null };
       el.hidden = true; ytSend(info);
     };
     $('ytTitle').focus();
   }
   async function ytSend(info) {
-    YT.up = { info, title: info.title, sent: 0, total: 0, done: null, err: '' }; YT.all = false;
+    const chName = (SOC.accounts?.youtube?.channels || []).find(c => c.channel === info.channel)?.name || SOC.accounts?.youtube?.name || '';
+    YT.up = { info, title: info.title, channel: info.channel, chName, sent: 0, total: 0, done: null, err: '' }; YT.all = false;
     if (S.view === 'channel') renderList(); renderRail();
     try {
       const v = await invoke('youtube_upload', { info });
-      YT.up.done = v; YT.up.sent = YT.up.total; status(`“${info.title}” is on your channel.`);
+      YT.up.done = v; YT.up.sent = YT.up.total; status(`“${info.title}” is on ${YT.up.chName || 'your channel'}.`);
       YT.data = null; YT.at = 0; ytLoad(true);
     } catch (e) { YT.up.err = msg(e); }
     if (S.view === 'channel') renderList(); renderRail();
@@ -2663,11 +2666,24 @@
       : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">Your channel</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
           <p>Upload and schedule videos and see how your channel is doing, next to your reading.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
-      : ytChannelHtml() + ytStatsHtml();
+      : ytPickHtml() + ytChannelHtml() + ytStatsHtml();
     $('list').innerHTML = `<section class="brief myday channel" aria-label="Your channel">${body}</section>`;
     $('main').scrollTop = y; $('listView').scrollTop = ly;
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-yt="connect"]')) openAccounts(); });
+  // several channels (David, Nov 26): one at a time on screen, each kept apart; uploads name their channel
+  function ytPickHtml() {
+    const a = SOC.accounts?.youtube, all = a?.channels || [];
+    if (all.length < 2) return `<div class="yt-pick"><button class="b-link" type="button" data-yt="connect">Add another channel</button></div>`;
+    return `<div class="yt-pick" role="group" aria-label="Your channels"><span class="yt-pick-l">Your channels</span>${all.map(c => `<button type="button" class="yt-chip${c.channel === a.channel ? ' on' : ''}" data-ytuse="${esc(c.channel)}" aria-pressed="${c.channel === a.channel}">${c.avatar ? `<img src="${esc(c.avatar)}" alt="" referrerpolicy="no-referrer">` : ''}${esc(c.name || c.handle)}</button>`).join('')}<button class="b-link" type="button" data-yt="connect">Add another</button></div>`;
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-ytuse]'); if (!b || b.getAttribute('aria-pressed') === 'true') return;
+    try { SOC.accounts = await invoke('youtube_use', { channel: b.dataset.ytuse }); }
+    catch (err) { status(msg(err), true); return; }
+    YT.data = null; YT.at = 0; YT.err = ''; YT.all = false; YTS.data = null; YTS.at = 0; YTS.err = '';
+    if (S.view === 'channel') { renderHead(); renderList(); }
+  });
 
   function myChannelsHtml() {
     const by = new Map(); // feed id → { f, latest item, unwatched }
@@ -3940,12 +3956,15 @@
   }
   // Your YouTube channel (Plus, under Videos)
   function ytAcctHtml() {
-    const y = SOC.accounts.youtube;
+    const y = SOC.accounts.youtube, all = y ? (y.channels?.length ? y.channels : [y]) : [];
+    const form = `<form class="acct-form" id="ytForm"><button class="btn${y ? '' : ' primary'}" type="submit">${y ? 'Add another channel' : 'Connect YouTube'}</button></form>
+        <form class="acct-form" id="ytCodeForm" hidden><input id="ytCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`;
     return `<section class="acct"><h3>${ICON_NET.youtube}YouTube <small class="acct-sub">Plus</small></h3>${y
-      ? `<p>Connected to <b>${esc(y.name)}</b>${y.handle ? ` (${esc(y.handle)})` : ''}. Manage it in Your channel, under Writing in the sidebar.</p><div class="row"><button class="btn" data-disconnect="youtube">Disconnect</button></div>`
+      ? `<p>Manage ${all.length > 1 ? 'these channels' : 'it'} in Your channel, under Writing in the sidebar${all.length > 1 ? ', one at a time. Each keeps its own sign-in, videos and numbers' : ''}.</p>
+        <ul class="yt-accts">${all.map(c => `<li>${c.avatar ? `<img src="${esc(c.avatar)}" alt="" referrerpolicy="no-referrer">` : ''}<span><b>${esc(c.name)}</b>${c.handle ? ` <small>${esc(c.handle)}</small>` : ''}</span><button class="btn" data-disconnect="youtube" data-ch="${esc(c.channel)}">Disconnect</button></li>`).join('')}</ul>
+        <p class="tm-tip">To add a Brand Account channel you manage, press Add another channel and pick it on Google’s page.</p>${form}`
       : `<p>Manage your own YouTube channel from the app, in its own tab: upload, schedule, and see how your videos are doing. Press Connect YouTube, sign in on Google’s page and approve The Reading Room. A page then shows a code: paste it here.</p>
-        <form class="acct-form" id="ytForm"><button class="btn primary" type="submit">Connect YouTube</button></form>
-        <form class="acct-form" id="ytCodeForm" hidden><input id="ytCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`}</section>`;
+        ${form}`}</section>`;
   }
   // Micro.blog, Pika and other IndieWeb sites, through Micropub (David, Nov 25): sign in on your own site, or paste an app token
   function micropubAcctHtml() {
@@ -4023,7 +4042,7 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'youtube' ? 'youtube_disconnect' : 'social_disconnect', { network: n }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; YT.data = null; YT.at = 0; YTS.data = null; YTS.at = 0; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'youtube' ? 'youtube_disconnect' : 'social_disconnect', { network: n, channel: d.dataset.ch || null }); SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; YT.data = null; YT.at = 0; YTS.data = null; YTS.at = 0; openAccounts(); renderRail(); }
     };
     // Micropub: find the site, then its sign-in page (and a code) or an app token
     const mpBegin = async wantToken => {
@@ -9524,7 +9543,8 @@
   async function ytStatsLoad(force) {
     if (YTS.busy || (!force && YTS.data && Date.now() - YTS.at < 30 * 60 * 1000)) return;
     YTS.busy = true; YTS.err = '';
-    try { YTS.data = await tauriInvoke('youtube_stats'); }
+    const ch = SOC.accounts?.youtube?.channel || null;
+    try { const d = await tauriInvoke('youtube_stats', { channel: ch }); if (!d.channel || d.channel === (SOC.accounts?.youtube?.channel || null)) YTS.data = d; }
     catch (e) { YTS.err = msg(e) || 'YouTube didn’t answer.'; }
     finally { YTS.busy = false; YTS.at = Date.now(); if (S.view === 'channel') renderList(); }
   }
