@@ -3169,7 +3169,16 @@
     const sub = (k, label, n, tip) => ({ view: 'write', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'write' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? (typeof n === 'number' ? fmtCount(n) : esc(n)) : ''}</span></button>` });
     const cats = wrOwnCats();
     return [it, sub('ideas', 'Ideas', wrIdeas().length, 'Ideas for posts, kept in the app'), sub('drafts', 'Drafts', nd, 'Drafts on your site'), sub('posts', 'Posts'), sub('notes', 'Notes'), sub('weeknotes', 'Weeknotes'),
-      ...(cats.length ? [{ view: 'write', sub: true, html: '<span class="wr-navhead">On your site</span>' }, ...cats.map(c => sub('cat-' + c.id, c.name, 0, `Everything in ${c.name} on your site`))] : [])];
+      ...(cats.length ? wrCatItems(cats, sub) : [])];
+  }
+  // On your site (David, Nov 26): your site's categories fold away under their heading, folded to start, so the list
+  // stays short. Folded, the category you're in stays in view (like folding a folder in Feeds).
+  const wrCatsFolded = () => store.get('wrCatsFolded') !== '0';
+  function wrCatItems(cats, sub) {
+    const open = !wrCatsFolded();
+    const head = { view: 'write', sub: true, html: `<button class="wr-navhead wr-cathead" type="button" data-wrcats aria-expanded="${open}" title="${open ? 'Fold your site’s categories' : 'Show your site’s categories'}"><span>On your site</span>${open ? '' : `<span class="count">${cats.length}</span>`}<span class="wr-catchev" aria-hidden="true">${ICONS.chev}</span></button>` };
+    const shown = open ? cats : cats.filter(c => S.view === 'write' && WR.sub === 'cat-' + c.id);
+    return [head, ...shown.map(c => sub('cat-' + c.id, c.name, 0, `Everything in ${c.name} on your site`))];
   }
 
   // ---- the page
@@ -3686,6 +3695,7 @@
   }, true);
   document.addEventListener('click', e => {
     if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
+    if (e.target.closest('[data-wrcats]')) { store.set('wrCatsFolded', wrCatsFolded() ? '0' : '1'); renderRail(); return; }
     const s = e.target.closest('[data-wrsub]');
     if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (WR.sub === 'drafts') wrLoad(); if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
     const b = e.target.closest('[data-wr]'); if (!b || !b.closest('.writing')) return;

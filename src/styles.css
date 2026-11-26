@@ -2468,6 +2468,14 @@ body.rail-slim .nav .md-bday { position: absolute; bottom: 1px; right: 0; margin
 /* ---- Writing: the Plus tab (David, Nov 22). Uses My Day's width and panels (.brief.myday.writing). */
 .wr-plus { margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 700; letter-spacing: .03em; color: var(--accent); background: var(--accent-soft); }
 .nav .wr-navhead { display: block; padding: 8px 10px 2px 38px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.nav .wr-cathead { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; text-align: left; font-family: inherit; cursor: pointer; border-radius: 6px; padding-top: 6px; padding-bottom: 4px; }
+.nav .wr-cathead:hover { color: var(--ink); }
+.nav .wr-cathead .count { margin-left: auto; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.nav .wr-cathead .wr-catchev { display: inline-flex; width: 14px; height: 14px; transition: transform .15s; }
+.nav .wr-cathead .wr-catchev { margin-left: auto; }
+.nav .wr-cathead .count + .wr-catchev { margin-left: 4px; }
+.nav .wr-cathead .wr-catchev svg { width: 14px; height: 14px; }
+.nav .wr-cathead[aria-expanded="true"] .wr-catchev { transform: rotate(90deg); }
 html.ios .nav .wr-navhead { padding-left: 46px; }
 @media (min-width: 761px) { body.rail-slim .nav .wr-navhead { display: none; } }
 .writing .md-modes { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
