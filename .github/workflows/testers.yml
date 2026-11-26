@@ -15,7 +15,7 @@ on:
         description: "Build number (or latest)"
         default: latest
       group:
-        description: "External TestFlight group"
+        description: "External TestFlight group (none = only set What to Test, for internal testers)"
         default: RSS Testers
 
 jobs:

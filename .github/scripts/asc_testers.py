@@ -72,10 +72,11 @@ def main():
     bid, number = build["id"], build["attributes"]["version"]
     name = f"{label} build {number}"
 
+    notes_only = group_name in ("", "none")
     # The external group (the one with the public link)
     _, groups = call("GET", f"/apps/{aid}/betaGroups", limit=50)
     group = next((g for g in groups.get("data", []) if g["attributes"]["name"] == group_name and not g["attributes"].get("isInternalGroup")), None)
-    if not group:
+    if not group and not notes_only:
         note(name, f"No external TestFlight group called '{group_name}'.", "error")
         sys.exit(1)
 
@@ -96,6 +97,11 @@ def main():
             note(name, f"Couldn't set What to Test ({st} {problem(res)})", "warning")
     else:
         note(name, f"No appstore/{version}/testflight.txt, so What to Test was left as it was.", "warning")
+
+    # Internal-only builds (group "none"): just the What to Test notes, which internal testers see too
+    if notes_only:
+        note(name, "What to Test set for internal testers; not sent to an external group.")
+        return
 
     # Tell testers as soon as it's approved
     _, detail = call("GET", f"/builds/{bid}/buildBetaDetail")
