@@ -62,6 +62,7 @@
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     channel: '<svg viewBox="0 0 24 24" class="yt-mark"><path fill="#FF0000" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8z"/><path fill="#FFFFFF" d="M9.7 15.1V8.9l5.8 3.1-5.8 3.1z"/></svg>', // the YouTube tab: YouTube's own mark in its own red, as YouTube's brand rules ask (David, Nov 26)
+    wordpress: '<svg viewBox="0 0 24 24" fill="none" stroke="#21759B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M5.6 8.4h2.6M7 8.4l3.1 9 2-5.6M10.4 8.4h2.4M11.6 8.4l3.2 9 2.4-7.3c.4-1.1.1-1.7-.6-1.9"/></svg>', // the WordPress tab: WordPress's W, in WordPress blue (David, Nov 26)
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
@@ -157,7 +158,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'tumblr', 'channel'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr', 'channel'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -353,7 +354,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['channel', 'YouTube', 'Manage your YouTube channel: upload, and see how your videos are doing'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['site', 'Your site', 'Your WordPress, Micro.blog or Pika site: its posts, drafts and numbers'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['channel', 'YouTube', 'Manage your YouTube channel: upload, and see how your videos are doing'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -429,7 +430,7 @@
     // Videos above it too (the icon-only sidebar hides those lines, so there the parent stays highlighted).
     if (!document.body.classList.contains('rail-slim'))
       for (const sub of $('views').querySelectorAll('.navsub[aria-current="true"]'))
-        $('views').querySelector(`[data-view="${sub.dataset.wrsub != null ? 'write' : sub.dataset.mailsub != null ? 'email' : 'videos'}"]`)?.setAttribute('aria-current', 'false');
+        $('views').querySelector(`[data-view="${sub.dataset.wrsub != null ? (isSiteSub(sub.dataset.wrsub) ? 'site' : 'write') : sub.dataset.mailsub != null ? 'email' : 'videos'}"]`)?.setAttribute('aria-current', 'false');
 
     // The Feeds heading folds the whole list away like the groups above; the feed or folder you're on stays
     const feedsOpen = !canFold || !foldedGroups.has('feeds');
@@ -480,7 +481,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { write: 'Writing', tumblr: 'Tumblr', channel: 'YouTube', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', channel: 'YouTube', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -493,9 +494,9 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'tumblr' || S.view === 'channel') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'channel') && !S.readerId));
     // Writing uses My Day's width and panels
-    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'tumblr' || S.view === 'channel');
+    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'channel');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -526,6 +527,7 @@
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
       : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
+      : S.view === 'site' ? `<span class="sun" aria-hidden="true">${siteIcon()}</span>${esc(siteTabName())}`
       : S.view === 'channel' ? `<span class="sun" aria-hidden="true">${ICONS.channel}</span>YouTube`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
@@ -543,6 +545,7 @@
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
+      : S.view === 'site' ? (WR.sub && isSiteSub(WR.sub) ? `${siteTabName()} › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub] || ''}` : wrSite() ? `${wrHost()}: your posts, drafts and numbers` : 'Your own site')
       : S.view === 'tumblr' ? (SOC.accounts?.tumblr ? `${SOC.accounts.tumblr.blog}.tumblr.com: write, queue and schedule, and see who’s talking` : 'Work your Tumblr from here')
       : S.view === 'channel' ? (SOC.accounts?.youtube ? `${SOC.accounts.youtube.name} on YouTube: upload, and see how your videos are doing` : 'Manage your YouTube channel from here')
       : S.view === 'email' ? mailSub()
@@ -557,7 +560,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'tumblr', 'channel'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr', 'channel'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -901,7 +904,7 @@
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'myday') { paintMyDay(); return; }
-    if (S.view === 'write') { wrPaint(); return; }
+    if (S.view === 'write' || S.view === 'site') { wrPaint(); return; }
     if (S.view === 'tumblr') { tbPaint(); return; }
     if (S.view === 'channel') { chPaint(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
@@ -1190,7 +1193,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'myday', 'write', 'tumblr', 'channel', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'myday', 'write', 'site', 'tumblr', 'channel', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -1235,7 +1238,7 @@
     if (v !== 'write' && document.body.classList.contains('wr-focus')) { document.body.classList.remove('wr-focus'); try { WR.focus = false; } catch {} }
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
     S.view = /^\d+$/.test(v) ? Number(v) : v;
-    if (S.view === 'write' && String(was) !== 'write') { try { wrLoad(); } catch {} } // drafts deleted or added in WordPress show up when you come back to Writing
+    if ((S.view === 'write' || S.view === 'site') && String(was) !== String(S.view)) { try { wrLoad(); } catch {} } // drafts deleted or added in WordPress show up when you come back to Writing
     if (was === 'talk' && S.view !== 'talk') SOC.nbLeft = Date.now();
     if (S.view !== 'videos') S.vchan = null;
     if (S.view !== 'myday') { MD.mode = null; MD.step = 0; } // the channel picked in Videos is just for that visit
@@ -3146,7 +3149,7 @@
     } catch (e) { WR.err = msg(e); }
     WR.busy = false; WR.at = Date.now(); WR.cal = null;
     renderRail();
-    if (S.view === 'write') wrPaint();
+    if (S.view === 'write' || S.view === 'site') wrPaint();
   }
   // one month of the calendar: what went on your site that month
   async function wrLoadCal() {
@@ -3169,22 +3172,34 @@
       : key.startsWith('cat-') ? { status: 'publish', perPage: 50, categories: [Number(key.slice(4))] } : null;
     try { WR.folder = args ? (await invoke('site_posts', args)) || [] : []; WR.err = ''; } catch (e) { WR.folder = []; WR.err = msg(e); }
     WR.folderBusy = false;
-    if (S.view === 'write' && WR.sub === key) wrPaint();
+    if ((S.view === 'write' || S.view === 'site') && WR.sub === key) wrPaint();
   }
 
   // ---- the sidebar: Writing, and its folders when it's open
+  // Writing is the notebook: what you're writing, your ideas, drafts and this week. What's already on your site has
+  // its own tab, named for the platform (David, Nov 26: "cleaning up the writing tab with a wordpress tab", and a tab
+  // for the other indie platforms), the way Tumblr and YouTube have theirs.
+  const SITE_SUBS = ['drafts', 'posts', 'notes', 'weeknotes'];
+  const isSiteSub = k => SITE_SUBS.includes(k) || String(k).startsWith('cat-');
+  const siteTabName = () => { const s = wrSite(); return !s ? 'Your site' : s.kind === 'wordpress' ? 'WordPress' : siteApp() === 'your site’s own editor' ? (wrHost() || 'Your site') : siteApp(); };
+  const siteIcon = () => wrSite()?.kind === 'wordpress' ? ICONS.wordpress : ICONS.site;
   function wrNavItems() {
     const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
-    const it = { view: 'write', label: 'Writing', count: '', icon: ICONS.write };
-    if (!wrSite()) { it.html = navButton('write', 'Writing', '', { icon: ICONS.write, mark }); return [it]; }
+    const it = { view: 'write', label: 'Writing', count: '', icon: ICONS.write, html: navButton('write', 'Writing', '', { icon: ICONS.write, mark }) };
+    if (!wrSite()) return [it];
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
+    return [it, ...siteNavItems(mark)];
+  }
+  function siteNavItems(mark) {
+    const name = siteTabName(), icon = siteIcon();
+    const site = { view: 'site', label: name, count: '', icon };
     const open = !wrFolded(), nd = (WR.drafts || []).length ? `${(WR.drafts || []).length}${WR.draftsMore ? '+' : ''}` : '';
-    it.count = open ? '' : nd || '';
-    it.html = `<div class="folder vidrow">${navButton('write', 'Writing', it.count, { icon: ICONS.write, mark })}<button class="chev" type="button" data-wrfold aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Show'} the folders under Writing" title="${open ? 'Fold the folders into Writing' : 'Show your drafts, posts, notes and categories'}">${ICONS.chev}</button></div>`;
-    if (!open) return [it];
-    const sub = (k, label, n, tip) => ({ view: 'write', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'write' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? (typeof n === 'number' ? fmtCount(n) : esc(n)) : ''}</span></button>` });
+    site.count = open ? '' : nd || '';
+    site.html = `<div class="folder vidrow">${navButton('site', name, site.count, { icon, mark })}<button class="chev" type="button" data-wrfold aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Show'} the folders under ${esc(name)}" title="${open ? `Fold the folders into ${esc(name)}` : 'Show your drafts, posts, notes and categories'}">${ICONS.chev}</button></div>`;
+    if (!open) return [site];
+    const sub = (k, label, n, tip) => ({ view: 'site', sub: true, html: `<button class="navsub" type="button" data-wrsub="${esc(k)}" aria-current="${S.view === 'site' && WR.sub === k}" title="${esc(tip || label)}"><span class="name">${esc(label)}</span><span class="count">${n ? (typeof n === 'number' ? fmtCount(n) : esc(n)) : ''}</span></button>` });
     const cats = wrOwnCats();
-    return [it, sub('ideas', 'Ideas', wrIdeas().length, 'Ideas for posts, kept in the app'), sub('drafts', 'Drafts', nd, 'Drafts on your site'), sub('posts', 'Posts'), sub('notes', 'Notes'), sub('weeknotes', 'Weeknotes'),
+    return [site, sub('drafts', 'Drafts', nd, 'Drafts on your site'), sub('posts', 'Posts'), sub('notes', 'Notes'), sub('weeknotes', 'Weeknotes'),
       ...(cats.length ? wrCatItems(cats, sub) : [])];
   }
   // On your site (David, Nov 26): your site's categories fold away under their heading, folded to start, so the list
@@ -3192,8 +3207,8 @@
   const wrCatsFolded = () => store.get('wrCatsFolded') !== '0';
   function wrCatItems(cats, sub) {
     const open = !wrCatsFolded();
-    const head = { view: 'write', sub: true, html: `<button class="wr-navhead wr-cathead" type="button" data-wrcats aria-expanded="${open}" title="${open ? 'Fold your site’s categories' : 'Show your site’s categories'}"><span>On your site</span>${open ? '' : `<span class="count">${cats.length}</span>`}<span class="wr-catchev" aria-hidden="true">${ICONS.chev}</span></button>` };
-    const shown = open ? cats : cats.filter(c => S.view === 'write' && WR.sub === 'cat-' + c.id);
+    const head = { view: 'site', sub: true, html: `<button class="wr-navhead wr-cathead" type="button" data-wrcats aria-expanded="${open}" title="${open ? 'Fold your site’s categories' : 'Show your site’s categories'}"><span>On your site</span>${open ? '' : `<span class="count">${cats.length}</span>`}<span class="wr-catchev" aria-hidden="true">${ICONS.chev}</span></button>` };
+    const shown = open ? cats : cats.filter(c => S.view === 'site' && WR.sub === 'cat-' + c.id);
     return [head, ...shown.map(c => sub('cat-' + c.id, c.name, 0, `Everything in ${c.name} on your site`))];
   }
 
@@ -3217,19 +3232,36 @@
   }
   function wrHead(sub) {
     return `<div class="md-top"><div class="md-top-row"><h2>${esc(sub || 'Write something')}${!sub && plusLive() ? '<span class="wr-plusmark" title="Part of The Reading Room Plus">Plus</span>' : ''}</h2>
-        <div class="md-modes">${sub ? '<button type="button" class="linkish" data-wr="back">All of Writing</button>' : ''}${wrSite() ? `<span class="wr-site">Posting to <b>${esc(wrHost())}</b></span><button type="button" class="linkish" data-wr="site">Change</button>` : ''}</div></div>`;
+        <div class="md-modes">${sub ? `<button type="button" class="linkish" data-wr="back">All of ${S.view === 'site' ? esc(siteTabName()) : 'Writing'}</button>` : ''}${S.view !== 'site' && wrSite() ? `<span class="wr-site">Posting to <b>${esc(wrHost())}</b></span><button type="button" class="linkish" data-wr="site">Change</button>` : ''}</div></div>`;
   }
   function writingHtml() {
+    if (S.view === 'site') return siteHtml();
     if (!wrSite()) return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Writing is where you post to your own site: notes, full posts and Weeknotes, with your drafts, ideas and your blog’s numbers alongside.</p></div>
       <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your site to start</h2>
       <p>WordPress, Micro.blog, Pika or another IndieWeb site. No site yet? Micro.blog is the quickest start: sign in and approve the app. Nothing goes on your site until you press Post.${SOC.accounts?.tumblr ? ' Your Tumblr has its own tab, under Writing in the sidebar.' : ''}</p>
       <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
     if (!plusOk()) return wrInviteHtml();
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
-    if (WR.sub) return wrFolderHtml();
+    if (WR.sub && !isSiteSub(WR.sub)) return wrFolderHtml();
     const err = WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : '';
     return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Whatever you write here goes to your own site. Nothing is posted until you press Post.</p></div>
-      ${err}${wrComposerHtml()}<div class="md-quad">${wrIdeasHtml()}${wrDraftsHtml()}${wrWeekHtml()}${wrCalHtml()}</div>${yourBlogHtml()}${wrRecentHtml()}</section>`;
+      ${err}${wrComposerHtml()}<div class="md-quad">${wrIdeasHtml()}${wrDraftsHtml()}${wrWeekHtml()}${wrCalHtml()}</div>
+      ${wrSite() ? `<p class="day-note wr-sitelink">What’s on ${esc(wrHost())}, its folders and your blog’s numbers are in <button class="b-link" type="button" data-view-go="site">${esc(siteTabName())}</button>.</p>` : ''}</section>`;
+  }
+  // The site tab: what's already on your own site (WordPress, or Micro.blog, Pika or another IndieWeb site).
+  function siteHtml() {
+    const name = siteTabName();
+    if (!wrSite()) return `<section class="brief myday writing" aria-label="Your site"><section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your site to start</h2>
+      <p>WordPress, Micro.blog, Pika or another IndieWeb site. Its posts, drafts and numbers show here; you write in Writing.</p>
+      <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
+    if (!plusOk()) return wrInviteHtml();
+    if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
+    if (WR.sub && isSiteSub(WR.sub)) return wrFolderHtml();
+    const err = WR.err ? `<p class="wr-err" role="alert">${esc(WR.err)} <button class="b-link" type="button" data-wr="reload">Try again</button></p>` : '';
+    return `<section class="brief myday writing site-tab" aria-label="${esc(name)}"><div class="md-top"><div class="md-top-row"><h2>${esc(wrHost())}</h2>
+        <div class="md-modes"><button type="button" class="btn primary" data-wr="new" data-k="post">Write a post</button><button type="button" class="btn" data-wr="new" data-k="note">Write a note</button><button type="button" class="linkish" data-mkurl="${esc(wrSite().site)}">Open your site</button></div></div>
+      <p class="b-line">What’s on your site: your numbers, your drafts and what you posted lately. The folders in the sidebar list everything by kind and category.</p></div>
+      ${err}${yourBlogHtml()}<div class="md-quad">${wrDraftsHtml()}</div>${wrRecentHtml()}</section>`;
   }
   function wrInviteHtml() {
     return `<section class="brief myday writing" aria-label="Writing"><section class="b-panel wr-invite"><p class="b-sub">The Reading Room Plus</p>
@@ -3690,6 +3722,11 @@
     // Weeknotes started before the template was remembered: compare with what the template would be now
     try { const wk = mdWeek(); return t === WK_BLANK.trim() || t === (weeknotes(wk, mdWk(wk.key), true) || '').trim(); } catch { return false; }
   };
+  // the site tab in the sidebar opens at its top page; Writing's link to it too
+  document.addEventListener('click', e => {
+    const go = e.target.closest('[data-view-go]'); if (go) { WR.sub = ''; selectView(go.dataset.viewGo); return; }
+    if (e.target.closest('#views [data-view="site"]')) WR.sub = '';
+  }, true);
   document.addEventListener('click', e => {
     if (!e.target.closest('#views [data-view="write"]')) return;
     WR.sub = '';
@@ -3713,7 +3750,7 @@
     if (e.target.closest('[data-wrfold]')) { store.set('wrFolded', wrFolded() ? '0' : '1'); renderRail(); return; }
     if (e.target.closest('[data-wrcats]')) { store.set('wrCatsFolded', wrCatsFolded() ? '0' : '1'); renderRail(); return; }
     const s = e.target.closest('[data-wrsub]');
-    if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (WR.sub === 'drafts') wrLoad(); if (S.view !== 'write') selectView('write'); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
+    if (s) { WR.sub = s.dataset.wrsub; WR.trashed = null; if (WR.sub === 'drafts') wrLoad(); const to = isSiteSub(WR.sub) ? 'site' : 'write'; if (S.view !== to) selectView(to); else { renderHead(); renderList(); $('listView')?.scrollTo({ top: 0 }); $('main')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list'); } renderRail(); return; }
     const b = e.target.closest('[data-wr]'); if (!b || !b.closest('.writing')) return;
     const k = b.dataset.wr, id = Number(b.dataset.id) || b.dataset.id;
     if (k === 'connect' || k === 'site') { openAccounts(); return; }
@@ -3722,6 +3759,7 @@
     // writing stays (only its kind changes); a draft from your site is saved back there first.
     if (k === 'new') {
       const kind = b.dataset.k;
+      if (S.view !== 'write') { WR.sub = ''; selectView('write'); }
       if (kind === 'weeknotes') { wrStartWeeknotes(); return; }
       const go = () => { const d = wrDraftGet(); if (d.editId) { WR.photo = ''; WR.photoUrl = ''; WR.alt = ''; } wrDraftSet(d.editId || (d.kind === 'weeknotes' && wrUntouched(d)) ? { kind } : { ...d, kind, ...(d.kind === 'weeknotes' && d.title?.startsWith('Weeknotes:') ? { title: '' } : {}) }); wrSay(''); wrToTop(); setTimeout(() => $('wrText')?.focus(), 0); };
       const d = wrDraftGet();
@@ -3738,7 +3776,7 @@
     if (k === 'focus') { wrSetFocus(!WR.focus); return; }
     if (k === 'pv') { wrPreviewDraft(id); return; }
     if (k === 'post' || k === 'draft') { wrPost(k === 'draft'); return; }
-    if (k === 'edit') { wrEdit(id); return; }
+    if (k === 'edit') { if (S.view !== 'write') { WR.sub = ''; selectView('write'); } wrEdit(id); return; }
     if (k === 'publish') { wrPublishDraft(id); return; }
     if (k === 'trash') { wrTrash(id); return; }
     if (k === 'untrash') { wrUntrash(); return; }
@@ -3900,7 +3938,7 @@
     paint();
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) plusRefresh(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.view === 'write') wrLoad(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && (S.view === 'write' || S.view === 'site')) wrLoad(); });
   document.addEventListener('click', e => { if (e.target.closest('[data-plus]')) openPlus(); });
   setTimeout(() => { paintPlusRow(); plusRefresh(); }, 1500);
 
@@ -9489,7 +9527,7 @@
   // If asking the site fails, the panel says so with Try again, and asks again by itself after five minutes
   // (it used to go blank until the app was restarted — David, Nov 24: "There's nothing. The tiles are gone.").
   const BLOG = { data: null, at: 0, busy: false, failed: false, loaded: false, err: '' };
-  const blogRepaint = () => { if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); if (S.view === 'tumblr') tbPaint(); };
+  const blogRepaint = () => { if (S.view === 'myday') mdRender(); if (S.view === 'write' || S.view === 'site') wrPaint(); if (S.view === 'tumblr') tbPaint(); };
   async function loadBlog(force) {
     if (BLOG.busy || (!force && BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
     BLOG.busy = true; BLOG.err = '';
