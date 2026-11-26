@@ -10167,6 +10167,20 @@
     const max = Math.max(1, ...a), w = 6, gap = 3, h = 22;
     return `<svg class="tr-spark" viewBox="0 0 ${a.length * (w + gap) - gap} ${h}" width="${a.length * (w + gap) - gap}" height="${h}" aria-hidden="true">${a.map((v, k) => { const bh = v ? Math.max(3, Math.round(h * v / max)) : 2; return `<rect x="${k * (w + gap)}" y="${h - bh}" width="${w}" height="${bh}" rx="1.5"${v ? '' : ' class="z"'}/>`; }).join('')}</svg>`;
   }
+  // The bar chart of topics (Today's card and the top of the Trending page): rank, topic, who, feeds as a bar, and
+  // how the mentions spread over the days
+  function trBarsHtml(top, days, attr) {
+    const when = days === 1 ? 'today' : 'this week';
+    const max = Math.max(...top.map(x => x.feeds.size));
+    const spanLabel = days === 1 ? 'the last 24 hours, in 4-hour stretches' : 'the last 7 days';
+    return `<div class="tr-cols" aria-hidden="true"><span></span><span>Topic</span><span>Who</span><span>Feeds</span><span>${days === 1 ? 'Today' : 'This week'}</span></div>
+      <ol class="tr-bars">${top.map((x, n) => `<li><button type="button" ${attr(n)} title="${esc(`${x.feeds.size} feeds and ${x.items.length} stories ${when}${x.rising ? `, up from about ${Math.round(x.usual) || 'none'} usually` : ''}. Mentions over ${spanLabel}.`)}">
+        <span class="tr-rank">${n + 1}</span>
+        <span class="tr-bl"><span class="tr-name">${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</span>${x.rising ? `<span class="tr-rise">▲ ${Math.round(x.usual) < 1 ? `New ${when}` : `${x.feeds.size} feeds vs ~${Math.round(x.usual)} usual`}</span>` : `<span class="tr-sub">${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span>`}</span>
+        <span class="tr-faces">${x.firsts.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}${x.firsts.length > 3 ? `<span class="tr-plus">+${x.firsts.length - 3}</span>` : ''}</span>
+        <span class="tr-barw"><span class="tr-bar"><i style="width:${Math.max(12, Math.round(100 * x.feeds.size / max))}%"></i></span><span class="tr-bn">${x.feeds.size}</span></span>
+        ${trSpark(x.spread || [])}</button></li>`).join('')}</ol>`;
+  }
   function trendTileHtml() {
     if (hiddenViews().has('trending')) return '';
     const days = trDays(), t = trendCompute(days, ''), top = t.list.slice(0, 5);
@@ -10176,16 +10190,9 @@
     if (!top.length) return days === 1 && trendCompute(7, '').list.length
       ? `<section class="tr-tile" aria-label="Trending in your feeds">${head}<p class="tr-tf">Nothing two feeds share yet today. This week has some.</p></section>` : '';
     TRT = t.list;
-    const max = Math.max(...top.map(x => x.feeds.size)), rising = t.list.filter(x => x.rising).length;
-    const spanLabel = days === 1 ? 'the last 24 hours, in 4-hour stretches' : 'the last 7 days';
+    const rising = t.list.filter(x => x.rising).length;
     return `<section class="tr-tile" aria-label="Trending in your feeds">${head}
-      <div class="tr-cols" aria-hidden="true"><span></span><span>Topic</span><span>Who</span><span>Feeds</span><span>${days === 1 ? 'Today' : 'This week'}</span></div>
-      <ol class="tr-bars">${top.map((x, n) => `<li><button type="button" data-trendtile="${n}" title="${esc(`${x.feeds.size} feeds and ${x.items.length} stories ${when}${x.rising ? `, up from about ${Math.round(x.usual) || 'none'} usually` : ''}. Mentions over ${spanLabel}.`)}">
-        <span class="tr-rank">${n + 1}</span>
-        <span class="tr-bl"><span class="tr-name">${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</span>${x.rising ? `<span class="tr-rise">▲ ${Math.round(x.usual) < 1 ? `New ${when}` : `${x.feeds.size} feeds vs ~${Math.round(x.usual)} usual`}</span>` : `<span class="tr-sub">${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span>`}</span>
-        <span class="tr-faces">${x.firsts.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}${x.firsts.length > 3 ? `<span class="tr-plus">+${x.firsts.length - 3}</span>` : ''}</span>
-        <span class="tr-barw"><span class="tr-bar"><i style="width:${Math.max(12, Math.round(100 * x.feeds.size / max))}%"></i></span><span class="tr-bn">${x.feeds.size}</span></span>
-        ${trSpark(x.spread || [])}</button></li>`).join('')}</ol>
+      ${trBarsHtml(top, days, n => `data-trendtile="${n}"`)}
       <p class="tr-tf">${t.list.length} ${t.list.length === 1 ? 'topic' : 'topics'}${rising ? ` · ${rising} rising` : ''} · from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds ${when} · worked out on this device</p></section>`;
   }
   // The lead photo on Today is never cut down to a sliver (David, Nov 26: portrait photos "make no sense", and on a
@@ -10209,7 +10216,7 @@
     fitLead(lead); leadSizes?.observe(lead);
   }, true);
   document.addEventListener('click', e => { const b = e.target.closest('[data-trendtile]'); if (b) openTrend(Number(b.dataset.trendtile), TRT); });
-  // The Trending page (David, Nov 26: "very text heavy"): a strip of bubbles sized by how many feeds share each topic,
+  // The Trending page (David, Nov 26: "very text heavy"): the bar chart from Today's card (top 8; a row jumps to its card),
   // then a grid of cards led by the top story's photo, the writers' faces and a small chart. Headlines open on a tap.
   function trendingHtml() {
     const t = trendAll(), days = trDays(), fid = trFolder();
@@ -10219,10 +10226,7 @@
       <label class="trp-f">In <select id="trFolderSel" aria-label="Which feeds"><option value="">all your feeds</option>${tops.map(f => `<option value="${esc(f.id)}"${String(f.id) === fid ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label></div>
       <p class="trp-note">What two or more of your feeds wrote about ${when}. Worked out on this device from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds.</p>`;
     if (!t.list.length) return `<section class="trending-page">${head}<p class="empty-note">Nothing is shared by two or more feeds ${when}${fid ? ' in this folder' : ''} yet. ${days === 1 ? 'Try This week.' : 'Check back as more stories come in.'}</p></section>`;
-    const max = Math.max(...t.list.map(x => x.feeds.size)), min = Math.min(...t.list.slice(0, 10).map(x => x.feeds.size));
-    const size = x => max === min ? 1 : (x.feeds.size - min) / (max - min);
-    const bubbles = `<div class="trp-bubbles" aria-label="The biggest topics ${when}">${t.list.slice(0, 10).map((x, n) => { const z = size(x);
-      return `<button type="button" class="trp-bub${x.rising ? ' up' : ''}" data-trgo="${n}" style="--z:${z.toFixed(2)}" title="${esc(`${x.feeds.size} feeds, ${x.items.length} stories`)}"><span>${x.kind === 'link' ? '🔗 ' : ''}${esc(trNice(x))}</span><small>${x.feeds.size}</small></button>`; }).join('')}</div>`;
+    const chart = `<section class="tr-tile trp-chart" aria-label="The biggest topics ${when}">${trBarsHtml(t.list.slice(0, 8), days, n => `data-trgo="${n}"`)}</section>`;
     const used = new Set();
     const card = (x, n) => {
       const pic = x.items.find(i => isWeb(i.image) && !used.has(i.image)) || x.items.find(i => isWeb(i.image)); if (pic) used.add(pic.image); // a different photo on each card when there is one
@@ -10242,7 +10246,7 @@
             <button class="b-link trp-all" type="button" data-trendall="${n}">All ${x.items.length} side by side</button></details>
         </div></li>`;
     };
-    return `<section class="trending-page">${head}${bubbles}<ol class="trp-grid">${t.list.map(card).join('')}</ol></section>`;
+    return `<section class="trending-page">${head}${chart}<ol class="trp-grid">${t.list.map(card).join('')}</ol></section>`;
   }
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-trgo]'); if (!g) return;

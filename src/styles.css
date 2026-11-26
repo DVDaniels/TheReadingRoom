@@ -3034,4 +3034,5 @@ body.fr-on { overflow: hidden; }
 .trp-card .trp-heads, .trp-card .trp-all { margin-left: 0; }
 .trp-card .trp-heads { margin-top: 8px; }
 .trp-card .trp-heads .b-link { font-size: 14px; }
-@media (max-width: 700px) { .trp-grid { grid-template-columns: 1fr; } .trp-pic { aspect-ratio: 2 / 1; } .trp-bub { font-size: calc(12px + var(--z) * 6px); } }
+@media (max-width: 700px) { .trp-grid { grid-template-columns: 1fr; } .trp-pic { aspect-ratio: auto; height: 170px; } .trp-bub { font-size: calc(12px + var(--z) * 6px); } }
+.trp-chart { margin: 6px 0 22px; }
