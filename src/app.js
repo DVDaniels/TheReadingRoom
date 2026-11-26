@@ -2660,7 +2660,7 @@
   // ---- the Your channel tab (Plus): your own YouTube channel, apart from Writing (David, Nov 26: "a separate tab that
   // you use to manage your videos"). Videos stays for watching the channels you follow.
   function chNavItem() {
-    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    const mark = '';
     const n = YT.up && !YT.up.done && !YT.up.err && YT.up.total ? `${Math.round(100 * YT.up.sent / YT.up.total)}%` : '';
     return { view: 'channel', label: 'YouTube', count: '', icon: ICONS.channel, html: navButton('channel', 'YouTube', n, { icon: ICONS.channel, mark }) };
   }
