@@ -1,11 +1,31 @@
-Version 1.3.0 (internal test build). Everything in 1.2.10, plus YouTube for The Reading Room Plus.
+Version 1.3.0 (internal test build). Everything in 1.2.11, plus YouTube for The Reading Room Plus.
+
+BEFORE YOU START
+YouTube is still in testing with Google, so only people on the app's list can connect. Send David the Google address that owns your YouTube channel and wait until he says you're added. Without that, Google says access is blocked.
+
+CONNECT YOUR CHANNEL
+1. Turn on Plus. In TestFlight, buying is a free test purchase: nothing is charged.
+2. Settings › Connections › Connect YouTube. Sign in on Google's page and approve.
+3. "Google hasn't verified this app" is expected for now: tap Advanced, then continue.
+4. Paste the code the next page shows back into the app.
+Have more than one channel? Add another from the YouTube tab or Settings. Each keeps its own sign-in.
 
 NEW: A YOUTUBE TAB (PLUS)
-Connect YouTube in Settings › Connections: sign in on Google's page, approve, and paste the code the next page shows. "Google hasn't verified this app" is expected while YouTube is in testing: press Continue.
-The YouTube tab sits under Writing: your videos, Upload, and Your numbers (views, watch time, subscribers, top videos, where viewers came from, what they searched).
-Uploads start as Private until YouTube approves the app. Open the video on YouTube to make it public.
+Under Write in the sidebar: your videos, Upload, and Your numbers (views, watch time, subscribers, top videos, where viewers came from, what they searched). New comments on your videos show at the top, with Reply, and the YouTube row in the sidebar counts them.
+
+NEW: YOUTUBE COMMENTS
+- Comment on a YouTube video from the reply box: Comment as (your channel) posts it under the video.
+- Conversations › You has a YouTube chip: comments on your videos, replies under them, and replies to comments you posted from the app. Reply from there.
+- Each chip in Conversations › You shows how many are new since you last opened it.
+
+GOOD TO KNOW
+- Uploads start as Private until YouTube approves the app. Open the video on YouTube to make it public.
+- Every tester shares one daily allowance from YouTube. Uploads use the most, so upload short test videos.
+- The app checks your channels when it opens and every 15 minutes.
 
 PLEASE TRY
 - Connect your channel. Do your videos and numbers show?
 - Upload a short video as Private. Does the progress bar finish, and does it appear in Your videos?
+- Comment on a video from the app, then reply to it from another account. Does the reply show under the YouTube chip?
+- Reply to a comment on one of your videos from the app.
 - Disconnect, then connect again.
