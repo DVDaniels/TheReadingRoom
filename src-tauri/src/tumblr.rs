@@ -363,6 +363,12 @@ fn post_url(blog_url: &str, id: &str) -> String {
 
 /// Make or change a post. A photo goes first, with its description, sent with the post.
 async fn save(id: Option<&str>, content: Vec<Value>, tags: &[&str], photo: &str, alt: &str, draft: bool) -> Result<SiteNote, String> {
+    save_as(id, content, tags, photo, alt, if draft { "draft" } else { "published" }, None).await
+}
+
+/// save, with Tumblr's other states: "published", "draft", or "queue" (with `publish_on`, a scheduled post).
+async fn save_as(id: Option<&str>, content: Vec<Value>, tags: &[&str], photo: &str, alt: &str, state: &str, publish_on: Option<&str>) -> Result<SiteNote, String> {
+    let draft = state != "published";
     let s = secret_get(KEY).ok_or("Connect Tumblr first.")?;
     let mut content = content;
     let bytes = if photo.is_empty() { None } else { Some(photo_bytes(photo)?) };
@@ -375,7 +381,10 @@ async fn save(id: Option<&str>, content: Vec<Value>, tags: &[&str], photo: &str,
         let at = usize::from(content.first().is_some_and(|b| st(b, "subtype") == "heading1"));
         content.insert(at, img);
     }
-    let body = json!({ "content": content, "state": if draft { "draft" } else { "published" }, "tags": tags.join(",") });
+    let mut body = json!({ "content": content, "state": state, "tags": tags.join(",") });
+    if let Some(at) = publish_on.filter(|a| !a.trim().is_empty()) {
+        body["publish_on"] = json!(at.trim());
+    }
     let path = match id { Some(i) => format!("/blog/{{blog}}/posts/{i}"), None => "/blog/{blog}/posts".into() };
     let method = if id.is_some() { reqwest::Method::PUT } else { reqwest::Method::POST };
     let r = match bytes {
@@ -445,6 +454,65 @@ pub async fn tumblr_write(kind: String, title: String, text: String, photo: Stri
         "post" => post(None, title, text, photo, alt, draft, Some("post".into())).await,
         _ => note(title, text, link.unwrap_or_default(), link_title.unwrap_or_default(), photo, alt, draft, false, false, if kind == "weeknotes" { Some("weeknotes".into()) } else { None }).await,
     }
+}
+
+// ------------------------------------------------------------------ the Tumblr tab (David, Nov 26: "go into the
+// tumblr tab and work the site from there")
+
+/// Tags as you typed them ("blogging, indie web" or "#blogging #indie web"), cleaned, with the kind's tag first.
+fn tag_list(kind: &str, tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if kind == "note" {
+        out.push("notes".into());
+    }
+    for t in tags.iter().flat_map(|t| t.split(',')) {
+        let t = t.trim().trim_start_matches('#').trim();
+        if !t.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(t)) {
+            out.push(t.chars().take(140).collect());
+        }
+    }
+    out
+}
+
+/// Post from the Tumblr tab: a note (tagged "notes") or a post, with your tags, a photo, and when it goes up:
+/// "published" now, "draft", "queue" (Tumblr's queue posts it at the times you set on Tumblr), or "schedule"
+/// (`publish_on`, an RFC 3339 time).
+#[tauri::command]
+pub async fn tumblr_post(kind: String, title: String, text: String, photo: String, alt: String, tags: Vec<String>, when: String, publish_on: Option<String>) -> Result<SiteNote, String> {
+    if title.trim().is_empty() && text.trim().is_empty() && photo.is_empty() {
+        return Err("Write something first.".into());
+    }
+    let (state, at) = match when.as_str() {
+        "draft" => ("draft", None),
+        "queue" => ("queue", None),
+        "schedule" => {
+            let at = publish_on.filter(|a| chrono::DateTime::parse_from_rfc3339(a.trim()).is_ok()).ok_or("Pick a time to post it.")?;
+            ("queue", Some(at))
+        }
+        _ => ("published", None),
+    };
+    let tags = tag_list(&kind, &tags);
+    let refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+    save_as(None, blocks(&title, &text), &refs, &photo, &alt, state, at.as_deref()).await
+}
+
+/// Your posts for the Tumblr tab: "posts", "drafts" or "queue" (25 at a time; `page` from 1).
+#[tauri::command]
+pub async fn tumblr_list(which: String, page: Option<u32>) -> Result<Value, String> {
+    let status = match which.as_str() { "drafts" => Some("draft".to_string()), "queue" => Some("future".to_string()), _ => None };
+    posts(status, None, None, Some(25), None, page).await
+}
+
+/// Post a draft or a queued post now.
+#[tauri::command]
+pub async fn tumblr_publish(id: i64) -> Result<SiteNote, String> {
+    publish(id).await
+}
+
+/// Delete a post from your Tumblr (the app asks first: Tumblr keeps no trash).
+#[tauri::command]
+pub async fn tumblr_delete(id: i64) -> Result<(), String> {
+    delete(id).await
 }
 
 /// site_categories: Notes and Weeknotes, which are tags on Tumblr.
@@ -662,6 +730,13 @@ pub async fn share(text: &str, link: &str, title: &str, photo: &str, alt: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tags_as_typed() {
+        let t = tag_list("note", &["#blogging, indie web".into(), "Notes".into(), "  ".into()]);
+        assert_eq!(t, vec!["notes".to_string(), "blogging".into(), "indie web".into()]);
+        assert_eq!(tag_list("post", &[]), Vec::<String>::new());
+    }
 
     #[test]
     fn activity_keeps_people_talking() {

@@ -2891,3 +2891,33 @@ body.fr-on { overflow: hidden; }
 .n-home[hidden] { display: none; }
 .n-pt { cursor: default; }
 .n-pt .post-to { margin: 0; }
+
+/* The Tumblr tab (Plus): write, queue and schedule on your Tumblr, your numbers, who's talking, your posts */
+.tumblr-tab .tb-write .post-to { margin-top: 4px; }
+.tumblr-tab .tb-in { display: block; width: 100%; box-sizing: border-box; margin: 10px 0 0; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--card, #fff); color: var(--ink); font: inherit; font-size: 15px; }
+.tumblr-tab .tb-text { font-family: var(--serif, Newsreader, Georgia, serif); font-size: 17px; line-height: 1.55; resize: vertical; min-height: 96px; }
+.tumblr-tab .tb-write > .btn { margin-top: 10px; }
+.tumblr-tab .tb-photo { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; }
+.tumblr-tab .tb-photo img { width: 120px; max-height: 120px; object-fit: cover; border-radius: 8px; flex: none; }
+.tumblr-tab .tb-photo > div { flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tumblr-tab .tb-photo .tb-in { margin: 0; }
+.tumblr-tab .tb-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.tumblr-tab .tb-when input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, #fff); color: var(--ink); font: inherit; font-size: 13px; }
+.tumblr-tab .tb-say { margin-top: 10px; }
+.tumblr-tab .tb-say.err { color: #b03a2e; }
+.tumblr-tab .tb-people .yu-ev { padding: 10px 0; border-top: 1px solid var(--line); }
+.tumblr-tab .tb-list { list-style: none; margin: 8px 0 6px; padding: 0; }
+.tumblr-tab .tb-row { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.tumblr-tab .tb-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; flex: none; }
+.tumblr-tab .tb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tumblr-tab .tb-main b { font-weight: 600; line-height: 1.3; }
+.tumblr-tab .tb-ex, .tumblr-tab .tb-meta { font-size: 13px; color: var(--muted); }
+.tumblr-tab .tb-rowacts { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; align-items: baseline; }
+.tumblr-tab .tb-sure { color: var(--muted); }
+.tumblr-tab .b-link.danger { color: #b03a2e; }
+.tb-sun svg { width: .8em; height: .8em; }
+/* Writing: "Also post to Tumblr" */
+.post-to.pt-also .pt-box { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: inherit; cursor: pointer; }
+.post-to.pt-also .pt-tick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 5px; font-size: 12px; line-height: 1; opacity: .8; }
+.post-to.pt-also .pt-box[aria-pressed="true"] .pt-tick { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+.tumblr-tab .nb-acts .linkish { color: var(--accent); }

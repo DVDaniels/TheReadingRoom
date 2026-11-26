@@ -4,7 +4,7 @@
   // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read),
   // site_post and site_post_publish (full posts from Writing)
   // and liking (taking a like back stays free). Everything else goes straight through.
-  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
+  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || cmd === 'tumblr_post' || cmd === 'tumblr_publish' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -24,12 +24,12 @@
   // Post to: your site, Tumblr or both, when Tumblr is connected beside a WordPress or Micropub site (David, Nov 25:
   // "can I just post to tumblr?"). Remembered; Both sends Tumblr the full post, not a copy that links home.
   const postToChoice = () => !!(SOC.accounts?.tumblr && SOC.accounts?.site && !onTumblr());
-  const postTo = () => postToChoice() ? (['site', 'tumblr', 'both'].includes(store.get('postTo')) ? store.get('postTo') : 'site') : 'site';
-  const postToHtml = (attr, lockTumblr) => {
-    const host = (SOC.accounts.site?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, ''), pt = lockTumblr && postTo() === 'tumblr' ? 'both' : postTo();
-    return `<div class="post-to" role="group" aria-label="Post to"><span class="pt-l">Post to</span><div class="pt-seg">${[['site', host], ['tumblr', 'Tumblr'], ['both', 'Both']].map(([k, l]) =>
-      `<button type="button" ${attr}="${k}" aria-pressed="${pt === k}"${lockTumblr && k === 'tumblr' ? ' disabled title="This draft is on your site"' : ''}>${esc(l)}</button>`).join('')}</div>
-      <span class="pt-n">${pt === 'both' ? `The full post goes on ${esc(host)} and on Tumblr.` : pt === 'tumblr' ? `Only on your Tumblr (${esc(SOC.accounts.tumblr.blog)}).` : `Only on ${esc(host)}.`}</span></div>`;
+  // Since the Tumblr tab (David, Nov 26) Writing posts to your site, and "Also post to Tumblr" sends the full post there too.
+  const postTo = () => postToChoice() && store.get('postTo') === 'both' ? 'both' : 'site';
+  const postToHtml = attr => {
+    const host = (SOC.accounts.site?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, ''), on = postTo() === 'both';
+    return `<div class="post-to pt-also"><button type="button" class="pt-box" ${attr}="${on ? 'site' : 'both'}" aria-pressed="${on}"><span class="pt-tick" aria-hidden="true">${on ? '✓' : ''}</span>Also post to Tumblr</button>
+      <span class="pt-n">${on ? `The full post goes on ${esc(host)} and on your Tumblr (${esc(SOC.accounts.tumblr.blog)}).` : `Only on ${esc(host)}.`}</span></div>`;
   };
   const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
@@ -60,6 +60,7 @@
     videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg>',
+    tumblr: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
@@ -155,7 +156,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'tumblr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -351,7 +352,7 @@
 
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
-  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
+  const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
     ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
@@ -411,7 +412,7 @@
         ...mailNavItems()]) +
       '<hr class="nav-gap">' +
       // Read, then Write (David, Nov 22)
-      group('write', 'Write', wrNavItems()) +
+      group('write', 'Write', [...wrNavItems(), tbNavItem()]) +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
@@ -478,7 +479,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { write: 'Writing', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { write: 'Writing', tumblr: 'Tumblr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -491,9 +492,9 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'tumblr') && !S.readerId));
     // Writing uses My Day's width and panels
-    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write');
+    document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'tumblr');
     document.body.classList.toggle('books-view', S.view === 'books');
     document.body.classList.toggle('jobs-view', S.view === 'jobs');
     // a post opened from Conversations takes the whole window; Back returns to the stream where you were
@@ -523,6 +524,7 @@
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
+      : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
       : esc(viewName());
     if ($('clock')) $('clock').hidden = S.view !== 'today';
     if (S.view === 'today') paintGoalChip();
@@ -539,6 +541,7 @@
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
+      : S.view === 'tumblr' ? (SOC.accounts?.tumblr ? `${SOC.accounts.tumblr.blog}.tumblr.com: write, queue and schedule, and see who’s talking` : 'Work your Tumblr from here')
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
@@ -551,7 +554,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'tumblr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -896,6 +899,7 @@
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'myday') { paintMyDay(); return; }
     if (S.view === 'write') { wrPaint(); return; }
+    if (S.view === 'tumblr') { tbPaint(); return; }
     if (S.view === 'books') { $('list').innerHTML = booksHtml(); if (B.open) requestAnimationFrame(B.chapters && !B.loading ? layoutBook : () => bookGeom()); return; }
     if (isHome()) { $('list').innerHTML = homeHtml(visible()); return; }
     if (isPeopleHome()) { $('list').innerHTML = peopleHomeHtml(visible()); return; }
@@ -1182,7 +1186,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'myday', 'write', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'myday', 'write', 'tumblr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -2960,7 +2964,8 @@
   // Likes, reposts and replies still happen on the post you're reading; they show here once they're on your site.
   const WR = { sub: '', cats: null, drafts: null, recent: null, future: null, at: 0, busy: false, err: '', folder: null, folderKey: '', folderBusy: false,
     cal: null, calKey: '', calMonth: null, calDay: '', draftsMore: false, draftsPage: 1, trashed: null, photo: '', photoUrl: '', alt: '', posting: false, note: '', noteErr: false };
-  const wrSite = () => SOC.accounts?.site;
+  // Writing is for your own site; a Tumblr has its own tab (David, Nov 26)
+  const wrSite = () => SOC.accounts?.site?.kind === 'tumblr' ? null : SOC.accounts?.site;
   const wrHost = () => (wrSite()?.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const wrCat = slug => (WR.cats || []).find(c => c.slug === slug);
   const wrCatName = id => (WR.cats || []).find(c => c.id === id)?.name || '';
@@ -3063,7 +3068,7 @@
   function writingHtml() {
     if (!wrSite()) return `<section class="brief myday writing" aria-label="Writing">${wrHead()}<p class="b-line">Writing is where you post to your own site: notes, full posts and Weeknotes, with your drafts, ideas and your blog’s numbers alongside.</p></div>
       <section class="b-panel wr-invite"><p class="b-sub">Your site</p><h2>Connect your site to start</h2>
-      <p>WordPress, Micro.blog, Pika, other IndieWeb sites, or Tumblr. No site yet? Tumblr and Micro.blog are the quickest starts: sign in and approve the app. Nothing goes on your site until you press Post.</p>
+      <p>WordPress, Micro.blog, Pika or another IndieWeb site. No site yet? Micro.blog is the quickest start: sign in and approve the app. Nothing goes on your site until you press Post.${SOC.accounts?.tumblr ? ' Your Tumblr has its own tab, under Writing in the sidebar.' : ''}</p>
       <div class="wr-acts"><button class="btn primary" type="button" data-wr="connect">Connect your site</button></div></section></section>`;
     if (!plusOk()) return wrInviteHtml();
     if (!WR.at && !WR.busy) setTimeout(() => wrLoad(), 0);
@@ -6200,6 +6205,161 @@
       <div class="nb-acts"><button class="linkish" data-talk="xopen" data-url="${esc(c.link)}">${c.kind === 'tumblr-ask' ? 'Answer on Tumblr' : 'Reply on Tumblr'}</button>${f ? '' : `<button class="linkish" data-talk="tfollow" data-url="${esc(c.url)}">Follow their Tumblr</button>`}</div>
     </div></article>`;
   }
+  // ---- the Tumblr tab (Plus): work your Tumblr from its own tab (David, Nov 26: "go into the tumblr tab and work the
+  // site from there. I can always cross promote to other sites but this would make it easy to manage each individual
+  // platform"). Writing is for your own site; from there "Also post to Tumblr" still sends the full post here.
+  // Rust: tumblr_post, tumblr_list, tumblr_publish, tumblr_delete, tumblr_stats, tumblr_activity.
+  const TB = { kind: store.get('tbKind') === 'post' ? 'post' : 'note', list: 'posts', items: null, busy: false, err: '', page: 1, more: false,
+    photo: '', alt: '', sending: false, say: '', sayErr: false, link: '', confirm: 0, actLoading: false };
+  const tbDraft = () => { try { return JSON.parse(store.get('tbDraft') || '{}') || {}; } catch { return {}; } };
+  const tbBlog = () => SOC.accounts?.tumblr?.blog || '';
+  function tbNavItem() {
+    const mark = plusLive() ? '<span class="wr-plus" title="Part of The Reading Room Plus">Plus</span>' : '';
+    return { view: 'tumblr', label: 'Tumblr', count: '', icon: ICONS.tumblr, html: navButton('tumblr', 'Tumblr', '', { icon: ICONS.tumblr, mark }) };
+  }
+  async function tbLoadList(page = 1) {
+    if (TB.busy) return;
+    TB.busy = true; TB.err = '';
+    try {
+      const got = await tauriInvoke('tumblr_list', { which: TB.list, page });
+      TB.items = page > 1 ? [...(TB.items || []), ...got] : got; TB.page = page; TB.more = got.length >= 25;
+    } catch (e) { TB.err = msg(e) || 'Tumblr didn’t answer.'; if (page === 1) TB.items = null; }
+    finally { TB.busy = false; TB.at = Date.now(); if (S.view === 'tumblr') tbPaint(); }
+  }
+  function tbComposerHtml() {
+    const d = tbDraft(), note = TB.kind === 'note';
+    const local = new Date(Date.now() + 60 * 60 * 1000); local.setMinutes(0, 0, 0);
+    const defAt = new Date(local.getTime() - local.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return `<section class="b-panel tb-write" aria-label="Write on Tumblr"><div class="bp-head"><h3 class="b-sub">Write on Tumblr</h3><span class="bp-meta">${esc(tbBlog())}.tumblr.com</span></div>
+      <div class="post-to"><div class="pt-seg" role="group" aria-label="What you’re writing">${[['note', 'Note'], ['post', 'Post']].map(([k, l]) => `<button type="button" data-tb="kind" data-k="${k}" aria-pressed="${TB.kind === k}">${l}</button>`).join('')}</div>
+        <span class="pt-n">${note ? 'A short post, tagged “notes”. A title is optional.' : 'A full post with a title. A line starting with ## is a heading, with > a quote; [words](https://…) makes a link.'}</span></div>
+      <input id="tbTitle" class="tb-in" placeholder="${note ? 'Title (optional)' : 'Title'}" value="${esc(d.title || '')}">
+      <textarea id="tbText" class="tb-in tb-text" rows="${note ? 4 : 9}" placeholder="${note ? 'What’s on your mind?' : 'Write your post. Leave a blank line between paragraphs.'}">${esc(d.text || '')}</textarea>
+      ${TB.photo ? `<div class="tb-photo"><img src="${esc(TB.photo)}" alt=""><div><input id="tbAlt" class="tb-in" placeholder="Describe the photo for people who can’t see it" value="${esc(TB.alt)}"><button class="b-link" type="button" data-tb="nophoto">Remove the photo</button></div></div>`
+        : `<button class="btn" type="button" data-tb="photo">＋ Photo</button>`}<input id="tbPhoto" type="file" accept="image/*" hidden>
+      <input id="tbTags" class="tb-in" placeholder="Tags, separated by commas" value="${esc(d.tags || '')}" autocapitalize="off">
+      <div class="tb-acts">
+        <label class="tb-when"><input type="datetime-local" id="tbAt" value="${esc(d.at || defAt)}"></label>
+        <button class="btn" type="button" data-tb="send" data-when="schedule"${TB.sending ? ' disabled' : ''} title="Post it at the time beside this button">Schedule</button>
+        <button class="btn" type="button" data-tb="send" data-when="queue"${TB.sending ? ' disabled' : ''} title="Tumblr’s queue posts it at the times you set on Tumblr">Add to queue</button>
+        <button class="btn" type="button" data-tb="send" data-when="draft"${TB.sending ? ' disabled' : ''}>Save as draft</button>
+        <button class="btn primary" type="button" data-tb="send" data-when="published"${TB.sending ? ' disabled' : ''}>${TB.sending ? 'Posting…' : 'Post now'}</button></div>
+      ${TB.say ? `<p class="tm-tip tb-say${TB.sayErr ? ' err' : ''}" role="status">${esc(TB.say)}${TB.link ? ` <button class="b-link" type="button" data-tb="open" data-url="${esc(TB.link)}">See it on Tumblr</button>` : ''}</p>` : ''}
+      <p class="tm-tip">What you type is kept on this device until it’s posted.</p></section>`;
+  }
+  function tbPeopleHtml() {
+    if (SOC.tumblr == null && !TB.actLoading) {
+      TB.actLoading = true;
+      tauriInvoke('tumblr_activity').then(t => { SOC.tumblr = t || []; SOC.tumblrErr = ''; }).catch(e => { SOC.tumblrErr = msg(e); SOC.tumblr = SOC.tumblr || null; })
+        .finally(() => { TB.actLoading = false; if (S.view === 'tumblr') tbPaint(); });
+    }
+    const list = (SOC.tumblr || []).slice(0, 5);
+    const body = SOC.tumblr == null ? `<p class="day-note">${SOC.tumblrErr ? `Couldn’t reach Tumblr just now. ${esc(SOC.tumblrErr)}` : 'Looking at your Tumblr…'}</p>`
+      : list.length ? `<div class="tb-people">${list.map(tumblrEvHtml).join('')}</div>${(SOC.tumblr || []).length > 5 ? `<button class="b-link" type="button" data-tb="talk">See all ${SOC.tumblr.length} in Conversations</button>` : ''}`
+      : '<p class="day-note">No replies, reblogs with words, mentions or asks yet. They show here and in Conversations when they come.</p>';
+    return `<section class="b-panel" aria-label="People talking to you on Tumblr"><div class="bp-head"><h3 class="b-sub">People talking to you</h3></div>${body}</section>`;
+  }
+  function tbPostsHtml() {
+    if (TB.items == null && !TB.busy && !TB.err) setTimeout(() => tbLoadList(1), 0);
+    const where = { posts: '', drafts: '/drafts', queue: '/queue' }[TB.list];
+    const rows = (TB.items || []).map(p => {
+      const when = p.date ? new Date(p.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const meta = TB.list === 'posts' ? `${esc(when)} · ${nfmt(p.notes)} notes` : TB.list === 'queue' ? `In the queue${when ? ` · ${esc(when)}` : ''}` : `Draft${when ? ` · ${esc(when)}` : ''}`;
+      const acts = TB.confirm === p.id
+        ? `<span class="tb-sure">Delete it for good? Tumblr keeps no trash.</span><button class="b-link danger" type="button" data-tb="delete" data-id="${p.id}">Delete</button><button class="b-link" type="button" data-tb="keep">Keep it</button>`
+        : `${TB.list === 'posts' && p.link ? `<button class="b-link" type="button" data-tb="open" data-url="${esc(p.link)}">Open</button>` : ''}${TB.list !== 'posts' ? `<button class="b-link" type="button" data-tb="publish" data-id="${p.id}">Post now</button>` : ''}<button class="b-link" type="button" data-tb="ask" data-id="${p.id}">Delete</button>`;
+      return `<li class="tb-row">${p.image ? `<img class="tb-thumb" src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<div class="tb-main"><b>${esc(p.title || p.excerpt || 'A post')}</b>${p.title && p.excerpt ? `<span class="tb-ex">${esc(p.excerpt.slice(0, 140))}</span>` : ''}<span class="tb-meta">${meta}</span><span class="tb-rowacts">${acts}</span></div></li>`;
+    }).join('');
+    const body = TB.items == null ? `<p class="day-note">${TB.err ? `Couldn’t get your posts just now. ${esc(TB.err)} <button class="b-link" type="button" data-tb="reload">Try again</button>` : 'Getting your posts from Tumblr…'}</p>`
+      : rows ? `<ul class="tb-list">${rows}</ul>${TB.more ? `<button class="b-link" type="button" data-tb="more"${TB.busy ? ' disabled' : ''}>Show more</button>` : ''}`
+      : `<p class="day-note">${{ posts: 'Nothing on your Tumblr yet. Write your first post above.', drafts: 'No drafts on Tumblr.', queue: 'Nothing in your queue.' }[TB.list]}</p>`;
+    return `<section class="b-panel" aria-label="Your posts on Tumblr"><div class="bp-head"><h3 class="b-sub">Your posts</h3><span class="bp-meta"><button class="b-link" type="button" data-tb="open" data-url="https://www.tumblr.com/blog/${esc(tbBlog())}${where}">Open on Tumblr</button></span></div>
+      <div class="nb-chips">${[['posts', 'Posts'], ['drafts', 'Drafts'], ['queue', 'Queue']].map(([k, l]) => `<button class="nb-chip" type="button" data-tb="list" data-k="${k}" aria-pressed="${TB.list === k}">${l}</button>`).join('')}</div>${body}</section>`;
+  }
+  function tbNumbersHtml() {
+    if (!TBL.busy && (!TBL.data && (!TBL.at || Date.now() - TBL.at > 5 * 60 * 1000) || TBL.data && Date.now() - TBL.at > 30 * 60 * 1000)) setTimeout(() => loadTumblrStats(), 0);
+    if (TBL.data) return tumblrBlogHtml(TBL.data, TBL.at);
+    return `<section class="b-panel md-blog md-blog-invite" aria-label="Your Tumblr's numbers"><div class="bp-head"><h3 class="b-sub">Your numbers</h3></div><p class="day-note">${TBL.err ? `Couldn’t get your Tumblr’s numbers just now. ${esc(TBL.err)} <button class="b-link" type="button" data-tbl-retry>Try again</button>` : 'Getting your Tumblr’s numbers…'}</p></section>`;
+  }
+  function tbPaint() {
+    const a = document.activeElement, id = a && a.id && a.closest?.('#list') ? a.id : '';
+    const sel = id && typeof a.selectionStart === 'number' ? a.selectionStart : null;
+    const y = $('main').scrollTop, ly = $('listView').scrollTop;
+    const t = SOC.accounts?.tumblr;
+    const body = !t
+      ? `<section class="b-panel wr-invite"><p class="b-sub">Tumblr</p><h2>Connect your Tumblr to start</h2>
+          <p>Write notes and posts, keep drafts, fill your queue or schedule a post, see your followers and notes, and who’s replying and reblogging. Press Connect Tumblr, sign in on Tumblr’s page and approve The Reading Room.</p>
+          <div class="wr-acts"><button class="btn primary" type="button" data-tb="connect">Connect Tumblr</button></div></section>`
+      : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">Tumblr</p><h2>Work your Tumblr from here with The Reading Room Plus</h2>
+          <p>Write, queue and schedule posts, and see your numbers and who’s talking to you, next to your reading.</p>
+          <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
+      : tbComposerHtml() + tbPeopleHtml() + tbNumbersHtml() + tbPostsHtml();
+    $('list').innerHTML = `<section class="brief myday tumblr-tab" aria-label="Tumblr">${body}</section>`;
+    $('main').scrollTop = y; $('listView').scrollTop = ly;
+    const el = id && $(id);
+    if (el) { el.focus(); if (sel != null) try { el.setSelectionRange(sel, sel); } catch {} }
+  }
+  const tbKeep = () => { const d = tbDraft(); for (const [k, i] of [['title', 'tbTitle'], ['text', 'tbText'], ['tags', 'tbTags'], ['at', 'tbAt']]) if ($(i)) d[k] = $(i).value; store.set('tbDraft', JSON.stringify(d)); };
+  document.addEventListener('input', e => { if (['tbTitle', 'tbText', 'tbTags', 'tbAt'].includes(e.target.id)) tbKeep(); if (e.target.id === 'tbAlt') TB.alt = e.target.value; });
+  document.addEventListener('change', async e => {
+    if (e.target.id !== 'tbPhoto') return;
+    const file = e.target.files[0]; if (!file) return;
+    tbKeep(); TB.say = 'Getting the photo ready…'; TB.sayErr = false; TB.link = ''; tbPaint();
+    try { TB.photo = await shrinkPhoto(file); TB.say = ''; } catch { TB.photo = ''; TB.say = 'Couldn’t open that picture. Try another one, or save it as a JPEG first.'; TB.sayErr = true; }
+    tbPaint(); $('tbAlt')?.focus();
+  });
+  async function tbSend(when) {
+    tbKeep();
+    const d = tbDraft(), title = (d.title || '').trim(), text = (d.text || '').trim();
+    if (!title && !text && !TB.photo) { TB.say = 'Write something first.'; TB.sayErr = true; TB.link = ''; tbPaint(); $('tbText')?.focus(); return; }
+    let publishOn = null;
+    if (when === 'schedule') {
+      const at = d.at ? new Date(d.at) : null;
+      if (!at || isNaN(at) || at <= new Date()) { TB.say = 'Pick a time in the future to schedule it.'; TB.sayErr = true; TB.link = ''; tbPaint(); $('tbAt')?.focus(); return; }
+      publishOn = at.toISOString();
+    }
+    TB.sending = true; TB.say = ''; tbPaint();
+    try {
+      const r = await invoke('tumblr_post', { kind: TB.kind, title, text, photo: TB.photo || '', alt: (TB.alt || '').trim(), tags: [d.tags || ''], when, publishOn });
+      store.set('tbDraft', JSON.stringify({ at: d.at }));
+      TB.photo = ''; TB.alt = ''; TB.sayErr = false;
+      TB.link = when === 'published' ? (r?.url || '') : '';
+      TB.say = when === 'published' ? 'Posted to your Tumblr.' : when === 'draft' ? 'Saved in your Tumblr drafts.' : when === 'queue' ? 'Added to your queue.' : `Scheduled for ${new Date(publishOn).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`;
+      TB.list = when === 'published' ? 'posts' : when === 'draft' ? 'drafts' : 'queue'; TB.items = null; TB.err = '';
+      TBL.at = 0;
+    } catch (e) { TB.say = msg(e); TB.sayErr = true; TB.link = ''; }
+    TB.sending = false; tbPaint();
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-tb]'); if (!b) return;
+    const k = b.dataset.tb;
+    if (k === 'connect') { openAccounts(); return; }
+    if (k === 'kind') { tbKeep(); TB.kind = b.dataset.k; store.set('tbKind', TB.kind); tbPaint(); $('tbText')?.focus(); return; }
+    if (k === 'photo') { tbKeep(); $('tbPhoto')?.click(); return; }
+    if (k === 'nophoto') { TB.photo = ''; TB.alt = ''; tbPaint(); return; }
+    if (k === 'send') { if (!plusOk()) { openPlus(); return; } tbSend(b.dataset.when); return; }
+    if (k === 'list') { TB.list = b.dataset.k; TB.items = null; TB.err = ''; TB.confirm = 0; tbPaint(); return; }
+    if (k === 'reload') { TB.items = null; TB.err = ''; tbPaint(); return; }
+    if (k === 'more') { tbLoadList(TB.page + 1); return; }
+    if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
+    if (k === 'talk') { SOC.tab = 'you'; SOC.youChip = 'tumblr'; selectView('talk'); return; }
+    if (k === 'ask') { TB.confirm = Number(b.dataset.id); tbPaint(); return; }
+    if (k === 'keep') { TB.confirm = 0; tbPaint(); return; }
+    const id = Number(b.dataset.id);
+    if (k === 'delete') {
+      try { await tauriInvoke('tumblr_delete', { id }); TB.items = (TB.items || []).filter(p => p.id !== id); status('Deleted from your Tumblr.'); }
+      catch (err) { status(msg(err), true); }
+      TB.confirm = 0; tbPaint(); return;
+    }
+    if (k === 'publish') {
+      if (!plusOk()) { openPlus(); return; }
+      b.disabled = true;
+      try { const r = await tauriInvoke('tumblr_publish', { id }); TB.items = (TB.items || []).filter(p => p.id !== id); TB.say = 'Posted to your Tumblr.'; TB.sayErr = false; TB.link = r?.url || ''; TBL.at = 0; }
+      catch (err) { status(msg(err), true); }
+      tbPaint();
+    }
+  });
+
   const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;
   function commentHtml(c) {
     const wm = c.kind !== 'comment';
@@ -9147,7 +9307,7 @@
   // If asking the site fails, the panel says so with Try again, and asks again by itself after five minutes
   // (it used to go blank until the app was restarted — David, Nov 24: "There's nothing. The tiles are gone.").
   const BLOG = { data: null, at: 0, busy: false, failed: false, loaded: false, err: '' };
-  const blogRepaint = () => { if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); };
+  const blogRepaint = () => { if (S.view === 'myday') mdRender(); if (S.view === 'write') wrPaint(); if (S.view === 'tumblr') tbPaint(); };
   async function loadBlog(force) {
     if (BLOG.busy || (!force && BLOG.data && Date.now() - BLOG.at < 30 * 60 * 1000)) return;
     BLOG.busy = true; BLOG.err = '';
@@ -9169,7 +9329,7 @@
     const when = at ? new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     const top = (b.top || []).map(t => `<li><button class="b-link" type="button" data-mkurl="${esc(t.link)}">${esc((t.title || 'A post').slice(0, 90))}</button><span class="bl-n">${nfmt(t.notes)}</span></li>`).join('');
     return `<section class="b-panel md-blog" aria-label="Your Tumblr">
-      <div class="bp-head"><h3 class="b-sub">Your Tumblr</h3><span class="bp-meta">${esc(b.site || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
+      <div class="bp-head"><h3 class="b-sub">Your numbers</h3><span class="bp-meta">${esc(b.site || '')}${when ? ` · As of ${esc(when)}` : ''}</span></div>
       <div class="bl-cols"><div class="bl-col"><h4>Followers</h4><p class="bl-big">${nfmt(b.followers)} <small>following your blog</small></p><p class="bl-sub">${nfmt(b.posts)} posts on your blog</p></div>
         <div class="bl-col"><h4>Notes</h4><p class="bl-big">${nfmt(b.recentNotes)} <small>on your last ${b.recentCount || 0} posts</small></p><p class="bl-sub">Likes, reblogs and replies, as Tumblr counts them.</p>
           ${top ? `<h5>Most notes</h5><ul class="bl-list">${top}</ul>` : ''}</div></div>
@@ -9194,7 +9354,7 @@
     if (TBL.err) return `${head}<p class="day-note">Couldn’t get your Tumblr’s numbers just now. ${esc(TBL.err)} The app tries again in a few minutes. <button class="b-link" type="button" data-tbl-retry>Try again</button></p></section>`;
     return `${head}<p class="day-note">Getting your Tumblr’s numbers…</p></section>`;
   }
-  function yourBlogHtml() { return homeBlogHtml() + alsoTumblrHtml(); }
+  function yourBlogHtml() { return homeBlogHtml(); } // Tumblr's numbers are in the Tumblr tab
   function homeBlogHtml() {
     if (!plusOk()) return SOC.accounts?.site && (onWp() || onTumblr()) ? `<section class="b-panel md-blog md-blog-invite" aria-label="Your blog"><div class="bp-head"><h3 class="b-sub">${onTumblr() ? 'Your Tumblr' : 'Your blog'}</h3></div>
       <p class="day-note">${onTumblr() ? 'See your followers and the notes on your posts here' : 'See your blog’s visitors, RSS readers and search traffic here every day'} with The Reading Room Plus. <button class="b-link" type="button" data-plus>Try it free for a week</button></p></section>` : '';
