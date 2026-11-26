@@ -64,6 +64,7 @@
     wordpress: '<svg viewBox="0 0 24 24" fill="none" stroke="#21759B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M5.6 8.4h2.6M7 8.4l3.1 9 2-5.6M10.4 8.4h2.4M11.6 8.4l3.2 9 2.4-7.3c.4-1.1.1-1.7-.6-1.9"/></svg>', // the WordPress tab: WordPress's W, in WordPress blue (David, Nov 26)
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
+    trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
@@ -157,7 +158,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'trending', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -354,7 +355,7 @@
   let lastBadge = -1;
   // ---- Parts of the app people can take out of the sidebar (all shown until someone hides one; synced)
   const OPTIONAL_VIEWS = [['myday', 'My Day', 'Your goals, calendar and markets, and a weekly review'], ['write', 'Writing', 'Notes, posts and Weeknotes for your own site'], ['site', 'Your site', 'Your WordPress, Micro.blog or Pika site: its posts, drafts and numbers'], ['tumblr', 'Tumblr', 'Write, queue and schedule on your Tumblr, and see who’s talking'], ['edition', 'Morning Edition', 'Yesterday’s reading as a front page'], ['email', 'Email', 'Read and write back from one mailbox'],
-    ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
+    ['videos', 'Videos', 'YouTube channels you follow and video podcasts, kept out of Today'], ['trending', 'Trending', 'Topics several of your feeds are writing about'], ['jobs', 'Help Wanted', 'Job posts from the sites you follow'], ['books', 'Books', 'Your books and audiobooks']];
   const hiddenViews = () => new Set(S.prefs.hiddenViews || []);
   function showView(v, on) {
     const h = hiddenViews(); if (on) h.delete(v); else h.add(v);
@@ -418,6 +419,7 @@
       group('explore', 'Explore', [
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
         { view: 'talk', label: 'Conversations', count: (newYou() + newAnswers() + nbUnread().length) || '', icon: ICONS.talk },
+        { view: 'trending', label: 'Trending', count: '', icon: ICONS.trending },
         { view: 'jobs', label: 'Help Wanted', count: newJobs() || '', icon: ICONS.jobs }]) +
       '<hr class="nav-gap">' +
       group('library', 'Library', [
@@ -480,7 +482,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { trending: 'Trending', write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -493,7 +495,7 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'trending', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr') && !S.readerId));
     // Writing uses My Day's width and panels
     document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr');
     document.body.classList.toggle('books-view', S.view === 'books');
@@ -525,6 +527,7 @@
       ? `<span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>Today`
       : S.view === 'myday' ? `<span class="sun" aria-hidden="true">${ICONS.myday}</span>My Day`
       : S.view === 'write' ? `<span class="sun" aria-hidden="true">${ICONS.write}</span>Writing`
+      : S.view === 'trending' ? `<span class="sun" aria-hidden="true">${ICONS.trending}</span>Trending`
       : S.view === 'tumblr' ? `<span class="sun tb-sun" aria-hidden="true">${ICONS.tumblr}</span>Tumblr`
       : S.view === 'site' ? `<span class="sun" aria-hidden="true">${siteIcon()}</span>${esc(siteTabName())}`
       : esc(viewName());
@@ -537,6 +540,7 @@
       : S.view === 'annotated' ? `${S.highlights.length} ${S.highlights.length === 1 ? 'highlight' : 'highlights'} in ${new Set(S.highlights.map(h => h.item_id)).size} stories`
       : S.view === 'today' ? `${unreadIn('today')} unread from the last 24 hours`
       : S.view === 'discover' ? discoverSub()
+      : S.view === 'trending' ? `What your feeds are writing about ${trDays() === 1 ? 'today' : 'this week'}${trFolder() ? ` in ${folderById(trFolder())?.name || ''}` : ''}`
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
@@ -557,7 +561,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'trending', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -887,6 +891,7 @@
   function renderList() {
     syncHome(); paintUpNext();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
+    if (S.view === 'trending') { $('list').innerHTML = trendingHtml(); return; }
     if (S.view === 'guide') { $('list').innerHTML = guideHtml(); buildGuideToc(); store.set('guideSeen', '1'); return; }
     if (S.view === 'talk') {
       // background redraws (pictures, accounts, new replies) must not wipe a reply you're writing
@@ -1189,7 +1194,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'myday', 'write', 'site', 'tumblr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'trending', 'myday', 'write', 'site', 'tumblr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -9995,6 +10000,34 @@
     + 'mr mrs ms dr st part read reading post posts blog blogs note notes link links newsletter episode issue update updates thoughts '
     + 'world people life work home new news video videos photo photos podcast show here’s it’s i’m i’ve don’t can’t that’s what’s there’s let’s '
     + 'yes oh ok okay hello hi thanks thank via re fwd').split(/\s+/));
+  const trNorm = t => t.toLowerCase().replace(/[’']s$/, '').replace(/[^\p{L}\p{N}#+ ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  const trOk = w => w.length > 2 && !TR_STOP.has(w) && !/^\d+$/.test(w);
+  // A story's subjects: its own topic tags, #hashtags, Names Like This in its words, and the outside pages it links to
+  function trSubjects(i) {
+    const out = new Map();
+    const add = (key, label, kind) => { if (!out.has(key)) out.set(key, { label, kind }); };
+    for (const t of tagsOf(i)) { const k = trNorm(t); if (k && k.split(' ').every(trOk) && k.length <= 40) add('t:' + k, t.trim(), 'topic'); }
+    const title = i.title || '', words = title.split(/\s+/).filter(Boolean);
+    const titleCase = words.length > 3 && words.filter(w => /^[A-Z]/.test(w)).length / words.length > 0.6;
+    const text = `${titleCase ? '' : title}. ${(i.summary || '').slice(0, 700)}`;
+    for (const m of text.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]{2,30})/gu)) add('t:' + m[1].toLowerCase(), '#' + m[1], 'topic');
+    // Names: one to three Capitalized Words in a row, not at the start of a sentence (or longer than one word)
+    for (const m of text.matchAll(/(^|[.!?:;"“]\s+|\s)((?:[A-Z][\p{L}\p{N}’'&-]+)(?:\s+(?:[A-Z][\p{L}\p{N}’'&-]+|of|de|and)){0,3})/gu)) {
+      const lead = m[1], name = m[2].replace(/\s+(of|de|and)$/, '').replace(/[’']s$/, '');
+      const parts = name.split(/\s+/);
+      if (parts.length === 1 && /[.!?:;"“]/.test(lead)) continue; // a capital that only starts a sentence
+      const k = trNorm(name);
+      if (!k || !k.split(' ').some(trOk) || TR_STOP.has(k) || k.length < 3) continue;
+      add('n:' + k, name, 'name');
+    }
+    for (const l of (i.links || '').split(' ')) {
+      if (!isWeb(l)) continue;
+      const h = bareHost(hostOfU(l)), path = normU(l).slice(h.length);
+      if (!h || path.length < 4 || /\.(social|bsky)|youtube|youtu\.be|twitter|x\.com|instagram|facebook|wikipedia/.test(h)) continue;
+      add('l:' + normU(l), l, 'link');
+    }
+    return out;
+  }
   let TRX = null;
   function trendTopics() {
     if (TRX && TRX.n === S.items.length && TRX.f === S.feeds.length && Date.now() - TRX.at < 15 * 60e3) return TRX.list;
@@ -10007,34 +10040,7 @@
       if (age < 0 || !Number.isFinite(age)) continue;
       if (age < WEEK) recent.push(i); else if (age < 5 * WEEK) older.push(i);
     }
-    const norm = t => t.toLowerCase().replace(/[’']s$/, '').replace(/[^\p{L}\p{N}#+ ]+/gu, ' ').replace(/\s+/g, ' ').trim();
-    const okWord = w => w.length > 2 && !TR_STOP.has(w) && !/^\d+$/.test(w);
-    // A story's subjects: its own topic tags, #hashtags, Names Like This in its words, and the outside pages it links to
-    function subjects(i) {
-      const out = new Map();
-      const add = (key, label, kind) => { if (!out.has(key)) out.set(key, { label, kind }); };
-      for (const t of tagsOf(i)) { const k = norm(t); if (k && k.split(' ').every(okWord) && k.length <= 40) add('t:' + k, t.trim(), 'topic'); }
-      const title = i.title || '', words = title.split(/\s+/).filter(Boolean);
-      const titleCase = words.length > 3 && words.filter(w => /^[A-Z]/.test(w)).length / words.length > 0.6;
-      const text = `${titleCase ? '' : title}. ${(i.summary || '').slice(0, 700)}`;
-      for (const m of text.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]{2,30})/gu)) add('t:' + m[1].toLowerCase(), '#' + m[1], 'topic');
-      // Names: one to three Capitalized Words in a row, not at the start of a sentence (or longer than one word)
-      for (const m of text.matchAll(/(^|[.!?:;"“]\s+|\s)((?:[A-Z][\p{L}\p{N}’'&-]+)(?:\s+(?:[A-Z][\p{L}\p{N}’'&-]+|of|de|and)){0,3})/gu)) {
-        const lead = m[1], name = m[2].replace(/\s+(of|de|and)$/, '').replace(/[’']s$/, '');
-        const parts = name.split(/\s+/);
-        if (parts.length === 1 && /[.!?:;"“]/.test(lead)) continue; // a capital that only starts a sentence
-        const k = norm(name);
-        if (!k || !k.split(' ').some(okWord) || TR_STOP.has(k) || k.length < 3) continue;
-        add('n:' + k, name, 'name');
-      }
-      for (const l of (i.links || '').split(' ')) {
-        if (!isWeb(l)) continue;
-        const h = bareHost(hostOfU(l)), path = normU(l).slice(h.length);
-        if (!h || path.length < 4 || /\.(social|bsky)|youtube|youtu\.be|twitter|x\.com|instagram|facebook|wikipedia/.test(h)) continue;
-        add('l:' + normU(l), l, 'link');
-      }
-      return out;
-    }
+    const subjects = trSubjects;
     const count = (list, keep) => {
       const m = new Map();
       for (const i of list) for (const [k, v] of subjects(i)) {
@@ -10073,14 +10079,14 @@
     const list = trendTopics(); if (!list.length) return '';
     // Just one topic: a single line, no section
     if (list.length === 1) { const t = list[0]; return `<div class="b-trend one"><span class="b-sub">Trending</span><button class="tr-chip" type="button" data-trend="0"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span><span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button><button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></div>`; }
-    return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button></h3>
+    return `<div class="b-trend"><h3 class="b-sub">Trending in your neighborhood <button class="nb-tag" type="button" data-talk="cue" data-cue="trend" title="${esc(CUES.trend)}" aria-label="What is this?">?</button>${hiddenViews().has('trending') ? '' : ' <button class="b-link tr-all" type="button" data-view-go="trending">See what all your feeds are writing about</button>'}</h3>
       <div class="tr-row">${list.map((t, n) => `<button class="tr-chip" type="button" data-trend="${n}"><span class="tr-faces" aria-hidden="true">${t.items.slice(0, 3).map(i => nbFace(nbWho(i), 'nb-av sm')).join('')}</span>
         <span class="tr-t">${t.kind === 'link' ? '🔗 ' : ''}${esc(t.label)}</span><span class="tr-n">${t.writers.size} people</span></button>`).join('')}</div></div>`;
   }
-  function openTrend(n) {
-    const t = TRX?.list?.[n]; if (!t) return;
+  function openTrend(n, from) {
+    const t = (from || TRX?.list)?.[n]; if (!t) return;
     const el = sheet('trendPanel', `<h2>${esc(t.label)}</h2>
-      <p>${t.writers.size} people you read wrote about this in the last week${t.kind === 'link' ? ', all linking to the same page' : ''}. Their posts, side by side:</p>
+      <p>${from ? `${t.feeds.size} of your feeds wrote about this ${trDays() === 1 ? 'today' : 'this week'}` : `${t.writers.size} people you read wrote about this in the last week`}${t.kind === 'link' ? ', all linking to the same page' : ''}. ${from ? 'The stories' : 'Their posts'}, side by side:</p>
       <div class="tr-posts">${t.items.map(i => `<button class="tr-post" type="button" data-open="${esc(i.id)}">
         <span class="tr-who">${nbFace(nbWho(i), 'nb-av sm')}<b>${nbName(i)}</b><time>${esc(fmtWhen(i.date))}</time></span>
         <span class="tr-title">${esc(headline(i))}</span>${i.summary ? `<span class="tr-sum">${esc(i.summary.slice(0, 220))}${i.summary.length > 220 ? '…' : ''}</span>` : ''}</button>`).join('')}</div>
@@ -10089,6 +10095,80 @@
     el.onclick = e => { if (e.target.id === 'trDone' || e.target.closest('[data-open], [data-talk]')) el.hidden = true; };
   }
   document.addEventListener('click', e => { const t = e.target.closest('[data-trend]'); if (t) openTrend(Number(t.dataset.trend)); });
+
+  // ------------------------------------------------------------ Trending (Explore): topics across all your feeds
+  // David, Nov 26: "Looking for trending topics from all my feeds." Not just people talking (that's Today's
+  // neighborhood row): every feed you follow, news and blogs alike. A topic trends when two or more feeds wrote about
+  // it in the window, ranked by how many feeds did, and marked Rising when that's well above their usual. Worked out
+  // here from the stories you already have; nothing is sent anywhere.
+  const TRA = { list: [], key: '' };
+  const trDays = () => store.get('trDays') === '1' ? 1 : 7;
+  const trFolder = () => { const id = store.get('trFolder') || ''; return id && folderById(id) ? id : ''; };
+  function trendAll() {
+    const days = trDays(), fid = trFolder(), folder = fid ? folderById(fid) : null;
+    const key = [days, fid, S.items.length, S.feeds.length, Math.floor(Date.now() / (10 * 60e3))].join('|');
+    if (TRA.key === key) return TRA;
+    const now = Date.now(), win = days * DAY, inFolder = folder ? new Set(folderIdsIn(folder)) : null;
+    const recent = [], older = [];
+    for (const i of S.items) {
+      if (isEmailItem(i) || isJobItem(i) || isOwn(i.feed_id) || isMuted(i)) continue;
+      if (inFolder) { const f = feedById(i.feed_id); if (!f || !inFolder.has(f.folder_id)) continue; }
+      const age = now - Date.parse(i.date);
+      if (age < 0 || !Number.isFinite(age)) continue;
+      if (age < win) recent.push(i); else if (age < win + 28 * DAY) older.push(i);
+    }
+    const tally = (list, keep) => {
+      const m = new Map();
+      for (const i of list) for (const [k, v] of trSubjects(i)) {
+        if (!m.has(k)) m.set(k, { key: k, ...v, feeds: new Set(), items: [] });
+        const x = m.get(k); x.feeds.add(i.feed_id); if (keep) x.items.push(i);
+      }
+      return m;
+    };
+    const cur = tally(recent, true), before = tally(older, false), weeks = 28 * DAY / win;
+    const list = [...cur.values()].filter(x => x.feeds.size >= 2).map(x => {
+      const usual = (before.get(x.key)?.feeds.size || 0) / weeks;
+      x.rising = x.feeds.size >= usual * 2 + 1;
+      x.score = x.feeds.size + Math.min(x.items.length, 12) * 0.15 - usual * 0.6 + (x.rising ? 1 : 0) + (x.kind === 'link' ? 0.4 : 0);
+      return x;
+    }).sort((a, b) => b.score - a.score || b.items.length - a.items.length);
+    const out = [];
+    for (const x of list) {
+      const lx = x.label.toLowerCase();
+      if (out.some(y => { const ly = y.label.toLowerCase(); return (ly.includes(lx) || lx.includes(ly)) && [...x.feeds].filter(f => y.feeds.has(f)).length >= x.feeds.size - 1; })) continue;
+      out.push(x);
+      if (out.length >= 20) break;
+    }
+    for (const x of out) {
+      x.items.sort((a, b) => b.date.localeCompare(a.date));
+      const one = new Map(); for (const i of x.items) if (!one.has(i.feed_id)) one.set(i.feed_id, i);
+      x.firsts = [...one.values()];
+      x.writers = x.feeds;
+      if (x.kind === 'link') { const page = S.items.find(i => normU(i.link) === x.key.slice(2)); x.label = page ? headline(page) : `${bareHost(hostOfU(x.label))}${new URL(x.label).pathname.replace(/\/$/, '').slice(0, 40)}`; x.url = x.key.slice(2); }
+    }
+    Object.assign(TRA, { key, list: out, stories: recent.length, feeds: new Set(recent.map(i => i.feed_id)).size });
+    return TRA;
+  }
+  function trendingHtml() {
+    const t = trendAll(), days = trDays(), fid = trFolder();
+    const tops = S.folders.filter(f => !f.parent_id || !folderById(f.parent_id));
+    const when = days === 1 ? 'today' : 'this week';
+    const head = `<div class="trp-bar"><div class="seg" role="group" aria-label="How far back"><button type="button" data-trdays="1" aria-pressed="${days === 1}">Today</button><button type="button" data-trdays="7" aria-pressed="${days === 7}">This week</button></div>
+      <label class="trp-f">In <select id="trFolderSel" aria-label="Which feeds"><option value="">all your feeds</option>${tops.map(f => `<option value="${esc(f.id)}"${String(f.id) === fid ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label></div>
+      <p class="trp-note">Topics two or more of your feeds wrote about ${when}, most feeds first. <b class="trp-rise">Rising</b> means more of them than usual. Worked out on this device from ${fmtCount(t.stories)} stories in ${fmtCount(t.feeds)} feeds.</p>`;
+    if (!t.list.length) return `<section class="trending-page">${head}<p class="empty-note">Nothing is shared by two or more feeds ${when}${fid ? ' in this folder' : ''} yet. ${days === 1 ? 'Try This week.' : 'Check back as more stories come in.'}</p></section>`;
+    return `<section class="trending-page">${head}<ol class="trp-list">${t.list.map((x, n) => `<li class="trp-item">
+      <div class="trp-top"><span class="trp-n">${n + 1}</span><button class="trp-t" type="button" data-trendall="${n}">${x.kind === 'link' ? '🔗 ' : ''}${esc(x.kind === 'topic' && !x.label.startsWith('#') ? x.label.charAt(0).toUpperCase() + x.label.slice(1) : x.label)}</button>${x.rising ? '<span class="trp-rise">Rising</span>' : ''}
+        <span class="trp-c">${x.feeds.size} feeds · ${x.items.length} ${x.items.length === 1 ? 'story' : 'stories'}</span></div>
+      <div class="trp-src">${x.firsts.slice(0, 6).map(i => `<span class="trp-who">${nbFace(nbWho(i), 'nb-av sm')}${esc(feedById(i.feed_id)?.title || '')}</span>`).join('')}${x.firsts.length > 6 ? `<span class="trp-more">and ${x.firsts.length - 6} more</span>` : ''}</div>
+      <ul class="trp-heads">${x.firsts.slice(0, 3).map(i => `<li><button class="b-link" type="button" data-open="${esc(i.id)}">${esc(headline(i))}</button></li>`).join('')}</ul>
+      ${x.items.length > 3 ? `<button class="b-link trp-all" type="button" data-trendall="${n}">All ${x.items.length} stories side by side</button>` : ''}</li>`).join('')}</ol></section>`;
+  }
+  document.addEventListener('click', e => {
+    const d = e.target.closest('[data-trdays]'); if (d) { store.set('trDays', d.dataset.trdays); renderHead(); renderList(); return; }
+    const a = e.target.closest('[data-trendall]'); if (a) openTrend(Number(a.dataset.trendall), TRA.list);
+  });
+  document.addEventListener('change', e => { if (e.target.id === 'trFolderSel') { store.set('trFolder', e.target.value); renderHead(); renderList(); } });
 
 
   // ------------------------------------------------------------ Your year in reading

@@ -2929,3 +2929,24 @@ body.fr-on { overflow: hidden; }
 .post-to.pt-also .pt-tick { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 5px; font-size: 12px; line-height: 1; opacity: .8; }
 .post-to.pt-also .pt-box[aria-pressed="true"] .pt-tick { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 .tumblr-tab .nb-acts .linkish { color: var(--accent); }
+
+/* Trending (Explore): topics across all your feeds */
+.trending-page { max-width: 860px; }
+.trp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 4px 0 8px; }
+.trp-f { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.trp-f select { font: inherit; color: var(--ink); padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); }
+.trp-note { font-size: 13.5px; color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+.trp-list { list-style: none; padding: 0; margin: 0; }
+.trp-item { padding: 14px 0 16px; border-top: 1px solid var(--line); }
+.trp-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; }
+.trp-n { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; min-width: 1.6em; }
+.trp-t { background: none; border: 0; padding: 0; font: inherit; font-size: 19px; font-weight: 650; color: var(--ink); cursor: pointer; text-align: left; }
+.trp-t:hover { color: var(--accent); }
+.trp-c { margin-left: auto; font-size: 13px; color: var(--muted); }
+.trp-rise { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 2px 7px; border-radius: 999px; }
+.trp-note .trp-rise { font-size: 10.5px; }
+.trp-src { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 6px 2.6em; font-size: 13px; color: var(--muted); }
+.trp-who { display: inline-flex; align-items: center; gap: 6px; }
+.trp-heads { list-style: none; padding: 0; margin: 4px 0 0 2.6em; display: grid; gap: 4px; }
+.trp-heads .b-link { text-align: left; font-size: 15px; }
+.trp-all { margin: 6px 0 0 2.6em; font-size: 13.5px; }
