@@ -18,6 +18,8 @@ pub struct Fetched {
     pub title: String,
     pub site: String,
     pub items: Vec<ParsedItem>,
+    /// The feed accepts tips: who gets them, as the feed's value tag says (JSON {names, address, kind}); empty if not
+    pub tips: String,
 }
 
 pub struct ParsedItem {
@@ -354,6 +356,33 @@ async fn usual_feeds(client: &reqwest::Client, url: &str) -> Option<Fetched> {
     None
 }
 
+/// Does the feed take tips? Podcasting 2.0's value tag (<podcast:value>, used by podcasts and some blogs) names who
+/// gets paid, usually over Bitcoin's Lightning network (David, Nov 26: "I'm curious how many feeds I have accept
+/// tips"). The app only notes it; it doesn't pay anyone.
+pub fn tips_of(xml: &str) -> String {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    static RECIP: OnceLock<Regex> = OnceLock::new();
+    static ATTR: OnceLock<Regex> = OnceLock::new();
+    let Some(v) = VALUE.get_or_init(|| Regex::new(r#"(?is)<podcast:value\b([^>]*)>(.*?)</podcast:value>"#).unwrap()).captures(xml) else { return String::new() };
+    let attr = |tag: &str, name: &str| -> String {
+        ATTR.get_or_init(|| Regex::new(r#"(?i)\b([a-z]+)\s*=\s*["']([^"']*)["']"#).unwrap())
+            .captures_iter(tag).find(|c| c[1].eq_ignore_ascii_case(name)).map(|c| html_escape_off(&c[2])).unwrap_or_default()
+    };
+    let kind = attr(&v[1], "type");
+    let mut names: Vec<String> = Vec::new();
+    let mut address = String::new();
+    for r in RECIP.get_or_init(|| Regex::new(r#"(?is)<podcast:valueRecipient\b([^>]*)/?>"#).unwrap()).captures_iter(&v[2]) {
+        let (name, addr, t) = (attr(&r[1], "name"), attr(&r[1], "address"), attr(&r[1], "type"));
+        if !name.is_empty() && names.len() < 6 && !names.contains(&name) { names.push(name); }
+        if address.is_empty() && (t.eq_ignore_ascii_case("lnaddress") || addr.contains('@')) { address = addr; }
+    }
+    if names.is_empty() && address.is_empty() { return String::new() }
+    serde_json::json!({ "kind": if kind.is_empty() { "lightning".to_string() } else { kind.to_lowercase() }, "names": names, "address": address }).to_string()
+}
+fn html_escape_off(s: &str) -> String {
+    s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">")
+}
+
 pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
     let feed = feed_rs::parser::Builder::new()
         .base_uri(Some(base))
@@ -423,7 +452,7 @@ pub fn parse(body: &[u8], base: &str) -> Result<Fetched, String> {
             ParsedItem { key, title, link, date, summary, image, audio, shares, paid, links, comments, tags, videos }
         })
         .collect();
-    Ok(Fetched { url: base.to_string(), title, site, items })
+    Ok(Fetched { url: base.to_string(), title, site, items, tips: tips_of(&String::from_utf8_lossy(body)) })
 }
 
 /// A post's own topics, tidied: at most 8, each once (any case), no "Uncategorized" or catch-alls, tab-separated.
@@ -638,6 +667,24 @@ pub fn to_new_items(feed_id: i64, items: &[ParsedItem]) -> Vec<NewItem> {
             videos: p.videos.clone(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tips_tests {
+    use super::*;
+    #[test]
+    fn value_tag_found() {
+        let xml = r#"<rss><channel><title>Show</title>
+          <podcast:value type="lightning" method="keysend" suggested="0.00000005000">
+            <podcast:valueRecipient name="Host &amp; Co" type="node" address="03ae9f" split="90"/>
+            <podcast:valueRecipient name="App" type="lnaddress" address="tips@getalby.com" split="10" fee="true" />
+          </podcast:value><item><title>A</title></item></channel></rss>"#;
+        let t: serde_json::Value = serde_json::from_str(&tips_of(xml)).unwrap();
+        assert_eq!(t["kind"], "lightning");
+        assert_eq!(t["names"][0], "Host & Co");
+        assert_eq!(t["address"], "tips@getalby.com");
+        assert_eq!(tips_of("<rss><channel><title>No tips</title></channel></rss>"), "");
+    }
 }
 
 #[cfg(test)]

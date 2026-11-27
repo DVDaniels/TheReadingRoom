@@ -151,6 +151,8 @@ async fn refresh_feeds(app: AppHandle, only: Option<Vec<i64>>) {
                     let items = feeds::to_new_items(feed.id, &f.items);
                     if let Err(e) = db::store_fetch(&mut conn, &feed, &f.title, &f.site, &items, &now) {
                         let _ = db::feed_error(&conn, feed.id, &err(e), &now);
+                    } else if !watch::is_watch(&feed.url) {
+                        let _ = db::set_tips(&conn, feed.id, &f.tips);
                     }
                 }
                 Err(msg) => {
@@ -510,6 +512,7 @@ async fn add_feed(
         let feed = db::feed(&conn, id).map_err(err)?.ok_or("The new feed went missing. Try again.")?;
         let items = feeds::to_new_items(id, &fetched.items);
         db::store_fetch(&mut conn, &feed, &fetched.title, &fetched.site, &items, &now).map_err(err)?;
+        let _ = db::set_tips(&conn, id, &fetched.tips);
         id
     };
     changed(state.inner());
@@ -552,6 +555,7 @@ async fn watch_page(app: AppHandle, state: State<'_, Shared>, url: String, title
         watch::finalize(&conn, &name, &mut fetched);
         let items = feeds::to_new_items(id, &fetched.items);
         db::store_fetch(&mut conn, &feed, &fetched.title, &fetched.site, &items, &now).map_err(err)?;
+        let _ = db::set_tips(&conn, id, &fetched.tips);
         id
     };
     changed(state.inner());

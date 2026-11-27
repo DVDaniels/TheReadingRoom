@@ -597,7 +597,7 @@
     if (f) {
       bar.hidden = false;
       bar.innerHTML = `<select id="moveFeed" aria-label="Folder for this feed">${folderOptions(f.folder_id)}</select>
-        ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}
+        ${isWeb(f.site) ? `<a class="btn" href="${esc(f.site)}">Visit site</a>` : ''}${tipsBtnHtml(f)}
         ${kindOf(f) === 'person' ? `<button class="btn" data-view="talk" data-person-page="${personId(f.id)}">Their page</button>` : ''}
         ${anySocial() ? followButtons(f) : ''}
         <label class="kindpick">This feed is <select id="kindFeed" aria-label="This feed is">
@@ -10905,6 +10905,22 @@
     };
   }
 
+  // ------------------------------------------------------------ Tips (David, Nov 26: "I'm curious how many feeds I have
+  // accept tips"). A feed can name who to tip in its value tag (Podcasting 2.0's <podcast:value>, mostly Bitcoin over
+  // the Lightning network). The app only shows it, and copies a Lightning address for your own wallet app; it never pays.
+  const feedTips = f => { if (!f?.tips) return null; try { const t = JSON.parse(f.tips); return t && (t.names?.length || t.address) ? t : null; } catch { return null; } };
+  const tipsWho = t => t.names?.length ? t.names.slice(0, 3).join(', ') + (t.names.length > 3 ? ` and ${t.names.length - 3} more` : '') : '';
+  function tipsBtnHtml(f) {
+    const t = feedTips(f); if (!t) return '';
+    const tip = `This feed accepts tips${t.kind === 'lightning' ? ' over Bitcoin’s Lightning network' : ''}${tipsWho(t) ? `, shared by ${tipsWho(t)}` : ''}. ${t.address ? 'Press to copy its Lightning address for your wallet app.' : 'A podcast app with tips (like Fountain) can send them.'} The Reading Room doesn’t send money.`;
+    return `<button class="btn tips-btn" type="button" data-tips="${f.id}" title="${esc(tip)}">⚡ Accepts tips</button>`;
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-tips]'); if (!b) return;
+    const f = feedById(Number(b.dataset.tips)) || S.feeds.find(x => String(x.id) === b.dataset.tips), t = feedTips(f); if (!t) return;
+    if (t.address) { navigator.clipboard?.writeText(t.address).then(() => status(`Copied ${t.address}. Paste it in your wallet app to send a tip.`), () => status(t.address)); }
+    else status(`${f.title} accepts tips through podcast apps that support them${tipsWho(t) ? ` (shared by ${tipsWho(t)})` : ''}. The Reading Room only shows this.`);
+  });
   // ------------------------------------------------------------ Feed checkup
   function checkupHtml() {
     const now = Date.now(), st = S.prefs.stats || {}, since = st.since ? Date.parse(st.since) : now;
@@ -10923,9 +10939,17 @@
     const body = sec('Not working', 'These couldn’t be read on the last refresh. A site may have moved its feed, or closed.', broken, f => f.error || 'Couldn’t be read')
       + sec('Gone quiet', 'Nothing new in three months or more. Some writers come back; some have moved on.', quiet, f => f.latest ? `Last story ${when(f.latest)} ago` : 'No stories yet')
       + sec('Never opened', 'Busy feeds you haven’t opened a story from since counting began. Fine if you skim the headlines; if not, they’re only noise.', unopened, f => `${f.recent} stories in the last 30 days, none opened`);
+    const tipping = feeds.filter(f => feedTips(f)).sort((a, b) => a.title.localeCompare(b.title));
+    const tipRow = f => { const t = feedTips(f); return `<li class="ck-row"><span class="fav" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?').trim()[0] || '?')}</span>
+      <span class="ck-body"><b>${esc(f.title)}</b><span>${esc([tipsWho(t) && `Shared by ${tipsWho(t)}`, t.address].filter(Boolean).join(' · ') || 'Tips through podcast apps that support them')}</span></span>
+      <span class="ck-acts"><button class="btn" type="button" data-ck="go" data-id="${f.id}">Open</button>${t.address ? `<button class="btn" type="button" data-tips="${f.id}">Copy address</button>` : ''}</span></li>`; };
+    const tipsSec = `<h3 class="yr-h">⚡ Accept tips <span class="count">${tipping.length}</span></h3><p class="note">${tipping.length
+      ? 'These feeds say who to tip, usually in Bitcoin over the Lightning network (Podcasting 2.0’s “value” tag). The app only shows it: Copy address puts their Lightning address on the clipboard for your own wallet app.'
+      : 'None of your feeds say they accept tips yet. Podcasts with Podcasting 2.0’s “value” tag show up here (and some blogs). Each feed is checked when it refreshes.'}</p>${tipping.length ? `<ul class="ck-list">${tipping.map(tipRow).join('')}</ul>` : ''}`;
     return `<h2>Feed checkup</h2>
-      <p>${feeds.length} feeds. ${broken.length + quiet.length + unopened.length ? 'A few worth a look:' : 'Everything is working and everyone is still writing.'}</p>
+      <p>${feeds.length} feeds${tipping.length ? `, ${tipping.length} of them accept tips (below)` : ''}. ${broken.length + quiet.length + unopened.length ? 'A few worth a look:' : 'Everything is working and everyone is still writing.'}</p>
       ${body}${tracked ? '' : '<p class="note">“Never opened” appears after a month of counting which stories you open.</p>'}
+      ${tipsSec}
       <div class="row sheet-foot"><button class="btn primary" type="button" data-ck="done">Done</button></div>`;
   }
   function openCheckup() {

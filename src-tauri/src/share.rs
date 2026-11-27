@@ -18,7 +18,7 @@ pub fn is_saved_feed(url: &str) -> bool {
 }
 
 pub fn empty_fetch(url: &str) -> Fetched {
-    Fetched { url: url.to_string(), title: SAVED_TITLE.to_string(), site: String::new(), items: vec![] }
+    Fetched { url: url.to_string(), title: SAVED_TITLE.to_string(), site: String::new(), items: vec![], tips: String::new() }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
