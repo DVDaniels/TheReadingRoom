@@ -84,6 +84,17 @@ jobs:
           echo "$PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
           sed -i '' "s/TEAM_ID/$TEAM_ID/g" src-tauri/Entitlements.appstore.plist src-tauri/Info.plist
 
+      - name: Hand the app its keys
+        # iPhone builds compile the Rust code inside Xcode, which doesn't pass this job's environment through;
+        # src-tauri/build.rs reads this file instead (never committed). Only the names are printed.
+        run: |
+          umask 077
+          : > src-tauri/build-keys.env
+          for k in MARGINALIA_KEY TUMBLR_KEY TUMBLR_SECRET FLICKR_KEY FLICKR_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET; do
+            v="${!k:-}"; [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> src-tauri/build-keys.env
+          done
+          echo "::notice title=Keys for the build::$(cut -d= -f1 src-tauri/build-keys.env | tr '\n' ' ')"
+
       - name: Build the App Store version
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_APPSTORE_IDENTITY }}
