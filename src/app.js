@@ -2586,7 +2586,7 @@
       <div class="yt-main"><b class="yt-title">${esc(v.title || 'Untitled')}</b>
         <span class="yt-meta"><span class="yt-vis yt-${esc(v.privacy)}">${esc(sched || YT_SEEN[v.privacy] || v.privacy)}</span> ${esc(ytWhen(v.date))}${state}</span>
         <span class="yt-nums">${nfmt(v.views)} views · ${nfmt(v.likes)} likes · ${nfmt(v.comments)} comments</span>
-        <span class="yt-acts"><button class="linkish" type="button" data-yt="open" data-url="${esc(v.link)}">Watch</button><button class="linkish" type="button" data-yt="edit" data-id="${esc(v.id)}"${YT.edit?.id === v.id ? ' aria-expanded="true"' : ''}>${YT.edit?.id === v.id ? 'Close' : 'Edit'}</button><button class="linkish" type="button" data-ytx="vstats" data-id="${esc(v.id)}">${YX.vs[v.id] ? 'Hide numbers' : 'Numbers'}</button></span>
+        <span class="yt-acts"><button class="linkish" type="button" data-yt="watch" data-id="${esc(v.id)}" data-title="${esc(v.title)}" data-priv="${v.privacy === 'private' ? 1 : 0}">Watch</button><button class="linkish" type="button" data-yt="edit" data-id="${esc(v.id)}"${YT.edit?.id === v.id ? ' aria-expanded="true"' : ''}>${YT.edit?.id === v.id ? 'Close' : 'Edit'}</button><button class="linkish" type="button" data-ytx="vstats" data-id="${esc(v.id)}">${YX.vs[v.id] ? 'Hide numbers' : 'Numbers'}</button></span>
         ${ytVideoStatsHtml(v.id)}${YT.edit?.id === v.id ? ytEditHtml(v) : ''}</div></li>`;
   }
   // Edit a video here (David, Nov 27: "edit and delete videos in the youtube tab … so you don't need to visit
@@ -2618,6 +2618,28 @@
       ${E.say ? `<p class="tm-tip tb-say${E.sayErr ? ' err' : ''}" role="status">${esc(E.say)}</p>` : ''}
       <button class="b-link yt-delask" type="button" data-yt="delask">Delete this video…</button></div>`;
   }
+  // Watch one of your videos without leaving the app (David, Nov 27): a new app window with the app's player page on
+  // the Mac (like the web window), a player over the tab on iPhone and iPad. YouTube's embedded player can't show
+  // private videos, even to their owner, so those get a note and Open on YouTube instead.
+  function ytWatch(id, title, priv, url) {
+    if (!id) { if (isWeb(url)) openWeb(url); return; }
+    const watch = `https://www.youtube.com/watch?v=${id}`;
+    if (!priv && !IOS) { openWeb(ytPlayUrl(id, title, { auto: true })); return; }
+    let el = $('ytWatch');
+    if (!el) { el = document.createElement('div'); el.id = 'ytWatch'; el.className = 'flv yt-watch'; el.setAttribute('role', 'dialog'); document.body.appendChild(el); }
+    el.setAttribute('aria-label', title || 'Video');
+    el.innerHTML = `<div class="flv-top"><span class="flv-n">${esc(title || '')}</span><button class="btn" type="button" data-ytw="open" data-url="${esc(watch)}">Open on YouTube</button><button class="btn" type="button" data-ytw="close">Done</button></div>
+      <div class="yt-watch-body">${priv ? `<div class="yt-watch-note"><p><b>This video is private.</b> YouTube’s player inside apps and other sites can’t show private videos, even to you.</p><p>Make it Unlisted to watch it here (only people with the link can see it), or open it on YouTube while you’re signed in.</p></div>`
+        : ytPlayer(id, title, { auto: true })}</div>`;
+    el.hidden = false; document.body.classList.add('flv-open');
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-ytw]'); const el = $('ytWatch');
+    if (!b) { if (el && !el.hidden && e.target === el) { el.hidden = true; el.innerHTML = ''; document.body.classList.remove('flv-open'); } return; }
+    if (b.dataset.ytw === 'open' && isWeb(b.dataset.url)) { openWeb(b.dataset.url); return; }
+    if (el) { el.hidden = true; el.innerHTML = ''; } document.body.classList.remove('flv-open');
+  });
+  document.addEventListener('keydown', e => { const el = $('ytWatch'); if (e.key === 'Escape' && el && !el.hidden) { el.hidden = true; el.innerHTML = ''; document.body.classList.remove('flv-open'); } });
   // Add to playlist inside a video's edit form (loads your playlists the first time)
   function ytPlPickHtml() {
     const P = YX.pl;
@@ -2762,7 +2784,10 @@
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-yt]'); if (!b) return;
     const k = b.dataset.yt;
-    if (k === 'open' && isWeb(b.dataset.url)) tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true));
+    // YouTube's pages (your channel, a playlist, Studio) open in the app's web window on the Mac (David, Nov 27:
+    // "keep people in the app"); iPhone and iPad have no second window, so Safari there
+    if (k === 'open' && isWeb(b.dataset.url)) openWeb(b.dataset.url);
+    if (k === 'watch') { ytWatch(b.dataset.id, b.dataset.title, b.dataset.priv === '1', b.dataset.url); return; }
     if (k === 'reload') { YT.err = ''; ytLoad(true); renderList(); }
     if (k === 'all') { YT.all = !YT.all; renderList(); }
     if (k === 'upload') { if (!plusOk()) { openPlus(); return; } ytUploadSheet(); }
@@ -10977,7 +11002,7 @@
     const v = y.views || {}, days = v.days || [], max = Math.max(1, ...days.map(x => x.n));
     const bars = days.map((x, i) => { const h = Math.max(2, Math.round(x.n / max * 46));
       return `<rect x="${i * 10 + 1}" y="${48 - h}" width="7" height="${h}" rx="1.5" class="${i === days.length - 1 ? 'now' : ''}"><title>${esc(blDay(x.d))}: ${x.n} views</title></rect>`; }).join('');
-    const top = (y.top || []).slice(0, 4).map(t => `<li><button class="b-link" type="button" data-yt="open" data-url="${esc(t.link)}">${esc(t.title || 'A video')}</button><span class="bl-n">${nfmt(t.views)}</span></li>`).join('');
+    const top = (y.top || []).slice(0, 4).map(t => `<li><button class="b-link" type="button" data-yt="watch" data-id="${esc(ytId(t.link) || '')}" data-title="${esc(t.title || '')}" data-url="${esc(t.link)}">${esc(t.title || 'A video')}</button><span class="bl-n">${nfmt(t.views)}</span></li>`).join('');
     const net = (y.subs?.gained || 0) - (y.subs?.lost || 0);
     const fmax = Math.max(1, ...(y.found || []).map(f => f.views));
     const found = (y.found || []).map(f => `<li><span class="bl-app">${esc(f.name)}</span><span class="bl-hbar"><i style="width:${Math.round(f.views / fmax * 100)}%"></i></span><span class="bl-n">${nfmt(f.views)}</span></li>`).join('');

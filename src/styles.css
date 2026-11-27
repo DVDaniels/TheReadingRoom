@@ -3299,3 +3299,8 @@ body.flv-open #shareMenu { z-index: 1000; }
 .yt-banner { width: 100%; aspect-ratio: 6.2/1; object-fit: cover; border-radius: 10px; margin: 0 0 12px; }
 @media (max-width: 600px) { .yt-thumbrow { flex-direction: column; } .yt-thumbrow img { width: 100%; } .channel .fl-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
 .channel .nb-acts .linkish { color: var(--accent); }
+/* YouTube: watch one of your videos in the app (iPhone/iPad, and private videos) */
+.yt-watch .yt-watch-body { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.yt-watch .yt-watch-body iframe { width: min(100%, calc((100vh - 120px) * 16 / 9)); aspect-ratio: 16/9; border: 0; border-radius: 10px; background: #000; }
+.yt-watch .yt-watch-note { max-width: 480px; padding: 18px 20px; border-radius: 12px; background: #1d1d20; line-height: 1.5; }
+.yt-watch .flv-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
