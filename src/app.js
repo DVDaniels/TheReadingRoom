@@ -6786,7 +6786,10 @@
     }
     if (k === 'cview') { FL.cView = b.dataset.k; store.set('flCView', FL.cView); flPaint(); return; }
     if (k === 'pshow') { FL.pShow += 30; flPaint(); return; }
-    if (k === 'flfollow' && isWeb(b.dataset.url)) { FL.flWait = b.dataset.nsid; tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); flPaint(); return; }
+    // their Flickr page in the app's web window on the Mac (David, Nov 27: "open the mini browser we made"); Safari on
+    // iPhone and iPad. Coming back to the app checks again who you follow (the focus listener below).
+    if (k === 'flfollow' && isWeb(b.dataset.url)) { FL.flWait = b.dataset.nsid; openWeb(b.dataset.url); flPaint(); return; }
+    if (k === 'flweb' && isWeb(b.dataset.url)) { openWeb(b.dataset.url); return; }
     if (k === 'flcheck') { FL.flWait = b.dataset.nsid || FL.flWait; flPeopleLoad(true); flPaint(); return; }
     if (k === 'mmore') { if (!FL.mBusy) flMine(FL.page + 1); flPaint(); return; }
     if (k === 'reload') {
@@ -6932,7 +6935,7 @@
     const talk = FL.act?.length ? flCommentsHtml(3) : '';
     const a = SOC.accounts.flickr || {};
     const profile = `<div class="fl-profile"><span>${esc(a.name || a.handle || 'You')} on Flickr${a.handle && a.name && a.handle !== a.name ? ` · ${esc(a.handle)}` : ''}</span>
-      <button class="b-link" type="button" data-fl="open" data-url="https://www.flickr.com/people/${esc(encodeURIComponent(a.nsid || 'me'))}/">Edit your profile on Flickr ↗</button>
+      <button class="b-link" type="button" data-fl="flweb" data-url="https://www.flickr.com/people/${esc(encodeURIComponent(a.nsid || 'me'))}/">Edit your profile on Flickr</button>
       <span class="tm-tip">Flickr only lets your name, about text and pictures be changed on its site.</span></div>`;
     return profile + albums + flMineHtml(true) + talk;
   }
@@ -7265,7 +7268,7 @@
       : `<button class="btn primary" type="button" data-fl="flfollow" data-nsid="${esc(d.nsid)}" data-url="${esc(d.site)}">Follow on Flickr</button>`;
     const follow = d.me ? '' : flFollowing(d.feed) ? '<button class="btn" type="button" disabled>Following in The Reading Room</button>'
       : `<button class="btn${onFlickr.startsWith('<button') ? '' : ' primary'}" type="button" data-fl="follow" data-url="${esc(d.feed)}" data-name="${esc(d.name)}">Follow in The Reading Room</button>`;
-    const waitTip = !d.me && !c && FL.flWait === d.nsid ? `<p class="tm-tip fl-waittip">Flickr doesn’t let apps follow people for you, so their page opened on Flickr: press Follow there. ${FL.people.busy ? 'Checking…' : `<button class="b-link" type="button" data-fl="flcheck" data-nsid="${esc(d.nsid)}">I followed them</button>`}</p>` : '';
+    const waitTip = !d.me && !c && FL.flWait === d.nsid ? `<p class="tm-tip fl-waittip">Flickr doesn’t let apps follow people for you, so their Flickr page opened in a window: press Follow there (sign in to Flickr in that window the first time). ${FL.people.busy ? 'Checking…' : `<button class="b-link" type="button" data-fl="flcheck" data-nsid="${esc(d.nsid)}">I followed them</button>`}</p>` : '';
     return `${back}<section class="b-panel fl-person" aria-label="${esc(d.name)} on Flickr"><div class="flp-head"><span class="nb-av lg"><img class="nb-face-img" src="${esc(d.face)}" alt="" referrerpolicy="no-referrer">${esc((d.name || '?')[0].toUpperCase())}</span>
         <div><h2>${esc(d.name)}</h2><p class="flp-sub">${esc(d.handle)}${d.location ? ` · ${esc(d.location)}` : ''}${d.count ? ` · ${nfmt(d.count)} photos` : ''}</p>${d.about ? `<p class="flp-about">${esc(d.about)}</p>` : ''}
         <div class="tb-acts">${onFlickr}${follow}${c || d.me ? `<button class="btn" type="button" data-fl="open" data-url="${esc(d.site)}">Open on Flickr</button>` : ''}</div>${waitTip}
