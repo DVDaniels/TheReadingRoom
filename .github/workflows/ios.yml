@@ -118,6 +118,17 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" -c "Add :LSApplicationQueriesSchemes:0 string dayone" "$PLIST"
 
+      - name: Hand the app its keys
+        # iPhone builds compile the Rust code inside Xcode, which doesn't pass this job's environment through;
+        # src-tauri/build.rs reads this file instead (never committed). Only the names are printed.
+        run: |
+          umask 077
+          : > src-tauri/build-keys.env
+          for k in MARGINALIA_KEY TUMBLR_KEY TUMBLR_SECRET FLICKR_KEY FLICKR_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET; do
+            v="${!k:-}"; [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> src-tauri/build-keys.env
+          done
+          echo "::notice title=Keys for the build::$(cut -d= -f1 src-tauri/build-keys.env | tr '\n' ' ')"
+
       - name: Build the iPhone and iPad app
         run: |
           BUILD_NO="${{ github.run_number }}"
@@ -132,6 +143,13 @@ jobs:
           ARCHIVE="$(find src-tauri/gen/apple/build -name '*.xcarchive' -maxdepth 4 | head -1)"
           [ -n "$ARCHIVE" ] || { echo "::error::The archive wasn't made."; exit 1; }
           echo "::notice title=Archive::$ARCHIVE has $(ls "$ARCHIVE/Products/Applications/"*.app/PlugIns 2>/dev/null | tr '\n' ' ')"
+          # the keys must be inside the app, or Flickr, Tumblr and YouTube can't connect on iPhone (Nov 27)
+          APP="$(ls -d "$ARCHIVE/Products/Applications/"*.app | head -1)"
+          EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          for k in FLICKR_KEY TUMBLR_KEY YOUTUBE_CLIENT_ID; do
+            v="${!k:-}"; [ -z "$v" ] && continue
+            if grep -a -q -F "$v" "$EXE"; then echo "::notice title=$k::is in the app"; else echo "::error title=$k::is NOT in the app, so it couldn't connect"; exit 1; fi
+          done
           if ! xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$RUNNER_TEMP/RRExportOptions.plist" \
               -exportPath src-tauri/gen/apple/build/rr-export > "$RUNNER_TEMP/export.log" 2>&1; then
             echo "::error title=Export::$(grep -iE 'error' "$RUNNER_TEMP/export.log" | head -15 | tr '\n' ' ' | cut -c1-3500)"
