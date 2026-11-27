@@ -6903,15 +6903,83 @@
     const n = S2.ids.size, list = flListOf(key);
     if (S2.ask) return `<div class="fl-selbar flv-del" role="region" aria-label="Delete the selected photos"><p><b>Delete ${n} ${n === 1 ? 'photo' : 'photos'} from Flickr for good?</b> Their comments, faves and places in albums go too. This can’t be undone.</p>
       <div class="tb-acts"><button class="btn" type="button" data-fl="selkeep">Keep them</button><button class="btn danger" type="button" data-fl="seldel"${S2.busy ? ' disabled' : ''}>${S2.busy ? 'Deleting…' : `Delete ${n} for good`}</button></div></div>`;
+    if (S2.mode === 'album') return flSelAlbumHtml(n);
+    if (S2.mode === 'edit') return flSelEditHtml(n, list);
     return `<div class="fl-selbar" role="region" aria-label="Selected photos"><b>${n ? `${n} selected` : 'Press photos to select them'}</b>${IOS || n > 1 ? '' : '<span class="tb-meta fl-seltip">⌘-click to add more · ⇧-click for a run · Delete key to delete</span>'}
       <button class="b-link" type="button" data-fl="selall">${n && n === list.length ? 'Select none' : `Select all ${list.length}`}</button>
       <label class="fl-see">Who can see them <select id="flSelWho"${n && !S2.busy ? '' : ' disabled'}><option value="">Choose…</option>${FL_SEE.map(([k, l]) => `<option value="${k}"${S2.who === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
       <button class="btn sm" type="button" data-fl="selwho"${n && S2.who && !S2.busy ? '' : ' disabled'}>${S2.busy ? 'Changing…' : 'Change'}</button>
+      <button class="btn sm" type="button" data-fl="selalb"${n && !S2.busy ? '' : ' disabled'}>Add to album…</button>
+      <button class="btn sm" type="button" data-fl="seledit"${n && !S2.busy ? '' : ' disabled'}>Edit titles…</button>
       <button class="btn sm danger" type="button" data-fl="selask"${n && !S2.busy ? '' : ' disabled'}>Delete…</button>
       <button class="btn sm" type="button" data-fl="seloff">Done</button>
       ${S2.say ? `<p class="tm-tip tb-say${S2.sayErr ? ' err' : ''}" role="status">${esc(S2.say)}</p>` : ''}</div>`;
   }
-  const flSelReset = () => { FL.sel = { on: false, key: '', ids: new Set(), ask: false, who: '', busy: false, say: '', sayErr: false, anchor: -1 }; };
+  // Add to album… and Edit titles… for the selected photos (David, Nov 27: "select multiple pictures to make them an
+  // album or add to a current album", "edit titles and descriptions on multiple pictures").
+  // Rust: flickr_album_add_many, flickr_meta_get, flickr_meta_many.
+  const flN = n => `${n} ${n === 1 ? 'photo' : 'photos'}`;
+  function flSelAlbumHtml(n) {
+    const S2 = FL.sel, L = flAlbumsMineLoad();
+    const albums = (L.data || []).slice().sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    const ready = n && !S2.busy && (S2.alb === '+' ? (S2.albNew || '').trim() : S2.alb);
+    return `<div class="fl-selbar fl-bulk" role="region" aria-label="Put the selected photos in an album"><p class="flb-h"><b>Put ${flN(n)} in an album</b></p>
+      ${L.data ? '' : flWait(L, 'your albums')}
+      <div class="flb-line"><label class="fl-see">Album <select id="flSelAlb"${S2.busy ? ' disabled' : ''}><option value="">Choose…</option>${albums.map(a => `<option value="${esc(a.id)}"${S2.alb === a.id ? ' selected' : ''}>${esc(a.title || 'Untitled')} (${nfmt(a.count || 0)})</option>`).join('')}<option value="+"${S2.alb === '+' ? ' selected' : ''}>A new album…</option></select></label>
+      ${S2.alb === '+' ? `<input id="flSelAlbNew" class="flb-in" type="text" maxlength="255" placeholder="Name of the new album" value="${esc(S2.albNew || '')}">` : ''}</div>
+      ${S2.alb === '+' ? '<p class="tb-meta">The first photo you selected becomes its cover. The album shows on Flickr to whoever can see its photos.</p>' : ''}
+      <div class="tb-acts"><button class="btn sm" type="button" data-fl="selback"${S2.busy ? ' disabled' : ''}>Back</button><button class="btn sm primary" type="button" data-fl="selalbgo"${ready ? '' : ' disabled'}>${S2.busy ? 'Adding…' : S2.alb === '+' ? `Make the album with ${flN(n)}` : `Add ${flN(n)}`}</button></div>
+      ${S2.say ? `<p class="tm-tip tb-say${S2.sayErr ? ' err' : ''}" role="status">${esc(S2.say)}</p>` : ''}</div>`;
+  }
+  function flSelEditHtml(n, list) {
+    const S2 = FL.sel, byId = new Map(list.map(p => [p.id, p]));
+    if (!S2.meta) {
+      if (!S2.metaBusy && !S2.metaErr) flSelMetaLoad();
+      return `<div class="fl-selbar fl-bulk" role="region" aria-label="Edit the selected photos"><p class="flb-h"><b>Edit ${flN(n)}</b></p>
+        <p class="day-note">${S2.metaErr ? `Couldn’t read their titles just now. ${esc(S2.metaErr)}` : 'Getting their titles and descriptions from Flickr…'}</p>
+        <div class="tb-acts"><button class="btn sm" type="button" data-fl="selback">Back</button>${S2.metaErr ? '<button class="btn sm" type="button" data-fl="selmeta">Try again</button>' : ''}</div></div>`;
+    }
+    const rows = S2.meta, changed = rows.filter(m => m.ok && (m.title !== m.t0 || m.description !== m.d0)).length;
+    const tags = (S2.tags || '').trim(), dis = S2.busy ? ' disabled' : '';
+    const can = !S2.busy && (changed || tags);
+    return `<div class="fl-selbar fl-bulk" role="region" aria-label="Edit the selected photos"><p class="flb-h"><b>Edit ${flN(rows.length)}</b>${n > rows.length ? ` <span class="tb-meta">(the first ${rows.length}; edit up to 100 at a time)</span>` : ''}</p>
+      <details class="flb-all"${S2.allOpen ? ' open' : ''}><summary>The same for all of them</summary>
+        <div class="flb-line"><input id="flbAllT" class="flb-in" type="text" maxlength="255" placeholder="A title for all of them" value="${esc(S2.allT || '')}"${dis}>
+          <button class="btn sm" type="button" data-fl="selallt"${dis}>Use for all</button><button class="btn sm" type="button" data-fl="selallt" data-num="1"${dis} title="Beach 1, Beach 2, Beach 3…">Use, numbered</button></div>
+        <div class="flb-line"><textarea id="flbAllD" class="flb-in" rows="2" placeholder="A description for all of them"${dis}>${esc(S2.allD || '')}</textarea>
+          <button class="btn sm" type="button" data-fl="selalld"${dis}>Use for all</button></div>
+        <div class="flb-line"><input id="flbTags" class="flb-in" type="text" placeholder="Tags to add to all of them (spaces between; their own tags stay)" value="${esc(S2.tags || '')}"${dis}></div>
+      </details>
+      <div class="flb-rows">${rows.map((m, i) => { const p = byId.get(m.id) || {}; return `<div class="flb-row${m.ok ? '' : ' off'}"><img src="${esc(p.thumb || p.img || '')}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        ${m.ok ? `<div class="flb-fields"><input id="flbT${i}" class="flb-in" data-flb="title" data-i="${i}" type="text" maxlength="255" placeholder="Title" value="${esc(m.title)}"${dis}>
+        <textarea id="flbD${i}" class="flb-in" data-flb="description" data-i="${i}" rows="2" placeholder="Description"${dis}>${esc(m.description)}</textarea></div>`
+        : `<p class="tb-meta">Couldn’t read this one, so it stays as it is. ${esc(m.err || '')}</p>`}</div>`; }).join('')}</div>
+      <div class="tb-acts"><button class="btn sm" type="button" data-fl="selback"${dis}>Back</button><button class="btn sm primary" type="button" data-fl="selsave"${can ? '' : ' disabled'}>${S2.busy ? 'Saving…' : changed ? `Save ${flN(changed)}${tags ? ' + tags' : ''}` : tags ? 'Add the tags' : 'Save'}</button></div>
+      ${S2.say ? `<p class="tm-tip tb-say${S2.sayErr ? ' err' : ''}" role="status">${esc(S2.say)}</p>` : ''}</div>`;
+  }
+  function flSelMetaLoad() {
+    const S2 = FL.sel, ids = [...S2.ids].slice(0, 100), seq = (S2.metaSeq = (S2.metaSeq || 0) + 1);
+    S2.metaBusy = true; S2.metaErr = '';
+    tauriInvoke('flickr_meta_get', { ids }).then(r => { if (FL.sel.metaSeq !== seq) return; FL.sel.meta = (r || []).map(m => ({ ...m, t0: m.title, d0: m.description })); })
+      .catch(e => { if (FL.sel.metaSeq === seq) FL.sel.metaErr = msg(e) || 'Flickr didn’t answer.'; })
+      .finally(() => { if (FL.sel.metaSeq === seq) { FL.sel.metaBusy = false; flPaint(); } });
+  }
+  document.addEventListener('input', e => {
+    const t = e.target, S2 = FL.sel; if (!S2.on || !t.closest?.('.fl-bulk')) return;
+    if (t.dataset.flb) { const m = S2.meta?.[+t.dataset.i]; if (m) m[t.dataset.flb] = t.value; flSelSaveLabel(); return; }
+    if (t.id === 'flbAllT') S2.allT = t.value; else if (t.id === 'flbAllD') S2.allD = t.value;
+    else if (t.id === 'flbTags') { S2.tags = t.value; flSelSaveLabel(); }
+    else if (t.id === 'flSelAlbNew') { S2.albNew = t.value; const b = document.querySelector('[data-fl="selalbgo"]'); if (b) b.disabled = !t.value.trim() || S2.busy; }
+  });
+  document.addEventListener('toggle', e => { if (e.target.classList?.contains('flb-all')) FL.sel.allOpen = e.target.open; }, true);
+  // the Save button's words follow what's changed, without a repaint (a repaint while typing would be jumpy)
+  function flSelSaveLabel() {
+    const S2 = FL.sel, b = document.querySelector('[data-fl="selsave"]'); if (!b || !S2.meta) return;
+    const changed = S2.meta.filter(m => m.ok && (m.title !== m.t0 || m.description !== m.d0)).length, tags = (S2.tags || '').trim();
+    b.disabled = S2.busy || !(changed || tags);
+    b.textContent = changed ? `Save ${flN(changed)}${tags ? ' + tags' : ''}` : tags ? 'Add the tags' : 'Save';
+  }
+  const flSelReset = () => { FL.sel = { on: false, key: '', ids: new Set(), ask: false, who: '', busy: false, say: '', sayErr: false, anchor: -1, mode: '', alb: '', albNew: '', meta: null, metaBusy: false, metaErr: '', allT: '', allD: '', tags: '', allOpen: false }; };
   // ⌘-click (Ctrl-click on other keyboards) a photo on Your photos, Home or one of your albums to select it without
   // pressing Select first; ⇧-click selects every photo between the last one and this one (David, Nov 27: "hold
   // command then click on the images and then do a mass delete"). With photos selected: Delete key asks to delete
@@ -6926,22 +6994,59 @@
     const S3 = FL.sel, list = flListOf(key), i = +b.dataset.i, id = b.dataset.id;
     if (e.shiftKey && S3.anchor >= 0) { const [a, z] = S3.anchor < i ? [S3.anchor, i] : [i, S3.anchor]; list.slice(a, z + 1).forEach(p => S3.ids.add(p.id)); }
     else if (S3.ids.has(id)) S3.ids.delete(id); else S3.ids.add(id);
-    S3.anchor = i; S3.ask = false; S3.say = ''; flPaint();
+    S3.anchor = i; if (S3.mode === 'edit') S3.meta = null; S3.ask = false; S3.say = ''; flPaint();
   }, true);
   document.addEventListener('keydown', e => {
     const S2 = FL.sel; if (!S2.on || S2.busy || S.view !== 'flickr' || flViewOpen()) return;
     const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-    if ((e.key === 'Delete' || e.key === 'Backspace') && S2.ids.size && !S2.ask) { e.preventDefault(); S2.ask = true; flPaint(); return; }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); flListOf(S2.key).forEach(p => S2.ids.add(p.id)); S2.say = ''; flPaint(); return; }
-    if (e.key === 'Escape') { e.preventDefault(); if (S2.ask) S2.ask = false; else flSelReset(); flPaint(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && S2.ids.size && !S2.ask && !S2.mode) { e.preventDefault(); S2.ask = true; flPaint(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && !S2.mode) { e.preventDefault(); flListOf(S2.key).forEach(p => S2.ids.add(p.id)); S2.say = ''; flPaint(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); if (S2.ask) S2.ask = false; else if (S2.mode) S2.mode = ''; else flSelReset(); flPaint(); }
   });
-  document.addEventListener('change', e => { if (e.target.id === 'flSelWho') { FL.sel.who = e.target.value; flPaint(); } });
+  document.addEventListener('change', e => { if (e.target.id === 'flSelWho') { FL.sel.who = e.target.value; flPaint(); } if (e.target.id === 'flSelAlb') { FL.sel.alb = e.target.value; FL.sel.say = ''; flPaint(); if (FL.sel.alb === '+') $('flSelAlbNew')?.focus(); } });
   document.addEventListener('click', async e => {
     const b = e.target.closest('[data-fl]'); if (!b || !b.closest('.flickr-tab')) return;
     const k = b.dataset.fl, S2 = FL.sel;
     if (k === 'selon') { if (S2.on && S2.key === b.dataset.k) flSelReset(); else { flSelReset(); FL.sel.on = true; FL.sel.key = b.dataset.k; } flPaint(); return; }
     if (k === 'seloff') { flSelReset(); flPaint(); return; }
-    if (k === 'pick1') { const id = b.dataset.id; if (S2.ids.has(id)) S2.ids.delete(id); else S2.ids.add(id); S2.anchor = +b.dataset.i; S2.ask = false; S2.say = ''; flPaint(); return; }
+    if (k === 'selalb' || k === 'seledit') { S2.mode = k === 'selalb' ? 'album' : 'edit'; S2.say = ''; S2.ask = false; if (k === 'seledit') { S2.meta = null; S2.metaErr = ''; S2.metaBusy = false; } flPaint(); return; }
+    if (k === 'selback') { S2.mode = ''; S2.say = ''; flPaint(); return; }
+    if (k === 'selmeta') { S2.metaErr = ''; flPaint(); return; }
+    if (k === 'selallt' && S2.meta) { const t = (S2.allT || '').trim(); if (!t) { $('flbAllT')?.focus(); return; } let i = 0; for (const m of S2.meta) if (m.ok) m.title = b.dataset.num ? `${t} ${++i}` : t; flPaint(); return; }
+    if (k === 'selalld' && S2.meta) { const d = S2.allD || ''; for (const m of S2.meta) if (m.ok) m.description = d; flPaint(); return; }
+    if (k === 'selalbgo') {
+      const ids = [...S2.ids], isNew = S2.alb === '+', title = (S2.albNew || '').trim();
+      if (!ids.length || (isNew ? !title : !S2.alb)) return;
+      S2.busy = true; S2.say = ''; flPaint();
+      try {
+        const r = await invoke('flickr_album_add_many', { ids, albumId: isNew ? null : S2.alb, newTitle: isNew ? title : null });
+        const name = isNew ? title : ((FL.albumsMine.data || []).find(a => a.id === S2.alb)?.title || 'the album');
+        FL.albumsMine = { data: null, busy: false, err: '' }; if (FL.album && FL.album.id === r.album_id) FL.album.data = null;
+        const failed = r.failed ? ` ${r.failed} couldn’t be added.` : '';
+        S2.sayErr = !!r.failed; // the photos stay selected, ready for Edit titles… or another album
+        S2.say = `${isNew ? `Made “${name}” with` : `Added`} ${flN(r.done)}${isNew ? '.' : ` to “${name}”.`}${failed}`;
+        if (!r.failed) { S2.mode = ''; S2.alb = isNew ? r.album_id : S2.alb; S2.albNew = ''; }
+      } catch (err) { S2.say = msg(err); S2.sayErr = true; }
+      S2.busy = false; flPaint(); return;
+    }
+    if (k === 'selsave' && S2.meta) {
+      const tags = (S2.tags || '').trim();
+      const items = S2.meta.filter(m => m.ok).map(m => ({ id: m.id, title: m.title !== m.t0 ? m.title : null, description: m.description !== m.d0 ? m.description : null }))
+        .filter(it => tags || it.title != null || it.description != null);
+      if (!items.length) return;
+      S2.busy = true; S2.say = ''; flPaint();
+      try {
+        const r = await invoke('flickr_meta_many', { items, tags: tags || null });
+        const done = new Set(r?.done_ids || []);
+        for (const m of S2.meta) if (done.has(m.id)) { m.t0 = m.title; m.d0 = m.description; }
+        for (const L of [FL.mine, FL.album?.data?.photos]) for (const p of L || []) { const m = done.has(p.id) && S2.meta.find(x => x.id === p.id); if (m) { p.title = m.title; p.description = m.description.length > 280 ? `${m.description.slice(0, 279)}…` : m.description; } }
+        if (done.size && tags) S2.tags = '';
+        S2.say = `Saved ${flN(r.done)} on Flickr.${r.failed ? ` ${r.failed} couldn’t be saved; their changes are still here to try again.` : ''}`; S2.sayErr = !!r.failed;
+        if (!r.failed) { S2.mode = ''; S2.meta = null; }
+      } catch (err) { S2.say = msg(err); S2.sayErr = true; }
+      S2.busy = false; flPaint(); return;
+    }
+    if (k === 'pick1') { const id = b.dataset.id; if (S2.ids.has(id)) S2.ids.delete(id); else S2.ids.add(id); S2.anchor = +b.dataset.i; if (S2.mode === 'edit') S2.meta = null; S2.ask = false; S2.say = ''; flPaint(); return; }
     if (k === 'selall') { const list = flListOf(S2.key); if (S2.ids.size === list.length) S2.ids.clear(); else list.forEach(p => S2.ids.add(p.id)); S2.say = ''; flPaint(); return; }
     if (k === 'selask') { S2.ask = true; flPaint(); return; }
     if (k === 'selkeep') { S2.ask = false; flPaint(); return; }

@@ -3206,5 +3206,19 @@ body.flv-open #shareMenu { z-index: 1000; }
 .flickr-tab .fl-pic { position: relative; }
 .flickr-tab .fl-selbar { position: fixed; top: auto; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(920px, calc(100vw - 24px)); z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
 .flickr-tab .fl-selbar.flv-del { width: min(560px, calc(100vw - 24px)); }
+.flickr-tab .fl-selbar.fl-bulk { display: block; width: min(680px, calc(100vw - 24px)); max-height: min(72vh, 720px); overflow: auto; overscroll-behavior: contain; }
+.flickr-tab .fl-bulk .flb-h { margin: 0 0 8px; }
+.flickr-tab .fl-bulk .flb-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.flickr-tab .fl-bulk .flb-line .fl-see { margin-right: 0; }
+.flickr-tab .fl-bulk .flb-in { flex: 1 1 220px; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, #fff); color: var(--ink); font: inherit; font-size: 14px; }
+.flickr-tab .fl-bulk textarea.flb-in { resize: vertical; line-height: 1.4; }
+.flickr-tab .fl-bulk .flb-all { margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.flickr-tab .fl-bulk .flb-all summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.flickr-tab .fl-bulk .flb-rows { display: grid; gap: 10px; margin: 6px 0 10px; }
+.flickr-tab .fl-bulk .flb-row { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: start; }
+.flickr-tab .fl-bulk .flb-row img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--line); }
+.flickr-tab .fl-bulk .flb-row.off { opacity: .6; }
+.flickr-tab .fl-bulk .flb-fields { display: grid; gap: 6px; }
+.flickr-tab .fl-bulk .tb-acts { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: -10px; padding: 8px 0 2px; background: var(--card, var(--surface)); }
 @media (min-width: 901px) { .flickr-tab .fl-selbar { left: calc(50% + 135px); } }
 @media (max-width: 900px) { .flickr-tab .fl-selbar, .flickr-tab .fl-selbar.flv-del { left: 12px; right: 12px; transform: none; width: auto; max-width: none; } }
