@@ -6376,8 +6376,9 @@
       <p class="tm-tip">What you type is kept on this device until it’s posted.</p></section>`;
   }
   function tbPeopleHtml() {
-    if (SOC.tumblr == null && !TB.actLoading) {
-      TB.actLoading = true;
+    // Ask once; after a failure wait a minute before asking again, or the repaint asks again at once, forever (that froze the tab on iPhone).
+    if (SOC.tumblr == null && !TB.actLoading && (!TB.actAt || Date.now() - TB.actAt > 60 * 1000)) {
+      TB.actLoading = true; TB.actAt = Date.now();
       tauriInvoke('tumblr_activity').then(t => { SOC.tumblr = t || []; SOC.tumblrErr = ''; }).catch(e => { SOC.tumblrErr = msg(e); SOC.tumblr = SOC.tumblr || null; })
         .finally(() => { TB.actLoading = false; if (S.view === 'tumblr') tbPaint(); });
     }
