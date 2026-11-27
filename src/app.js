@@ -79,7 +79,8 @@
   const feedById = id => S.feeds.find(f => String(f.id) === String(id));
   const folderById = id => S.folders.find(f => String(f.id) === String(id));
   const item = id => S.items.find(i => i.id === id);
-  const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+  // quotes too: esc() also fills value="…" and data-…="…" attributes (a title with " in it was cut off there, Nov 27)
+  const esc = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
   const isWeb = u => /^https?:\/\//i.test(u || '');
   const msg = e => (typeof e === 'string' ? e : e?.message) || 'Something went wrong. Try again.';
   const fmtCount = n => n > 999 ? '1K+' : (n || '');
