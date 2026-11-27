@@ -1001,6 +1001,96 @@ pub async fn flickr_delete_many(ids: Vec<String>) -> Result<Value, String> {
     Ok(batch_result(Vec::new()))
 }
 
+// Several photos at once from the selection bar (David, Nov 27: "select multiple pictures to make them an album or
+// add to a current album", "edit titles and descriptions on multiple pictures").
+
+/// Titles and full descriptions of your photos, for the Edit box (the grid only has the first 280 characters).
+#[tauri::command]
+pub async fn flickr_meta_get(ids: Vec<String>) -> Result<Vec<Value>, String> {
+    use futures::stream::{self, StreamExt};
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(100).collect();
+    let got: Vec<Value> = stream::iter(ids.into_iter().map(|id| async move {
+        match api("flickr.photos.getInfo", &[("photo_id", id.clone())]).await {
+            Ok(v) => json!({ "id": id, "title": words(&v["photo"]["title"]), "description": plain(&words(&v["photo"]["description"])), "ok": true }),
+            Err(e) => json!({ "id": id, "title": "", "description": "", "ok": false, "err": e }),
+        }
+    })).buffered(6).collect().await;
+    Ok(got)
+}
+
+#[derive(serde::Deserialize)]
+pub struct MetaItem {
+    id: String,
+    title: Option<String>,
+    description: Option<String>,
+}
+
+/// New titles and/or descriptions for several photos, and tags added to all of them. Flickr sets a title and a
+/// description together, so a photo whose description wasn't changed gets its own back exactly as it was (links kept).
+#[tauri::command]
+pub async fn flickr_meta_many(items: Vec<MetaItem>, tags: Option<String>) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let tags = tags.map(|t| tag_line(&t)).filter(|t| !t.is_empty());
+    let items: Vec<MetaItem> = items.into_iter().filter(|m| !m.id.is_empty() && m.id.chars().all(|c| c.is_ascii_digit())).take(500).collect();
+    let res: Vec<(String, bool)> = stream::iter(items.into_iter().map(|m| {
+        let tags = tags.clone();
+        async move {
+            let ok = meta_one(&m, tags.as_deref()).await.is_ok();
+            (m.id, ok)
+        }
+    })).buffer_unordered(4).collect().await;
+    Ok(batch_result(res))
+}
+
+async fn meta_one(m: &MetaItem, tags: Option<&str>) -> Result<(), String> {
+    if m.title.is_some() || m.description.is_some() {
+        let (title, description) = match (&m.title, &m.description) {
+            (Some(t), Some(d)) => (t.trim().to_string(), d.trim().to_string()),
+            _ => {
+                let v = api("flickr.photos.getInfo", &[("photo_id", m.id.clone())]).await?;
+                (m.title.as_deref().map(|t| t.trim().to_string()).unwrap_or_else(|| words(&v["photo"]["title"])),
+                 m.description.as_deref().map(|d| d.trim().to_string()).unwrap_or_else(|| words(&v["photo"]["description"])))
+            }
+        };
+        api_post("flickr.photos.setMeta", &[("photo_id", m.id.clone()), ("title", title), ("description", description)]).await?;
+    }
+    if let Some(t) = tags {
+        api_post("flickr.photos.addTags", &[("photo_id", m.id.clone()), ("tags", t.to_string())]).await?;
+    }
+    Ok(())
+}
+
+/// Put several photos in one of your albums, or in a new album (the first photo becomes its cover).
+#[tauri::command]
+pub async fn flickr_album_add_many(ids: Vec<String>, album_id: Option<String>, new_title: Option<String>) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(500).collect();
+    let Some(first) = ids.first().cloned() else { return Err("Select some photos first.".into()) };
+    let (album, rest) = if let Some(t) = new_title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+        let v = api_post("flickr.photosets.create", &[("title", t), ("primary_photo_id", first.clone())]).await?;
+        let a = st(&v["photoset"], "id");
+        if a.is_empty() { return Err("Flickr didn’t say which album it made.".into()); }
+        (a, ids[1..].to_vec())
+    } else if let Some(a) = album_id.filter(|a| !a.is_empty() && a.chars().all(|c| c.is_ascii_digit())) {
+        (a, ids.clone())
+    } else {
+        return Err("Pick an album, or name a new one.".into());
+    };
+    let made_with_first = rest.len() < ids.len();
+    // one at a time keeps them in the order they were selected
+    let mut res: Vec<(String, bool)> = stream::iter(rest.into_iter().map(|pid| {
+        let a = album.clone();
+        async move {
+            let ok = match api_post("flickr.photosets.addPhoto", &[("photoset_id", a), ("photo_id", pid.clone())]).await { Ok(_) => true, Err(e) => e.contains("already in") };
+            (pid, ok)
+        }
+    })).buffered(1).collect().await;
+    if made_with_first { res.insert(0, (first, true)); }
+    let mut out = batch_result(res);
+    out["album_id"] = json!(album);
+    Ok(out)
+}
+
 fn batch_result(res: Vec<(String, bool)>) -> Value {
     let done: Vec<&String> = res.iter().filter(|(_, ok)| *ok).map(|(i, _)| i).collect();
     json!({ "done": done.len(), "failed": res.len() - done.len(), "done_ids": done })
