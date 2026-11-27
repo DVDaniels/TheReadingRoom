@@ -899,7 +899,20 @@
     </section>`;
   }
 
-  function renderList() {
+  // A redraw while you're typing in a box on the page (pictures arriving, a scan's progress, a refresh) keeps what you
+  // typed, the cursor and the keyboard (found Nov 27: Explore's search box lost its text and focus on iPhone).
+  function keepTyping() {
+    const a = document.activeElement;
+    if (!a || !a.id || !$('list')?.contains(a) || !/^(INPUT|TEXTAREA)$/.test(a.tagName) || /^(checkbox|radio|file|button|submit)$/.test(a.type)) return () => {};
+    const id = a.id, v = a.value, st = a.selectionStart, en = a.selectionEnd;
+    return () => {
+      const n = $(id); if (!n || n === a) return;
+      if (n.value !== v) n.value = v;
+      n.focus({ preventScroll: true }); try { n.setSelectionRange(st, en); } catch {}
+    };
+  }
+  function renderList() { const keep = keepTyping(); renderListNow(); keep(); }
+  function renderListNow() {
     syncHome(); paintUpNext();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'trending') { $('list').innerHTML = trendingHtml(); return; }
@@ -2413,7 +2426,7 @@
   // ---- Search a topic: personal sites first (Marginalia, a search engine for the independent web), then the news.
   const recentSearches = () => { try { return JSON.parse(store.get('topicSearches') || '[]'); } catch { return []; } };
   // Back to Discover as it was: no search, no results
-  function clearTopic() { D.q = ''; D.res = null; D.searching = false; renderList(); setTimeout(() => $('topicQ')?.focus(), 0); }
+  function clearTopic() { D.q = ''; D.res = null; D.searching = false; const q = $('topicQ'); if (q) q.value = ''; renderList(); setTimeout(() => $('topicQ')?.focus(), 0); }
   async function topicSearch(q) {
     q = (q || '').trim(); if (!q) return clearTopic(); if (q.length < 2) return;
     D.q = q; D.searching = true; D.res = null; renderList();
@@ -2682,7 +2695,7 @@
   let smallLoading = false;
   async function loadSmallWeb() {
     if (smallLoading || D.small) return; smallLoading = true;
-    try { D.small = await invoke('smallweb_feed'); D.smallErr = ''; } catch (e) { D.smallErr = msg(e); }
+    try { D.small = (await invoke('smallweb_feed')) || []; D.smallErr = ''; } catch (e) { D.smallErr = msg(e); } // never empty-handed: that would load again on every paint
     smallLoading = false;
     if (S.view === 'discover') renderList();
     const want = (D.small || []).slice(0, 24).map(p => p.link).filter(u => !D.imgs.has(u));
@@ -2769,7 +2782,15 @@
       D.busy.delete(domain); paintDiscover();
     }
   }
-  listen('discover-progress', e => { const [done, total] = e.payload; D.done = done; D.total = total; D.running = true; if (S.view === 'discover') { renderHead(); renderList(); } });
+  // each site checked moves only the bar and the count: redrawing the whole page every time replaced the search box
+  // while you typed in it (found Nov 27 on iPhone)
+  listen('discover-progress', e => {
+    const [done, total] = e.payload; D.done = done; D.total = total; D.running = true;
+    if (S.view !== 'discover') return;
+    renderHead();
+    const bar = document.querySelector('#list .disc-bar > div');
+    if (bar) bar.style.width = `${total ? Math.round(100 * done / total) : 5}%`; else renderList();
+  });
   listen('discover-done', async () => { await loadDiscover(); D.running = false; paintDiscover(); });
   loadDiscover().then(() => renderRail());
 
@@ -6830,6 +6851,7 @@
   function flPageLoad(P, cmd, args, page) {
     if (P.busy) return; P.busy = true; if (page === 1) P.err = '';
     tauriInvoke(cmd, { ...args, page }).then(d => {
+      d = d && typeof d === 'object' ? { photos: [], page: 1, pages: 1, total: 0, ...d } : { photos: [], page: 1, pages: 1, total: 0 }; // never empty-handed: an empty answer would load again forever
       if (page > 1 && P.data) { P.data.photos = [...P.data.photos, ...(d.photos || [])]; P.data.page = d.page; P.data.pages = d.pages; } else P.data = d;
       flDescribe(P.data?.photos);
     }).catch(e => { if (page === 1) P.err = msg(e) || 'Flickr didn’t answer.'; else status(msg(e), true); })
