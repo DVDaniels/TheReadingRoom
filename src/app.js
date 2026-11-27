@@ -6755,7 +6755,7 @@
   // Rust: flickr_contacts, flickr_activity, flickr_mine, flickr_upload (flickr.rs).
   const FL = { who: store.get('flWho') === 'friends' ? 'friends' : 'all', contacts: null, cErr: '', cBusy: false, cShow: 24,
     act: null, aErr: '', aBusy: false, mine: null, mErr: '', mBusy: false, page: 1, pages: 1, total: 0,
-    person: null, sub: '', album: null, albumsMine: { data: null, busy: false, err: '' }, faves: { data: null, busy: false, err: '' }, q: '', sort: 'relevance', sres: { data: null, busy: false, err: '' }, file: '', preview: '', name: '', mime: '', size: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
+    person: null, sub: '', album: null, people: { data: null, busy: false, err: '' }, cView: store.get('flCView') === 'photos' ? 'photos' : 'people', pq: '', pShow: 30, desc: {}, flWait: '', albumsMine: { data: null, busy: false, err: '' }, faves: { data: null, busy: false, err: '' }, q: '', sort: 'relevance', sres: { data: null, busy: false, err: '' }, files: [], upAlbum: '', upNew: '', upDone: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
   const flDraft = () => { try { return JSON.parse(store.get('flDraft') || '{}') || {}; } catch { return {}; } };
   function flNavItem() {
     return { view: 'flickr', label: 'Flickr', count: '', icon: ICONS.flickr, html: navButton('flickr', 'Flickr', '', { icon: ICONS.flickr }) };
@@ -6766,7 +6766,7 @@
     if (force) { FL.contacts = FL.act = FL.mine = null; FL.cErr = FL.aErr = FL.mErr = ''; }
     if (FL.contacts == null && !FL.cBusy && !FL.cErr) {
       FL.cBusy = true;
-      tauriInvoke('flickr_contacts', { friends: FL.who === 'friends' }).then(r => { FL.contacts = r || []; }).catch(e => { FL.cErr = msg(e) || 'Flickr didn’t answer.'; })
+      tauriInvoke('flickr_contacts', { friends: FL.who === 'friends' }).then(r => { FL.contacts = r || []; flDescribe(FL.contacts); }).catch(e => { FL.cErr = msg(e) || 'Flickr didn’t answer.'; })
         .finally(() => { FL.cBusy = false; FL.at = Date.now(); flRepaint(); });
     }
     if (FL.act == null && SOC.flickr) FL.act = SOC.flickr;
@@ -6777,6 +6777,29 @@
     }
     if (FL.mine == null && !FL.mBusy && !FL.mErr) flMine(1);
   }
+  // Flickr sends your contacts' latest photos without their descriptions: ask for them after the photos show
+  // (kept in FL.desc, so a refresh only asks about new photos)
+  function flDescribe(list) {
+    for (const p of list) if (FL.desc[p.id] != null) p.description = FL.desc[p.id];
+    const ids = list.filter(p => FL.desc[p.id] == null).map(p => p.id).slice(0, 50);
+    if (!ids.length) return;
+    ids.forEach(id => { FL.desc[id] = ''; });
+    tauriInvoke('flickr_descriptions', { ids }).then(m => {
+      for (const [id, d] of Object.entries(m || {})) FL.desc[id] = d || '';
+      for (const p of FL.contacts || []) if (FL.desc[p.id]) p.description = FL.desc[p.id];
+      flRepaint(); if (flViewOpen()) flViewPaint();
+    }).catch(() => { ids.forEach(id => { delete FL.desc[id]; }); });
+  }
+  function flPeopleLoad(force) {
+    const L = FL.people;
+    if (force) { L.data = null; L.err = ''; }
+    if (L.data || L.busy || L.err || !SOC.accounts?.flickr) return L;
+    L.busy = true;
+    tauriInvoke('flickr_people').then(r => { L.data = r || []; }).catch(e => { L.err = msg(e) || 'Flickr didn’t answer.'; })
+      .finally(() => { L.busy = false; flRepaint(); });
+    return L;
+  }
+  const flContact = nsid => (FL.people.data || []).find(c => c.nsid === nsid);
   function flMine(page) {
     FL.mBusy = true;
     tauriInvoke('flickr_mine', { page }).then(r => {
@@ -6791,18 +6814,65 @@
       : `<span class="nb-av fl-av"><img class="nb-face-img" src="${esc(p.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((p.name || '?')[0].toUpperCase())}</span>${esc(p.name)}`;
     return `<button class="fl-tile" type="button" data-fl="view" data-list="${list}" data-i="${i}" title="${esc(p.title || 'Open the photo')}">
       <span class="fl-pic"><img src="${esc(p.img || p.thumb)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer">${lock ? `<span class="fl-lock">${esc(lock)}</span>` : ''}</span>
-      <span class="fl-cap"><b>${esc(p.title || 'Untitled')}</b><span class="fl-by${mine ? ' fl-nums' : ''}">${meta}</span>${p.date ? `<time>${esc(fmtWhen(p.date))}</time>` : ''}</span></button>`;
+      <span class="fl-cap"><b>${esc(p.title || 'Untitled')}</b>${p.description ? `<span class="fl-desc">${esc(p.description)}</span>` : ''}<span class="fl-by${mine ? ' fl-nums' : ''}">${meta}</span>${p.date ? `<time>${esc(fmtWhen(p.date))}</time>` : ''}</span></button>`;
   }
-  function flContactsHtml() {
+  // Contacts (David, Nov 27: "Contacts needs to be organized by account. Then I could follow more people."):
+  // By person — everyone you follow on Flickr, the ones with new photos first, each with their latest photos — or
+  // Latest photos, one grid, newest first. Rust: flickr_people, flickr_contacts.
+  function flContactsHtml(home) {
     const list = FL.contacts || [];
+    const whoChips = `${[['all', 'Everyone you follow'], ['friends', 'Friends & family']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="who" data-k="${k}" aria-pressed="${FL.who === k}">${l}</button>`).join('')}`;
+    const viewChips = home ? '' : `${[['people', 'By person'], ['photos', 'Latest photos']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="cview" data-k="${k}" aria-pressed="${FL.cView === k}">${l}</button>`).join('')}<span class="fl-chipgap"></span>`;
+    if (!home && FL.cView === 'people') return flPeopleHtml(viewChips + whoChips);
     const body = FL.contacts == null ? `<p class="day-note">${FL.cErr ? `Couldn’t get your contacts’ photos just now. ${esc(FL.cErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your contacts’ latest photos from Flickr…'}</p>`
       : list.length ? `<div class="fl-grid">${list.slice(0, FL.cShow).map((p, i) => flTileHtml(p, false, 'contacts', i)).join('')}</div>${list.length > FL.cShow ? `<button class="b-link" type="button" data-fl="cmore">Show ${list.length - FL.cShow} more</button>` : ''}`
       : `<p class="day-note">${FL.who === 'friends' ? 'No new photos from your friends and family.' : 'No new photos from the people you follow on Flickr.'}</p>`;
     return `<section class="b-panel" aria-label="From your contacts"><div class="bp-head"><h3 class="b-sub">From your contacts</h3><span class="bp-meta">Their latest photos, newest first, including the ones only friends or family can see</span></div>
-      <div class="nb-chips">${[['all', 'Everyone you follow'], ['friends', 'Friends & family']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="who" data-k="${k}" aria-pressed="${FL.who === k}">${l}</button>`).join('')}</div>${body}</section>`;
+      <div class="nb-chips">${viewChips}${whoChips}</div>${body}</section>`;
   }
-  function flCommentsHtml() {
-    const list = (FL.act || []).slice(0, 8);
+  // your contacts' latest photos, by who took them (newest first)
+  function flByPerson() {
+    const by = new Map();
+    for (const p of FL.contacts || []) { if (!by.has(p.owner)) by.set(p.owner, []); by.get(p.owner).push(p); }
+    return by;
+  }
+  function flPeopleHtml(chips) {
+    const L = flPeopleLoad(false), by = flByPerson();
+    const q = FL.pq.trim().toLowerCase();
+    // the people list, or (if Flickr wouldn't give it) just the people in the latest photos
+    let people = L.data || (L.err ? [...by.values()].map(ps => ({ nsid: ps[0].owner, name: ps[0].name, handle: '', face: ps[0].face, friend: ps[0].friend, family: ps[0].family,
+      site: `https://www.flickr.com/photos/${ps[0].owner}/`, feed: `https://www.flickr.com/services/feeds/photos_public.gne?id=${ps[0].owner}&format=atom` })) : []);
+    if (FL.who === 'friends') people = people.filter(c => c.friend || c.family);
+    if (q) people = people.filter(c => `${c.name} ${c.handle}`.toLowerCase().includes(q));
+    const latest = c => (by.get(c.nsid) || [])[0]?.date || '';
+    const fresh = people.filter(c => by.has(c.nsid)).sort((a, b) => latest(b).localeCompare(latest(a)));
+    const rest = people.filter(c => !by.has(c.nsid));
+    const badge = c => c.friend && c.family ? 'Friend & family' : c.friend ? 'Friend' : c.family ? 'Family' : '';
+    const acts = c => `<button class="linkish" type="button" data-fl="person" data-nsid="${esc(c.nsid)}">Their photos</button>${flFollowing(c.feed) ? '<span class="tm-tip">Following in The Reading Room</span>'
+      : `<button class="linkish" type="button" data-fl="follow" data-url="${esc(c.feed)}" data-name="${esc(c.name)}">Follow in The Reading Room</button>`}`;
+    const head = c => `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>
+        <div class="flc-who"><button class="nb-name" type="button" data-fl="person" data-nsid="${esc(c.nsid)}">${esc(c.name)}</button><small>${[c.handle && c.handle !== c.name ? c.handle : '', badge(c)].filter(Boolean).map(esc).join(' · ')}</small></div>`;
+    const card = c => {
+      const ps = by.get(c.nsid) || [];
+      return `<article class="flc-card"><div class="flc-top">${head(c)}<span class="flc-n">${ps.length} new · ${esc(fmtWhen(ps[0].date))}</span></div>
+        <div class="flc-strip">${ps.slice(0, 4).map((p, i) => `<button class="fl-tile" type="button" data-fl="view" data-list="pc:${esc(c.nsid)}" data-i="${i}" title="${esc(p.title || 'Open the photo')}"><span class="fl-pic"><img src="${esc(p.img || p.thumb)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer">${flWhoSees(p) ? `<span class="fl-lock" title="${esc(flWhoSees(p))}" aria-label="${esc(flWhoSees(p))}">🔒</span>` : ''}</span></button>`).join('')}${ps.length > 4 ? `<button class="flc-more" type="button" data-fl="person" data-nsid="${esc(c.nsid)}">+${ps.length - 4}</button>` : ''}</div>
+        <div class="nb-acts">${acts(c)}</div></article>`;
+    };
+    const row = c => `<div class="flc-row">${head(c)}<div class="nb-acts">${acts(c)}</div></div>`;
+    const wait = FL.contacts == null || (!L.data && !L.err);
+    const total = L.data ? L.data.length : 0;
+    const body = wait ? `<p class="day-note">${FL.cErr && !L.data ? `Couldn’t get your contacts just now. ${esc(FL.cErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting the people you follow from Flickr…'}</p>`
+      : !people.length ? `<p class="day-note">${q ? 'Nobody you follow matches that.' : FL.who === 'friends' ? 'No friends or family on Flickr yet.' : 'You don’t follow anyone on Flickr yet. Search photos, open someone’s page and press Follow on Flickr.'}</p>`
+      : `${fresh.length ? `<h4 class="flc-h">New photos</h4><div class="flc-grid">${fresh.map(card).join('')}</div>` : ''}
+        ${rest.length ? `<h4 class="flc-h">${fresh.length ? 'Everyone else' : 'Everyone you follow'} <span class="tm-tip">${rest.length}</span></h4><div class="flc-list">${rest.slice(0, FL.pShow).map(row).join('')}</div>${rest.length > FL.pShow ? `<button class="b-link" type="button" data-fl="pshow">Show ${Math.min(30, rest.length - FL.pShow)} more</button>` : ''}` : ''}`;
+    return `<section class="b-panel" aria-label="People you follow on Flickr"><div class="bp-head"><h3 class="b-sub">People you follow</h3><span class="bp-meta">${total ? `${nfmt(total)} on Flickr · ` : ''}The ones with new photos first</span></div>
+      <div class="nb-chips">${chips}</div>
+      <input type="search" id="flPq" class="tb-in flc-find" value="${esc(FL.pq)}" placeholder="Find someone you follow" autocomplete="off">
+      ${body}
+      <p class="tm-tip">To follow someone new, open their page (tap their name on any photo, or search) and press Follow on Flickr.</p></section>`;
+  }
+  function flCommentsHtml(n = 8) {
+    const list = (FL.act || []).slice(0, n);
     const body = FL.act == null ? `<p class="day-note">${FL.aErr ? `Couldn’t get the comments just now. ${esc(FL.aErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Looking for comments on your photos…'}</p>`
       : list.length ? list.map(c => `<article class="yu-ev fl-ev"><span class="nb-av md"><img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span><div class="nb-main">
           <div class="nb-by"><button class="nb-name" type="button" data-fl="person" data-nsid="${esc(c.user)}">${esc(c.name)}</button><span>on “${esc(c.photo || 'your photo')}”</span><time>${esc(fmtWhen(c.date))}</time></div>
@@ -6816,26 +6886,32 @@
     if (!plusOk()) return `<section class="b-panel wr-invite fl-up"><p class="b-sub">Upload to Flickr</p><h2>Upload photos with The Reading Room Plus</h2>
       <p>Send a photo to Flickr at the size you took it, with a title, a description, tags and who can see it. Everything else in this tab is free.</p>
       <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`;
-    const d = flDraft();
+    const d = flDraft(), F = FL.files;
     const see = [['public', 'Everyone'], ['friends', 'Friends'], ['family', 'Family'], ['both', 'Friends & family'], ['private', 'Only you']];
-    return `<section class="b-panel fl-up" aria-label="Upload a photo to Flickr"><div class="bp-head"><h3 class="b-sub">Upload a photo</h3><span class="bp-meta">Sent as it is, not made smaller</span></div>
-      ${FL.file ? `<div class="tb-photo"><img src="${esc(FL.preview)}" alt=""><div><span class="tb-meta">${esc(FL.name)} · ${(FL.size / 1048576).toFixed(1)} MB</span><button class="b-link" type="button" data-fl="nophoto">Pick another photo</button></div></div>`
-        : `<button class="btn" type="button" data-fl="pick">＋ Pick a photo</button>`}<input id="flFile" type="file" accept="image/*" hidden>
-      <input id="flTitle" class="tb-in" placeholder="Title" value="${esc(d.title || '')}">
+    const L = flAlbumsMineLoad(), mb = F.reduce((n, f) => n + f.size, 0) / 1048576;
+    const rows = F.map((f, i) => `<div class="fl-uprow${f.state ? ' ' + f.state : ''}"><img src="${esc(f.preview)}" alt="">
+        <div><input class="tb-in fl-uptitle" data-flt="${i}" placeholder="Title" value="${esc(f.title)}"${FL.sending ? ' disabled' : ''}><span class="tb-meta">${esc(f.name)} · ${(f.size / 1048576).toFixed(1)} MB${f.state === 'done' ? ' · ✓ Uploaded' : f.state === 'up' ? ' · Uploading…' : f.state === 'bad' ? ` · ${esc(f.err || 'Didn’t upload')}` : ''}</span></div>
+        ${FL.sending ? '' : `<button class="b-link" type="button" data-fl="unpick" data-i="${i}" aria-label="Take ${esc(f.name)} out">Remove</button>`}</div>`).join('');
+    const albumPick = `<label class="fl-see">Also put them in <select id="flUpAlbum"${FL.sending ? ' disabled' : ''}><option value="">No album</option>${(L.data || []).map(a => `<option value="${esc(a.id)}"${FL.upAlbum === a.id ? ' selected' : ''}>${esc(a.title || 'Untitled album')}</option>`).join('')}<option value="+"${FL.upAlbum === '+' ? ' selected' : ''}>A new album…</option></select></label>
+      ${FL.upAlbum === '+' ? `<input id="flUpNew" class="tb-in" placeholder="Name the new album" maxlength="120" value="${esc(FL.upNew)}">` : ''}`;
+    return `<section class="b-panel fl-up" aria-label="Upload photos to Flickr"><div class="bp-head"><h3 class="b-sub">Upload photos</h3><span class="bp-meta">Sent as they are, not made smaller · as many as you like at once</span></div>
+      ${F.length ? `<div class="fl-uplist">${rows}</div><p class="tb-meta">${F.length} ${F.length === 1 ? 'photo' : 'photos'} · ${mb.toFixed(1)} MB${FL.sending ? '' : ' · <button class="b-link" type="button" data-fl="pick">＋ Add more</button>'}</p>`
+        : `<button class="btn" type="button" data-fl="pick">＋ Pick photos</button>`}<input id="flFile" type="file" accept="image/*" multiple hidden>
+      ${F.length > 1 ? '<p class="tm-tip">Each photo keeps its own title. The description, tags and who can see it go on all of them.</p>' : ''}
       <textarea id="flDesc" class="tb-in" rows="3" placeholder="Description (optional)">${esc(d.desc || '')}</textarea>
       <input id="flTags" class="tb-in" placeholder="Tags, separated by commas" value="${esc(d.tags || '')}" autocapitalize="off">
-      <div class="tb-acts"><label class="fl-see">Who can see it <select id="flSee">${see.map(([k, l]) => `<option value="${k}"${FL.see === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-        <button class="btn primary" type="button" data-fl="send"${FL.sending ? ' disabled' : ''}>${FL.sending ? 'Uploading…' : 'Upload to Flickr'}</button></div>
+      <div class="tb-acts"><label class="fl-see">Who can see ${F.length > 1 ? 'them' : 'it'} <select id="flSee">${see.map(([k, l]) => `<option value="${k}"${FL.see === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${albumPick}
+        <button class="btn primary" type="button" data-fl="send"${FL.sending ? ' disabled' : ''}>${FL.sending ? `Uploading ${Math.min(FL.upDone + 1, F.length)} of ${F.length}…` : F.length > 1 ? `Upload ${F.length} photos` : 'Upload to Flickr'}</button></div>
       ${FL.say ? `<p class="tm-tip tb-say${FL.sayErr ? ' err' : ''}" role="status">${esc(FL.say)}${FL.link ? ` <button class="b-link" type="button" data-fl="open" data-url="${esc(FL.link)}">See it on Flickr</button>` : ''}</p>` : ''}
-      <p class="tm-tip">The title, description and tags are kept on this device until the photo is uploaded.</p></section>`;
+      <p class="tm-tip">The description and tags are kept on this device until the photos are uploaded. Keep the app open while they go.</p></section>`;
   }
-  function flMineHtml() {
+  function flMineHtml(home) {
     const a = SOC.accounts.flickr;
     const list = FL.mine || [];
     const body = FL.mine == null ? `<p class="day-note">${FL.mErr ? `Couldn’t get your photos just now. ${esc(FL.mErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your photos from Flickr…'}</p>`
       : list.length ? `<div class="fl-grid">${list.map((p, i) => flTileHtml(p, true, 'mine', i)).join('')}</div>${FL.page < FL.pages ? `<button class="b-link" type="button" data-fl="mmore"${FL.mBusy ? ' disabled' : ''}>Show more</button>` : ''}`
       : '<p class="day-note">No photos on your Flickr yet.</p>';
-    return `<section class="b-panel" aria-label="Your photos on Flickr"><div class="bp-head"><h3 class="b-sub">Your photos</h3><span class="bp-meta">${FL.total ? `${nfmt(FL.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(a.site)}">Open on Flickr</button></span></div>${body}</section>`;
+    return `<section class="b-panel" aria-label="Your photos on Flickr"><div class="bp-head"><h3 class="b-sub">${home ? 'Your latest photos' : 'Your photos'}</h3><span class="bp-meta">${FL.total ? `${nfmt(FL.total)} photos · ` : ''}${home && plusOk() ? '<button class="b-link" type="button" data-flsub="mine">＋ Upload</button> · ' : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(a.site)}">Open on Flickr</button></span></div>${body}</section>`;
   }
   function flPaint() {
     const a = document.activeElement, id = a && a.id && a.closest?.('#list') ? a.id : '';
@@ -6853,36 +6929,70 @@
     const el = id && $(id);
     if (el) { el.focus(); if (sel != null) try { el.setSelectionRange(sel, sel); } catch {} }
   }
-  const flKeep = () => { const d = flDraft(); for (const [k, i] of [['title', 'flTitle'], ['desc', 'flDesc'], ['tags', 'flTags']]) if ($(i)) d[k] = $(i).value; store.set('flDraft', JSON.stringify(d)); };
-  document.addEventListener('input', e => { if (['flTitle', 'flDesc', 'flTags'].includes(e.target.id)) flKeep(); });
+  const flKeep = () => { const d = flDraft(); for (const [k, i] of [['desc', 'flDesc'], ['tags', 'flTags']]) if ($(i)) d[k] = $(i).value; store.set('flDraft', JSON.stringify(d)); };
+  document.addEventListener('input', e => { if (['flDesc', 'flTags'].includes(e.target.id)) flKeep();
+    if (e.target.dataset?.flt != null) { const f = FL.files[+e.target.dataset.flt]; if (f) f.title = e.target.value; }
+    if (e.target.id === 'flUpNew') FL.upNew = e.target.value; if (e.target.id === 'flPq') { FL.pq = e.target.value; FL.pShow = 30; flPaint(); } });
+  // back from Flickr's page after pressing Follow there: look again at who you follow
+  window.addEventListener('focus', () => { if (FL.flWait && SOC.accounts?.flickr) { flPeopleLoad(true); flRepaint(); } });
   document.addEventListener('change', async e => {
     if (e.target.id === 'flSee') { FL.see = e.target.value; store.set('flSee', FL.see); return; }
+    if (e.target.id === 'flUpAlbum') { FL.upAlbum = e.target.value; flPaint(); if (FL.upAlbum === '+') $('flUpNew')?.focus(); return; }
     if (e.target.id !== 'flFile') return;
-    const file = e.target.files[0]; if (!file) return;
-    flKeep(); FL.say = ''; FL.link = '';
-    if (file.size > 200 * 1048576) { FL.say = 'Flickr takes photos up to 200 MB. This one is bigger.'; FL.sayErr = true; flPaint(); return; }
-    FL.say = 'Getting the photo ready…'; FL.sayErr = false; flPaint();
-    try {
-      FL.file = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
-      FL.preview = await shrinkPhoto(file).catch(() => FL.file);
-      FL.name = file.name || 'photo.jpg'; FL.mime = file.type || 'image/jpeg'; FL.size = file.size; FL.say = '';
-      if (!($('flTitle')?.value || '').trim()) { const d = flDraft(); d.title = FL.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '); store.set('flDraft', JSON.stringify(d)); }
-    } catch { FL.file = ''; FL.say = 'Couldn’t open that picture. Try another one.'; FL.sayErr = true; }
-    flPaint(); $('flTitle')?.focus();
+    const picked = [...e.target.files]; e.target.value = ''; if (!picked.length) return;
+    flKeep(); FL.say = ''; FL.link = ''; FL.sayErr = false;
+    FL.files = FL.files.filter(f => f.state !== 'done');
+    const big = picked.filter(f => f.size > 200 * 1048576), ok = picked.filter(f => f.size <= 200 * 1048576);
+    FL.say = ok.length ? `Getting ${ok.length === 1 ? 'the photo' : `${ok.length} photos`} ready…` : ''; flPaint();
+    const bad = [];
+    for (const file of ok) {
+      try {
+        const preview = await shrinkPhoto(file);
+        FL.files.push({ file, preview, name: file.name || 'photo.jpg', mime: file.type || 'image/jpeg', size: file.size, title: (file.name || '').replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim(), state: '' });
+      } catch { bad.push(file.name || 'a photo'); }
+    }
+    const notes = [big.length ? `Flickr takes photos up to 200 MB, so ${big.map(f => f.name).join(', ')} ${big.length === 1 ? 'was' : 'were'} left out.` : '', bad.length ? `Couldn’t open ${bad.join(', ')}.` : ''].filter(Boolean);
+    FL.say = notes.join(' '); FL.sayErr = !!notes.length;
+    flPaint();
   });
+  const flRead = file => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
+  // one photo after another (David, Nov 27: "upload more than one photo at a time"); a photo that fails stays in
+  // the list with what went wrong, the rest carry on. Each is read from the device only when its turn comes.
   async function flSend() {
     flKeep();
-    if (!FL.file) { FL.say = 'Pick a photo first.'; FL.sayErr = true; FL.link = ''; flPaint(); return; }
+    const todo = FL.files.filter(f => f.state !== 'done');
+    if (!todo.length) { FL.say = 'Pick a photo first.'; FL.sayErr = true; FL.link = ''; flPaint(); return; }
+    if (FL.upAlbum === '+' && !FL.upNew.trim()) { FL.say = 'Name the new album first, or pick No album.'; FL.sayErr = true; flPaint(); $('flUpNew')?.focus(); return; }
     const d = flDraft();
-    FL.sending = true; FL.say = FL.size > 8 * 1048576 ? 'Uploading… a big photo can take a minute.' : ''; FL.sayErr = false; flPaint();
-    try {
-      const r = await invoke('flickr_upload', { photo: FL.file, name: FL.name, mime: FL.mime, title: (d.title || '').trim(), description: (d.desc || '').trim(), tags: d.tags || '', who: FL.see });
-      store.set('flDraft', '{}');
-      FL.file = FL.preview = FL.name = ''; FL.size = 0; FL.sayErr = false; FL.link = r?.url || '';
-      FL.say = FL.see === 'public' ? 'Uploaded to your Flickr. It can take a moment to show up there.' : 'Uploaded to your Flickr, visible only to the people you chose.';
-      FL.mine = null; FL.mErr = '';
-    } catch (e) { FL.say = msg(e); FL.sayErr = true; FL.link = ''; }
-    FL.sending = false; flPaint();
+    let album = FL.upAlbum && FL.upAlbum !== '+' ? FL.upAlbum : '', newTitle = FL.upAlbum === '+' ? FL.upNew.trim() : '';
+    FL.sending = true; FL.upDone = 0; FL.say = todo.some(f => f.size > 8 * 1048576) ? 'Big photos can take a minute each.' : ''; FL.sayErr = false; FL.link = ''; flPaint();
+    let done = 0, failed = 0, albumErr = '';
+    for (const f of todo) {
+      f.state = 'up'; flPaint();
+      try {
+        const r = await invoke('flickr_upload', { photo: await flRead(f.file), name: f.name, mime: f.mime, title: (f.title || '').trim(), description: (d.desc || '').trim(), tags: d.tags || '', who: FL.see });
+        f.state = 'done'; done++; FL.link = r?.url || FL.link;
+        if ((album || newTitle) && r?.id && !albumErr) {
+          try {
+            const ctx = await invoke('flickr_add_to_album', { photoId: String(r.id), albumId: album || null, newTitle: album ? null : newTitle });
+            if (!album) album = (ctx || []).find(c => c.title === newTitle)?.id || '';
+            if (!album) albumErr = 'The photos uploaded, but the new album couldn’t be found to add the rest.';
+          } catch (err) { albumErr = `Uploaded, but couldn’t add to the album: ${msg(err)}`; }
+        }
+      } catch (err) { f.state = 'bad'; f.err = msg(err); failed++; }
+      FL.upDone++; flPaint();
+    }
+    FL.sending = false;
+    if (album && newTitle) { FL.upAlbum = album; FL.upNew = ''; } // a retry goes into the album just made, not a second one
+    if (!failed) { FL.files = []; store.set('flDraft', '{}'); FL.upAlbum = ''; FL.upNew = ''; }
+    else FL.files = FL.files.filter(f => f.state !== 'done');
+    const who = FL.see === 'public' ? '' : ', visible only to the people you chose';
+    FL.say = [done ? `${done === 1 ? 'Uploaded to your Flickr' : `${done} photos uploaded to your Flickr`}${who}.${FL.see === 'public' ? ' They can take a moment to show up there.' : ''}` : '',
+      failed ? `${failed} didn’t upload; ${failed === 1 ? 'it’s' : 'they’re'} still here to try again.` : '', albumErr].filter(Boolean).join(' ');
+    FL.sayErr = !!failed || !!albumErr;
+    if (done) { FL.mine = null; FL.mErr = ''; FL.albumsMine = { data: null, busy: false, err: '' }; if (FL.album?.mine) FL.album.data = null; }
+    if (done > 1) FL.link = '';
+    flPaint();
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-fl]'); if (!b) return;
@@ -6895,7 +7005,7 @@
     if (k === 'albums' && FL.album?.from) { FL.person = FL.album.from; FL.person.tab = 'albums'; FL.album = null; FL.sub = ''; renderHead(); flPaint(); renderRail(); return; }
     if (k === 'albums') { FL.album = null; if (FL.sub !== 'albums') flGo('albums'); else flPaint(); return; }
     if (k === 'album') {
-      const mine = b.dataset.mine === '1', list = mine ? FL.albumsMine.data : FL.person?.albums?.data, a = (list || [])[+b.dataset.i]; if (!a) return;
+      const mine = b.dataset.mine === '1', list = mine ? FL.albumsMine.data : FL.person?.albums?.data, a = (list || []).find(x => x.id === b.dataset.id) || (list || [])[+b.dataset.i]; if (!a) return;
       FL.album = { ...a, mine, from: mine ? null : FL.person, data: null, busy: false, err: '' }; FL.person = null; FL.sub = 'albums'; renderHead(); flPaint(); renderRail(); $('main')?.scrollTo({ top: 0 }); $('listView')?.scrollTo({ top: 0 }); return; }
     if (k === 'amore') { const A = FL.album; if (A?.data) flPageLoad(A, 'flickr_album', { id: A.id, owner: A.owner }, A.data.page + 1); flPaint(); return; }
     if (k === 'fmore') { if (FL.faves.data) flPageLoad(FL.faves, 'flickr_faves', {}, FL.faves.data.page + 1); flPaint(); return; }
@@ -6910,14 +7020,19 @@
     if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
     if (k === 'who') { FL.who = b.dataset.k; store.set('flWho', FL.who); FL.contacts = null; FL.cErr = ''; FL.cShow = 24; flPaint(); return; }
     if (k === 'cmore') { FL.cShow += 24; flPaint(); return; }
+    if (k === 'cview') { FL.cView = b.dataset.k; store.set('flCView', FL.cView); flPaint(); return; }
+    if (k === 'pshow') { FL.pShow += 30; flPaint(); return; }
+    if (k === 'flfollow' && isWeb(b.dataset.url)) { FL.flWait = b.dataset.nsid; tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); flPaint(); return; }
+    if (k === 'flcheck') { FL.flWait = b.dataset.nsid || FL.flWait; flPeopleLoad(true); flPaint(); return; }
     if (k === 'mmore') { if (!FL.mBusy) flMine(FL.page + 1); flPaint(); return; }
     if (k === 'reload') {
       if (FL.sub === 'albums') { if (FL.album) FL.album.err = ''; FL.albumsMine.err = ''; }
       if (FL.sub === 'faves') FL.faves.err = '';
       if (FL.sub === 'search') FL.sres.err = '';
+      FL.people.err = '';
       flLoad(true); flPaint(); return; }
     if (k === 'pick') { flKeep(); $('flFile')?.click(); return; }
-    if (k === 'nophoto') { flKeep(); FL.file = FL.preview = FL.name = ''; FL.size = 0; $('flFile')?.click(); flPaint(); return; }
+    if (k === 'unpick') { FL.files.splice(+b.dataset.i, 1); flPaint(); return; }
     if (k === 'send') { if (!plusOk()) { openPlus(); return; } flSend(); }
   });
 
@@ -6960,12 +7075,26 @@
         <section class="b-panel" aria-label="${esc(A.title)}"><div class="bp-head"><h3 class="b-sub">${esc(A.title)}</h3><span class="bp-meta">${d ? `${nfmt(d.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(A.page)}">Open on Flickr</button></span></div>
         ${!d ? flWait(A, 'the album') : d.photos.length ? flGridHtml(d.photos, 'album', A.mine) + flMore(d.page < d.pages, A.busy, 'amore') : '<p class="day-note">This album is empty.</p>'}</section>`;
     }
-    const L = FL.albumsMine;
-    if (!L.data && !L.busy && !L.err) { L.busy = true; tauriInvoke('flickr_albums', { nsid: null }).then(a => { L.data = a || []; }).catch(e => { L.err = msg(e); }).finally(() => { L.busy = false; flRepaint(); }); }
+    const L = flAlbumsMineLoad();
     return `<section class="b-panel" aria-label="Your albums"><div class="bp-head"><h3 class="b-sub">Your albums</h3><span class="bp-meta">${L.data ? `${L.data.length} albums · ` : ''}Add a photo to an album from the photo itself</span></div>
       ${!L.data ? flWait(L, 'your albums') : L.data.length ? flAlbumGridHtml(L.data, true) : '<p class="day-note">No albums yet. Open one of your photos and choose Add to album to start one.</p>'}</section>`;
   }
-  const flAlbumGridHtml = (list, mine) => `<div class="fl-grid fl-albums">${list.map((a, i) => `<button class="fl-tile" type="button" data-fl="album" data-i="${i}" data-mine="${mine ? 1 : 0}">
+  function flAlbumsMineLoad() {
+    const L = FL.albumsMine;
+    if (!L.data && !L.busy && !L.err) { L.busy = true; tauriInvoke('flickr_albums', { nsid: null }).then(a => { L.data = a || []; }).catch(e => { L.err = msg(e); }).finally(() => { L.busy = false; flRepaint(); }); }
+    return L;
+  }
+  // Home (David, Nov 27: "my most recent albums followed by most recent pictures"): your newest albums, your newest
+  // photos, then a few comments. Contacts, uploads, faves and search have their own pages.
+  function flHomeHtml() {
+    const L = flAlbumsMineLoad();
+    const newest = (L.data || []).slice().sort((a, b) => (b.created || b.updated || '').localeCompare(a.created || a.updated || '')).slice(0, 6);
+    const albums = `<section class="b-panel" aria-label="Your latest albums"><div class="bp-head"><h3 class="b-sub">Your latest albums</h3><span class="bp-meta">${L.data ? `${nfmt(L.data.length)} albums · ` : ''}<button class="b-link" type="button" data-flsub="albums">All albums</button></span></div>
+      ${!L.data ? flWait(L, 'your albums') : newest.length ? flAlbumGridHtml(newest, true) : '<p class="day-note">No albums yet. Open one of your photos and choose Add to album to start one.</p>'}</section>`;
+    const talk = FL.act?.length ? flCommentsHtml(3) : '';
+    return albums + flMineHtml(true) + talk;
+  }
+  const flAlbumGridHtml = (list, mine) => `<div class="fl-grid fl-albums">${list.map((a, i) => `<button class="fl-tile" type="button" data-fl="album" data-i="${i}" data-id="${esc(a.id)}" data-mine="${mine ? 1 : 0}">
       <span class="fl-pic">${a.cover ? `<img src="${esc(a.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="fl-lock">${nfmt(a.count)} photos</span></span>
       <span class="fl-cap"><b>${esc(a.title || 'Untitled album')}</b>${a.description ? `<span class="fl-by fl-nums">${esc(a.description.length > 90 ? a.description.slice(0, 88) + '…' : a.description)}</span>` : ''}</span></button>`).join('')}</div>`;
   function flFavesHtml() {
@@ -6982,16 +7111,25 @@
       ${FL.q ? `<div class="nb-chips">${sorts.map(([k, l]) => `<button class="nb-chip" type="button" data-fl="sort" data-k="${k}" aria-pressed="${FL.sort === k}">${l}</button>`).join('')}</div>` : ''}
       ${d?.person ? `<p class="fl-found">Someone on Flickr is called <b>${esc(d.person.name)}</b>. <button class="b-link" type="button" data-fl="person" data-nsid="${esc(d.person.nsid)}">See their photos</button></p>` : ''}
       <div class="bp-head"><h3 class="b-sub">${FL.q ? `Photos about “${esc(FL.q)}”` : 'Explore'}</h3><span class="bp-meta">${FL.q ? (d ? `${nfmt(d.total)} found · SafeSearch on` : '') : 'Flickr’s pick of interesting photos lately'}</span></div>
+      ${d?.photos?.length ? flWhoTookHtml(d.photos) : ''}
       ${!d ? flWait(R, FL.q ? 'photos' : 'Explore') : d.photos.length ? flGridHtml(d.photos, 'search', false) + flMore(d.page < d.pages, R.busy, 'smore') : '<p class="day-note">Nothing found. Try other words.</p>'}</section>`;
+  }
+  // the people who took these photos, to open their page and follow them (the ones you follow are marked)
+  function flWhoTookHtml(photos) {
+    flPeopleLoad(false);
+    const seen = new Set(), who = [];
+    for (const p of photos) if (p.owner && !seen.has(p.owner) && p.owner !== SOC.accounts.flickr?.nsid) { seen.add(p.owner); who.push(p); }
+    if (who.length < 2) return '';
+    return `<div class="fl-whotook"><span class="tm-tip">Who took these</span>${who.slice(0, 14).map(p => `<button class="nb-chip fl-pchip" type="button" data-fl="person" data-nsid="${esc(p.owner)}"><img src="${esc(p.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc(p.name || 'Someone')}${flContact(p.owner) ? ' ✓' : ''}</button>`).join('')}</div>`;
   }
   function flSubHtml() {
     switch (FL.sub) {
-      case 'contacts': FL.cShow = Math.max(FL.cShow, 50); return flContactsHtml();
+      case 'contacts': FL.cShow = Math.max(FL.cShow, 50); return flContactsHtml(false);
       case 'mine': return flUploadHtml() + flMineHtml();
       case 'albums': return flAlbumsHtml();
       case 'faves': return flFavesHtml();
       case 'search': return flSearchHtml();
-      default: return flContactsHtml() + flCommentsHtml() + flUploadHtml() + flMineHtml();
+      default: return flHomeHtml();
     }
   }
   document.addEventListener('submit', e => {
@@ -7010,7 +7148,7 @@
   const FLV = { list: [], i: 0, data: null, busy: false, err: '', edit: false, say: '', sayErr: false, sending: false, draft: '', seq: 0 };
   const FL_SEE = [['public', 'Everyone'], ['friends', 'Friends'], ['family', 'Family'], ['both', 'Friends & family'], ['private', 'Only you']];
   const flSeeName = w => (FL_SEE.find(([k]) => k === w) || ['', 'Only you'])[1];
-  const flListOf = k => k === 'mine' ? (FL.mine || []) : k === 'person' ? (FL.person?.data?.photos || []) : k === 'one' ? FLV.list
+  const flListOf = k => k.startsWith('pc:') ? (flByPerson().get(k.slice(3)) || []) : k === 'mine' ? (FL.mine || []) : k === 'person' ? (FL.person?.data?.photos || []) : k === 'one' ? FLV.list
     : k === 'album' ? (FL.album?.data?.photos || []) : k === 'faves' ? (FL.faves.data?.photos || []) : k === 'search' ? (FL.sres.data?.photos || []) : (FL.contacts || []);
   function flView(list, i, opts = {}) {
     FLV.list = list; FLV.i = Math.max(0, Math.min(i, list.length - 1)); FLV.edit = false; FLV.say = ''; FLV.draft = opts.reply || '';
@@ -7056,11 +7194,13 @@
           <div><button class="nb-name" type="button" data-flv="person" data-nsid="${esc(d.owner)}">${esc(d.mine ? 'You' : d.name)}</button><small>${esc(d.handle)} on Flickr</small></div></div>
         <h2 class="flv-title">${esc(d.title || 'Untitled')}</h2>
         ${d.description ? `<p class="flv-desc">${esc(d.description).replace(/\n/g, '<br>')}</p>` : ''}
+        ${d.links?.length ? `<div class="flv-links">${d.links.map(u => `<button class="b-link" type="button" data-flv="open" data-url="${esc(u)}">${esc(u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 48))}</button>`).join('')}</div>` : ''}
         ${d.tags.length ? `<div class="flv-tags">${d.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
         <p class="flv-meta">${esc(when)}${when ? ' · ' : ''}${d.who === 'public' ? 'Everyone can see it' : `Only ${esc(flSeeName(d.who).toLowerCase())}${d.who === 'private' ? '' : ' can see it'}`}</p>
         <p class="flv-meta">${nfmt(d.views)} views · ${d.faves >= 0 ? `${nfmt(d.faves)} faves · ` : ''}${nfmt(d.comments.length)} comments</p>
         <div class="flv-acts">${d.mine ? `<button class="btn" type="button" data-flv="edit">Edit</button>${plusOk() ? '<button class="btn" type="button" data-flv="note">Use in a note</button>' : ''}`
-          : `<button class="btn${d.faved ? ' on' : ''}" type="button" data-flv="fave" aria-pressed="${d.faved}">${d.faved ? '★ Faved' : '☆ Fave'}</button>`}</div>
+          : `<button class="btn${d.faved ? ' on' : ''}" type="button" data-flv="fave" aria-pressed="${d.faved}">${d.faved ? '★ Faved' : '☆ Fave'}</button>`}${d.can_share !== false ? '<button class="btn" type="button" data-flv="share">Share…</button>' : ''}</div>
+        ${d.can_share === false ? `<p class="tm-tip">${esc(d.name)} turned off sharing for this photo on Flickr.</p>` : d.who !== 'public' ? `<p class="tm-tip">Shared links work only for people who can see it on Flickr (${esc(flSeeName(d.who).toLowerCase())}).</p>` : ''}
         ${d.mine ? flViewAlbumsHtml() : ''}
         ${FLV.say ? `<p class="tm-tip tb-say${FLV.sayErr ? ' err' : ''}" role="status">${esc(FLV.say)}</p>` : ''}
         <h3 class="b-sub flv-ch">Comments</h3>
@@ -7120,6 +7260,10 @@
     if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
     if (k === 'person') { flViewClose(); flPerson(b.dataset.nsid); return; }
     if (!d) return;
+    // Share… (David, Nov 27: "the ability to share to other platforms"): the app's share menu with the photo's
+    // Flickr address — a note on your site, Bluesky, Mastodon, X, LinkedIn, email, copy, or the iPhone's sheet.
+    // Bluesky, Mastodon and the rest show Flickr's own preview of the photo, credited to the person who took it.
+    if (k === 'share') { openShareMenu(b, { id: `flickr-${d.id}`, feed_id: null, title: `${d.title || 'A photo'} by ${d.mine ? (SOC.accounts.flickr?.name || d.name) : d.name}`, link: d.page, image: d.small || d.img, byline: d.name }); return; }
     if (k === 'edit') { FLV.edit = true; FLV.say = ''; flViewPaint(); $('flvTitle')?.focus(); return; }
     if (k === 'noedit') { FLV.edit = false; flViewPaint(); return; }
     if (k === 'reply') { const t = $('flvText'); const start = `@${b.dataset.name} `; FLV.draft = (t?.value || '').startsWith('@') || !(t?.value) ? start : `${start}${t.value}`; flViewPaint(true); return; }
@@ -7206,12 +7350,18 @@
     const P = FL.person, d = P.data;
     const back = '<button class="b-link fl-back" type="button" data-fl="back">‹ Back to Flickr</button>';
     if (!d) return `${back}<section class="b-panel"><p class="day-note">${P.err ? `Couldn’t get their photos just now. ${esc(P.err)} <button class="b-link" type="button" data-fl="person" data-nsid="${esc(P.nsid)}">Try again</button>` : 'Getting their photos from Flickr…'}</p></section>`;
+    flPeopleLoad(false);
+    const c = flContact(d.nsid), known = !!FL.people.data;
+    if (c && FL.flWait === d.nsid) FL.flWait = '';
+    const onFlickr = d.me || !known ? '' : c ? `<span class="fl-following">✓ You follow them on Flickr${c.friend && c.family ? ' · friend & family' : c.friend ? ' · friend' : c.family ? ' · family' : ''}</span>`
+      : `<button class="btn primary" type="button" data-fl="flfollow" data-nsid="${esc(d.nsid)}" data-url="${esc(d.site)}">Follow on Flickr</button>`;
     const follow = d.me ? '' : flFollowing(d.feed) ? '<button class="btn" type="button" disabled>Following in The Reading Room</button>'
-      : `<button class="btn primary" type="button" data-fl="follow" data-url="${esc(d.feed)}" data-name="${esc(d.name)}">Follow in The Reading Room</button>`;
+      : `<button class="btn${onFlickr.startsWith('<button') ? '' : ' primary'}" type="button" data-fl="follow" data-url="${esc(d.feed)}" data-name="${esc(d.name)}">Follow in The Reading Room</button>`;
+    const waitTip = !d.me && !c && FL.flWait === d.nsid ? `<p class="tm-tip fl-waittip">Flickr doesn’t let apps follow people for you, so their page opened on Flickr: press Follow there. ${FL.people.busy ? 'Checking…' : `<button class="b-link" type="button" data-fl="flcheck" data-nsid="${esc(d.nsid)}">I followed them</button>`}</p>` : '';
     return `${back}<section class="b-panel fl-person" aria-label="${esc(d.name)} on Flickr"><div class="flp-head"><span class="nb-av lg"><img class="nb-face-img" src="${esc(d.face)}" alt="" referrerpolicy="no-referrer">${esc((d.name || '?')[0].toUpperCase())}</span>
         <div><h2>${esc(d.name)}</h2><p class="flp-sub">${esc(d.handle)}${d.location ? ` · ${esc(d.location)}` : ''}${d.count ? ` · ${nfmt(d.count)} photos` : ''}</p>${d.about ? `<p class="flp-about">${esc(d.about)}</p>` : ''}
-        <div class="tb-acts">${follow}<button class="btn" type="button" data-fl="open" data-url="${esc(d.site)}">Open on Flickr</button></div>
-        ${d.me ? '' : '<p class="tm-tip">Following adds their public photos to your feeds, like a blog. Photos only friends or family can see stay here in the Flickr tab.</p>'}</div></div>
+        <div class="tb-acts">${onFlickr}${follow}${c || d.me ? `<button class="btn" type="button" data-fl="open" data-url="${esc(d.site)}">Open on Flickr</button>` : ''}</div>${waitTip}
+        ${d.me ? '' : `<p class="tm-tip">${c ? '' : 'Follow on Flickr puts their new photos in Contacts, friends-only ones too once they call you a friend. '}Follow in The Reading Room adds their public photos to your feeds, like a blog.</p>`}</div></div>
       <div class="nb-chips">${[['photos', 'Photos'], ['albums', 'Albums']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="ptab" data-k="${k}" aria-pressed="${(P.tab || 'photos') === k}">${l}</button>`).join('')}</div>
       ${P.tab === 'albums' ? flPersonAlbumsHtml(P)
         : d.photos.length ? `<div class="fl-grid">${d.photos.map((p, i) => flTileHtml(p, true, 'person', i)).join('')}</div>${d.page < d.pages ? `<button class="b-link" type="button" data-fl="pmore"${P.busy ? ' disabled' : ''}>Show more</button>` : ''}` : '<p class="day-note">No photos you can see.</p>'}</section>`;
@@ -8789,13 +8939,15 @@
       return;
     }
     shareItem = it; hidePops();
-    const menu = $('shareMenu'); placeNear(menu, anchor.getBoundingClientRect());
+    const menu = $('shareMenu');
+    const tr = menu.querySelector('[data-share="translate"]'); if (tr) tr.hidden = String(it.id).startsWith('flickr-'); // a photo has nothing to translate placeNear(menu, anchor.getBoundingClientRect());
     const r = anchor.getBoundingClientRect(); // menus drop down, not up
     menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 8) + 'px';
     menu.querySelector('button')?.focus();
   }
   async function share(kind) {
     const it = shareItem; $('shareMenu').hidden = true; if (!it || !isWeb(it.link)) return;
+    if (['dayone', 'note', 'bluesky', 'mastodon', 'email'].includes(kind) && String(it.id).startsWith('flickr-') && flViewOpen()) flViewClose(); // the sheet opens over the tab
     if (kind === 'dayone') { journalItem(it); return; }
     if (kind === 'note') { if (SOC.accounts.site) openNote(it); else { openAccounts().then(() => $('wpSite')?.focus()); status('Connect your site first, then write your note.'); } return; }
     if (kind === 'bluesky' || kind === 'mastodon') { openCompose(it, kind); return; }
