@@ -1,4 +1,4 @@
-Version 1.3.0 (internal test build). Everything in 1.2.11, plus YouTube for The Reading Room Plus.
+Version 1.2.11 (YouTube test line) (internal test build). Everything in 1.2.11, plus YouTube for The Reading Room Plus.
 
 BEFORE YOU START
 YouTube is still in testing with Google, so only people on the app's list can connect. Send David the Google address that owns your YouTube channel and wait until he says you're added. Without that, Google says access is blocked.

@@ -28,6 +28,8 @@ jobs:
       TUMBLR_SECRET: ${{ secrets.TUMBLR_SECRET }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
+      FLICKR_SECRET: ${{ secrets.FLICKR_SECRET }}
       API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}

@@ -12,6 +12,7 @@ mod reply;
 mod social;
 mod tumblr;
 mod ychannel;
+mod flickr;
 mod micropub;
 mod sources;
 mod sync;
@@ -3022,6 +3023,21 @@ pub fn run() {
             ychannel::youtube_comment,
             ychannel::youtube_reply,
             ychannel::youtube_activity,
+            social::gab_begin,
+            social::gab_finish,
+            flickr::flickr_begin,
+            flickr::flickr_finish,
+            flickr::flickr_disconnect,
+            flickr::flickr_contacts,
+            flickr::flickr_mine,
+            flickr::flickr_activity,
+            flickr::flickr_upload,
+            flickr::flickr_photo,
+            flickr::flickr_fave,
+            flickr::flickr_comment,
+            flickr::flickr_person,
+            flickr::flickr_edit,
+            flickr::flickr_picture,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,

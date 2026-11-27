@@ -451,8 +451,43 @@ async fn bsky_post(text: &str, link: &str, title: &str, description: &str, image
 
 // ------------------------------------------------------------------ Mastodon
 
+// Gab (David, Nov 26): Gab runs a version of Mastodon, so the Mastodon code serves it too, as a second account kept
+// apart from your Mastodon one. MASTO_KEY says which account the Mastodon code is working for ("mastodon" unless a
+// Gab call set it); NO_BSKY lets the Gab pass of "everything" commands skip Bluesky, which the first pass did.
+tokio::task_local! {
+    static MASTO_KEY: &'static str;
+    static NO_BSKY: bool;
+}
+/// Which Mastodon-style account the code is working for: "mastodon" or "gab".
+pub(crate) fn masto_key() -> &'static str {
+    MASTO_KEY.try_with(|k| *k).unwrap_or("mastodon")
+}
+fn masto_label() -> &'static str {
+    if masto_key() == "gab" { "Gab" } else { "Mastodon" }
+}
+fn bsky_on() -> bool {
+    !NO_BSKY.try_with(|b| *b).unwrap_or(false) && bsky_on()
+}
+/// Run an "everything" command again for your Gab account (Mastodon parts only), if Gab is connected.
+async fn on_gab<F: std::future::Future>(f: F) -> Option<F::Output> {
+    if secret_get("gab").is_none() || MASTO_KEY.try_with(|_| ()).is_ok() {
+        return None;
+    }
+    Some(NO_BSKY.scope(true, MASTO_KEY.scope("gab", f)).await)
+}
+fn merge_conv(mut a: Conversations, b: Option<Conversations>) -> Conversations {
+    if let Some(b) = b {
+        a.posts.extend(b.posts);
+        a.replies.extend(b.replies);
+        a.errors.extend(b.errors);
+        a.posts.sort_by(|x, y| y.created_at.cmp(&x.created_at));
+        a.replies.sort_by(|x, y| y.created_at.cmp(&x.created_at));
+    }
+    a
+}
+
 fn masto_saved() -> Result<Value, String> {
-    secret_get("mastodon").ok_or_else(|| "Connect your Mastodon account first.".to_string())
+    secret_get(masto_key()).ok_or_else(|| format!("Connect your {} account first.", masto_label()))
 }
 
 async fn masto(method: reqwest::Method, path: &str, query: &[(&str, String)], body: Option<Value>) -> Result<Value, String> {
@@ -462,7 +497,7 @@ async fn masto(method: reqwest::Method, path: &str, query: &[(&str, String)], bo
         req = with_json(req, b);
     }
     call(req).await.map_err(|e| {
-        if e.0 == 401 { "Your Mastodon server signed the app out. Connect the account again.".to_string() } else { explain(e) }
+        if e.0 == 401 { format!("Your {} server signed the app out. Connect the account again.", masto_label()) } else { explain(e) }
     })
 }
 
@@ -499,7 +534,7 @@ fn masto_person(a: &Value) -> Person {
 
 fn masto_note(s: &Value, kind: &str) -> Note {
     Note {
-        network: "mastodon".into(),
+        network: masto_key().into(),
         id: st(s, "id"),
         url: st(s, "url"),
         author: masto_person(&s["account"]),
@@ -532,6 +567,8 @@ pub fn masto_host(input: &str) -> String {
 pub struct Accounts {
     bluesky: Option<Value>,
     mastodon: Option<Value>,
+    /// your Gab account (Gab runs a version of Mastodon; kept apart from your Mastodon account)
+    gab: Option<Value>,
     /// your own WordPress site, for notes
     wordpress: Option<Value>,
     /// your Tumblr blog: Writing's home when no WordPress or Micropub site is connected, else a place to copy posts to
@@ -540,6 +577,8 @@ pub struct Accounts {
     micropub: Option<Value>,
     /// your YouTube channel (Plus: manage it from Videos)
     youtube: Option<Value>,
+    /// your Flickr account, for the Flickr tab (photos from your contacts, your photos, uploads)
+    flickr: Option<Value>,
     /// where Writing, notes, replies and reposts go: the WordPress site, else the Tumblr blog ({kind, site, name})
     site: Option<Value>,
 }
@@ -549,6 +588,7 @@ pub fn social_accounts() -> Accounts {
     Accounts {
         bluesky: secret_get("bluesky").map(|v| json!({ "handle": format!("@{}", st(&v, "handle")) })),
         mastodon: secret_get("mastodon").map(|v| json!({ "handle": format!("@{}@{}", st(&v, "acct"), st(&v, "instance")) })),
+        gab: secret_get("gab").map(|v| json!({ "handle": format!("@{}", st(&v, "acct")), "instance": st(&v, "instance") })),
         wordpress: secret_get("wordpress").map(|v| json!({ "site": st(&v, "site"), "name": st(&v, "name"), "user": st(&v, "user") })),
         tumblr: crate::tumblr::account(),
         site: secret_get("wordpress")
@@ -557,6 +597,7 @@ pub fn social_accounts() -> Accounts {
             .or_else(|| crate::tumblr::account().map(|t| json!({ "kind": "tumblr", "site": st(&t, "site").trim_end_matches('/'), "name": st(&t, "name"), "blog": st(&t, "blog") }))),
         micropub: crate::micropub::account(),
         youtube: crate::ychannel::account(),
+        flickr: crate::flickr::account(),
     }
 }
 
@@ -592,9 +633,9 @@ pub async fn masto_begin(server: String) -> Result<String, String> {
     .map_err(|e| if e.0 == 0 { format!("Couldn't reach {host}. Check the server name.") } else { explain(e) })?;
     let (id, secret) = (st(&app, "client_id"), st(&app, "client_secret"));
     if id.is_empty() {
-        return Err(format!("{host} didn't let the app register. It may not be a Mastodon server."));
+        return Err(if masto_key() == "gab" { "Gab didn't let the app register. Gab may not allow outside apps right now.".to_string() } else { format!("{host} didn't let the app register. It may not be a Mastodon server.") });
     }
-    *masto_pending().lock().await = Some(json!({ "instance": host, "client_id": id, "client_secret": secret }));
+    *masto_pending().lock().await = Some(json!({ "instance": host, "client_id": id, "client_secret": secret, "slot": masto_key() }));
     let mut u = url::Url::parse(&format!("https://{host}/oauth/authorize")).map_err(|e| e.to_string())?;
     u.query_pairs_mut()
         .append_pair("client_id", &id)
@@ -618,7 +659,8 @@ pub async fn masto_finish(code: String) -> Result<Accounts, String> {
     .map_err(|e| if e.0 == 400 || e.0 == 401 { "That code didn't work. Copy the whole code from the page and try again.".to_string() } else { explain(e) })?;
     let token = st(&tok, "access_token");
     let me = call(client().get(format!("https://{host}/api/v1/accounts/verify_credentials")).bearer_auth(&token)).await.map_err(explain)?;
-    secret_set("mastodon", &json!({ "instance": host, "token": token, "acct": st(&me, "acct"), "id": st(&me, "id") }))?;
+    let slot = if st(&p, "slot") == "gab" { "gab" } else { "mastodon" };
+    secret_set(slot, &json!({ "instance": host, "token": token, "acct": st(&me, "acct"), "id": st(&me, "id") }))?;
     *masto_pending().lock().await = None;
     Ok(social_accounts())
 }
@@ -650,12 +692,12 @@ pub async fn social_post(networks: Vec<String>, text: String, link: String, titl
     for n in networks {
         let r = match n.as_str() {
             "bluesky" => bsky_post(text.trim(), &link, &title, &description, &image).await,
-            "mastodon" => {
+            "mastodon" | "gab" => MASTO_KEY.scope(if n == "gab" { "gab" } else { "mastodon" }, async {
                 let status = if link.is_empty() { text.trim().to_string() } else if text.trim().is_empty() { link.clone() } else { format!("{}\n\n{link}", text.trim()) };
                 masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(json!({ "status": status, "visibility": "public" })))
                     .await
                     .map(|v| st(&v, "url"))
-            }
+            }).await,
             _ => Err("Unknown network.".into()),
         };
         out.push(match r {
@@ -674,10 +716,9 @@ pub struct Conversations {
 }
 
 /// Your recent posts that share a link (with their reply counts), and replies and mentions to you.
-#[tauri::command]
-pub async fn social_conversations() -> Conversations {
+async fn social_conversations_one() -> Conversations {
     let mut c = Conversations::default();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         match bsky_conversations().await {
             Ok((p, r)) => {
                 c.posts.extend(p);
@@ -686,13 +727,13 @@ pub async fn social_conversations() -> Conversations {
             Err(e) => c.errors.push(format!("Bluesky: {e}")),
         }
     }
-    if secret_get("mastodon").is_some() {
+    if masto_saved().is_ok() {
         match masto_conversations().await {
             Ok((p, r)) => {
                 c.posts.extend(p);
                 c.replies.extend(r);
             }
-            Err(e) => c.errors.push(format!("Mastodon: {e}")),
+            Err(e) => c.errors.push(format!("{}: {e}", masto_label())),
         }
     }
     c.posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -759,6 +800,9 @@ async fn masto_conversations() -> Result<(Vec<Note>, Vec<Note>), String> {
 /// The replies under one of your posts, in conversation order, each with how deep it sits.
 #[tauri::command]
 pub async fn social_thread(network: String, id: String) -> Result<Vec<Note>, String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_thread("mastodon".into(), id))).await;
+    }
     if network == "bluesky" {
         let t = bsky(true, "app.bsky.feed.getPostThread", &[("uri", id.clone()), ("depth", "8".into()), ("parentHeight", "0".into())], None).await?;
         let root = &t["thread"]["post"];
@@ -789,6 +833,9 @@ pub async fn social_thread(network: String, id: String) -> Result<Vec<Note>, Str
 /// yours included, in conversation order. The first note is the one that started it (depth 0).
 #[tauri::command]
 pub async fn social_whole(network: String, id: String, root: String) -> Result<Vec<Note>, String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_whole("mastodon".into(), id, root))).await;
+    }
     if network == "bluesky" {
         let top = if root.is_empty() { id.clone() } else { root };
         let t = bsky(true, "app.bsky.feed.getPostThread", &[("uri", top), ("depth", "40".into()), ("parentHeight", "0".into())], None).await?;
@@ -851,6 +898,9 @@ pub fn order_thread(root: &str, all: Vec<Note>) -> Vec<Note> {
 /// Answer a reply (or reply to your own post) on its network.
 #[tauri::command]
 pub async fn social_reply(network: String, text: String, parent_id: String, parent_cid: String, root_id: String, root_cid: String) -> Result<String, String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_reply("mastodon".into(), text, parent_id, parent_cid, root_id, root_cid))).await;
+    }
     let text = text.trim().to_string();
     if text.is_empty() {
         return Err("Write something first.".into());
@@ -904,16 +954,27 @@ pub async fn social_resolve(url: String) -> Result<Resolved, String> {
         return Ok(Resolved { network: "bluesky".into(), id: st(&p, "uri"), cid: st(&p, "cid"), root_id: st(root, "uri"), root_cid: st(root, "cid"),
             handle: a.handle, name: a.name, text: st(&p, "record.text") });
     }
-    if masto_saved().is_err() { return Err("Connect Mastodon to reply from the app.".into()); }
+    if MASTO_KEY.try_with(|_| ()).is_err() {
+        if let Some(g) = secret_get("gab") {
+            let host = st(&g, "instance");
+            if !host.is_empty() && url::Url::parse(&url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.") == host.trim_start_matches("www."))).unwrap_or(false) {
+                return MASTO_KEY.scope("gab", Box::pin(social_resolve(url))).await;
+            }
+        }
+    }
+    if masto_saved().is_err() { return Err(format!("Connect {} to reply from the app.", masto_label())); }
     let v = masto(reqwest::Method::GET, "/api/v2/search", &[("q", url.clone()), ("type", "statuses".into()), ("resolve", "true".into()), ("limit", "1".into())], None).await?;
     let p = v["statuses"].as_array().and_then(|a| a.first()).cloned().ok_or("That post couldn't be found from your Mastodon server.")?;
     let a = masto_person(&p["account"]);
-    Ok(Resolved { network: "mastodon".into(), id: st(&p, "id"), handle: a.handle, name: a.name, text: html_text(&st(&p, "content")), ..Default::default() })
+    Ok(Resolved { network: masto_key().into(), id: st(&p, "id"), handle: a.handle, name: a.name, text: html_text(&st(&p, "content")), ..Default::default() })
 }
 
 /// Mute or block someone, or report a post, with the network's own tools.
 #[tauri::command]
 pub async fn social_moderate(network: String, action: String, person: String, post_id: String, post_cid: String, reason: String) -> Result<(), String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_moderate("mastodon".into(), action, person, post_id, post_cid, reason))).await;
+    }
     match (network.as_str(), action.as_str()) {
         ("bluesky", "mute") => bsky(false, "app.bsky.graph.muteActor", &[], Some(json!({ "actor": person }))).await.map(|_| ()),
         ("bluesky", "block") => {
@@ -992,10 +1053,9 @@ pub struct Profile {
 }
 
 /// Your own profile on each connected network, with follower, following and post counts.
-#[tauri::command]
-pub async fn social_profiles() -> Vec<Profile> {
+async fn social_profiles_one() -> Vec<Profile> {
     let mut out = Vec::new();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         if let Ok(s) = bsky_session(false).await {
             if let Ok(p) = bsky(true, "app.bsky.actor.getProfile", &[("actor", s.did.clone())], None).await {
                 let n = |k: &str| p.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
@@ -1012,7 +1072,7 @@ pub async fn social_profiles() -> Vec<Profile> {
         if let Ok(p) = masto(reqwest::Method::GET, "/api/v1/accounts/verify_credentials", &[], None).await {
             let n = |k: &str| p.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
             out.push(Profile {
-                network: "mastodon".into(), handle: format!("@{}@{}", st(&p, "acct"), st(&m, "instance")),
+                network: masto_key().into(), handle: format!("@{}@{}", st(&p, "acct"), st(&m, "instance")),
                 name: Some(st(&p, "display_name")).filter(|x| !x.trim().is_empty()).unwrap_or_else(|| st(&p, "acct")),
                 avatar: st(&p, "avatar_static"), url: st(&p, "url"),
                 followers: n("followers_count"), following: n("following_count"), posts: n("statuses_count"),
@@ -1049,10 +1109,9 @@ pub struct Follower {
 }
 
 /// People who followed you lately, whether you follow them back, and their blog if they have one.
-#[tauri::command]
-pub async fn social_followers() -> Vec<Follower> {
+async fn social_followers_one() -> Vec<Follower> {
     let mut out = Vec::new();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         if let Ok(v) = bsky(true, "app.bsky.notification.listNotifications", &[("limit", "60".into()), ("reasons", "follow".into())], None).await {
             for x in v["notifications"].as_array().cloned().unwrap_or_default() {
                 if st(&x, "reason") != "follow" {
@@ -1075,7 +1134,7 @@ pub async fn social_followers() -> Vec<Follower> {
                 let a = &x["account"];
                 let id = st(a, "id");
                 let following = rel.as_array().and_then(|r| r.iter().find(|r| st(r, "id") == id)).and_then(|r| r.get("following")).and_then(|f| f.as_bool()).unwrap_or(false);
-                out.push(Follower { network: "mastodon".into(), person: masto_person(a), followed_at: st(x, "created_at"), following, blog: masto_blog(a) });
+                out.push(Follower { network: masto_key().into(), person: masto_person(a), followed_at: st(x, "created_at"), following, blog: masto_blog(a) });
             }
         }
     }
@@ -1207,14 +1266,13 @@ pub struct Lookup {
 
 /// Find people's accounts from their profile addresses, and whether you already follow them.
 /// Bluesky in batches of 25; Mastodon one by one, through your own server so they can be followed.
-#[tauri::command]
-pub async fn social_lookup(urls: Vec<String>) -> Vec<Lookup> {
+async fn social_lookup_one(urls: Vec<String>) -> Vec<Lookup> {
     let mut out = Vec::new();
     let bsky_urls: Vec<(String, String)> = urls.iter()
         .filter_map(|u| u.split("bsky.app/profile/").nth(1).map(|h| (u.clone(), h.trim_end_matches('/').split('/').next().unwrap_or("").to_lowercase())))
         .filter(|(_, h)| !h.is_empty())
         .collect();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         for chunk in bsky_urls.chunks(25) {
             let q: Vec<(&str, String)> = chunk.iter().map(|(_, h)| ("actors", h.clone())).collect();
             if let Ok(v) = bsky(true, "app.bsky.actor.getProfiles", &q, None).await {
@@ -1253,7 +1311,7 @@ pub async fn social_lookup(urls: Vec<String>) -> Vec<Lookup> {
                 let id = st(a, "id");
                 let r = rel.as_array().and_then(|r| r.iter().find(|r| st(r, "id") == id));
                 let following = r.map(|r| r.get("following").and_then(|f| f.as_bool()).unwrap_or(false) || r.get("requested").and_then(|f| f.as_bool()).unwrap_or(false)).unwrap_or(false);
-                out.push(Lookup { url: u.clone(), network: "mastodon".into(), person: masto_person(a), following });
+                out.push(Lookup { url: u.clone(), network: masto_key().into(), person: masto_person(a), following });
             }
         }
     }
@@ -1268,10 +1326,9 @@ pub struct FollowedBlog {
 }
 
 /// People you follow on Bluesky and Mastodon who keep a site of their own, so you can read them here.
-#[tauri::command]
-pub async fn social_following_blogs() -> Vec<FollowedBlog> {
+async fn social_following_blogs_one() -> Vec<FollowedBlog> {
     let mut out = Vec::new();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         if let Ok(s) = bsky_session(false).await {
             let mut cursor = String::new();
             for _ in 0..10 {
@@ -1297,7 +1354,7 @@ pub async fn social_following_blogs() -> Vec<FollowedBlog> {
                 let Ok((v, next)) = masto_page(&path, &q).await else { break };
                 for a in v.as_array().cloned().unwrap_or_default() {
                     let blog = masto_blog(&a);
-                    if !blog.is_empty() { out.push(FollowedBlog { network: "mastodon".into(), person: masto_person(&a), blog }); }
+                    if !blog.is_empty() { out.push(FollowedBlog { network: masto_key().into(), person: masto_person(&a), blog }); }
                 }
                 match next { Some(n) if Some(&n) != max_id.as_ref() => max_id = Some(n), _ => break }
             }
@@ -1312,6 +1369,9 @@ pub async fn social_following_blogs() -> Vec<FollowedBlog> {
 /// Follow someone back.
 #[tauri::command]
 pub async fn social_follow(network: String, person: String) -> Result<(), String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_follow("mastodon".into(), person))).await;
+    }
     if network == "bluesky" {
         let s = bsky_session(false).await?;
         let record = json!({ "$type": "app.bsky.graph.follow", "subject": person, "createdAt": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string() });
@@ -1326,10 +1386,9 @@ pub async fn social_follow(network: String, person: String) -> Result<(), String
 
 /// Posts from people you follow (your own and replies left out). The ones sharing something to read fill
 /// "From people you follow"; the Neighborhood also shows the plain posts of the writers you read.
-#[tauri::command]
-pub async fn social_shared() -> Conversations {
+async fn social_shared_one() -> Conversations {
     let mut c = Conversations::default();
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         match bsky_session(false).await {
             Ok(s) => match bsky(true, "app.bsky.feed.getTimeline", &[("limit", "100".into())], None).await {
                 Ok(v) => {
@@ -1391,14 +1450,13 @@ pub async fn social_shared() -> Conversations {
 }
 
 /// People on Bluesky (and Mastodon, where its search allows) linking to your site.
-#[tauri::command]
-pub async fn social_blog_mentions(domain: String) -> Vec<Note> {
+async fn social_blog_mentions_one(domain: String) -> Vec<Note> {
     let domain = domain.trim().trim_start_matches("https://").trim_start_matches("http://").trim_start_matches("www.").trim_end_matches('/').to_lowercase();
     let mut out = Vec::new();
     if domain.is_empty() || !domain.contains('.') {
         return out;
     }
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         if let Ok(s) = bsky_session(false).await {
             if let Ok(v) = bsky(true, "app.bsky.feed.searchPosts", &[("q", domain.clone()), ("domain", domain.clone()), ("sort", "latest".into()), ("limit", "40".into())], None).await {
                 for p in v["posts"].as_array().cloned().unwrap_or_default() {
@@ -1436,8 +1494,7 @@ pub fn search_words(q: &str) -> Vec<String> {
 /// What everyone is saying right now about something (an outage, the news): recent public posts on Bluesky and
 /// Mastodon through your connected accounts, newest first. Mastodon's own search only finds posts on servers that
 /// allow it, so its hashtags for the words are read too.
-#[tauri::command]
-pub async fn social_search(query: String) -> Conversations {
+async fn social_search_one(query: String) -> Conversations {
     let mut c = Conversations::default();
     let q = query.trim().to_string();
     let words = search_words(&q);
@@ -1445,7 +1502,7 @@ pub async fn social_search(query: String) -> Conversations {
         return c;
     }
     let has_all = |t: &str| { let t = t.to_lowercase(); words.iter().all(|w| t.contains(w.as_str())) };
-    if secret_get("bluesky").is_some() {
+    if bsky_on() {
         match bsky_session(false).await {
             Ok(_) => match bsky(true, "app.bsky.feed.searchPosts", &[("q", q.clone()), ("sort", "latest".into()), ("limit", "60".into())], None).await {
                 Ok(v) => {
@@ -1912,6 +1969,9 @@ pub async fn site_like(url: String, title: String, author: String, on: bool) -> 
 /// which un-liking needs.
 #[tauri::command]
 pub async fn social_like(network: String, id: String, cid: String, on: bool, like_uri: Option<String>) -> Result<String, String> {
+    if network == "gab" && MASTO_KEY.try_with(|_| ()).is_err() {
+        return MASTO_KEY.scope("gab", Box::pin(social_like("mastodon".into(), id, cid, on, like_uri))).await;
+    }
     if network == "bluesky" {
         let s = bsky_session(false).await?;
         if on {
@@ -2753,7 +2813,7 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                 }
             }
             .await,
-            "mastodon" => async {
+            "mastodon" | "gab" => MASTO_KEY.scope(if n == "gab" { "gab" } else { "mastodon" }, async {
                 // the first link makes the preview: the video, else the post your note is about, then the link home
                 let about_link = about.as_deref().filter(|a| !text.contains(*a));
                 let links: Vec<&str> = masto_video.as_deref().or(about_link).into_iter().chain(Some(link.as_str())).collect();
@@ -2773,7 +2833,7 @@ pub async fn social_share_note(networks: Vec<String>, text: String, link: String
                     }
                 }
                 masto(reqwest::Method::POST, "/api/v1/statuses", &[], Some(body)).await.map(|v| st(&v, "url"))
-            }
+            })
             .await,
             // a copy on Tumblr when your home is a WordPress site: your words, the photo, and the link home as a card
             "tumblr" => crate::tumblr::share(&text, &link, &title, &photo, &alt).await,
@@ -2932,4 +2992,94 @@ mod their_likes_tests {
             <a class="u-url" href="https://dan.blog/">not a like</a> <a class="u-like-of" href="https://bob.blog/post">again</a>"#;
         assert_eq!(super::liked_links(html, &base), vec!["https://bob.blog/post", "https://cat.blog/a?x=1&y=2"]);
     }
+}
+
+/// social_conversations, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_conversations() -> Conversations {
+    merge_conv(social_conversations_one().await, on_gab(social_conversations_one()).await)
+}
+
+/// social_shared, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_shared() -> Conversations {
+    merge_conv(social_shared_one().await, on_gab(social_shared_one()).await)
+}
+
+/// social_search, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_search(query: String) -> Conversations {
+    merge_conv(social_search_one(query.clone()).await, on_gab(social_search_one(query)).await)
+}
+
+/// social_profiles, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_profiles() -> Vec<Profile> {
+    {
+    let mut out = social_profiles_one().await;
+    if let Some(more) = on_gab(social_profiles_one()).await {
+        out.extend(more);
+    }
+    out
+    }
+}
+
+/// social_followers, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_followers() -> Vec<Follower> {
+    {
+    let mut out = social_followers_one().await;
+    if let Some(more) = on_gab(social_followers_one()).await {
+        out.extend(more);
+    }
+    out.sort_by(|a, b| b.followed_at.cmp(&a.followed_at));
+    out
+    }
+}
+
+/// social_lookup, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_lookup(urls: Vec<String>) -> Vec<Lookup> {
+    {
+    let mut out = social_lookup_one(urls.clone()).await;
+    if let Some(more) = on_gab(social_lookup_one(urls)).await {
+        out.extend(more);
+    }
+    out
+    }
+}
+
+/// social_following_blogs, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_following_blogs() -> Vec<FollowedBlog> {
+    {
+    let mut out = social_following_blogs_one().await;
+    if let Some(more) = on_gab(social_following_blogs_one()).await {
+        out.extend(more);
+    }
+    out
+    }
+}
+
+/// social_blog_mentions, for your Mastodon and (if connected) Gab accounts.
+#[tauri::command]
+pub async fn social_blog_mentions(domain: String) -> Vec<Note> {
+    {
+    let mut out = social_blog_mentions_one(domain.clone()).await;
+    if let Some(more) = on_gab(social_blog_mentions_one(domain)).await {
+        out.extend(more);
+    }
+    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    out
+    }
+}
+
+/// Connect Gab (Gab runs a version of Mastodon): the same steps as Mastodon, on gab.com, kept as its own account.
+#[tauri::command]
+pub async fn gab_begin() -> Result<String, String> {
+    MASTO_KEY.scope("gab", masto_begin("gab.com".into())).await
+}
+#[tauri::command]
+pub async fn gab_finish(code: String) -> Result<Accounts, String> {
+    masto_finish(code).await
 }

@@ -1,0 +1,34 @@
+name: Expire TestFlight builds
+
+# Run by hand. Expires TestFlight builds of one version (all, or the build numbers given), so they leave
+# TestFlight for everyone. This can't be undone.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Which app"
+        type: choice
+        options: [IOS, MAC_OS]
+        default: IOS
+      version:
+        description: "Version, like 1.3.0"
+        required: true
+      builds:
+        description: "Build numbers, comma-separated, or all"
+        default: all
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
+          python .github/scripts/asc_expire.py "${{ inputs.platform }}" "${{ inputs.version }}" "${{ inputs.builds }}"

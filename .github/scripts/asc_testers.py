@@ -81,7 +81,10 @@ def main():
         sys.exit(1)
 
     # What to Test
-    path = os.path.join(ROOT, "appstore", version, "testflight.txt")
+    # a branch can carry its own notes (appstore/<version>/testflight-youtube.txt on the youtube branch)
+    branch = os.environ.get("GITHUB_REF_NAME", "")
+    own = os.path.join(ROOT, "appstore", version, f"testflight-{branch}.txt")
+    path = own if branch and os.path.exists(own) else os.path.join(ROOT, "appstore", version, "testflight.txt")
     if os.path.exists(path):
         text = open(path).read().strip()[:4000]
         _, locs = call("GET", f"/builds/{bid}/betaBuildLocalizations")
