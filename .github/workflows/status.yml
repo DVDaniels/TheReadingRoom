@@ -18,3 +18,4 @@ jobs:
           mkdir -p "$HOME/private_keys"
           printf '%s' "$API_KEY_P8" > "$HOME/private_keys/AuthKey_$API_KEY_ID.p8"
           python .github/scripts/asc_status.py
+          python .github/scripts/asc_groups.py || true
