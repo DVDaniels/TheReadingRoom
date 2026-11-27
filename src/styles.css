@@ -3226,3 +3226,22 @@ body.flv-open #shareMenu { z-index: 1000; }
 .fl-up .fl-uprow.bad .tb-meta { color: #c0392b; }
 .fl-up .tb-acts { flex-wrap: wrap; }
 @media (max-width: 600px) { .flickr-tab .flc-grid { grid-template-columns: 1fr; } }
+/* Flickr, Nov 27 (2): your profile line, managing albums and photos */
+.flickr-tab .fl-profile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 2px 12px; font-size: 14px; }
+.flickr-tab .fl-profile > span:first-child { font-weight: 600; }
+.flickr-tab .fl-amanage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: -2px 0 8px; }
+.flickr-tab .fl-amanage .flp-about { flex-basis: 100%; margin: 0 0 2px; }
+.flickr-tab .fl-aedit { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; max-width: 560px; }
+.flickr-tab .fl-arrange { list-style: none; margin: 6px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.flickr-tab .fl-arrange li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--card, var(--surface)); }
+.flickr-tab .fl-arrange img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; }
+.flickr-tab .fl-arrange span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flv-del, .flickr-tab .flv-del { border: 1px solid color-mix(in srgb, var(--danger, #c0392b) 50%, transparent); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.flv-del p { margin: 0 0 8px; font-size: 14px; }
+.flv .flv-delask { display: inline-block; margin-top: 14px; color: #ff8a80; }
+.flv .flv-inlist { list-style: none; margin: 2px 0 8px; padding: 0; font-size: 13.5px; }
+.flv .flv-inlist li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 3px 0; }
+.flv .flv-inlist .b-link { font-size: 13px; }
+.flv .flv-edit label { display: flex; flex-direction: column; gap: 4px; }
+.flv .btn.danger, .flickr-tab .btn.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+.flickr-tab .fl-amanage .b-link { margin: 0; }
