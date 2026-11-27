@@ -289,7 +289,29 @@ fn photo(p: &Value, me: &str) -> Value {
         "views": num(&p["views"]),
         "faves": num(&p["count_faves"]),
         "comments": num(&p["count_comments"]),
+        "description": short(&plain(&words(&p["description"])), 280),
     })
+}
+
+/// The first `n` characters, with … when there's more.
+fn short(s: &str, n: usize) -> String {
+    if s.chars().count() > n { format!("{}…", s.chars().take(n - 2).collect::<String>().trim_end()) } else { s.to_string() }
+}
+
+/// The web addresses a Flickr description links to (photographers often link their blog or shop), in order, once each.
+fn links_in(html: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in html.split("href=").skip(1) {
+        let q = part.chars().next().unwrap_or(' ');
+        let rest = if q == '"' || q == '\'' { &part[1..] } else { part };
+        let end = rest.find(|c: char| c == '"' || c == '\'' || c == '>' || c.is_whitespace()).unwrap_or(rest.len());
+        let u = rest[..end].replace("&amp;", "&");
+        if (u.starts_with("https://") || u.starts_with("http://")) && !out.contains(&u) {
+            out.push(u);
+        }
+    }
+    out.truncate(8);
+    out
 }
 
 fn me() -> String {
@@ -317,7 +339,7 @@ pub async fn flickr_mine(page: Option<u32>) -> Result<Value, String> {
     let me = me();
     let r = api("flickr.people.getPhotos", &[
         ("user_id", "me".to_string()), ("per_page", "30".to_string()), ("page", page.unwrap_or(1).max(1).to_string()),
-        ("extras", "date_upload,views,count_faves,count_comments".to_string()),
+        ("extras", "date_upload,views,count_faves,count_comments,description".to_string()),
     ]).await?;
     let photos: Vec<Value> = r["photos"]["photo"].as_array().cloned().unwrap_or_default().iter().map(|p| photo(p, &me)).collect();
     Ok(json!({ "photos": photos, "total": num(&r["photos"]["total"]), "pages": num(&r["photos"]["pages"]), "page": num(&r["photos"]["page"]) }))
@@ -519,6 +541,8 @@ pub async fn flickr_photo(id: String) -> Result<Value, String> {
         "who": who_sees(&p["visibility"]),
         "views": num(&p["views"]), "faves": faves, "count": num(&p["comments"]["_content"]),
         "faved": num(&p["isfavorite"]) == 1,
+        "links": links_in(&words(&p["description"])),
+        "can_share": nsid == me || p["usage"]["canshare"].is_null() || num(&p["usage"]["canshare"]) == 1,
         "can_comment": num(&can["cancomment"]) == 1 || nsid == me,
         "comments": comments,
     }))
@@ -562,7 +586,7 @@ pub async fn flickr_person(nsid: String, page: Option<u32>) -> Result<Value, Str
     let p = &info["person"];
     let r = api("flickr.people.getPhotos", &[
         ("user_id", nsid.clone()), ("per_page", "30".to_string()), ("page", page.unwrap_or(1).max(1).to_string()),
-        ("extras", "date_upload,owner_name,views,count_faves,count_comments".to_string()),
+        ("extras", "date_upload,owner_name,views,count_faves,count_comments,description".to_string()),
     ]).await?;
     let photos: Vec<Value> = r["photos"]["photo"].as_array().cloned().unwrap_or_default().iter().map(|x| {
         let mut x = x.clone();
@@ -624,7 +648,7 @@ pub async fn flickr_picture(url: String) -> Result<String, String> {
 // ------------------------------------------------------------------ albums, faves, search (David, Nov 26: "Folders? Albums?
 // Search for other users pictures?")
 
-const LIST_EXTRAS: &str = "date_upload,owner_name,icon_server,views,count_faves,count_comments";
+const LIST_EXTRAS: &str = "date_upload,owner_name,icon_server,views,count_faves,count_comments,description";
 
 fn photo_list(r: &Value, key: &str, owner: &str) -> Value {
     let me = me();
@@ -646,6 +670,7 @@ fn album_item(a: &Value, owner: &str) -> Value {
         "count": if count > 0 { count } else { num(&a["count_photos"]) },
         "cover": img(&cover, "z"), "thumb": img(&cover, "q"),
         "updated": when(&a["date_update"]),
+        "created": when(&a["date_create"]),
         "page": format!("https://www.flickr.com/photos/{owner}/albums/{}/", st(a, "id")),
     })
 }
@@ -734,6 +759,47 @@ pub async fn flickr_add_to_album(photo_id: String, album_id: Option<String>, new
     flickr_contexts(photo_id).await
 }
 
+// ------------------------------------------------------------------ people, descriptions (David, Nov 27: "Contacts needs
+// to be organized by account", "does not pull in descriptions")
+
+/// Everyone you follow on Flickr (up to 1,000), with whether they're a friend or family, their public photo feed
+/// (to follow in the app) and their page. Flickr's API can read who you follow but has no way to follow someone new:
+/// that's done on their Flickr page.
+#[tauri::command]
+pub async fn flickr_people() -> Result<Vec<Value>, String> {
+    let r = api("flickr.contacts.getList", &[("per_page", "1000".to_string()), ("sort", "name".to_string())]).await?;
+    Ok(r["contacts"]["contact"].as_array().cloned().unwrap_or_default().iter().map(person_item).collect())
+}
+
+fn person_item(c: &Value) -> Value {
+    let nsid = st(c, "nsid");
+    let name = if st(c, "realname").trim().is_empty() { st(c, "username") } else { st(c, "realname").trim().to_string() };
+    json!({
+        "nsid": nsid.clone(), "name": name, "handle": st(c, "username"),
+        "face": face(&nsid, &st(c, "iconserver"), &st(c, "iconfarm")),
+        "friend": num(&c["friend"]) == 1, "family": num(&c["family"]) == 1,
+        "site": format!("https://www.flickr.com/photos/{}/", if st(c, "path_alias").is_empty() { nsid.clone() } else { st(c, "path_alias") }),
+        "feed": format!("https://www.flickr.com/services/feeds/photos_public.gne?id={nsid}&format=atom"),
+    })
+}
+
+/// The descriptions of some photos (up to 50), for lists Flickr sends without them (your contacts' latest photos).
+/// One question per photo, six at a time; a photo that can't be read is left out.
+#[tauri::command]
+pub async fn flickr_descriptions(ids: Vec<String>) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(50).collect();
+    let got: Vec<(String, String)> = stream::iter(ids.into_iter().map(|id| async move {
+        let d = api("flickr.photos.getInfo", &[("photo_id", id.clone())]).await.map(|v| short(&plain(&words(&v["photo"]["description"])), 280)).unwrap_or_default();
+        (id, d)
+    })).buffer_unordered(6).collect().await;
+    let mut out = serde_json::Map::new();
+    for (id, d) in got {
+        out.insert(id, json!(d));
+    }
+    Ok(Value::Object(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -782,8 +848,23 @@ mod tests {
     }
 
     #[test]
+    fn people_and_links() {
+        let c = person_item(&json!({ "nsid": "44@N00", "username": "lenslady", "realname": "Ana Ruiz ", "iconserver": "7", "iconfarm": 8, "friend": 1, "family": 0, "path_alias": "anaruiz" }));
+        assert_eq!(st(&c, "name"), "Ana Ruiz");
+        assert_eq!(c["friend"], true);
+        assert_eq!(st(&c, "site"), "https://www.flickr.com/photos/anaruiz/");
+        assert_eq!(st(&c, "feed"), "https://www.flickr.com/services/feeds/photos_public.gne?id=44@N00&format=atom");
+        let l = links_in("Prints at <a href=\"https://ana.shop/p?a=1&amp;b=2\" rel=\"nofollow\">my shop</a>, blog <a href='http://ana.blog'>here</a>, again <a href=\"https://ana.shop/p?a=1&amp;b=2\">x</a> <a href=\"/photos/x\">y</a>");
+        assert_eq!(l, vec!["https://ana.shop/p?a=1&b=2".to_string(), "http://ana.blog".to_string()]);
+        assert_eq!(short("abcdefghij", 6), "abcd…");
+        let x = photo(&json!({ "id": "1", "secret": "s", "server": "2", "description": { "_content": "Fog <b>lifting</b>" } }), "me@N00");
+        assert_eq!(st(&x, "description"), "Fog lifting");
+    }
+
+    #[test]
     fn albums_read() {
-        let a = album_item(&json!({ "id": "721", "primary": "54", "secret": "s", "server": "65535", "photos": 12, "videos": 1, "title": { "_content": "Fall walks" }, "description": { "_content": "" }, "date_update": "1764200000" }), "me@N00");
+        let a = album_item(&json!({ "id": "721", "primary": "54", "secret": "s", "server": "65535", "photos": 12, "videos": 1, "title": { "_content": "Fall walks" }, "description": { "_content": "" }, "date_update": "1764200000", "date_create": "1764100000" }), "me@N00");
+        assert!(st(&a, "created").starts_with("2025-11-25"));
         assert_eq!(st(&a, "title"), "Fall walks");
         assert_eq!(a["count"], 13);
         assert_eq!(st(&a, "cover"), "https://live.staticflickr.com/65535/54_s_z.jpg");

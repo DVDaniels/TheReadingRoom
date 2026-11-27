@@ -3037,6 +3037,8 @@ pub fn run() {
             flickr::flickr_search,
             flickr::flickr_contexts,
             flickr::flickr_add_to_album,
+            flickr::flickr_people,
+            flickr::flickr_descriptions,
             micropub::micropub_begin,
             micropub::micropub_finish,
             micropub::micropub_disconnect,
