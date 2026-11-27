@@ -12,7 +12,10 @@
   const S = { prefs: {}, kinds: new Map(), folders: [], feeds: [], items: [], highlights: [], mutes: [], lists: [], also: new Map(), hiddenMuted: 0, readerId: null, view: 'today', unreadOnly: true, keep: new Set(), selId: null, q: '', shown: 60, refreshing: false, lastRefresh: null };
   // Mastodon and Bluesky (see that section)
   const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'blogs', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
-  const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon', tumblr: 'Tumblr' };
+  const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon', gab: 'Gab', tumblr: 'Tumblr' };
+  // the networks you can share copies to and talk on (Gab runs a version of Mastodon: its own account, Mastodon's ways)
+  const SOC_NETS = ['bluesky', 'mastodon', 'gab'];
+  const mastoLike = n => n === 'mastodon' || n === 'gab';
   // Where your own posts go: a WordPress site, or a Tumblr blog when no WordPress site is connected (David, Nov 25)
   // …or a Micro.blog, Pika or other IndieWeb site, through Micropub (David, Nov 25)
   const onTumblr = () => SOC.accounts?.site?.kind === 'tumblr';
@@ -20,7 +23,7 @@
   const siteApp = () => { const s = SOC.accounts?.site; if (!s || s.kind === 'wordpress') return 'WordPress'; if (s.kind === 'tumblr') return 'Tumblr';
     const h = s.service || ''; return /micro\.blog$/.test(h) ? 'Micro.blog' : /pika\.page$/.test(h) ? 'Pika' : 'your site’s own editor'; };
   // Copies of what you post at home: Bluesky and Mastodon (Tumblr is a "Post to" choice instead, below)
-  const copyNets = () => ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+  const copyNets = () => SOC_NETS.filter(n => SOC.accounts[n]);
   // Post to: your site, Tumblr or both, when Tumblr is connected beside a WordPress or Micropub site (David, Nov 25:
   // "can I just post to tumblr?"). Remembered; Both sends Tumblr the full post, not a copy that links home.
   const postToChoice = () => !!(SOC.accounts?.tumblr && SOC.accounts?.site && !onTumblr());
@@ -31,7 +34,7 @@
     return `<div class="post-to pt-also"><button type="button" class="pt-box" ${attr}="${on ? 'site' : 'both'}" aria-pressed="${on}"><span class="pt-tick" aria-hidden="true">${on ? '✓' : ''}</span>Also post to Tumblr</button>
       <span class="pt-n">${on ? `The full post goes on ${esc(host)} and on your Tumblr (${esc(SOC.accounts.tumblr.blog)}).` : `Only on ${esc(host)}.`}</span></div>`;
   };
-  const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon);
+  const anySocial = () => !!(SOC.accounts.bluesky || SOC.accounts.mastodon || SOC.accounts.gab);
   const socialSeen = () => { try { return Number(localStorage.getItem('socialSeen')) || 0; } catch { return 0; } };
   const newReplies = () => (SOC.conv?.replies || []).filter(r => Date.parse(r.created_at) > socialSeen()).length;
   // Discover's results (see the Discover section)
@@ -558,7 +561,7 @@
       : S.view === 'email' ? mailSub()
       : S.view === 'jobs' ? jobsSub()
       : S.view === 'books' ? (B.open ? `${bookOf(B.open).title} · ${bookOf(B.open).author}` : `${allBooks().length} books · ${allAudio().length} audiobooks`)
-      : S.view === 'talk' ? (anySocial() ? `The blogs you read, and your conversations on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'The blogs you read, and the conversations between them')
+      : S.view === 'talk' ? (anySocial() ? `The blogs you read, and your conversations on ${SOC_NETS.filter(n => SOC.accounts[n]).map(n => NET[n]).join(' and ')}` : 'The blogs you read, and the conversations between them')
       : `${parentOf(folderOf(S.view)) ? `In ${parentOf(folderOf(S.view)).name} · ` : ''}${unreadIn(S.view)} unread`;
     const muted = S.hiddenMuted ? ` · ${S.hiddenMuted} muted` : '';
     const onMail = S.view === 'email' && !!MAIL.account;
@@ -3828,7 +3831,7 @@
       ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
       : body}</section>`;
     const wp = SOC.accounts.wordpress;
-    return `<h2 id="socialTitle">Your site, Tumblr, Flickr, Mastodon &amp; Bluesky</h2>
+    return `<h2 id="socialTitle">Your site, Tumblr, Flickr, Mastodon, Gab &amp; Bluesky</h2>
       <p>Connect your own site and accounts to post notes and stories with your thoughts, and to see and answer the replies in Conversations. Sign-ins are kept in Apple’s Keychain and sync to your other Apple devices through iCloud Keychain; they’re sent only to your own site and servers.</p>
       <section class="acct"><h3>${ICONS.site}Your site <small class="acct-sub">WordPress</small></h3>${wp
         ? `<p>Connected to <b>${esc(wp.name)}</b> (${esc(wp.site.replace(/^https?:\/\//, ''))}) as ${esc(wp.user)}. Notes go in a Notes category there.</p><div class="row"><button class="btn" data-disconnect="wordpress">Disconnect</button></div>`
@@ -3845,6 +3848,9 @@
       ${row('mastodon', SOC.accounts.mastodon, `<p>Type your server, then approve The Reading Room in the page that opens. Your server shows a code: paste it here.</p>
         <form class="acct-form" id="mastoForm"><input id="mastoServer" placeholder="mastodon.social" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Continue</button></form>
         <form class="acct-form" id="mastoCodeForm" hidden><input id="mastoCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`)}
+      ${row('gab', SOC.accounts.gab, `<p>Gab runs a version of Mastodon, so it works the same way here, as its own account next to your Mastodon one: see replies and mentions in Conversations, answer them, and share copies of your notes. Press Connect Gab, approve The Reading Room on Gab’s page, then paste the code it shows.</p>
+        <form class="acct-form" id="gabForm"><button class="btn primary" type="submit">Connect Gab</button></form>
+        <form class="acct-form" id="gabCodeForm" hidden><input id="gabCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`)}
       <p class="acct-note" id="acctNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn primary" type="button" id="socialDone">Done</button></div>`;
   }
@@ -3883,6 +3889,7 @@
         <p class="note"><button class="b-link" type="button" id="mpUseToken">Use an app token instead</button></p>`}</section>`;
   }
   const ICON_NET = {
+    gab: '<svg viewBox="0 0 24 24" width="18" height="18"><rect x="2" y="2" width="20" height="20" rx="5" fill="#21CF7A"/><text x="12" y="16.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#fff">G</text></svg>',
     flickr: '<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="6.6" cy="12" r="4.6" fill="#0063DC"/><circle cx="17.4" cy="12" r="4.6" fill="#FF0084"/></svg>',
     tumblr: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14.6 21c-3 0-5.2-1.5-5.2-5.2V9.9H6.7V6.7c3-.8 4.3-3.4 4.4-5.7h3.1v5.1h3.6v3.8h-3.6v5.2c0 1.6.8 2.1 2 2.1h1.7V21h-3.3z"/></svg>',
     bluesky: '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.3 4.2C8.6 5.9 11 9.4 12 11.4c1-2 3.4-5.5 5.7-7.2 1.6-1.2 4.3-2.2 4.3.9 0 .6-.4 5.2-.6 5.9-.7 2.5-3.2 3.1-5.5 2.7 4 .7 5 2.9 2.8 5.2-4.2 4.3-6-1.1-6.5-2.5l-.2-.5-.2.5c-.5 1.4-2.3 6.8-6.5 2.5-2.2-2.3-1.2-4.5 2.8-5.2-2.3.4-4.8-.2-5.5-2.7C2.4 10.3 2 5.7 2 5.1c0-3.1 2.7-2.1 4.3-.9z"/></svg>',
@@ -4021,6 +4028,20 @@
         $('mastoForm').hidden = true; $('mastoCodeForm').hidden = false; $('mastoCode').focus();
         note('Approve The Reading Room on the page that opened, then paste the code it shows.');
       } catch (err) { note(msg(err), true); }
+    });
+    $('gabForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Asking Gab…');
+      try {
+        const url = await invoke('gab_begin');
+        await invoke('open_external', { url });
+        $('gabForm').hidden = true; $('gabCodeForm').hidden = false; $('gabCode').focus();
+        note('Approve The Reading Room on the page that opened, then paste the code it shows.');
+      } catch (err) { note(msg(err), true); }
+    });
+    $('gabCodeForm')?.addEventListener('submit', async e => {
+      e.preventDefault(); note('Connecting to Gab…');
+      try { SOC.accounts = await invoke('gab_finish', { code: $('gabCode').value }); openAccounts(); renderRail(); loadConversations(true); }
+      catch (err) { note(msg(err), true); }
     });
     $('mastoCodeForm')?.addEventListener('submit', async e => {
       e.preventDefault(); note('Connecting to Mastodon…');
@@ -4751,7 +4772,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkMail(true); });
 
   // ---- posting a story with your note
-  const LIMIT = { bluesky: 300, mastodon: 500 };
+  const LIMIT = { bluesky: 300, mastodon: 500, gab: 3000 };
 
   // ---- Notes: short posts that go to your own site first, then copies to Bluesky and Mastodon that link home.
   // A photo is shrunk here (Bluesky takes pictures under 1 MB), goes in the note and becomes its featured image.
@@ -4825,7 +4846,7 @@
     const link = () => it ? it.link : ($('nLink').hidden ? '' : $('nLink').value.trim());
     const count = () => {
       const n = [...text.value].length, picks = boxes();
-      const room = Math.min(...picks.map(p => LIMIT[p] - (toSite() || link() ? (p === 'mastodon' ? 25 : 40) : 0)), 99999);
+      const room = Math.min(...picks.map(p => LIMIT[p] - (toSite() || link() ? (mastoLike(p) ? 25 : 40) : 0)), 99999);
       const over = picks.length && n > room;
       $('nRoom').textContent = !picks.length ? '' : toSite() ? (over ? 'Copies will be shortened, with the link to the full note' : `${room - n}`) : `${room - n}`;
       $('nRoom').classList.toggle('over', !toSite() && over);
@@ -4948,7 +4969,7 @@
   }
   function openCompose(it, prefer, all) {
     if (!anySocial()) { openAccounts(); return; }
-    const nets = ['bluesky', 'mastodon'].filter(n => SOC.accounts[n]);
+    const nets = SOC_NETS.filter(n => SOC.accounts[n]);
     const chosen = new Set(all ? nets : prefer && SOC.accounts[prefer] ? [prefer] : nets.slice(0, 1));
     const f = it && feedById(it.feed_id);
     const quote = it ? S.highlights.find(h => h.item_id === it.id)?.text || '' : '';
@@ -4963,7 +4984,7 @@
     const text = $('cText'), boxes = () => [...el.querySelectorAll('.c-net input:checked')].map(x => x.value);
     const count = () => {
       const n = [...text.value].length, picks = boxes();
-      const room = Math.min(...picks.map(p => LIMIT[p] - (p === 'mastodon' && it ? 25 : 0)), 999);
+      const room = Math.min(...picks.map(p => LIMIT[p] - (mastoLike(p) && it ? 25 : 0)), 999);
       $('cCount').textContent = picks.length ? `${room - n}` : '';
       $('cCount').classList.toggle('over', n > room);
       $('cPost').disabled = !picks.length || n > room;
@@ -4988,7 +5009,7 @@
 
   // ---- Conversations: your shared stories and the replies to them
   const fmtWhen = d => { const a = ago(d); return a === 'now' ? 'just now' : `${a} ago`; };
-  const isMe = a => [SOC.accounts.bluesky?.handle, SOC.accounts.mastodon?.handle].some(h => h && (h === a.handle || h.startsWith(a.handle + '@')));
+  const isMe = a => [SOC.accounts.bluesky?.handle, SOC.accounts.mastodon?.handle, SOC.accounts.gab?.handle].some(h => h && (h === a.handle || h.startsWith(a.handle + '@')));
   // Web addresses in a post become links that open in the web window
   function linkText(t) {
     return esc(t || '').replace(/https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]]/g, u => {
@@ -5040,7 +5061,7 @@
   function readerCandidates() {
     const want = new Map(); // profile url → feed id (the person)
     const add = (u, fid) => { if (u && !want.has(u)) want.set(u, fid); };
-    const nets = new Set(['bluesky', 'mastodon'].filter(n => SOC.accounts[n]));
+    const nets = new Set(SOC_NETS.filter(n => SOC.accounts[n]));
     for (const f of S.feeds) {
       if (kindOf(f) !== 'person' || isNewsSearch(f)) continue;
       const who = personId(f.id);
@@ -5298,7 +5319,7 @@
         <div class="nb-acts">
           <button class="linkish" data-open="${esc(i.id)}">${short ? 'Open' : 'Read'}</button>
           ${mine ? (yours.length ? `<button class="linkish" data-talk="tab" data-tab="posts">${yourReplies ? `${yourReplies} ${yourReplies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} on ${[...new Set(yours.map(p => NET[p.network]))].join(' and ')}</button>`
-              : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
+              : anySocial() ? `<button class="linkish" data-talk="sharemine" data-id="${esc(i.id)}">Share to ${SOC_NETS.filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button>` : '')
             : `<button class="linkish" data-talk="nbrbox" data-id="${esc(i.id)}">${replyLbl(i.id)}</button>
           ${likeBtn(i)}
           ${repostBtn(i)}
@@ -7122,7 +7143,7 @@
     if (post && !shared && Date.now() - Date.parse(post.date) < 4 * DAY) {
       out += `<div class="box"><h3>Your new post</h3><p>Published on ${esc(mine.title)} ${esc(fmtWhen(post.date))}. Share a copy that links home. <button class="b-link" data-guide-posse>What’s this?</button></p>
         <div class="newpost">${isWeb(post.image) ? `<img src="${esc(post.image)}" alt="" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}<b>${esc(post.title)}</b></div>
-        <button class="btn primary" data-talk="sharemine" data-id="${esc(post.id)}">Share to ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button></div>`;
+        <button class="btn primary" data-talk="sharemine" data-id="${esc(post.id)}">Share to ${SOC_NETS.filter(n => SOC.accounts[n]).map(n => NET[n]).join(' & ')}</button></div>`;
     }
     // New followers, with their blogs
     const hidF = hiddenIn('f'), fkey = f => f.network + ':' + f.person.id;
@@ -7151,7 +7172,7 @@
       const byPerson = new Map();
       for (const r of notYet) { if (!byPerson.has(r.feedId)) byPerson.set(r.feedId, []); byPerson.get(r.feedId).push(r); }
       const people = [...byPerson.entries()], show = SOC.allReaders ? people : people.slice(0, 6);
-      out += `<div class="box"><h3>People you read</h3><p>${!people.length ? 'Nobody new to follow.' : people.length === 1 ? 'One writer you read is' : `${people.length} writers you read are`} on ${['bluesky', 'mastodon'].filter(n => SOC.accounts[n]).map(n => NET[n]).join(' or ')}. Follow them there to talk with them.</p>
+      out += `<div class="box"><h3>People you read</h3><p>${!people.length ? 'Nobody new to follow.' : people.length === 1 ? 'One writer you read is' : `${people.length} writers you read are`} on ${SOC_NETS.filter(n => SOC.accounts[n]).map(n => NET[n]).join(' or ')}. Follow them there to talk with them.</p>
         ${show.map(([fid, rs]) => { const f = feedById(fid), a = rs[0].person; return `<div class="fol">${isWeb(a.avatar) ? `<img class="av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="av" style="background:hsl(${hueFor(f.url)} 45% 42%)">${esc((f.title || '?')[0])}</span>`}
           <button class="fol-who" data-view="${f.id}">${esc(f.title)}<small>${rs.map(r => esc(r.person.handle)).join(' · ')}</small></button>
           ${SOC.showHidden === 'r' ? `<button class="fbtn" data-talk="unhide" data-k="r" data-key="${fid}">Show again</button>`
@@ -7208,7 +7229,7 @@
       ${past.length ? `<div class="sr-past">${past.map(p => `<span class="sr-chip${p === q ? ' on' : ''}"><button class="linkish" data-talk="srch" data-q="${esc(p)}">${esc(p)}</button><button class="sr-x" data-talk="srdrop" data-q="${esc(p)}" aria-label="Forget ${esc(p)}">×</button></span>`).join('')}</div>` : ''}`;
     if (!q) return `<div class="nb-col sr">${form}<p class="sec-s sr-intro">When something big happens (an outage, a storm, the news), see what people are saying about it right now: recent posts from everyone on Bluesky and Mastodon${anySocial() ? '' : ' (connect an account in Settings › Connections)'}, and posts from the blogs you read.</p></div>`;
     const feeds = feedMatches(q), shownFeeds = SOC.srAllFeeds ? feeds : feeds.slice(0, 6);
-    const nets = [SOC.accounts.bluesky && 'Bluesky', SOC.accounts.mastodon && 'Mastodon'].filter(Boolean);
+    const nets = [SOC.accounts.bluesky && 'Bluesky', SOC.accounts.mastodon && 'Mastodon', SOC.accounts.gab && 'Gab'].filter(Boolean);
     const social = !anySocial() ? `<p class="sec-s">Connect Bluesky or Mastodon (Settings › Connections) to see what everyone is saying about this right now. Below are posts from the blogs you read.</p>`
       : r?.loading && !r.posts.length ? `<p class="sec-s sr-wait">Looking on ${nets.join(' and ')}…</p>`
       : !r ? '' : `<p class="sec-s">${r.posts.length ? `${r.posts.length} recent post${r.posts.length === 1 ? '' : 's'} on ${nets.join(' and ')}, newest first` : `Nothing on ${nets.join(' or ')} yet`}${r.at ? ` · looked ${esc(fmtWhen(r.at))}` : ''} · <button class="linkish" data-talk="srch" data-q="${esc(q)}">Check again</button></p>
@@ -7246,7 +7267,7 @@
   function replyBox(b) {
     document.querySelectorAll('.n-box').forEach(x => { x.innerHTML = ''; });
     const box = [...document.querySelectorAll('.n-box')].find(x => x.dataset.box === b.dataset.id); if (!box) return;
-    const net = b.dataset.net, start = net === 'mastodon' && b.dataset.handle ? `${b.dataset.handle} ` : '';
+    const net = b.dataset.net, start = mastoLike(net) && b.dataset.handle ? `${b.dataset.handle} ` : '';
     box.innerHTML = `<form class="n-form"><textarea rows="3" maxlength="${LIMIT[net]}">${esc(start)}</textarea><div class="row"><button class="btn" type="button" data-talk="cancel">Cancel</button><button class="btn primary" type="submit">Reply on ${NET[net]}</button></div></form>`;
     const ta = box.querySelector('textarea'), dkey = box.dataset.box;
     if (DRAFTS[dkey]) ta.value = DRAFTS[dkey].text;
@@ -7553,7 +7574,7 @@
     try { r = await invoke('social_resolve', { url }); }
     catch (e) { $('raNote').textContent = msg(e); return; }
     $('raNote').innerHTML = `Replying to <b>${esc(r.name)}</b> ${esc(r.handle)} on ${NET[r.network]}${r.text ? `<span class="ra-q">${esc(r.text.length > 240 ? r.text.slice(0, 240) + '…' : r.text)}</span>` : ''}`;
-    const t = $('raText'); t.disabled = false; t.value = r.network === 'mastodon' ? r.handle + ' ' : ''; t.focus();
+    const t = $('raText'); t.disabled = false; t.value = mastoLike(r.network) ? r.handle + ' ' : ''; t.focus();
     $('raSend').disabled = false;
     $('raSend').onclick = async () => {
       $('raSend').disabled = true; $('raSend').textContent = 'Replying…';

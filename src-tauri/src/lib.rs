@@ -3012,6 +3012,8 @@ pub fn run() {
             tumblr::tumblr_list,
             tumblr::tumblr_publish,
             tumblr::tumblr_delete,
+            social::gab_begin,
+            social::gab_finish,
             flickr::flickr_begin,
             flickr::flickr_finish,
             flickr::flickr_disconnect,
