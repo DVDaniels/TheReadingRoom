@@ -3271,3 +3271,31 @@ body.flv-open #shareMenu { z-index: 1000; }
 .yt-edit .yt-delask { align-self: flex-start; color: var(--danger, #c0392b); }
 .yt-edit.flv-del { border-color: color-mix(in srgb, var(--danger, #c0392b) 50%, transparent); }
 .yt-edit .btn.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+/* YouTube pages: playlists, comments, channel, a video's numbers */
+.channel .yt-pages { margin: 0 0 14px; }
+.yt-thumbrow { display: flex; gap: 12px; align-items: flex-start; }
+.yt-thumbrow img { width: 160px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; flex: none; background: var(--line); }
+.yt-thumbrow .tm-tip { margin: 6px 0 0; }
+.yt-vstats { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.yt-vbars { display: flex; align-items: flex-end; gap: 2px; height: 56px; }
+.yt-vbars i { flex: 1; background: #FF0000; opacity: .75; border-radius: 2px 2px 0 0; min-height: 2px; }
+.yt-vnums { margin: 8px 0 2px; font-size: 13.5px; line-height: 1.6; }
+.channel .yt-plitems li span { flex: 1; }
+.channel .yt-pladd { margin: 10px 0; }
+.channel .yt-delask, .yt-settings .yt-delask { color: var(--danger, #c0392b); margin-top: 10px; }
+.channel .fl-tile { padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card, var(--surface)); text-align: left; cursor: pointer; }
+.channel .fl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin: 10px 0 6px; }
+.channel .fl-pic { position: relative; display: block; aspect-ratio: 16/9; background: var(--line); }
+.channel .fl-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.channel .fl-lock { position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.65); color: #fff; font-size: 11.5px; }
+.channel .fl-cap { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 10px; }
+.channel .fl-cap .fl-by { font-size: 12.5px; color: var(--muted); }
+.channel .fl-arrange { list-style: none; margin: 6px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.channel .fl-arrange li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; }
+.channel .fl-arrange img { width: 64px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; }
+.channel .flv-addrow { display: flex; gap: 8px; align-items: center; } .channel .flv-addrow select { flex: 1; min-width: 0; }
+.channel .flc-h { margin: 16px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.channel .fl-back { display: inline-block; margin: 0 0 10px; }
+.yt-banner { width: 100%; aspect-ratio: 6.2/1; object-fit: cover; border-radius: 10px; margin: 0 0 12px; }
+@media (max-width: 600px) { .yt-thumbrow { flex-direction: column; } .yt-thumbrow img { width: 100%; } .channel .fl-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+.channel .nb-acts .linkish { color: var(--accent); }

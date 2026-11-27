@@ -963,6 +963,319 @@ pub async fn youtube_video_delete(id: String, channel: Option<String>) -> Result
     api(&ch, reqwest::Method::DELETE, &format!("/videos?id={}", urlencoding(&id)), None).await.map(|_| ())
 }
 
+// ------------------------------------------------------------------ more of your channel from the app (David, Nov 27: "Do all
+// except captions and live streams"): thumbnails, playlists, comment moderation, channel settings and banner,
+// watermark, each video's numbers
+
+const UPLOAD_BASE: &str = "https://www.googleapis.com/upload/youtube/v3";
+
+/// "data:image/png;base64,…" → (mime, bytes); pictures only, at most `max_mb`.
+fn picture_bytes(data: &str, max_mb: usize) -> Result<(String, Vec<u8>), String> {
+    use base64::Engine;
+    let (head, b64) = data.split_once(',').ok_or("That picture couldn't be read.")?;
+    let mime = head.trim_start_matches("data:").split(';').next().unwrap_or("").to_string();
+    if !matches!(mime.as_str(), "image/jpeg" | "image/png") {
+        return Err("Pick a JPEG or PNG picture.".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| "That picture couldn't be read.".to_string())?;
+    if bytes.len() > max_mb * 1024 * 1024 {
+        return Err(format!("That picture is over {max_mb} MB. Pick a smaller one."));
+    }
+    Ok((mime, bytes))
+}
+
+/// Send bytes to one of YouTube's upload addresses, renewing the sign-in once if needed.
+async fn upload_bytes(ch: &str, url: &str, content_type: &str, body: Vec<u8>) -> Result<Value, String> {
+    for attempt in 0..2 {
+        let tok = token(ch, attempt > 0).await?;
+        let req = client().post(url).bearer_auth(&tok).header("Content-Type", content_type).body(body.clone()).timeout(Duration::from_secs(120));
+        match call(req).await {
+            Ok(v) => return Ok(v),
+            Err(e) if e.0 == 401 && attempt == 0 => continue,
+            Err(e) => return Err(yt_fail(e)),
+        }
+    }
+    Err("YouTube didn't accept the sign-in.".into())
+}
+
+/// A video's thumbnail from a picture (JPEG or PNG, 1280×720 is best, up to 2 MB as YouTube Studio asks). YouTube
+/// lets only channels with custom thumbnails turned on (a verified channel) do this. 50 units.
+#[tauri::command]
+pub async fn youtube_thumbnail(id: String, picture: String, channel: Option<String>) -> Result<String, String> {
+    let ch = pick(channel.as_deref())?;
+    let (mime, bytes) = picture_bytes(&picture, 2)?;
+    let url = format!("{UPLOAD_BASE}/thumbnails/set?videoId={}", urlencoding(&id));
+    let r = upload_bytes(&ch, &url, &mime, bytes).await.map_err(|e| if e.contains("permission") || e.contains("forbidden") || e.contains("Forbidden") {
+        "YouTube didn't let the app set a thumbnail. Custom thumbnails need a verified channel: verify yours once on youtube.com/verify, then try again.".to_string()
+    } else { e })?;
+    let t = &r["items"][0];
+    Ok(["maxres", "high", "medium", "default"].iter().map(|k| st(&t[*k], "url")).find(|u| !u.is_empty()).unwrap_or_default())
+}
+
+// ---- playlists
+
+fn playlist_row(p: &Value) -> Value {
+    let thumbs = &p["snippet"]["thumbnails"];
+    let thumb = ["medium", "high", "default"].iter().map(|k| st(&thumbs[*k], "url")).find(|u| !u.is_empty()).unwrap_or_default();
+    json!({
+        "id": st(p, "id"), "title": st(p, "snippet.title"), "description": st(p, "snippet.description"),
+        "privacy": st(p, "status.privacyStatus"), "count": num(&p["contentDetails"]["itemCount"]),
+        "thumb": thumb,
+        "link": format!("https://www.youtube.com/playlist?list={}", st(p, "id")),
+    })
+}
+
+/// Your playlists (up to 50).
+#[tauri::command]
+pub async fn youtube_playlists(channel: Option<String>) -> Result<Vec<Value>, String> {
+    let ch = pick(channel.as_deref())?;
+    let r = api(&ch, reqwest::Method::GET, "/playlists?part=snippet,status,contentDetails&mine=true&maxResults=50", None).await?;
+    Ok(r["items"].as_array().cloned().unwrap_or_default().iter().map(playlist_row).collect())
+}
+
+/// Make a playlist (no id) or change one: title, description, public / unlisted / private. 50 units.
+#[tauri::command]
+pub async fn youtube_playlist_save(id: Option<String>, title: String, description: String, privacy: String, channel: Option<String>) -> Result<Value, String> {
+    let ch = pick(channel.as_deref())?;
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("A playlist needs a name.".into());
+    }
+    let privacy = match privacy.as_str() { "public" => "public", "unlisted" => "unlisted", _ => "private" };
+    let mut body = json!({ "snippet": { "title": title, "description": description.trim() }, "status": { "privacyStatus": privacy } });
+    let method = if let Some(i) = id.filter(|i| !i.is_empty()) { body["id"] = json!(i); reqwest::Method::PUT } else { reqwest::Method::POST };
+    let r = api(&ch, method, "/playlists?part=snippet,status", Some(&body)).await?;
+    Ok(playlist_row(&r))
+}
+
+/// Delete a playlist (its videos stay on your channel). 50 units.
+#[tauri::command]
+pub async fn youtube_playlist_delete(id: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    api(&ch, reqwest::Method::DELETE, &format!("/playlists?id={}", urlencoding(&id)), None).await.map(|_| ())
+}
+
+/// The videos in a playlist, in order (up to 50).
+#[tauri::command]
+pub async fn youtube_playlist_items(id: String, channel: Option<String>) -> Result<Vec<Value>, String> {
+    let ch = pick(channel.as_deref())?;
+    let r = api(&ch, reqwest::Method::GET, &format!("/playlistItems?part=snippet,contentDetails&maxResults=50&playlistId={}", urlencoding(&id)), None).await?;
+    Ok(r["items"].as_array().cloned().unwrap_or_default().iter().map(|i| {
+        let thumbs = &i["snippet"]["thumbnails"];
+        let thumb = ["medium", "default"].iter().map(|k| st(&thumbs[*k], "url")).find(|u| !u.is_empty()).unwrap_or_default();
+        json!({
+            "item": st(i, "id"), "video": st(i, "contentDetails.videoId"), "title": st(i, "snippet.title"), "position": num(&i["snippet"]["position"]),
+            "thumb": thumb,
+        })
+    }).collect())
+}
+
+/// Put a video in a playlist (at the end). 50 units.
+#[tauri::command]
+pub async fn youtube_playlist_add(playlist: String, video: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    let body = json!({ "snippet": { "playlistId": playlist, "resourceId": { "kind": "youtube#video", "videoId": video } } });
+    api(&ch, reqwest::Method::POST, "/playlistItems?part=snippet", Some(&body)).await.map(|_| ())
+}
+
+/// Take a video out of a playlist (by its place in the list, `item`). 50 units.
+#[tauri::command]
+pub async fn youtube_playlist_remove(item: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    api(&ch, reqwest::Method::DELETE, &format!("/playlistItems?id={}", urlencoding(&item)), None).await.map(|_| ())
+}
+
+/// Move a video to another place in a playlist (0 = first). 50 units.
+#[tauri::command]
+pub async fn youtube_playlist_move(item: String, playlist: String, video: String, position: u32, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    let body = json!({ "id": item, "snippet": { "playlistId": playlist, "resourceId": { "kind": "youtube#video", "videoId": video }, "position": position } });
+    api(&ch, reqwest::Method::PUT, "/playlistItems?part=snippet", Some(&body)).await.map(|_| ())
+}
+
+// ---- comments: moderation, and your own
+
+/// Comments on your channel's videos: `held` = waiting for your review (YouTube held them), otherwise the latest
+/// published ones (50). Each with the thread's top comment id, which moderation acts on.
+#[tauri::command]
+pub async fn youtube_comments_list(held: bool, channel: Option<String>) -> Result<Vec<Value>, String> {
+    let ch = pick(channel.as_deref())?;
+    let path = format!("/commentThreads?part=snippet&maxResults=50&order=time&allThreadsRelatedToChannelId={}{}", urlencoding(&ch), if held { "&moderationStatus=heldForReview" } else { "" });
+    let r = api(&ch, reqwest::Method::GET, &path, None).await?;
+    Ok(r["items"].as_array().cloned().unwrap_or_default().iter().map(|t| {
+        let c = &t["snippet"]["topLevelComment"];
+        json!({
+            "id": st(c, "id"), "video": st(t, "snippet.videoId"), "name": st(c, "snippet.authorDisplayName"), "avatar": st(c, "snippet.authorProfileImageUrl"),
+            "author": st(c, "snippet.authorChannelId.value"), "mine": st(c, "snippet.authorChannelId.value") == ch,
+            "text": strip_tags(&st(c, "snippet.textDisplay")), "date": st(c, "snippet.publishedAt"), "likes": num(&c["snippet"]["likeCount"]),
+            "replies": num(&t["snippet"]["totalReplyCount"]),
+        })
+    }).collect())
+}
+
+/// Publish a held comment, hold one for review, or remove it ("published", "heldForReview", "rejected"); `ban` also
+/// hides everything that person writes on your channel from now on. 50 units per call (up to 50 comments).
+#[tauri::command]
+pub async fn youtube_moderate(ids: Vec<String>, status: String, ban: Option<bool>, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    let status = match status.as_str() { "published" => "published", "heldForReview" => "heldForReview", _ => "rejected" };
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty()).take(50).collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut path = format!("/comments/setModerationStatus?id={}&moderationStatus={status}", urlencoding(&ids.join(",")));
+    if status == "rejected" && ban.unwrap_or(false) {
+        path.push_str("&banAuthor=true");
+    }
+    api(&ch, reqwest::Method::POST, &path, None).await.map(|_| ())
+}
+
+/// Change the words of a comment you wrote. 50 units.
+#[tauri::command]
+pub async fn youtube_comment_edit(id: String, text: String, channel: Option<String>) -> Result<String, String> {
+    let ch = pick(channel.as_deref())?;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Write something first.".into());
+    }
+    let body = json!({ "id": id, "snippet": { "textOriginal": text } });
+    let r = api(&ch, reqwest::Method::PUT, "/comments?part=snippet", Some(&body)).await?;
+    Ok(strip_tags(&st(&r, "snippet.textDisplay")))
+}
+
+/// Delete a comment you wrote. 50 units.
+#[tauri::command]
+pub async fn youtube_comment_delete(id: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    api(&ch, reqwest::Method::DELETE, &format!("/comments?id={}", urlencoding(&id)), None).await.map(|_| ())
+}
+
+// ---- channel settings, banner, watermark
+
+/// Your channel's description, keywords, the trailer people see before they subscribe, and its country.
+#[tauri::command]
+pub async fn youtube_channel_settings(channel: Option<String>) -> Result<Value, String> {
+    let ch = pick(channel.as_deref())?;
+    let r = api(&ch, reqwest::Method::GET, "/channels?part=brandingSettings,snippet&mine=true", None).await?;
+    let c = &r["items"][0];
+    Ok(json!({
+        "title": st(c, "snippet.title"), "description": st(c, "brandingSettings.channel.description"), "keywords": st(c, "brandingSettings.channel.keywords"),
+        "trailer": st(c, "brandingSettings.channel.unsubscribedTrailer"), "country": st(c, "brandingSettings.channel.country"),
+        "banner": st(c, "brandingSettings.image.bannerExternalUrl"),
+    }))
+}
+
+/// Save the description, keywords and trailer. YouTube clears any branding setting a change leaves out, so the
+/// channel's current ones are read and sent back with only these changed. 51 units.
+#[tauri::command]
+pub async fn youtube_channel_save(description: String, keywords: String, trailer: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    if description.chars().count() > 1000 {
+        return Err("YouTube channel descriptions can be up to 1,000 characters.".into());
+    }
+    let r = api(&ch, reqwest::Method::GET, "/channels?part=brandingSettings&mine=true", None).await?;
+    let mut b = r["items"][0]["brandingSettings"].clone();
+    if b.is_null() {
+        b = json!({ "channel": {} });
+    }
+    b["channel"]["description"] = json!(description.trim());
+    b["channel"]["keywords"] = json!(keywords.trim());
+    b["channel"]["unsubscribedTrailer"] = json!(trailer.trim());
+    if let Some(o) = b["channel"].as_object_mut() {
+        o.remove("title");
+    }
+    if let Some(o) = b.as_object_mut() {
+        o.remove("hints");
+        o.remove("watch");
+    }
+    let body = json!({ "id": ch, "brandingSettings": b });
+    api(&ch, reqwest::Method::PUT, "/channels?part=brandingSettings", Some(&body)).await.map(|_| ())
+}
+
+/// A new banner (JPEG or PNG, 16:9, at least 2048×1152, up to 6 MB): upload it, then point the channel at it. 100 units.
+#[tauri::command]
+pub async fn youtube_banner(picture: String, channel: Option<String>) -> Result<String, String> {
+    let ch = pick(channel.as_deref())?;
+    let (mime, bytes) = picture_bytes(&picture, 6)?;
+    let up = upload_bytes(&ch, &format!("{UPLOAD_BASE}/channelBanners/insert"), &mime, bytes).await?;
+    let url = st(&up, "url");
+    if url.is_empty() {
+        return Err("YouTube didn't take that banner. It should be at least 2048×1152 pixels.".into());
+    }
+    let r = api(&ch, reqwest::Method::GET, "/channels?part=brandingSettings&mine=true", None).await?;
+    let mut b = r["items"][0]["brandingSettings"].clone();
+    if b.is_null() {
+        b = json!({ "channel": {} });
+    }
+    b["image"] = json!({ "bannerExternalUrl": url });
+    if let Some(o) = b["channel"].as_object_mut() {
+        o.remove("title");
+    }
+    if let Some(o) = b.as_object_mut() {
+        o.remove("hints");
+        o.remove("watch");
+    }
+    api(&ch, reqwest::Method::PUT, "/channels?part=brandingSettings", Some(&json!({ "id": ch, "brandingSettings": b }))).await?;
+    Ok(url)
+}
+
+/// The subscribe watermark in the top-right corner of every video (YouTube always puts it there): for the whole
+/// video ("start", from 0:00) or the last 15 seconds ("end"). 50 units.
+#[tauri::command]
+pub async fn youtube_watermark(picture: String, when: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    let (mime, bytes) = picture_bytes(&picture, 10)?;
+    let timing = if when == "end" { json!({ "type": "offsetFromEnd", "offsetMs": 15000, "durationMs": 15000 }) } else { json!({ "type": "offsetFromStart", "offsetMs": 0 }) };
+    let meta = json!({ "timing": timing, "targetChannelId": ch }).to_string();
+    let boundary = "readingroom-watermark-7f3a";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend(format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
+    body.extend(bytes);
+    body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let url = format!("{UPLOAD_BASE}/watermarks/set?channelId={}&uploadType=multipart", urlencoding(&ch));
+    upload_bytes(&ch, &url, &format!("multipart/related; boundary={boundary}"), body).await.map(|_| ())
+}
+
+/// Take the watermark off. 50 units.
+#[tauri::command]
+pub async fn youtube_watermark_remove(channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    api(&ch, reqwest::Method::POST, &format!("/watermarks/unset?channelId={}", urlencoding(&ch)), None).await.map(|_| ())
+}
+
+// ---- one video's numbers
+
+/// One video's last 28 days (or since it went up, if newer): views each day, watch time, average view, likes,
+/// comments, shares, subscribers gained, and how people found it. YouTube Analytics (its own allowance).
+#[tauri::command]
+pub async fn youtube_video_stats(id: String, channel: Option<String>) -> Result<Value, String> {
+    let ch = pick(channel.as_deref())?;
+    let end = chrono::Utc::now().date_naive() - chrono::Duration::days(1);
+    let start = end - chrono::Duration::days(27);
+    let (s, e) = (start.format("%Y-%m-%d").to_string(), end.format("%Y-%m-%d").to_string());
+    let f = format!("&filters=video%3D%3D{}", urlencoding(&id));
+    let daily = report(&ch, &s, &e, "views", &format!("&dimensions=day&sort=day{f}")).await?;
+    let tot = report(&ch, &s, &e, "views,estimatedMinutesWatched,averageViewDuration,likes,comments,shares,subscribersGained", &f).await?;
+    let src = report(&ch, &s, &e, "views", &format!("&dimensions=insightTrafficSourceType&sort=-views{f}")).await.unwrap_or(Value::Null);
+    let t = totals(&tot);
+    let g = |i: usize| t.get(i).copied().unwrap_or(0.0);
+    let mut by: Vec<(String, f64)> = Vec::new();
+    for (k, v) in rows(&src) {
+        let name = source_name(&k).to_string();
+        let n = v.first().copied().unwrap_or(0.0);
+        if let Some(x) = by.iter_mut().find(|(nm, _)| *nm == name) { x.1 += n; } else { by.push((name, n)); }
+    }
+    by.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let days: Vec<Value> = rows(&daily).iter().map(|(d, v)| json!({ "day": d, "views": v.first().copied().unwrap_or(0.0) })).collect();
+    let sources: Vec<Value> = by.into_iter().take(5).map(|(k, v)| json!({ "name": k, "views": v })).collect();
+    Ok(json!({
+        "days": days,
+        "views": g(0), "minutes": g(1), "avgSeconds": g(2), "likes": g(3), "comments": g(4), "shares": g(5), "subscribers": g(6),
+        "sources": sources,
+        "from": s, "through": e,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

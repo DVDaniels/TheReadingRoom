@@ -28,5 +28,8 @@ PLEASE TRY
 - Upload a short video as Private. Does the progress bar finish, and does it appear in Your videos?
 - Comment on a video from the app, then reply to it from another account. Does the reply show under the YouTube chip?
 - Reply to a comment on one of your videos from the app.
-- Edit a video (title, description, tags, who can see it, a date to go public). Then delete a test video.
+- Edit a video (title, description, tags, who can see it, a date to go public), change its thumbnail, add it to a playlist, open its Numbers. Then delete a test video.
+- Playlists: make one, add, move and take out videos, rename it, delete it.
+- Comments: publish or remove a held one; hold or remove a recent one; edit and delete one you wrote.
+- Channel: change the description, keywords and trailer; upload a banner; set and remove a watermark.
 - Disconnect, then connect again.

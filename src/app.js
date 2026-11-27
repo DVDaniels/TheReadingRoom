@@ -2585,8 +2585,8 @@
       <div class="yt-main"><b class="yt-title">${esc(v.title || 'Untitled')}</b>
         <span class="yt-meta"><span class="yt-vis yt-${esc(v.privacy)}">${esc(sched || YT_SEEN[v.privacy] || v.privacy)}</span> ${esc(ytWhen(v.date))}${state}</span>
         <span class="yt-nums">${nfmt(v.views)} views · ${nfmt(v.likes)} likes · ${nfmt(v.comments)} comments</span>
-        <span class="yt-acts"><button class="linkish" type="button" data-yt="open" data-url="${esc(v.link)}">Watch</button><button class="linkish" type="button" data-yt="edit" data-id="${esc(v.id)}"${YT.edit?.id === v.id ? ' aria-expanded="true"' : ''}>${YT.edit?.id === v.id ? 'Close' : 'Edit'}</button></span>
-        ${YT.edit?.id === v.id ? ytEditHtml(v) : ''}</div></li>`;
+        <span class="yt-acts"><button class="linkish" type="button" data-yt="open" data-url="${esc(v.link)}">Watch</button><button class="linkish" type="button" data-yt="edit" data-id="${esc(v.id)}"${YT.edit?.id === v.id ? ' aria-expanded="true"' : ''}>${YT.edit?.id === v.id ? 'Close' : 'Edit'}</button><button class="linkish" type="button" data-ytx="vstats" data-id="${esc(v.id)}">${YX.vs[v.id] ? 'Hide numbers' : 'Numbers'}</button></span>
+        ${ytVideoStatsHtml(v.id)}${YT.edit?.id === v.id ? ytEditHtml(v) : ''}</div></li>`;
   }
   // Edit a video here (David, Nov 27: "edit and delete videos in the youtube tab … so you don't need to visit
   // YouTube"): title, description, tags, who can see it or a time to go public, made for kids, category, license,
@@ -2598,6 +2598,8 @@
       <div class="tb-acts"><button class="btn" type="button" data-yt="delno">Keep it</button><button class="btn danger" type="button" data-yt="delyes"${E.busy ? ' disabled' : ''}>${E.busy ? 'Deleting…' : 'Delete for good'}</button></div></div>`;
     const lim = (n, max) => `<small class="yt-lim${n > max ? ' over' : ''}">${n} / ${max}</small>`;
     return `<div class="yt-edit" role="group" aria-label="Edit ${esc(v.title)}">
+      <div class="yt-thumbrow"><img src="${esc(v.thumb)}" alt="" referrerpolicy="no-referrer"><div><button class="btn sm" type="button" data-ytx="thumb" data-id="${esc(v.id)}"${E.thumbBusy ? ' disabled' : ''}>${E.thumbBusy ? 'Sending…' : 'Change thumbnail'}</button>
+        <p class="tm-tip">JPEG or PNG, 1280 × 720 is best, up to 2 MB. YouTube allows custom thumbnails on verified channels.</p></div></div>
       <label>Title ${lim([...f.title].length, 100)}<input id="ytETitle" class="tb-in" value="${esc(f.title)}" maxlength="100"></label>
       <label>Description ${lim([...f.description].length, 5000)}<textarea id="ytEDesc" class="tb-in" rows="6">${esc(f.description)}</textarea></label>
       <p class="tm-tip">Chapters: put times at the start of lines, starting with 0:00 (“0:00 Intro”, “1:30 The setup”), and YouTube splits the video into chapters.</p>
@@ -2610,9 +2612,16 @@
         <label class="yt-check"><input type="checkbox" id="ytEEmbed"${f.embeddable ? ' checked' : ''}> Others can embed it on their sites</label>
         <label class="yt-check"><input type="checkbox" id="ytEStats"${f.publicStats ? ' checked' : ''}> Show how many likes it has</label>`
         : `<p class="tm-tip">${E.err ? `${esc(E.err)} <button class="b-link" type="button" data-yt="editload">Try again</button>` : 'Getting the rest of its settings from YouTube…'}</p>`}
+      ${ytPlPickHtml()}
       <div class="tb-acts"><button class="btn" type="button" data-yt="edit" data-id="${esc(v.id)}">Cancel</button><button class="btn primary" type="button" data-yt="save"${E.busy || !m ? ' disabled' : ''}>${E.busy ? 'Saving…' : 'Save on YouTube'}</button></div>
       ${E.say ? `<p class="tm-tip tb-say${E.sayErr ? ' err' : ''}" role="status">${esc(E.say)}</p>` : ''}
       <button class="b-link yt-delask" type="button" data-yt="delask">Delete this video…</button></div>`;
+  }
+  // Add to playlist inside a video's edit form (loads your playlists the first time)
+  function ytPlPickHtml() {
+    const P = YX.pl;
+    if (!P.list && !P.busy && !P.err) { P.busy = true; tauriInvoke('youtube_playlists', { channel: ytCh() }).then(l => { P.list = l || []; }).catch(e => { P.err = msg(e); }).finally(() => { P.busy = false; ytPaint(); }); }
+    return P.list?.length ? `<div class="flv-addrow"><select id="ytEPl" aria-label="Add to playlist"><option value="">Add to a playlist…</option>${P.list.map(p => `<option value="${esc(p.id)}">${esc(p.title)}</option>`).join('')}</select><button class="btn" type="button" data-ytx="toplist">Add</button></div>` : '';
   }
   const ytLocal = iso => { if (!iso) return ''; const d = new Date(iso), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
   function ytEditOpen(v) {
@@ -2768,6 +2777,258 @@
     const fresh = plusOk() ? ytNew().length : 0;
     return { view: 'channel', label: 'YouTube', count: '', icon: ICONS.channel, html: navButton('channel', 'YouTube', n || (fresh ? String(fresh) : ''), { icon: ICONS.channel, mark, title: fresh ? `YouTube: ${fresh} new ${fresh === 1 ? 'comment' : 'comments'}` : '' }) };
   }
+  // ---- the YouTube tab's pages (David, Nov 27: "do as much as you can from the app so you don't need to visit
+  // YouTube" → "Do all except captions and live streams"): Videos, Playlists, Comments, Numbers, Channel.
+  // Rust (ychannel.rs): youtube_thumbnail, youtube_playlist*, youtube_comments_list, youtube_moderate,
+  // youtube_comment_edit/_delete, youtube_channel_settings/_save, youtube_banner, youtube_watermark(_remove),
+  // youtube_video_stats. All Plus, like the rest of the tab.
+  const YT_PAGES = [['videos', 'Videos'], ['playlists', 'Playlists'], ['comments', 'Comments'], ['numbers', 'Numbers'], ['channel', 'Channel']];
+  const YX = { page: store.get('ytPage') || 'videos', pl: { list: null, busy: false, err: '', open: null, form: null, say: '', sayErr: false },
+    cm: { tab: 'held', held: null, recent: null, busy: false, err: '', edit: null, say: '', sayErr: false },
+    set: { data: null, f: null, busy: false, err: '', say: '', sayErr: false, markWhen: 'start' }, vs: {}, pic: null };
+  const ytCh = () => SOC.accounts?.youtube?.channel || null;
+  const ytSay = (o, text, bad) => { o.say = text; o.sayErr = !!bad; };
+  const ytVidTitle = id => (YT.data?.videos || []).find(v => v.id === id)?.title || 'one of your videos';
+  function ytPagesHtml() {
+    return `<div class="nb-chips fl-tabs yt-pages" role="tablist" aria-label="YouTube pages">${YT_PAGES.map(([k, l]) => `<button class="nb-chip" type="button" data-ytx="page" data-k="${k}" aria-pressed="${YX.page === k}">${l}</button>`).join('')}</div>`;
+  }
+  function ytPageHtml() {
+    switch (YX.page) {
+      case 'playlists': return ytPlaylistsHtml();
+      case 'comments': return ytCommentsHtml();
+      case 'numbers': return ytStatsHtml();
+      case 'channel': return ytSettingsHtml();
+      default: return ytFreshHtml() + ytChannelHtml();
+    }
+  }
+  const ytPaint = () => { if (S.view === 'channel') renderList(); };
+  // a picture for a thumbnail, the banner or the watermark: one hidden file box, told what it's for
+  function ytPickPicture(kind, id) { YX.pic = { kind, id }; let el = $('ytPic'); if (!el) { el = document.createElement('input'); el.type = 'file'; el.id = 'ytPic'; el.accept = 'image/jpeg,image/png'; el.hidden = true; document.body.appendChild(el); } el.value = ''; el.click(); }
+  document.addEventListener('change', async e => {
+    if (e.target.id !== 'ytPic' || !YX.pic) return;
+    const file = e.target.files[0]; if (!file) return;
+    const P = YX.pic; YX.pic = null;
+    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); }).catch(() => '');
+    if (!data) { status('Couldn’t open that picture.', true); return; }
+    const ch = ytCh();
+    if (P.kind === 'thumb') {
+      const E = YT.edit; if (E) { E.thumbBusy = true; ytSay(E, 'Sending the thumbnail to YouTube…'); ytPaint(); }
+      try { const url = await invoke('youtube_thumbnail', { id: P.id, picture: data, channel: ch }); const v = (YT.data?.videos || []).find(x => x.id === P.id); if (v && url) v.thumb = url; if (E) ytSay(E, 'New thumbnail set. YouTube can take a minute to show it everywhere.'); }
+      catch (err) { if (E) ytSay(E, msg(err), true); else status(msg(err), true); }
+      if (E) E.thumbBusy = false; ytPaint(); return;
+    }
+    const S2 = YX.set; S2.busy = true; ytSay(S2, P.kind === 'banner' ? 'Sending the banner to YouTube…' : 'Sending the watermark to YouTube…'); ytPaint();
+    try {
+      if (P.kind === 'banner') { const url = await invoke('youtube_banner', { picture: data, channel: ch }); if (S2.data) S2.data.banner = url; ytSay(S2, 'New banner set.'); }
+      else { await invoke('youtube_watermark', { picture: data, when: YX.set.markWhen, channel: ch }); ytSay(S2, YX.set.markWhen === 'end' ? 'Watermark set for the last 15 seconds of your videos.' : 'Watermark set for your whole videos.'); }
+    } catch (err) { ytSay(S2, msg(err), true); }
+    S2.busy = false; ytPaint();
+  });
+
+  // ---- a video's own numbers, opened from its row
+  function ytVideoStatsHtml(id) {
+    const V = YX.vs[id];
+    if (!V) return '';
+    if (!V.data) return `<p class="tm-tip">${V.err ? `${esc(V.err)} <button class="b-link" type="button" data-ytx="vstats" data-id="${esc(id)}">Try again</button>` : 'Getting this video’s numbers from YouTube…'}</p>`;
+    const d = V.data, max = Math.max(1, ...d.days.map(x => x.views));
+    const mins = s => s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s)}s`;
+    return `<div class="yt-vstats"><div class="yt-vbars" aria-label="Views each day">${d.days.map(x => `<i style="height:${Math.max(2, 100 * x.views / max)}%" title="${esc(x.day)}: ${nfmt(x.views)} views"></i>`).join('')}</div>
+      <p class="yt-vnums"><b>${nfmt(d.views)}</b> views · <b>${nfmt(Math.round(d.minutes / 60))}</b> hours watched · average view <b>${mins(d.avgSeconds)}</b> · <b>${nfmt(d.likes)}</b> likes · <b>${nfmt(d.comments)}</b> comments · <b>${nfmt(d.shares)}</b> shares · <b>+${nfmt(d.subscribers)}</b> subscribers</p>
+      ${d.sources.length ? `<p class="tm-tip">Found through: ${d.sources.map(s => `${esc(s.name)} ${nfmt(s.views)}`).join(' · ')}</p>` : ''}
+      <p class="tm-tip">The last 28 days, through ${esc(d.through)}. YouTube’s numbers run a day or two behind.</p></div>`;
+  }
+
+  // ---- Playlists
+  function ytPlaylistsHtml() {
+    const P = YX.pl;
+    if (!P.list && !P.busy && !P.err) { P.busy = true; tauriInvoke('youtube_playlists', { channel: ytCh() }).then(l => { P.list = l || []; }).catch(e => { P.err = msg(e); }).finally(() => { P.busy = false; ytPaint(); }); }
+    const say = P.say ? `<p class="tm-tip tb-say${P.sayErr ? ' err' : ''}" role="status">${esc(P.say)}</p>` : '';
+    const who = (sel, id) => `<select id="${id}">${[['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']].map(([k, l]) => `<option value="${k}"${sel === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+    const form = f => `<div class="yt-edit"><label>Name<input id="ytPlT" class="tb-in" value="${esc(f.title)}" maxlength="150"></label><label>Description<textarea id="ytPlD" class="tb-in" rows="3">${esc(f.description)}</textarea></label>
+      <label>Who can see it ${who(f.privacy, 'ytPlW')}</label><div class="tb-acts"><button class="btn" type="button" data-ytx="plcancel">Cancel</button><button class="btn primary" type="button" data-ytx="plsave"${P.busy ? ' disabled' : ''}>${f.id ? 'Save on YouTube' : 'Make the playlist'}</button></div></div>`;
+    if (P.open) {
+      const O = P.open, items = O.items;
+      if (!items && !O.busy && !O.err) { O.busy = true; tauriInvoke('youtube_playlist_items', { id: O.pl.id, channel: ytCh() }).then(l => { O.items = l || []; }).catch(e => { O.err = msg(e); }).finally(() => { O.busy = false; ytPaint(); }); }
+      const inIt = new Set((items || []).map(i => i.video)), can = (YT.data?.videos || []).filter(v => !inIt.has(v.id));
+      return `<button class="b-link fl-back" type="button" data-ytx="plback">‹ Your playlists</button>
+        <section class="b-panel" aria-label="${esc(O.pl.title)}"><div class="bp-head"><h3 class="b-sub">${esc(O.pl.title)}</h3><span class="bp-meta">${esc(YT_SEEN[O.pl.privacy] || O.pl.privacy)} · ${nfmt(items ? items.length : O.pl.count)} videos · <button class="b-link" type="button" data-ytx="pledit">Rename or describe</button> · <button class="b-link" type="button" data-yt="open" data-url="${esc(O.pl.link)}">Open on YouTube</button></span></div>
+        ${P.form ? form(P.form) : ''}${say}
+        ${O.delAsk ? `<div class="yt-edit flv-del"><p><b>Delete the playlist “${esc(O.pl.title)}”?</b> Its videos stay on your channel; only the playlist goes. This can’t be undone.</p><div class="tb-acts"><button class="btn" type="button" data-ytx="pldelno">Keep it</button><button class="btn danger" type="button" data-ytx="pldelyes">Delete the playlist</button></div></div>` : ''}
+        ${!items ? `<p class="day-note">${O.err ? `${esc(O.err)} <button class="b-link" type="button" data-ytx="plreload">Try again</button>` : 'Getting the playlist from YouTube…'}</p>`
+          : items.length ? `<ol class="fl-arrange yt-plitems">${items.map((it, i) => `<li><img src="${esc(it.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span>${esc(it.title)}</span>
+              <button class="btn sm" type="button" data-ytx="plup" data-i="${i}"${i ? '' : ' disabled'} aria-label="Move up">↑</button><button class="btn sm" type="button" data-ytx="pldown" data-i="${i}"${i < items.length - 1 ? '' : ' disabled'} aria-label="Move down">↓</button><button class="btn sm" type="button" data-ytx="plrm" data-i="${i}">Take out</button></li>`).join('')}</ol>`
+          : '<p class="day-note">No videos in this playlist yet.</p>'}
+        ${items && can.length ? `<div class="flv-addrow yt-pladd"><select id="ytPlAdd"><option value="">Add one of your videos…</option>${can.map(v => `<option value="${esc(v.id)}">${esc(v.title)}</option>`).join('')}</select><button class="btn" type="button" data-ytx="pladd">Add</button></div>` : ''}
+        <button class="b-link yt-delask" type="button" data-ytx="pldelask">Delete playlist…</button></section>`;
+    }
+    return `<section class="b-panel" aria-label="Your playlists"><div class="bp-head"><h3 class="b-sub">Your playlists</h3><span class="bp-meta">${P.list ? `${P.list.length} playlists · ` : ''}<button class="b-link" type="button" data-ytx="plnew">＋ New playlist</button></span></div>
+      ${P.form && !P.form.id ? form(P.form) : ''}${say}
+      ${!P.list ? `<p class="day-note">${P.err ? `Couldn’t get your playlists. ${esc(P.err)} <button class="b-link" type="button" data-ytx="plreload">Try again</button>` : 'Getting your playlists from YouTube…'}</p>`
+        : P.list.length ? `<div class="fl-grid fl-albums">${P.list.map((p, i) => `<button class="fl-tile" type="button" data-ytx="plopen" data-i="${i}"><span class="fl-pic">${p.thumb ? `<img src="${esc(p.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="fl-lock">${nfmt(p.count)} videos</span></span><span class="fl-cap"><b>${esc(p.title)}</b><span class="fl-by fl-nums">${esc(YT_SEEN[p.privacy] || p.privacy)}</span></span></button>`).join('')}</div>`
+        : '<p class="day-note">No playlists yet. Press ＋ New playlist to start one.</p>'}</section>`;
+  }
+
+  // ---- Comments: held for review, recent, and the ones you wrote from the app
+  function ytCommentsHtml() {
+    const C = YX.cm, tab = C.tab;
+    const load = which => { if (C[which] || C.busy) return; C.busy = true; C.err = ''; tauriInvoke('youtube_comments_list', { held: which === 'held', channel: ytCh() }).then(l => { C[which] = l || []; }).catch(e => { C.err = msg(e); }).finally(() => { C.busy = false; ytPaint(); }); };
+    if (tab !== 'yours' && !C[tab] && !C.err) load(tab);
+    const chips = `<div class="nb-chips">${[['held', 'Held for review'], ['recent', 'Recent'], ['yours', 'Yours']].map(([k, l]) => `<button class="nb-chip" type="button" data-ytx="cmtab" data-k="${k}" aria-pressed="${tab === k}">${l}${k === 'held' && C.held?.length ? ` · ${C.held.length}` : ''}</button>`).join('')}</div>`;
+    const say = C.say ? `<p class="tm-tip tb-say${C.sayErr ? ' err' : ''}" role="status">${esc(C.say)}</p>` : '';
+    const row = (c, acts) => `<article class="yu-ev fl-ev"><span class="nb-av md"><img class="nb-face-img" src="${esc(c.avatar || '')}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?').replace('@', '')[0]?.toUpperCase() || '?')}</span><div class="nb-main">
+        <div class="nb-by"><b class="nb-name">${esc(c.name)}</b><span>on “${esc(c.videoTitle || ytVidTitle(c.video))}”</span><time>${esc(fmtWhen(c.date))}</time></div>
+        ${C.edit?.id === c.id ? `<textarea id="ytCmE" class="tb-in" rows="3">${esc(C.edit.text)}</textarea><div class="tb-acts"><button class="btn" type="button" data-ytx="cmnoedit">Cancel</button><button class="btn primary" type="button" data-ytx="cmsave" data-id="${esc(c.id)}">Save on YouTube</button></div>`
+          : `<p class="nb-text">${esc(c.text)}</p>`}
+        <div class="nb-acts">${acts}</div></div></article>`;
+    let body;
+    if (tab === 'yours') {
+      const mine = ytPosted();
+      body = mine.length ? mine.map(p => row({ id: p.id, name: SOC.accounts.youtube?.name || 'You', avatar: '', video: p.video, videoTitle: p.title, date: p.at, text: p.text },
+        `<button class="linkish" type="button" data-ytx="cmedit" data-id="${esc(p.id)}">Edit</button><button class="linkish" type="button" data-ytx="cmdel" data-id="${esc(p.id)}">Delete</button>`)).join('')
+        : '<p class="day-note">Comments you write on YouTube from the app (in the last 60 days) show here to edit or delete.</p>';
+    } else {
+      const list = C[tab];
+      body = !list ? `<p class="day-note">${C.err ? `${esc(C.err)} <button class="b-link" type="button" data-ytx="cmreload">Try again</button>` : 'Getting comments from YouTube…'}</p>`
+        : !list.length ? `<p class="day-note">${tab === 'held' ? 'Nothing waiting for review. YouTube holds comments here when they might be spam or match your blocked words.' : 'No comments on your videos yet.'}</p>`
+        : list.map(c => row(c, c.mine ? `<button class="linkish" type="button" data-ytx="cmedit" data-id="${esc(c.id)}">Edit</button><button class="linkish" type="button" data-ytx="cmdel" data-id="${esc(c.id)}">Delete</button>`
+          : tab === 'held' ? `<button class="linkish" type="button" data-ytx="mod" data-s="published" data-id="${esc(c.id)}">Publish</button><button class="linkish" type="button" data-ytx="mod" data-s="rejected" data-id="${esc(c.id)}">Remove</button><button class="linkish" type="button" data-ytx="mod" data-s="rejected" data-ban="1" data-id="${esc(c.id)}">Remove and hide this person</button>`
+          : `<button class="linkish" type="button" data-ytx="mod" data-s="heldForReview" data-id="${esc(c.id)}">Hold for review</button><button class="linkish" type="button" data-ytx="mod" data-s="rejected" data-id="${esc(c.id)}">Remove</button><button class="linkish" type="button" data-ytx="mod" data-s="rejected" data-ban="1" data-id="${esc(c.id)}">Remove and hide this person</button>`)).join('');
+    }
+    return `<section class="b-panel" aria-label="Comments on your channel"><div class="bp-head"><h3 class="b-sub">Comments</h3><span class="bp-meta">Reply to comments in the New comments panel or Conversations › You</span></div>${chips}${say}${body}
+      <p class="tm-tip">“Hide this person” is YouTube’s hide-user: what they write on your channel stops showing to others. Undo it in YouTube Studio’s settings.</p></section>`;
+  }
+
+  // ---- Channel: description, keywords, trailer, banner, watermark
+  function ytSettingsHtml() {
+    const S2 = YX.set;
+    if (!S2.data && !S2.busy && !S2.err) { S2.busy = true; tauriInvoke('youtube_channel_settings', { channel: ytCh() }).then(d => { S2.data = d; S2.f = { description: d.description, keywords: d.keywords, trailer: d.trailer }; }).catch(e => { S2.err = msg(e); }).finally(() => { S2.busy = false; ytPaint(); }); }
+    if (!S2.data) return `<section class="b-panel"><p class="day-note">${S2.err ? `Couldn’t get your channel’s settings. ${esc(S2.err)} <button class="b-link" type="button" data-ytx="setreload">Try again</button>` : 'Getting your channel’s settings from YouTube…'}</p></section>`;
+    const f = S2.f, vids = YT.data?.videos || [];
+    return `<section class="b-panel yt-settings" aria-label="Your channel's settings"><div class="bp-head"><h3 class="b-sub">${esc(S2.data.title || 'Your channel')}</h3><span class="bp-meta">Your channel’s name and picture are changed on your Google account</span></div>
+      ${S2.data.banner ? `<img class="yt-banner" src="${esc(S2.data.banner)}=w1060" alt="Your channel banner" referrerpolicy="no-referrer">` : ''}
+      <div class="yt-edit">
+        <label>Description <small class="yt-lim${[...f.description].length > 1000 ? ' over' : ''}">${[...f.description].length} / 1000</small><textarea id="ytSD" class="tb-in" rows="5">${esc(f.description)}</textarea></label>
+        <label>Keywords<input id="ytSK" class="tb-in" value="${esc(f.keywords)}" placeholder="Words people might search for, separated by spaces (put two-word ones in quotes)"></label>
+        <label>Trailer for people who haven’t subscribed<select id="ytST"><option value="">No trailer</option>${vids.map(v => `<option value="${esc(v.id)}"${f.trailer === v.id ? ' selected' : ''}>${esc(v.title)}</option>`).join('')}${f.trailer && !vids.some(v => v.id === f.trailer) ? `<option value="${esc(f.trailer)}" selected>The video set now</option>` : ''}</select></label>
+        <div class="tb-acts"><button class="btn primary" type="button" data-ytx="setsave"${S2.busy ? ' disabled' : ''}>${S2.busy ? 'Saving…' : 'Save on YouTube'}</button></div>
+      </div>
+      <h4 class="flc-h">Banner</h4><p class="tm-tip">A wide picture across the top of your channel: JPEG or PNG, 16:9, at least 2048 × 1152 pixels, up to 6 MB. Keep words and faces in the middle 1546 × 423, which shows on every screen.</p>
+      <button class="btn" type="button" data-ytx="banner"${S2.busy ? ' disabled' : ''}>Upload a new banner</button>
+      <h4 class="flc-h">Watermark</h4><p class="tm-tip">A small square picture (150 × 150 is best) in the top-right corner of every video. Viewers on a computer can press it to subscribe.</p>
+      <div class="flv-addrow"><select id="ytSMw"><option value="start"${S2.markWhen !== 'end' ? ' selected' : ''}>For the whole video</option><option value="end"${S2.markWhen === 'end' ? ' selected' : ''}>For the last 15 seconds</option></select>
+        <button class="btn" type="button" data-ytx="mark"${S2.busy ? ' disabled' : ''}>Pick the picture</button><button class="btn" type="button" data-ytx="markoff"${S2.busy ? ' disabled' : ''}>Remove the watermark</button></div>
+      ${S2.say ? `<p class="tm-tip tb-say${S2.sayErr ? ' err' : ''}" role="status">${esc(S2.say)}</p>` : ''}</section>`;
+  }
+
+  // ---- what's typed survives repaints
+  document.addEventListener('input', e => {
+    const id = e.target.id, v = e.target.value;
+    if (id === 'ytPlT' && YX.pl.form) YX.pl.form.title = v;
+    if (id === 'ytPlD' && YX.pl.form) YX.pl.form.description = v;
+    if (id === 'ytCmE' && YX.cm.edit) YX.cm.edit.text = v;
+    if (YX.set.f && (id === 'ytSD' || id === 'ytSK')) { YX.set.f[id === 'ytSD' ? 'description' : 'keywords'] = v; if (id === 'ytSD') { const l = e.target.closest('label')?.querySelector('.yt-lim'); if (l) { l.textContent = `${[...v].length} / 1000`; l.classList.toggle('over', [...v].length > 1000); } } }
+  });
+  document.addEventListener('change', e => {
+    const id = e.target.id;
+    if (id === 'ytPlW' && YX.pl.form) YX.pl.form.privacy = e.target.value;
+    if (id === 'ytST' && YX.set.f) YX.set.f.trailer = e.target.value;
+    if (id === 'ytSMw') YX.set.markWhen = e.target.value;
+  });
+
+  // ---- clicks
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-ytx]'); if (!b) return;
+    const k = b.dataset.ytx, ch = ytCh();
+    if (!plusOk()) { openPlus(); return; }
+    if (k === 'page') { YX.page = b.dataset.k; store.set('ytPage', YX.page); ytPaint(); $('main')?.scrollTo({ top: 0 }); return; }
+    // a video's numbers, thumbnail, playlist
+    if (k === 'vstats') { const id = b.dataset.id; if (YX.vs[id]?.data && !YX.vs[id].err) { delete YX.vs[id]; ytPaint(); return; } const V = YX.vs[id] = { data: null, err: '' }; ytPaint();
+      tauriInvoke('youtube_video_stats', { id, channel: ch }).then(d => { V.data = d; }).catch(err => { V.err = msg(err); }).finally(ytPaint); return; }
+    if (k === 'thumb') { ytPickPicture('thumb', b.dataset.id); return; }
+    if (k === 'toplist') {
+      const sel = $('ytEPl'), pl = sel?.value; const E = YT.edit; if (!pl || !E) { sel?.focus(); return; }
+      try { await invoke('youtube_playlist_add', { playlist: pl, video: E.id, channel: ch }); ytSay(E, `Added to “${(YX.pl.list || []).find(p => p.id === pl)?.title || 'the playlist'}”.`); YX.pl.list = null; if (YX.pl.open?.pl.id === pl) YX.pl.open.items = null; }
+      catch (err) { ytSay(E, msg(err), true); }
+      ytPaint(); return;
+    }
+    // playlists
+    const P = YX.pl;
+    if (k === 'plreload') { P.err = ''; P.list = null; if (P.open) { P.open.err = ''; P.open.items = null; } ytPaint(); return; }
+    if (k === 'plnew') { P.form = { id: '', title: '', description: '', privacy: 'public' }; ytSay(P, ''); ytPaint(); $('ytPlT')?.focus(); return; }
+    if (k === 'pledit' && P.open) { P.form = { id: P.open.pl.id, title: P.open.pl.title, description: P.open.pl.description || '', privacy: P.open.pl.privacy }; ytPaint(); return; }
+    if (k === 'plcancel') { P.form = null; ytPaint(); return; }
+    if (k === 'plsave') {
+      const f = P.form; if (!f?.title.trim()) { $('ytPlT')?.focus(); return; }
+      P.busy = true; ytPaint();
+      try { const r = await invoke('youtube_playlist_save', { id: f.id || null, title: f.title, description: f.description, privacy: f.privacy, channel: ch });
+        if (P.open && f.id) P.open.pl = { ...P.open.pl, ...r }; P.list = null; P.form = null; ytSay(P, f.id ? 'Saved on YouTube.' : `Made the playlist “${r.title}”.`); }
+      catch (err) { ytSay(P, msg(err), true); }
+      P.busy = false; ytPaint(); return;
+    }
+    if (k === 'plopen') { const pl = (P.list || [])[+b.dataset.i]; if (!pl) return; P.open = { pl, items: null, busy: false, err: '' }; P.form = null; ytSay(P, ''); ytPaint(); $('main')?.scrollTo({ top: 0 }); return; }
+    if (k === 'plback') { P.open = null; P.form = null; ytSay(P, ''); ytPaint(); return; }
+    if (k === 'pldelask' && P.open) { P.open.delAsk = true; ytPaint(); return; }
+    if (k === 'pldelno' && P.open) { P.open.delAsk = false; ytPaint(); return; }
+    if (k === 'pldelyes' && P.open) { try { await invoke('youtube_playlist_delete', { id: P.open.pl.id, channel: ch }); ytSay(P, `Deleted the playlist “${P.open.pl.title}”.`); P.open = null; P.list = null; } catch (err) { ytSay(P, msg(err), true); } ytPaint(); return; }
+    if (k === 'pladd' && P.open) { const v = $('ytPlAdd')?.value; if (!v) return; try { await invoke('youtube_playlist_add', { playlist: P.open.pl.id, video: v, channel: ch }); P.open.items = null; P.list = null; ytSay(P, 'Added.'); } catch (err) { ytSay(P, msg(err), true); } ytPaint(); return; }
+    if ((k === 'plup' || k === 'pldown' || k === 'plrm') && P.open?.items) {
+      const items = P.open.items, i = +b.dataset.i, it = items[i]; if (!it) return;
+      try {
+        if (k === 'plrm') { await invoke('youtube_playlist_remove', { item: it.item, channel: ch }); items.splice(i, 1); P.list = null; }
+        else { const j = k === 'plup' ? i - 1 : i + 1; await invoke('youtube_playlist_move', { item: it.item, playlist: P.open.pl.id, video: it.video, position: j, channel: ch }); items.splice(i, 1); items.splice(j, 0, it); }
+        ytSay(P, '');
+      } catch (err) { ytSay(P, msg(err), true); }
+      ytPaint(); return;
+    }
+    // comments
+    const C = YX.cm;
+    if (k === 'cmtab') { C.tab = b.dataset.k; C.err = ''; C.edit = null; ytSay(C, ''); ytPaint(); return; }
+    if (k === 'cmreload') { C.err = ''; C[C.tab] = null; ytPaint(); return; }
+    if (k === 'mod') {
+      const id = b.dataset.id, st = b.dataset.s, ban = b.dataset.ban === '1';
+      try { await invoke('youtube_moderate', { ids: [id], status: st, ban, channel: ch });
+        for (const w of ['held', 'recent']) if (C[w]) C[w] = C[w].filter(c => c.id !== id);
+        if (st === 'heldForReview') C.held = null;
+        if (st === 'published') C.recent = null;
+        ytSay(C, st === 'published' ? 'Published.' : st === 'heldForReview' ? 'Held for review. Find it under Held for review.' : ban ? 'Removed, and that person is hidden on your channel.' : 'Removed.'); }
+      catch (err) { ytSay(C, msg(err), true); }
+      ytPaint(); return;
+    }
+    if (k === 'cmedit') { const id = b.dataset.id; const c = [...(C.recent || []), ...ytPosted().map(p => ({ id: p.id, text: p.text }))].find(x => x.id === id); C.edit = { id, text: c?.text || '' }; ytPaint(); $('ytCmE')?.focus(); return; }
+    if (k === 'cmnoedit') { C.edit = null; ytPaint(); return; }
+    if (k === 'cmsave' && C.edit) {
+      const { id, text } = C.edit;
+      try { const t = await invoke('youtube_comment_edit', { id, text, channel: ch });
+        for (const c of C.recent || []) if (c.id === id) c.text = t || text;
+        const p = (S.prefs.ytPosted || []).find(x => x.id === id); if (p) { p.text = text; savePrefs(); }
+        C.edit = null; ytSay(C, 'Saved on YouTube.'); }
+      catch (err) { ytSay(C, msg(err), true); }
+      ytPaint(); return;
+    }
+    if (k === 'cmdel') {
+      const id = b.dataset.id;
+      if (C.delAsk !== id) { C.delAsk = id; ytSay(C, 'Press Delete again to delete that comment for good.'); ytPaint(); return; }
+      try { await invoke('youtube_comment_delete', { id, channel: ch });
+        if (C.recent) C.recent = C.recent.filter(c => c.id !== id);
+        S.prefs.ytPosted = (S.prefs.ytPosted || []).filter(p => p.id !== id); savePrefs();
+        ytSay(C, 'Deleted from YouTube.'); }
+      catch (err) { ytSay(C, msg(err), true); }
+      C.delAsk = ''; ytPaint(); return;
+    }
+    // channel settings
+    const S2 = YX.set;
+    if (k === 'setreload') { S2.err = ''; S2.data = null; ytPaint(); return; }
+    if (k === 'setsave' && S2.f) {
+      if ([...S2.f.description].length > 1000) { ytSay(S2, 'YouTube channel descriptions can be up to 1,000 characters.', true); ytPaint(); return; }
+      S2.busy = true; ytPaint();
+      try { await invoke('youtube_channel_save', { description: S2.f.description, keywords: S2.f.keywords, trailer: S2.f.trailer || '', channel: ch }); Object.assign(S2.data, S2.f); ytSay(S2, 'Saved on YouTube.'); }
+      catch (err) { ytSay(S2, msg(err), true); }
+      S2.busy = false; ytPaint(); return;
+    }
+    if (k === 'banner') { ytPickPicture('banner'); return; }
+    if (k === 'mark') { ytPickPicture('mark'); return; }
+    if (k === 'markoff') { S2.busy = true; ytPaint(); try { await invoke('youtube_watermark_remove', { channel: ch }); ytSay(S2, 'Watermark removed.'); } catch (err) { ytSay(S2, msg(err), true); } S2.busy = false; ytPaint(); }
+  });
   function chPaint() {
     const y = $('main').scrollTop, ly = $('listView').scrollTop;
     const acct = SOC.accounts?.youtube;
@@ -2778,7 +3039,7 @@
       : !plusOk() ? `<section class="b-panel wr-invite"><p class="b-sub">YouTube</p><h2>Manage ${esc(acct.name)} from here with The Reading Room Plus</h2>
           <p>Upload and schedule videos and see how your channel is doing, next to your reading.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-plus>See the price and try it free</button></div></section>`
-      : ytPickHtml() + ytFreshHtml() + ytChannelHtml() + ytStatsHtml();
+      : ytPickHtml() + ytPagesHtml() + ytPageHtml();
     $('list').innerHTML = `<section class="brief myday channel" aria-label="YouTube">${body}</section>`;
     $('main').scrollTop = y; $('listView').scrollTop = ly;
   }
