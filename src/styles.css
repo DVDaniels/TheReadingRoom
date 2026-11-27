@@ -2953,6 +2953,76 @@ body.fr-on { overflow: hidden; }
 .flickr-tab .fl-see { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-right: auto; }
 .flickr-tab .fl-see select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card, #fff); color: var(--ink); font: inherit; font-size: 13px; }
 .flickr-tab .fl-up .tb-meta { font-size: 13px; color: var(--muted); }
+/* the Flickr viewer: the photo big on a dark ground, its details and comments beside it (below it on phones) */
+body.flv-open { overflow: hidden; }
+.flv { position: fixed; inset: 0; z-index: 900; background: #0e0e10; color: #f2f2f2; display: flex; flex-direction: column; padding: max(10px, env(safe-area-inset-top)) 14px max(10px, env(safe-area-inset-bottom)); }
+.flv[hidden] { display: none; }
+.flv .flv-top { display: flex; align-items: center; gap: 8px; padding: 4px 2px 10px; }
+.flv .flv-top .flv-n { margin-right: auto; font-size: 13px; color: #bbb; }
+.flv .flv-top b { margin-right: auto; }
+.flv .btn { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.22); }
+.flv .btn.primary { background: #0063DC; border-color: #0063DC; }
+.flv .btn.on { background: #FF0084; border-color: #FF0084; }
+.flv .flv-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; }
+.flv .flv-pic { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.flv .flv-pic img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.flv .flv-arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 0; border-radius: 10px; background: rgba(0,0,0,.45); color: #fff; font-size: 34px; line-height: 1; cursor: pointer; }
+.flv .flv-arrow.prev { left: 6px; } .flv .flv-arrow.next { right: 6px; }
+.flv .flv-arrow:disabled { opacity: .25; cursor: default; }
+.flv .flv-side { overflow-y: auto; background: #1d1d20; border-radius: 12px; padding: 16px; font-size: 14px; line-height: 1.5; }
+.flv .flv-who { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.flv .flv-who small { display: block; color: #aaa; font-size: 12px; }
+.flv .nb-name { color: #fff; font-weight: 600; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.flv .nb-name:hover { text-decoration: underline; }
+.flv .flv-title { font-size: 19px; margin: 4px 0 6px; }
+.flv .flv-desc { color: #ddd; margin: 0 0 8px; }
+.flv .flv-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+.flv .flv-tags span { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.1); color: #ddd; }
+.flv .flv-meta { color: #aaa; font-size: 12.5px; margin: 2px 0; }
+.flv .flv-acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.flv .flv-ch { color: #bbb; margin: 16px 0 6px; }
+.flv .flv-c { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.flv .flv-c .nb-by { display: flex; gap: 8px; align-items: baseline; }
+.flv .flv-c time { color: #999; font-size: 12px; }
+.flv .flv-c p { margin: 2px 0; color: #e6e6e6; white-space: pre-line; overflow-wrap: anywhere; }
+.flv .linkish { color: #7fb3ff; }
+.flv .flv-box { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.flv .flv-box .btn { align-self: flex-end; }
+.flv .tb-in, .flv select { width: 100%; box-sizing: border-box; background: #111; color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 8px; padding: 8px 10px; font: inherit; }
+.flv .flv-edit { display: flex; flex-direction: column; gap: 10px; }
+.flv .flv-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: #bbb; }
+.flv .tm-tip { color: #aaa; }
+.flv .tb-say { color: #9fe3b0; } .flv .tb-say.err { color: #ff9a9a; }
+.flv .day-note { color: #ccc; }
+@media (max-width: 760px) {
+  .flv { padding-left: 8px; padding-right: 8px; }
+  .flv .flv-body { display: flex; flex-direction: column; overflow-y: auto; gap: 10px; }
+  .flv .flv-pic { flex: none; max-height: 62vh; }
+  .flv .flv-pic img { max-height: 62vh; }
+  .flv .flv-side { overflow: visible; }
+}
+/* picking one of your Flickr photos for a note */
+.fl-pick { align-items: center; justify-content: center; background: rgba(0,0,0,.5); }
+.flickr-tab .flp-head .tb-acts { justify-content: flex-start; flex-wrap: wrap; }
+.flickr-tab .flp-head .tm-tip { text-align: left; }
+.fl-pick .flp-sheet { width: min(760px, 100%); max-height: 86vh; overflow-y: auto; background: var(--bg, #fff); color: var(--ink); border-radius: 14px; padding: 14px 16px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.fl-pick .btn { background: none; color: var(--ink); border-color: var(--line); }
+.fl-pick .fl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 6px 0 10px; }
+.fl-pick .fl-tile { display: flex; flex-direction: column; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card, #fff); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.fl-pick .fl-pic { display: block; aspect-ratio: 1; } .fl-pick .fl-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fl-pick .fl-cap { padding: 6px 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-pick .tm-tip { color: var(--muted); }
+/* someone's photos in the Flickr tab */
+.flickr-tab .fl-back { display: inline-block; margin: 0 0 10px; }
+.flickr-tab .flp-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 8px; }
+.flickr-tab .flp-head h2 { margin: 0; font-size: 22px; }
+.flickr-tab .flp-sub { margin: 2px 0 6px; color: var(--muted); font-size: 13px; }
+.flickr-tab .flp-about { margin: 0 0 8px; max-width: 64ch; }
+.flickr-tab .nb-av.lg { width: 64px; height: 64px; font-size: 24px; flex: none; }
+.flickr-tab .nb-name, .fl-ev .nb-name { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.yu-ev.fl-ev { display: flex; gap: 12px; align-items: flex-start; }
+.yu-ev.fl-ev .nb-main { flex: 1; min-width: 0; }
+.fl-ev .fl-evpic { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; }
 @media (max-width: 600px) { .flickr-tab .fl-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } .flickr-tab .fl-cap b { font-size: 13px; } }
 /* Writing: "Also post to Tumblr" */
 .post-to.pt-also .pt-box { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: inherit; cursor: pointer; }

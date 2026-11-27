@@ -11,7 +11,7 @@ Tumblr has its own tab under Writing. Write a note or a post (photo, tags), then
 Writing is for your own site. Have Tumblr too? Tick "Also post to Tumblr" in Writing or the note sheet to send the full post there as well.
 
 NEW: A FLICKR TAB
-Settings › Connections › Connect Flickr, approve on Flickr's page, paste the code. The Flickr tab shows your contacts' latest photos (friends-only ones too), comments on your photos, and your photos with views and faves. With Plus, upload a photo at full size.
+Settings › Connections › Connect Flickr, approve on Flickr, paste the code. See your contacts' photos (friends-only too), comments, and your photos. Tap a photo to open it here: fave, comment, reply, edit your own. Tap a name to Follow them as a feed. Plus: upload, or pick a Flickr photo for a note. Comments also show in Conversations › You.
 
 NEW: TUMBLR IN CONVERSATIONS
 Replies, reblogs with words, mentions and asks from Tumblr show in Conversations › You, with a Tumblr chip. Reply on Tumblr opens your browser.

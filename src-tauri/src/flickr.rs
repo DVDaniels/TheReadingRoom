@@ -353,6 +353,8 @@ fn activity_items(r: &Value, me: &str) -> Vec<Value> {
                 "photo": title.clone(),
                 "thumb": thumb.clone(),
                 "link": format!("https://www.flickr.com/photos/{owner}/{}/", st(&item, "id")),
+                "photo_id": st(&item, "id"),
+                "id": format!("{}:{}", st(&item, "id"), st(&ev, "commentid")),
                 "profile": format!("https://www.flickr.com/photos/{who}/"),
             }));
         }
@@ -430,6 +432,195 @@ fn upload_error(xml: &str) -> String {
     xml.split("msg=\"").nth(1).and_then(|r| r.split('"').next()).unwrap_or("").to_string()
 }
 
+// ------------------------------------------------------------------ the photo viewer, faves, comments, people, editing
+// (David, Nov 26: "Everytime I click a photo it takes me to the flickr website" → all six: open photos in the app,
+// fave and comment, a person's photos with Follow, edit your own, a Flickr photo in a note, Flickr in Conversations)
+
+/// A signed POST to Flickr's API (anything that changes something: faves, comments, edits).
+async fn api_post(method: &str, args: &[(&str, String)]) -> Result<Value, String> {
+    let s = secret_get(KEY).ok_or("Connect Flickr first.")?;
+    let mut p: Vec<(String, String)> = vec![("method".into(), method.into()), ("format".into(), "json".into()), ("nojsoncallback".into(), "1".into())];
+    p.extend(args.iter().map(|(k, v)| (k.to_string(), v.clone())));
+    let form = signed("POST", REST, p, Some((&st(&s, "token"), &st(&s, "secret"))))?;
+    let resp = client().post(REST).form(&form).timeout(Duration::from_secs(25)).send().await
+        .map_err(|_| "Couldn't reach Flickr. Check your connection.".to_string())?;
+    let code = resp.status().as_u16();
+    let v: Value = serde_json::from_str(&resp.text().await.unwrap_or_default()).unwrap_or(Value::Null);
+    if st(&v, "stat") == "ok" {
+        return Ok(v);
+    }
+    Err(flickr_fail(code, &v))
+}
+
+/// Flickr comments and descriptions can carry a little HTML: keep the words, the line breaks and the links' text.
+fn plain(html: &str) -> String {
+    let t = html.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n");
+    let mut out = String::with_capacity(t.len());
+    let mut in_tag = false;
+    for c in t.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let out = out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&#039;", "'").replace("&nbsp;", " ");
+    out.lines().map(str::trim_end).collect::<Vec<_>>().join("\n").trim().to_string()
+}
+
+fn who_sees(vis: &Value) -> &'static str {
+    match (num(&vis["ispublic"]) == 1, num(&vis["isfriend"]) == 1, num(&vis["isfamily"]) == 1) {
+        (true, _, _) => "public",
+        (false, true, true) => "both",
+        (false, true, false) => "friends",
+        (false, false, true) => "family",
+        _ => "private",
+    }
+}
+
+fn comment_item(c: &Value, me: &str) -> Value {
+    let author = st(c, "author");
+    let name = if st(c, "realname").is_empty() { st(c, "authorname") } else { st(c, "realname") };
+    json!({
+        "id": st(c, "id"), "user": author.clone(), "name": name, "mine": author == me,
+        "face": face(&author, &st(c, "iconserver"), &st(c, "iconfarm")),
+        "text": plain(&words(c)), "date": when(&c["datecreate"]), "link": st(c, "permalink"),
+    })
+}
+
+/// Everything about one photo for the viewer: bigger picture, words, tags, dates, who can see it, counts,
+/// whether you faved it, what you may do with it, and its comments (oldest first, as on Flickr).
+#[tauri::command]
+pub async fn flickr_photo(id: String) -> Result<Value, String> {
+    let me = me();
+    let info = api("flickr.photos.getInfo", &[("photo_id", id.clone())]).await?;
+    let p = &info["photo"];
+    let owner = &p["owner"];
+    let nsid = st(owner, "nsid");
+    let faves = api("flickr.photos.getFavorites", &[("photo_id", id.clone()), ("per_page", "1".to_string())]).await
+        .map(|f| num(&f["photo"]["total"])).unwrap_or(-1);
+    let comments: Vec<Value> = api("flickr.photos.comments.getList", &[("photo_id", id.clone())]).await
+        .map(|c| c["comments"]["comment"].as_array().cloned().unwrap_or_default().iter().map(|c| comment_item(c, &me)).collect())
+        .unwrap_or_default();
+    let tags: Vec<String> = p["tags"]["tag"].as_array().cloned().unwrap_or_default().iter()
+        .filter(|t| st(t, "author") == nsid || st(t, "author").is_empty())
+        .map(|t| if st(t, "raw").is_empty() { words(t) } else { st(t, "raw") }).filter(|t| !t.is_empty()).collect();
+    let name = if words(&owner["realname"]).is_empty() { st(owner, "username") } else { words(&owner["realname"]) };
+    let can = &p["editability"];
+    let taken = st(&p["dates"], "taken");
+    Ok(json!({
+        "id": id.clone(), "owner": nsid.clone(), "name": name, "handle": st(owner, "username"), "mine": nsid == me,
+        "face": face(&nsid, &st(owner, "iconserver"), &st(owner, "iconfarm")),
+        "title": words(&p["title"]), "description": plain(&words(&p["description"])), "tags": tags,
+        "img": img(p, "b"), "small": img(p, "z"),
+        "page": format!("https://www.flickr.com/photos/{nsid}/{id}/"),
+        "posted": when(&p["dates"]["posted"]), "taken": if num(&p["dates"]["takenunknown"]) == 1 { String::new() } else { taken.replacen(' ', "T", 1) },
+        "who": who_sees(&p["visibility"]),
+        "views": num(&p["views"]), "faves": faves, "count": num(&p["comments"]["_content"]),
+        "faved": num(&p["isfavorite"]) == 1,
+        "can_comment": num(&can["cancomment"]) == 1 || nsid == me,
+        "comments": comments,
+    }))
+}
+
+/// Fave or un-fave someone's photo (you can't fave your own on Flickr).
+#[tauri::command]
+pub async fn flickr_fave(id: String, on: bool) -> Result<bool, String> {
+    let r = api_post(if on { "flickr.favorites.add" } else { "flickr.favorites.remove" }, &[("photo_id", id)]).await;
+    match r {
+        Ok(_) => Ok(on),
+        Err(e) if e.contains("already") || e.contains("not in favorites") => Ok(on),
+        Err(e) => Err(e),
+    }
+}
+
+/// Write a comment on a photo, as you. Flickr comments aren't threaded: a reply is a comment that starts with
+/// the person's name, which the app fills in.
+#[tauri::command]
+pub async fn flickr_comment(id: String, text: String) -> Result<Value, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Write something first.".into());
+    }
+    let r = api_post("flickr.photos.comments.addComment", &[("photo_id", id), ("comment_text", text.clone())]).await?;
+    let s = secret_get(KEY).unwrap_or(Value::Null);
+    let me = st(&s, "nsid");
+    Ok(json!({
+        "id": st(&r["comment"], "id"), "user": me.clone(), "mine": true,
+        "name": if st(&s, "fullname").is_empty() { st(&s, "username") } else { st(&s, "fullname") },
+        "face": "", "text": text, "date": chrono::Utc::now().to_rfc3339(), "link": st(&r["comment"], "permalink"),
+    }))
+}
+
+/// Someone on Flickr: their name, a line about them, where they are, and their latest photos you can see (30 a
+/// page), plus their public photo feed to follow in the app.
+#[tauri::command]
+pub async fn flickr_person(nsid: String, page: Option<u32>) -> Result<Value, String> {
+    let me = me();
+    let info = api("flickr.people.getInfo", &[("user_id", nsid.clone())]).await?;
+    let p = &info["person"];
+    let r = api("flickr.people.getPhotos", &[
+        ("user_id", nsid.clone()), ("per_page", "30".to_string()), ("page", page.unwrap_or(1).max(1).to_string()),
+        ("extras", "date_upload,owner_name,views,count_faves,count_comments".to_string()),
+    ]).await?;
+    let photos: Vec<Value> = r["photos"]["photo"].as_array().cloned().unwrap_or_default().iter().map(|x| {
+        let mut x = x.clone();
+        if st(&x, "owner").is_empty() { x["owner"] = json!(nsid.clone()); }
+        photo(&x, &me)
+    }).collect();
+    let name = if words(&p["realname"]).is_empty() { words(&p["username"]) } else { words(&p["realname"]) };
+    let about = plain(&words(&p["description"]));
+    Ok(json!({
+        "nsid": nsid.clone(), "name": name, "handle": words(&p["username"]), "me": nsid == me,
+        "face": face(&nsid, &st(p, "iconserver"), &st(p, "iconfarm")),
+        "about": if about.chars().count() > 400 { format!("{}…", about.chars().take(390).collect::<String>()) } else { about },
+        "location": words(&p["location"]),
+        "count": num(&p["photos"]["count"]["_content"]),
+        "site": format!("https://www.flickr.com/photos/{nsid}/"),
+        "feed": format!("https://www.flickr.com/services/feeds/photos_public.gne?id={nsid}&format=atom"),
+        "photos": photos, "page": num(&r["photos"]["page"]), "pages": num(&r["photos"]["pages"]),
+    }))
+}
+
+/// Change one of your photos: its title, description, tags and who can see it ("public", "friends", "family",
+/// "both", "private"). Only what changed is sent; returns the photo as the viewer shows it.
+#[tauri::command]
+pub async fn flickr_edit(id: String, title: Option<String>, description: Option<String>, tags: Option<String>, who: Option<String>) -> Result<Value, String> {
+    if title.is_some() || description.is_some() {
+        api_post("flickr.photos.setMeta", &[
+            ("photo_id", id.clone()), ("title", title.unwrap_or_default().trim().to_string()), ("description", description.unwrap_or_default().trim().to_string()),
+        ]).await?;
+    }
+    if let Some(t) = tags {
+        api_post("flickr.photos.setTags", &[("photo_id", id.clone()), ("tags", tag_line(&t))]).await?;
+    }
+    if let Some(w) = who {
+        let (public, friend, family) = match w.as_str() { "public" => ("1", "0", "0"), "friends" => ("0", "1", "0"), "family" => ("0", "0", "1"), "both" => ("0", "1", "1"), _ => ("0", "0", "0") };
+        api_post("flickr.photos.setPerms", &[("photo_id", id.clone()), ("is_public", public.into()), ("is_friend", friend.into()), ("is_family", family.into())]).await?;
+    }
+    flickr_photo(id).await
+}
+
+/// One of Flickr's pictures as a data address, to use as a note's or Weeknotes' picture (only Flickr's own
+/// picture servers; the note then copies it to your site like any picture you pick).
+#[tauri::command]
+pub async fn flickr_picture(url: String) -> Result<String, String> {
+    use base64::Engine;
+    let u = url::Url::parse(&url).map_err(|_| "That isn't a Flickr picture.".to_string())?;
+    let host = u.host_str().unwrap_or("");
+    if u.scheme() != "https" || !(host == "live.staticflickr.com" || host.ends_with(".staticflickr.com")) {
+        return Err("That isn't a Flickr picture.".into());
+    }
+    let resp = client().get(u).timeout(Duration::from_secs(40)).send().await.map_err(|_| "Couldn't get the picture from Flickr.".to_string())?;
+    if !resp.status().is_success() {
+        return Err("Couldn't get the picture from Flickr.".into());
+    }
+    let mime = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+    let bytes = resp.bytes().await.map_err(|_| "Couldn't get the picture from Flickr.".to_string())?;
+    Ok(format!("data:{};base64,{}", if mime.starts_with("image/") { &mime } else { "image/jpeg" }, base64::engine::general_purpose::STANDARD.encode(&bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,6 +666,17 @@ mod tests {
         let bad = "<rsp stat=\"fail\">\n<err code=\"5\" msg=\"Filetype was not recognised\" />\n</rsp>";
         assert_eq!(upload_id(bad), None);
         assert_eq!(upload_error(bad), "Filetype was not recognised");
+    }
+
+    #[test]
+    fn plain_words() {
+        assert_eq!(plain("Lovely <a href=\"x\">light</a>!<br />Thanks &amp; well done"), "Lovely light!\nThanks & well done");
+        assert_eq!(who_sees(&json!({"ispublic": 0, "isfriend": 1, "isfamily": 1})), "both");
+        assert_eq!(who_sees(&json!({"ispublic": "1", "isfriend": 0, "isfamily": 0})), "public");
+        let c = comment_item(&json!({"id": "1-2", "author": "44@N00", "authorname": "lenslady", "realname": "", "datecreate": "1764200000", "_content": "Great <b>shot</b>"}), "me@N00");
+        assert_eq!(st(&c, "name"), "lenslady");
+        assert_eq!(st(&c, "text"), "Great shot");
+        assert_eq!(c["mine"], false);
     }
 
     #[test]

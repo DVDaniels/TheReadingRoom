@@ -3159,7 +3159,7 @@
       ${pic ? `<div class="wr-pic"><img src="${esc(pic)}" alt=""><div><input class="n-field" id="wrAlt" maxlength="1000" value="${esc(WR.alt)}" placeholder="Describe the photo for people who can’t see it"${WR.photo ? '' : ' disabled'}>
         <button class="b-link" type="button" data-wr="photox">${WR.photo ? 'Remove photo' : `Change the picture in ${siteApp()}`}</button></div></div>` : ''}
       ${postToChoice() ? postToHtml('data-wrpt', !!d.editId) : ''}
-      <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>`}<input id="wrPhoto" type="file" accept="image/*" hidden>
+      <div class="wr-opts">${pic ? '' : `<button class="btn" type="button" data-wr="photo">＋ ${kind === 'note' ? 'Photo' : 'Featured image'}</button>${SOC.accounts?.flickr ? '<button class="btn" type="button" data-wr="flickr">＋ From Flickr</button>' : ''}`}<input id="wrPhoto" type="file" accept="image/*" hidden>
         ${kind === 'post' && onWp() ? `<label class="wr-sel">Category <select id="wrCat"><option value="">${WR.cats ? 'None' : 'Loading…'}</option>${cats.map(c => `<option value="${c.id}"${String(d.cat || '') === String(c.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         ${nets.map(n => `<label class="wr-chk"><input type="checkbox" data-wrnet="${n}"${picked.has(n) ? ' checked' : ''}> Also share on ${NET[n]}</label>`).join('')}</div>
       <p class="acct-note${WR.noteErr ? ' err' : ''}" aria-live="polite">${esc(WR.note)}</p>
@@ -3638,6 +3638,7 @@
     if (k === 'weeknotes') { wrStartWeeknotes(); return; }
     if (k === 'clear') { if ((wrDraftGet().text || '').trim() && !confirm('Start something new? Your draft stays on your site as you last saved it.')) return; wrClear(); wrSay(''); wrPaint(); return; }
     if (k === 'photo') { $('wrPhoto')?.click(); return; }
+    if (k === 'flickr') { flPick((data, alt) => { WR.photo = data; WR.photoUrl = ''; if (!WR.alt) WR.alt = alt; wrSay(''); wrPaint(); $('wrAlt')?.focus(); }); return; }
     if (k === 'photox') { if (!WR.photo && WR.photoUrl) { const d = wrDraftGet(); if (d.editId) invoke('open_external', { url: onTumblr() ? `https://www.tumblr.com/blog/${wrSite().blog}/drafts` : !onWp() ? wrSite().site : `${wrSite().site.replace(/\/$/, '')}/wp-admin/post.php?post=${d.editId}&action=edit` }).catch(() => {}); return; } WR.photo = ''; WR.alt = ''; wrPaint(); return; }
     if (k === 'preview') { wrPreviewNew(); return; }
     if (k === 'focus') { wrSetFocus(!WR.focus); return; }
@@ -3946,7 +3947,7 @@
       if (e.target.id === 'socialDone') { el.hidden = true; return; }
       const u = e.target.closest('[data-open-url]'); if (u) { invoke('open_external', { url: u.dataset.openUrl }).catch(() => {}); return; }
       const d = e.target.closest('[data-disconnect]');
-      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'flickr' ? 'flickr_disconnect' : 'social_disconnect', { network: n }); if (n === 'flickr') { FL.contacts = FL.act = FL.mine = null; FL.at = 0; } SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
+      if (d) { const n = d.dataset.disconnect; SOC.accounts = await invoke(n === 'tumblr' ? 'tumblr_disconnect' : n === 'micropub' ? 'micropub_disconnect' : n === 'flickr' ? 'flickr_disconnect' : 'social_disconnect', { network: n }); if (n === 'flickr') { FL.contacts = FL.act = FL.mine = null; FL.person = null; FL.at = 0; SOC.flickr = null; } SOC.conv = null; WR.at = 0; BLOG.data = null; TBL.data = null; openAccounts(); renderRail(); }
     };
     // Micropub: find the site, then its sign-in page (and a code) or an app token
     const mpBegin = async wantToken => {
@@ -4785,7 +4786,7 @@
   // out of the note to rewind the video and the note disappeared"). One per story, plus one for a new note; a photo
   // is kept only while the app is open.
   const NOTE_PH = new Map();
-  function openNote(it) {
+  function openNote(it, give) {
     const wp = SOC.accounts.site; if (!wp) { openAccounts(); return; }
     const dkey = 'noteDraft:' + (it ? it.id : 'new');
     let kept = null; try { kept = JSON.parse(store.get(dkey) || 'null'); } catch {}
@@ -4801,7 +4802,7 @@
       <input class="n-field n-title" id="nTitle" type="text" placeholder="Title (optional)" maxlength="200" autocomplete="off">
       <textarea id="nText" rows="5" placeholder="${it ? 'What did you think? Mention the writer to let them know.' : 'What’s on your mind?'}"></textarea>
       <div class="n-tools">${quote ? '<button class="b-link" id="nQuote" type="button">Add your highlight as a quote</button>' : ''}
-        <button class="b-link" id="nPhotoBtn" type="button">+ Add a photo</button>${it ? '' : '<button class="b-link" id="nLinkBtn" type="button">+ Add a link</button>'}
+        <button class="b-link" id="nPhotoBtn" type="button">+ Add a photo</button>${SOC.accounts?.flickr ? '<button class="b-link" id="nFlickrBtn" type="button">+ From Flickr</button>' : ''}${it ? '' : '<button class="b-link" id="nLinkBtn" type="button">+ Add a link</button>'}
         <span class="n-room" id="nRoom"></span><input id="nPhoto" type="file" accept="image/*" hidden></div>
       <input class="n-field" id="nLink" type="url" placeholder="https:// a link to add" hidden autocapitalize="off" spellcheck="false">
       <div class="n-photo" id="nPhotoBox" hidden><img id="nPrev" alt=""><div><input class="n-field" id="nAlt" placeholder="Describe the photo for people who can’t see it" maxlength="1000"><button class="b-link" id="nPhotoX" type="button">Remove photo</button></div></div>
@@ -4843,11 +4844,14 @@
     $('nPhoto').onchange = async () => {
       const file = $('nPhoto').files[0]; if (!file) return;
       $('nNote').textContent = 'Getting the photo ready…'; $('nNote').classList.remove('err');
-      try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; $('nNote').textContent = ''; keep(); $('nAlt').focus(); }
+      try { photo = await shrinkPhoto(file); $('nPrev').src = photo; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; if ($('nFlickrBtn')) $('nFlickrBtn').hidden = true; $('nNote').textContent = ''; keep(); $('nAlt').focus(); }
       catch { photo = ''; $('nNote').textContent = 'Couldn’t open that picture. Try another one, or save it as a JPEG first.'; $('nNote').classList.add('err'); }
       $('nPhoto').value = ''; count();
     };
-    $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; $('nAlt').value = ''; keep(); count(); };
+    $('nPhotoX').onclick = () => { photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; if ($('nFlickrBtn')) $('nFlickrBtn').hidden = false; $('nAlt').value = ''; keep(); count(); };
+    // one of your Flickr photos as the note's picture (it's copied to your site like any picture)
+    const flSet = (data, alt) => { photo = data; $('nPrev').src = data; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; if ($('nFlickrBtn')) $('nFlickrBtn').hidden = true; if (!$('nAlt').value.trim()) $('nAlt').value = alt || ''; $('nNote').textContent = ''; keep(); count(); $('nAlt').focus(); };
+    if ($('nFlickrBtn')) $('nFlickrBtn').onclick = () => flPick(flSet);
     const say = (t, err) => { $('nNote').textContent = t; $('nNote').classList.toggle('err', !!err); };
     // Keep what's written as it's written, and bring it back next time
     const keep = () => {
@@ -4861,11 +4865,12 @@
       $('nTitle').value = kept?.title || ''; text.value = kept?.text || '';
       if (kept?.link && $('nLinkBtn')) { $('nLink').hidden = false; $('nLinkBtn').hidden = true; $('nLink').value = kept.link; }
       const ph = NOTE_PH.get(dkey);
-      if (ph) { photo = ph; $('nPrev').src = ph; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; }
+      if (ph) { photo = ph; $('nPrev').src = ph; $('nPhotoBox').hidden = false; $('nPhotoBtn').hidden = true; if ($('nFlickrBtn')) $('nFlickrBtn').hidden = true; }
       $('nAlt').value = kept?.alt || '';
       $('nNote').innerHTML = 'Your unfinished note is back. <button class="b-link" id="nDiscard" type="button">Start over</button>';
       $('nDiscard').onclick = () => { forget(); $('nTitle').value = text.value = $('nAlt').value = ''; photo = ''; $('nPhotoBox').hidden = true; $('nPhotoBtn').hidden = false; say(''); count(); text.focus(); };
     }
+    if (give?.photo) { flSet(give.photo, give.alt); text.focus(); }
     // The note floats: drag it aside and the video or article behind it still plays, scrolls and takes clicks
     // (David, Nov 24). So a tap outside no longer closes it; Close (or Escape) does, and keeps the note for next time.
     floatSheet(el, 'notePos');
@@ -5805,12 +5810,13 @@
     for (const n of SOC.conv?.replies || []) ev.push({ k: 'r:' + n.network + ':' + n.id, date: n.created_at, who: n.author?.name || n.author?.handle, what: 'replied to you', text: n.text });
     for (const n of SOC.mentions || []) ev.push({ k: 'm:' + n.network + ':' + n.id, date: n.created_at, who: n.author?.name || n.author?.handle, what: 'mentioned your blog', text: n.text });
     for (const c of SOC.comments?.comments || []) ev.push({ k: 'c:' + c.id + ':' + c.date, date: c.date, who: c.name || 'Someone', what: c.kind === 'comment' ? `commented on “${c.post_title || 'your post'}”` : c.kind === 'like' ? `liked “${c.post_title || 'your post'}”` : `mentioned “${c.post_title || 'your post'}”`, text: c.text });
+    for (const c of SOC.flickr || []) ev.push({ k: 'f:' + c.id, date: c.date, who: c.name || 'Someone', what: `commented on your Flickr photo “${c.photo || 'a photo'}”`, text: c.text });
     for (const i of S.items) if (x.toMe.has(i.id)) ev.push({ k: 'l:' + i.id, date: i.date, who: nbWho(i)?.title || hostOfU(i.link), what: 'linked to you', text: headline(i) });
     const had = alertedSet() || new Set();
     const save = () => store.set('youAlerted', JSON.stringify([...had].slice(-ALERT_MAX)));
     // The first time each kind has loaded, just remember what's there: no burst of old news
     let seeded; try { seeded = new Set(JSON.parse(store.get('youSeeded') || '[]')); } catch { seeded = new Set(); }
-    const loaded = { r: !!SOC.conv, m: !!SOC.mentions, c: !!SOC.comments, l: true };
+    const loaded = { r: !!SOC.conv, m: !!SOC.mentions, c: !!SOC.comments, f: !!SOC.flickr, l: true };
     let changed = false;
     for (const k of Object.keys(loaded)) if (loaded[k] && !seeded.has(k)) { ev.filter(e => e.k[0] === k).forEach(e => had.add(e.k)); seeded.add(k); changed = true; }
     if (changed) { store.set('youSeeded', JSON.stringify([...seeded])); save(); }
@@ -6274,11 +6280,20 @@
 
   // ---- You: everything coming your way, in one place. Replies on Mastodon and Bluesky, comments and Webmentions
   // on your own site, blogs linking to you, mentions of your blog, and emails from the people you read.
-  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
-  const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
+  const YOU_CHIPS = [['', 'Everything'], ['myreplies', 'Your replies'], ['replies', 'Replies'], ['comments', 'Comments'], ['tumblr', 'Tumblr'], ['flickr', 'Flickr'], ['mentions', 'Mentions'], ['posts', 'Your posts']];
+  const newComments = () => [...(SOC.comments?.comments || []), ...(SOC.tumblr || []), ...(SOC.flickr || [])].filter(c => Date.parse(c.date) > socialSeen()).length;
   // People talking to you on Tumblr (Rust tumblr_activity): replies, reblogs with words, mentions and asks. No likes,
   // follows or plain reblogs (David, Nov 25: "keep conversations about people talking"). Answering happens on Tumblr.
   const TUMBLR_SAID = { 'tumblr-reply': 'replied to', 'tumblr-reblog_with_content': 'reblogged', 'tumblr-mention_in_reply': 'mentioned you in a reply', 'tumblr-mention_in_post': 'mentioned you in a post', 'tumblr-ask': 'sent you an ask' };
+  // a comment on one of your Flickr photos, in Conversations › You: Reply opens the photo in the app's viewer
+  function flickrEvHtml(c) {
+    const face = `<span class="nb-av md"><img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span>`;
+    return `<article class="yu-ev fl-ev${Date.parse(c.date) > socialSeen() ? ' new' : ''}">${face}<div class="nb-main">
+      <div class="nb-by"><b>${esc(c.name)}</b><span>commented on “${esc(c.photo || 'your photo')}” · on Flickr</span><time>${esc(fmtWhen(c.date))}</time></div>
+      ${c.text ? `<p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>` : ''}
+      <div class="nb-acts"><button class="linkish" data-fl="reply" data-photo="${esc(c.photo_id)}" data-name="${esc(c.name)}">Reply</button><button class="linkish" data-fl="person" data-nsid="${esc(c.user)}">Their photos</button></div>
+    </div>${c.thumb ? `<img class="fl-evpic" src="${esc(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</article>`;
+  }
   function tumblrEvHtml(c) {
     const said = TUMBLR_SAID[c.kind] || 'wrote to you';
     const onPost = ['tumblr-reply', 'tumblr-reblog_with_content'].includes(c.kind);
@@ -6452,7 +6467,7 @@
   // Rust: flickr_contacts, flickr_activity, flickr_mine, flickr_upload (flickr.rs).
   const FL = { who: store.get('flWho') === 'friends' ? 'friends' : 'all', contacts: null, cErr: '', cBusy: false, cShow: 24,
     act: null, aErr: '', aBusy: false, mine: null, mErr: '', mBusy: false, page: 1, pages: 1, total: 0,
-    file: '', preview: '', name: '', mime: '', size: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
+    person: null, file: '', preview: '', name: '', mime: '', size: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
   const flDraft = () => { try { return JSON.parse(store.get('flDraft') || '{}') || {}; } catch { return {}; } };
   function flNavItem() {
     return { view: 'flickr', label: 'Flickr', count: '', icon: ICONS.flickr, html: navButton('flickr', 'Flickr', '', { icon: ICONS.flickr }) };
@@ -6466,9 +6481,10 @@
       tauriInvoke('flickr_contacts', { friends: FL.who === 'friends' }).then(r => { FL.contacts = r || []; }).catch(e => { FL.cErr = msg(e) || 'Flickr didn’t answer.'; })
         .finally(() => { FL.cBusy = false; FL.at = Date.now(); flRepaint(); });
     }
+    if (FL.act == null && SOC.flickr) FL.act = SOC.flickr;
     if (FL.act == null && !FL.aBusy && !FL.aErr) {
       FL.aBusy = true;
-      tauriInvoke('flickr_activity').then(r => { FL.act = r || []; }).catch(e => { FL.aErr = msg(e) || 'Flickr didn’t answer.'; })
+      tauriInvoke('flickr_activity').then(r => { FL.act = r || []; SOC.flickr = FL.act; }).catch(e => { FL.aErr = msg(e) || 'Flickr didn’t answer.'; })
         .finally(() => { FL.aBusy = false; flRepaint(); });
     }
     if (FL.mine == null && !FL.mBusy && !FL.mErr) flMine(1);
@@ -6481,18 +6497,18 @@
       .finally(() => { FL.mBusy = false; flRepaint(); });
   }
   const flWhoSees = p => p.public ? '' : p.friend && p.family ? 'Friends & family' : p.friend ? 'Friends only' : p.family ? 'Family only' : 'Private';
-  function flTileHtml(p, mine) {
+  function flTileHtml(p, mine, list, i) {
     const lock = flWhoSees(p);
     const meta = mine ? `${nfmt(p.views)} views · ${nfmt(p.faves)} faves · ${nfmt(p.comments)} comments`
       : `<span class="nb-av fl-av"><img class="nb-face-img" src="${esc(p.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((p.name || '?')[0].toUpperCase())}</span>${esc(p.name)}`;
-    return `<button class="fl-tile" type="button" data-fl="open" data-url="${esc(p.page)}" title="Open on Flickr">
+    return `<button class="fl-tile" type="button" data-fl="view" data-list="${list}" data-i="${i}" title="${esc(p.title || 'Open the photo')}">
       <span class="fl-pic"><img src="${esc(p.img || p.thumb)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer">${lock ? `<span class="fl-lock">${esc(lock)}</span>` : ''}</span>
       <span class="fl-cap"><b>${esc(p.title || 'Untitled')}</b><span class="fl-by${mine ? ' fl-nums' : ''}">${meta}</span>${p.date ? `<time>${esc(fmtWhen(p.date))}</time>` : ''}</span></button>`;
   }
   function flContactsHtml() {
     const list = FL.contacts || [];
     const body = FL.contacts == null ? `<p class="day-note">${FL.cErr ? `Couldn’t get your contacts’ photos just now. ${esc(FL.cErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your contacts’ latest photos from Flickr…'}</p>`
-      : list.length ? `<div class="fl-grid">${list.slice(0, FL.cShow).map(p => flTileHtml(p, false)).join('')}</div>${list.length > FL.cShow ? `<button class="b-link" type="button" data-fl="cmore">Show ${list.length - FL.cShow} more</button>` : ''}`
+      : list.length ? `<div class="fl-grid">${list.slice(0, FL.cShow).map((p, i) => flTileHtml(p, false, 'contacts', i)).join('')}</div>${list.length > FL.cShow ? `<button class="b-link" type="button" data-fl="cmore">Show ${list.length - FL.cShow} more</button>` : ''}`
       : `<p class="day-note">${FL.who === 'friends' ? 'No new photos from your friends and family.' : 'No new photos from the people you follow on Flickr.'}</p>`;
     return `<section class="b-panel" aria-label="From your contacts"><div class="bp-head"><h3 class="b-sub">From your contacts</h3><span class="bp-meta">Their latest photos, newest first, including the ones only friends or family can see</span></div>
       <div class="nb-chips">${[['all', 'Everyone you follow'], ['friends', 'Friends & family']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="who" data-k="${k}" aria-pressed="${FL.who === k}">${l}</button>`).join('')}</div>${body}</section>`;
@@ -6501,9 +6517,9 @@
     const list = (FL.act || []).slice(0, 8);
     const body = FL.act == null ? `<p class="day-note">${FL.aErr ? `Couldn’t get the comments just now. ${esc(FL.aErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Looking for comments on your photos…'}</p>`
       : list.length ? list.map(c => `<article class="yu-ev fl-ev"><span class="nb-av md"><img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">${esc((c.name || '?')[0].toUpperCase())}</span><div class="nb-main">
-          <div class="nb-by"><b>${esc(c.name)}</b><span>on “${esc(c.photo || 'your photo')}”</span><time>${esc(fmtWhen(c.date))}</time></div>
+          <div class="nb-by"><button class="nb-name" type="button" data-fl="person" data-nsid="${esc(c.user)}">${esc(c.name)}</button><span>on “${esc(c.photo || 'your photo')}”</span><time>${esc(fmtWhen(c.date))}</time></div>
           <p class="nb-text">${esc(c.text.length > 400 ? c.text.slice(0, 390) + '…' : c.text)}</p>
-          <div class="nb-acts"><button class="linkish" type="button" data-fl="open" data-url="${esc(c.link)}">Reply on Flickr</button><button class="linkish" type="button" data-fl="open" data-url="${esc(c.profile)}">Their photos</button></div>
+          <div class="nb-acts"><button class="linkish" type="button" data-fl="reply" data-photo="${esc(c.photo_id)}" data-name="${esc(c.name)}">Reply</button><button class="linkish" type="button" data-fl="person" data-nsid="${esc(c.user)}">Their photos</button></div>
         </div>${c.thumb ? `<img class="fl-evpic" src="${esc(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</article>`).join('')
       : '<p class="day-note">No comments on your photos in the last 30 days. Faves are counted on each photo below.</p>';
     return `<section class="b-panel" aria-label="Comments on your photos"><div class="bp-head"><h3 class="b-sub">Comments on your photos</h3><span class="bp-meta">The last 30 days</span></div>${body}</section>`;
@@ -6529,7 +6545,7 @@
     const a = SOC.accounts.flickr;
     const list = FL.mine || [];
     const body = FL.mine == null ? `<p class="day-note">${FL.mErr ? `Couldn’t get your photos just now. ${esc(FL.mErr)} <button class="b-link" type="button" data-fl="reload">Try again</button>` : 'Getting your photos from Flickr…'}</p>`
-      : list.length ? `<div class="fl-grid">${list.map(p => flTileHtml(p, true)).join('')}</div>${FL.page < FL.pages ? `<button class="b-link" type="button" data-fl="mmore"${FL.mBusy ? ' disabled' : ''}>Show more</button>` : ''}`
+      : list.length ? `<div class="fl-grid">${list.map((p, i) => flTileHtml(p, true, 'mine', i)).join('')}</div>${FL.page < FL.pages ? `<button class="b-link" type="button" data-fl="mmore"${FL.mBusy ? ' disabled' : ''}>Show more</button>` : ''}`
       : '<p class="day-note">No photos on your Flickr yet.</p>';
     return `<section class="b-panel" aria-label="Your photos on Flickr"><div class="bp-head"><h3 class="b-sub">Your photos</h3><span class="bp-meta">${FL.total ? `${nfmt(FL.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(a.site)}">Open on Flickr</button></span></div>${body}</section>`;
   }
@@ -6542,6 +6558,7 @@
       ? `<section class="b-panel wr-invite"><p class="b-sub">Flickr</p><h2>Connect your Flickr to start</h2>
           <p>See the latest photos from the people you follow, including the ones only friends or family can see, the comments on your photos, and your own photos with their views and faves. With Plus, upload photos too. Press Connect Flickr, sign in on Flickr’s page and approve The Reading Room.</p>
           <div class="wr-acts"><button class="btn primary" type="button" data-fl="connect">Connect Flickr</button></div></section>`
+      : FL.person ? flPersonHtml()
       : (flLoad(false), flContactsHtml() + flCommentsHtml() + flUploadHtml() + flMineHtml());
     $('list').innerHTML = `<section class="brief myday tumblr-tab flickr-tab" aria-label="Flickr">${body}</section>`;
     $('main').scrollTop = y; $('listView').scrollTop = ly;
@@ -6583,6 +6600,15 @@
     const b = e.target.closest('[data-fl]'); if (!b) return;
     const k = b.dataset.fl;
     if (k === 'connect') { openAccounts(); return; }
+    if (k === 'view') { flView(flListOf(b.dataset.list), +b.dataset.i); return; }
+    if (k === 'reply') { flView([{ id: b.dataset.photo, title: '', img: '', page: '' }], 0, { reply: `@${b.dataset.name} ` }); return; }
+    if (k === 'person') { flPerson(b.dataset.nsid); return; }
+    if (k === 'back') { FL.person = null; flPaint(); return; }
+    if (k === 'pmore') { flPersonMore(); return; }
+    if (k === 'follow') { b.disabled = true; b.textContent = 'Adding…';
+      invoke('add_feed', { url: b.dataset.url, title: `${b.dataset.name} on Flickr`, folderId: null }).then(r => { status(`Following ${r.title}.`); b.textContent = 'Following in The Reading Room'; load(); })
+        .catch(err => { if (/already follow/i.test(msg(err))) { b.textContent = 'Following in The Reading Room'; return; } b.disabled = false; b.textContent = 'Follow in The Reading Room'; status(msg(err), true); });
+      return; }
     if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
     if (k === 'who') { FL.who = b.dataset.k; store.set('flWho', FL.who); FL.contacts = null; FL.cErr = ''; FL.cShow = 24; flPaint(); return; }
     if (k === 'cmore') { FL.cShow += 24; flPaint(); return; }
@@ -6592,6 +6618,210 @@
     if (k === 'nophoto') { flKeep(); FL.file = FL.preview = FL.name = ''; FL.size = 0; $('flFile')?.click(); flPaint(); return; }
     if (k === 'send') { if (!plusOk()) { openPlus(); return; } flSend(); }
   });
+
+  // ---- the Flickr viewer (David, Nov 26: "Everytime I click a photo it takes me to the flickr website"): a photo
+  // opens here, big, with its words, tags, dates, who can see it and its comments; ← → (or a swipe) move along the
+  // list it came from; fave, comment and reply; edit your own; use your own as a note's picture. Rust: flickr_photo,
+  // flickr_fave, flickr_comment, flickr_edit, flickr_picture, flickr_person.
+  const FLV = { list: [], i: 0, data: null, busy: false, err: '', edit: false, say: '', sayErr: false, sending: false, draft: '', seq: 0 };
+  const FL_SEE = [['public', 'Everyone'], ['friends', 'Friends'], ['family', 'Family'], ['both', 'Friends & family'], ['private', 'Only you']];
+  const flSeeName = w => (FL_SEE.find(([k]) => k === w) || ['', 'Only you'])[1];
+  const flListOf = k => k === 'mine' ? (FL.mine || []) : k === 'person' ? (FL.person?.data?.photos || []) : k === 'one' ? FLV.list : (FL.contacts || []);
+  function flView(list, i, opts = {}) {
+    FLV.list = list; FLV.i = Math.max(0, Math.min(i, list.length - 1)); FLV.edit = false; FLV.say = ''; FLV.draft = opts.reply || '';
+    flViewLoad(); flViewPaint(!!opts.reply);
+  }
+  function flViewLoad() {
+    const p = FLV.list[FLV.i]; if (!p) return;
+    const seq = ++FLV.seq;
+    FLV.data = null; FLV.err = ''; FLV.busy = true;
+    tauriInvoke('flickr_photo', { id: p.id }).then(d => { if (seq === FLV.seq) FLV.data = d; })
+      .catch(e => { if (seq === FLV.seq) FLV.err = msg(e) || 'Flickr didn’t answer.'; })
+      .finally(() => { if (seq === FLV.seq) { FLV.busy = false; flViewPaint(!!FLV.draft); } });
+  }
+  function flCommentHtml(c, d) {
+    const face = isWeb(c.face) ? `<img class="nb-face-img" src="${esc(c.face)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '';
+    return `<article class="flv-c"><span class="nb-av sm">${face}${esc((c.name || '?')[0].toUpperCase())}</span><div>
+      <div class="nb-by"><button class="nb-name" type="button" data-flv="person" data-nsid="${esc(c.user)}">${esc(c.name || 'Someone')}</button><time>${esc(fmtWhen(c.date))}</time></div>
+      <p>${esc(c.text)}</p>${!c.mine && d.can_comment ? `<button class="linkish" type="button" data-flv="reply" data-name="${esc(c.name)}">Reply</button>` : ''}</div></article>`;
+  }
+  function flViewHtml() {
+    const p = FLV.list[FLV.i] || {}, d = FLV.data;
+    const n = FLV.list.length;
+    const pic = d?.img || p.img || p.thumb;
+    const head = `<div class="flv-top"><span class="flv-n">${n > 1 ? `${FLV.i + 1} of ${n}` : ''}</span>
+      <button class="btn" type="button" data-flv="open" data-url="${esc(d?.page || p.page)}">Open on Flickr</button><button class="btn" type="button" data-flv="close" aria-label="Close">Done</button></div>`;
+    let side;
+    if (!d) side = `<p class="day-note">${FLV.err ? `Couldn’t get this photo just now. ${esc(FLV.err)} <button class="b-link" type="button" data-flv="retry">Try again</button>` : 'Getting the photo’s details from Flickr…'}</p>`;
+    else if (FLV.edit) side = `<div class="flv-edit" aria-label="Edit this photo">
+        <label>Title<input id="flvTitle" class="tb-in" value="${esc(d.title)}"></label>
+        <label>Description<textarea id="flvDesc" class="tb-in" rows="4">${esc(d.description)}</textarea></label>
+        <label>Tags<input id="flvTags" class="tb-in" value="${esc(d.tags.join(', '))}" placeholder="Separated by commas" autocapitalize="off"></label>
+        <label>Who can see it<select id="flvSee">${FL_SEE.map(([k, l]) => `<option value="${k}"${d.who === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="tb-acts"><button class="btn" type="button" data-flv="noedit">Cancel</button><button class="btn primary" type="button" data-flv="save"${FLV.sending ? ' disabled' : ''}>${FLV.sending ? 'Saving…' : 'Save on Flickr'}</button></div></div>`;
+    else {
+      const when = [d.taken ? `Taken ${fmtDay(d.taken)}` : '', d.posted ? `posted ${fmtWhen(d.posted)}` : ''].filter(Boolean).join(', ');
+      side = `<div class="flv-who"><span class="nb-av md"><img class="nb-face-img" src="${esc(d.face)}" alt="" referrerpolicy="no-referrer">${esc((d.name || '?')[0].toUpperCase())}</span>
+          <div><button class="nb-name" type="button" data-flv="person" data-nsid="${esc(d.owner)}">${esc(d.mine ? 'You' : d.name)}</button><small>${esc(d.handle)} on Flickr</small></div></div>
+        <h2 class="flv-title">${esc(d.title || 'Untitled')}</h2>
+        ${d.description ? `<p class="flv-desc">${esc(d.description).replace(/\n/g, '<br>')}</p>` : ''}
+        ${d.tags.length ? `<div class="flv-tags">${d.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
+        <p class="flv-meta">${esc(when)}${when ? ' · ' : ''}${d.who === 'public' ? 'Everyone can see it' : `Only ${esc(flSeeName(d.who).toLowerCase())}${d.who === 'private' ? '' : ' can see it'}`}</p>
+        <p class="flv-meta">${nfmt(d.views)} views · ${d.faves >= 0 ? `${nfmt(d.faves)} faves · ` : ''}${nfmt(d.comments.length)} comments</p>
+        <div class="flv-acts">${d.mine ? `<button class="btn" type="button" data-flv="edit">Edit</button>${plusOk() ? '<button class="btn" type="button" data-flv="note">Use in a note</button>' : ''}`
+          : `<button class="btn${d.faved ? ' on' : ''}" type="button" data-flv="fave" aria-pressed="${d.faved}">${d.faved ? '★ Faved' : '☆ Fave'}</button>`}</div>
+        ${FLV.say ? `<p class="tm-tip tb-say${FLV.sayErr ? ' err' : ''}" role="status">${esc(FLV.say)}</p>` : ''}
+        <h3 class="b-sub flv-ch">Comments</h3>
+        ${d.comments.length ? d.comments.map(c => flCommentHtml(c, d)).join('') : '<p class="tm-tip">No comments yet.</p>'}
+        ${d.can_comment ? `<div class="flv-box"><textarea id="flvText" class="tb-in" rows="2" placeholder="${d.mine ? 'Answer the people who commented' : 'Add a comment'}">${esc(FLV.draft)}</textarea>
+          <button class="btn primary" type="button" data-flv="comment"${FLV.sending ? ' disabled' : ''}>${FLV.sending ? 'Posting…' : 'Post comment'}</button></div>
+          <p class="tm-tip">Your comment goes on Flickr, under your name. Flickr comments aren’t threaded, so Reply starts yours with their name.</p>` : '<p class="tm-tip">This photo doesn’t take comments.</p>'}`;
+    }
+    return `${head}<div class="flv-body"><div class="flv-pic">${n > 1 ? '<button class="flv-arrow prev" type="button" data-flv="prev" aria-label="Previous photo"' + (FLV.i ? '' : ' disabled') + '>‹</button>' : ''}
+        <img src="${esc(pic)}" alt="${esc(d?.title || p.title || '')}" referrerpolicy="no-referrer">
+        ${n > 1 ? '<button class="flv-arrow next" type="button" data-flv="next" aria-label="Next photo"' + (FLV.i < n - 1 ? '' : ' disabled') + '>›</button>' : ''}</div>
+      <div class="flv-side">${side}</div></div>`;
+  }
+  function flViewPaint(focusBox) {
+    let el = $('flView');
+    if (!el) { el = document.createElement('div'); el.id = 'flView'; el.className = 'flv'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Flickr photo'); document.body.appendChild(el); }
+    const side = el.querySelector('.flv-side'), y = side ? side.scrollTop : 0;
+    el.innerHTML = flViewHtml(); el.hidden = false;
+    document.body.classList.add('flv-open');
+    const s2 = el.querySelector('.flv-side'); if (s2) s2.scrollTop = y;
+    if (focusBox) { const t = $('flvText'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+  }
+  function flViewClose() { const el = $('flView'); if (el) { el.hidden = true; el.innerHTML = ''; } document.body.classList.remove('flv-open'); FLV.seq++; }
+  const flViewOpen = () => !!$('flView') && !$('flView').hidden;
+  function flViewGo(step) {
+    const i = FLV.i + step; if (i < 0 || i >= FLV.list.length) return;
+    FLV.i = i; FLV.edit = false; FLV.say = ''; FLV.draft = ''; flViewLoad(); flViewPaint();
+  }
+  document.addEventListener('keydown', e => {
+    if (!flViewOpen()) return;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (FLV.edit) { FLV.edit = false; flViewPaint(); } else flViewClose(); return; }
+    if (typing) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); flViewGo(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); flViewGo(1); }
+  }, true);
+  let flTouch = null;
+  document.addEventListener('touchstart', e => { if (e.target.closest?.('.flv-pic')) flTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!flTouch) return; const t = e.changedTouches[0], dx = t.clientX - flTouch.x, dy = t.clientY - flTouch.y; flTouch = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) flViewGo(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  async function flViewAct(b) {
+    const k = b.dataset.flv, d = FLV.data;
+    if (k === 'close') { flViewClose(); return; }
+    if (k === 'prev' || k === 'next') { flViewGo(k === 'prev' ? -1 : 1); return; }
+    if (k === 'retry') { flViewLoad(); flViewPaint(); return; }
+    if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
+    if (k === 'person') { flViewClose(); flPerson(b.dataset.nsid); return; }
+    if (!d) return;
+    if (k === 'edit') { FLV.edit = true; FLV.say = ''; flViewPaint(); $('flvTitle')?.focus(); return; }
+    if (k === 'noedit') { FLV.edit = false; flViewPaint(); return; }
+    if (k === 'reply') { const t = $('flvText'); const start = `@${b.dataset.name} `; FLV.draft = (t?.value || '').startsWith('@') || !(t?.value) ? start : `${start}${t.value}`; flViewPaint(true); return; }
+    if (k === 'fave') {
+      const on = !d.faved; d.faved = on; if (d.faves >= 0) d.faves += on ? 1 : -1; flViewPaint();
+      try { await invoke('flickr_fave', { id: d.id, on }); } catch (err) { d.faved = !on; if (d.faves >= 0) d.faves += on ? -1 : 1; FLV.say = msg(err); FLV.sayErr = true; flViewPaint(); }
+      return;
+    }
+    if (k === 'comment') {
+      const text = ($('flvText')?.value || '').trim(); FLV.draft = $('flvText')?.value || '';
+      if (!text) { $('flvText')?.focus(); return; }
+      FLV.sending = true; flViewPaint();
+      try { const c = await invoke('flickr_comment', { id: d.id, text }); c.face = c.face || SOC.accounts.flickr?.face || ''; d.comments.push(c); FLV.draft = ''; FLV.say = 'Posted on Flickr.'; FLV.sayErr = false; }
+      catch (err) { FLV.say = msg(err); FLV.sayErr = true; }
+      FLV.sending = false; flViewPaint(); const s = $('flView')?.querySelector('.flv-side'); if (s && !FLV.sayErr) s.scrollTop = s.scrollHeight;
+      return;
+    }
+    if (k === 'save') {
+      const ch = {};
+      const t = $('flvTitle').value.trim(), ds = $('flvDesc').value.trim(), tg = $('flvTags').value, w = $('flvSee').value;
+      if (t !== d.title || ds !== d.description) { ch.title = t; ch.description = ds; }
+      if (tg.split(',').map(x => x.trim()).filter(Boolean).join(',') !== d.tags.join(',')) ch.tags = tg;
+      if (w !== d.who) ch.who = w;
+      if (!Object.keys(ch).length) { FLV.edit = false; flViewPaint(); return; }
+      FLV.sending = true; flViewPaint();
+      try {
+        const nd = await invoke('flickr_edit', { id: d.id, title: ch.title ?? null, description: ch.description ?? null, tags: ch.tags ?? null, who: ch.who ?? null });
+        FLV.data = nd; FLV.edit = false; FLV.say = 'Saved on Flickr.'; FLV.sayErr = false;
+        const tile = FLV.list[FLV.i]; if (tile) { tile.title = nd.title; tile.public = nd.who === 'public'; tile.friend = ['friends', 'both'].includes(nd.who); tile.family = ['family', 'both'].includes(nd.who); }
+        flRepaint();
+      } catch (err) { FLV.say = msg(err); FLV.sayErr = true; }
+      FLV.sending = false; flViewPaint();
+      return;
+    }
+    if (k === 'note') {
+      FLV.say = 'Getting the photo from Flickr…'; FLV.sayErr = false; flViewPaint();
+      try { const data = await invoke('flickr_picture', { url: d.img || d.small }); const alt = d.title; flViewClose(); openNote(null, { photo: data, alt }); }
+      catch (err) { FLV.say = msg(err); FLV.sayErr = true; flViewPaint(); }
+    }
+  }
+  document.addEventListener('click', e => {
+    if (!flViewOpen()) return;
+    const b = e.target.closest('[data-flv]');
+    if (b) { e.preventDefault(); flViewAct(b); return; }
+    if (e.target.id === 'flView') flViewClose(); // the dark space around it
+  });
+  document.addEventListener('input', e => { if (e.target.id === 'flvText') FLV.draft = e.target.value; });
+
+  // ---- someone's photos, in the tab (tap a name), with Follow in The Reading Room (their public photo feed)
+  function flPerson(nsid) {
+    if (!nsid) return;
+    FL.person = { nsid, data: null, err: '', busy: true };
+    if (S.view !== 'flickr') selectView('flickr'); else flPaint();
+    $('main').scrollTop = 0; $('listView').scrollTop = 0;
+    const want = nsid;
+    tauriInvoke('flickr_person', { nsid }).then(d => { if (FL.person?.nsid === want) FL.person.data = d; })
+      .catch(e => { if (FL.person?.nsid === want) FL.person.err = msg(e) || 'Flickr didn’t answer.'; })
+      .finally(() => { if (FL.person?.nsid === want) { FL.person.busy = false; flRepaint(); } });
+  }
+  function flPersonMore() {
+    const P = FL.person; if (!P?.data || P.busy) return;
+    P.busy = true; flPaint();
+    tauriInvoke('flickr_person', { nsid: P.nsid, page: (P.data.page || 1) + 1 }).then(d => { if (FL.person === P) { P.data.photos = [...P.data.photos, ...(d.photos || [])]; P.data.page = d.page; P.data.pages = d.pages; } })
+      .catch(e => status(msg(e), true)).finally(() => { P.busy = false; flRepaint(); });
+  }
+  const flFollowing = feed => { const id = (feed.match(/id=([^&]+)/) || [])[1]; return !!id && S.feeds.some(f => (f.url || '').includes('photos_public.gne') && decodeURIComponent(f.url).includes(decodeURIComponent(id))); };
+  function flPersonHtml() {
+    const P = FL.person, d = P.data;
+    const back = '<button class="b-link fl-back" type="button" data-fl="back">‹ Back to Flickr</button>';
+    if (!d) return `${back}<section class="b-panel"><p class="day-note">${P.err ? `Couldn’t get their photos just now. ${esc(P.err)} <button class="b-link" type="button" data-fl="person" data-nsid="${esc(P.nsid)}">Try again</button>` : 'Getting their photos from Flickr…'}</p></section>`;
+    const follow = d.me ? '' : flFollowing(d.feed) ? '<button class="btn" type="button" disabled>Following in The Reading Room</button>'
+      : `<button class="btn primary" type="button" data-fl="follow" data-url="${esc(d.feed)}" data-name="${esc(d.name)}">Follow in The Reading Room</button>`;
+    return `${back}<section class="b-panel fl-person" aria-label="${esc(d.name)} on Flickr"><div class="flp-head"><span class="nb-av lg"><img class="nb-face-img" src="${esc(d.face)}" alt="" referrerpolicy="no-referrer">${esc((d.name || '?')[0].toUpperCase())}</span>
+        <div><h2>${esc(d.name)}</h2><p class="flp-sub">${esc(d.handle)}${d.location ? ` · ${esc(d.location)}` : ''}${d.count ? ` · ${nfmt(d.count)} photos` : ''}</p>${d.about ? `<p class="flp-about">${esc(d.about)}</p>` : ''}
+        <div class="tb-acts">${follow}<button class="btn" type="button" data-fl="open" data-url="${esc(d.site)}">Open on Flickr</button></div>
+        ${d.me ? '' : '<p class="tm-tip">Following adds their public photos to your feeds, like a blog. Photos only friends or family can see stay here in the Flickr tab.</p>'}</div></div>
+      ${d.photos.length ? `<div class="fl-grid">${d.photos.map((p, i) => flTileHtml(p, true, 'person', i)).join('')}</div>${d.page < d.pages ? `<button class="b-link" type="button" data-fl="pmore"${P.busy ? ' disabled' : ''}>Show more</button>` : ''}` : '<p class="day-note">No photos you can see.</p>'}</section>`;
+  }
+  // a Flickr photo as the picture in a note (the note sheet and Writing): your own photos, newest first
+  function flPick(done) {
+    let el = $('flPick');
+    if (!el) { el = document.createElement('div'); el.id = 'flPick'; el.className = 'flv fl-pick'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Pick one of your Flickr photos'); document.body.appendChild(el); }
+    const paint = (sayText, bad) => {
+      const list = FL.mine || [];
+      el.innerHTML = `<div class="flp-sheet"><div class="flv-top"><b>Pick one of your Flickr photos</b><button class="btn" type="button" data-flpick="close">Cancel</button></div>
+        ${sayText ? `<p class="tm-tip tb-say${bad ? ' err' : ''}">${esc(sayText)}</p>` : ''}
+        ${FL.mine == null ? `<p class="day-note">${FL.mErr ? esc(FL.mErr) : 'Getting your photos from Flickr…'}</p>` : list.length ? `<div class="fl-grid sm">${list.map((p, i) => `<button class="fl-tile" type="button" data-flpick="${i}"><span class="fl-pic"><img src="${esc(p.img || p.thumb)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer"></span><span class="fl-cap"><b>${esc(p.title || 'Untitled')}</b></span></button>`).join('')}</div>` : '<p class="day-note">No photos on your Flickr yet.</p>'}
+        <p class="tm-tip">The photo is copied to your site with the note, like a picture you pick from your device, with its title as the description.</p></div>`;
+      el.hidden = false;
+    };
+    el.onclick = async e => {
+      const b = e.target.closest('[data-flpick]');
+      if (e.target === el || b?.dataset.flpick === 'close') { el.hidden = true; return; }
+      if (!b) return;
+      const p = (FL.mine || [])[+b.dataset.flpick]; if (!p) return;
+      paint('Getting the photo from Flickr…');
+      try { const data = await invoke('flickr_picture', { url: p.big || p.img }); el.hidden = true; done(data, p.title || ''); }
+      catch (err) { paint(msg(err), true); }
+    };
+    if (FL.mine == null && !FL.mBusy) { FL.mErr = ''; flMine(1); }
+    paint();
+    const wait = setInterval(() => { if (el.hidden) { clearInterval(wait); return; } if (FL.mine != null || FL.mErr) { clearInterval(wait); paint(); } }, 400);
+  }
 
   const newYou = () => newReplies() + newComments() + (SOC.mentions || []).filter(n => Date.parse(n.created_at) > socialSeen()).length;
   function commentHtml(c) {
@@ -6607,7 +6837,7 @@
   }
   function youHtml() {
     const chip = SOC.youChip || '';
-    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
+    const chips = `<div class="nb-chips">${YOU_CHIPS.filter(([k]) => k !== 'tumblr' || SOC.accounts.tumblr).filter(([k]) => k !== 'flickr' || SOC.accounts.flickr).filter(([k]) => !['comments', 'myreplies'].includes(k) || SOC.accounts.site).filter(([k]) => !['replies', 'posts'].includes(k) || anySocial())
       .map(([k, l]) => `<button class="nb-chip" data-talk="youchip" data-k="${k}" aria-pressed="${chip === k}">${l}</button>`).join('')}${alertsBtn('you', S.prefs.youAlerts !== false, 'Alerts')}</div>`;
     const waiting = SOC.comments?.waiting ? `<button class="nb-ev wait" data-talk="open" data-url="${esc(SOC.comments.admin)}">${SOC.comments.waiting} ${SOC.comments.waiting === 1 ? 'comment is' : 'comments are'} waiting for your approval</button>` : '';
     if (chip === 'myreplies') return chips + myRepliesHtml();
@@ -6615,6 +6845,7 @@
     if (chip === 'posts') return chips + postsHtml();
     if (chip === 'mentions') return chips + blogHtml();
     if (chip === 'tumblr') return chips + (SOC.tumblr ? (SOC.tumblr.length ? SOC.tumblr.map(tumblrEvHtml).join('') : '<p class="note">No replies, reblogs with words, mentions or asks on your Tumblr yet. Likes and follows stay on Tumblr.</p>') : SOC.tumblrErr ? `<p class="note">Couldn’t reach Tumblr just now. ${esc(SOC.tumblrErr)}</p>` : '<p class="note">Looking at your Tumblr…</p>');
+    if (chip === 'flickr') return chips + (SOC.flickr ? (SOC.flickr.length ? SOC.flickr.map(flickrEvHtml).join('') : '<p class="note">No comments on your Flickr photos in the last 30 days. Faves stay on Flickr, counted on each photo in the Flickr tab.</p>') : SOC.flickrErr ? `<p class="note">Couldn’t reach Flickr just now. ${esc(SOC.flickrErr)}</p>` : '<p class="note">Looking at your Flickr…</p>');
     if (chip === 'comments') return chips + waiting + (SOC.comments ? (SOC.comments.comments.length ? SOC.comments.comments.map(commentHtml).join('') : '<p class="note">No comments or Webmentions on your site yet.</p>') : '<p class="note">Looking at your site’s comments…</p>');
     // Everything, newest first
     const x = nbIndex(), soc = nbSocial(), mine = myFeed(), host = mine ? bareHost(hostOfU(isWeb(mine.site) ? mine.site : mine.url)) : '';
@@ -6627,6 +6858,7 @@
     const dupe = c => c.kind !== 'comment' && linking.some(i => bareHost(hostOfU(i.link)) === bareHost(hostOfU(c.url)) && Math.abs(Date.parse(i.date) - Date.parse(c.date)) < 3 * DAY);
     for (const c of SOC.comments?.comments || []) if (!dupe(c)) ev.push({ date: c.date, html: commentHtml(c) });
     for (const c of SOC.tumblr || []) ev.push({ date: c.date, html: tumblrEvHtml(c) });
+    for (const c of SOC.flickr || []) ev.push({ date: c.date, html: flickrEvHtml(c) });
     for (const i of linking) ev.push({ date: i.date, html: nbCard(i, x, soc) });
     // emails from the people you read (their address on their own site's domain)
     const people = new Map();
@@ -6657,6 +6889,9 @@
     if (SOC.accounts.tumblr) invoke('tumblr_activity').then(t => { SOC.tumblr = t || []; SOC.tumblrErr = ''; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
       .catch(e => { SOC.tumblrErr = msg(e); if (!SOC.tumblr && S.view === 'talk') renderList(); });
     else SOC.tumblr = null;
+    if (SOC.accounts.flickr) invoke('flickr_activity').then(t => { SOC.flickr = t || []; SOC.flickrErr = ''; if (FL) FL.act = SOC.flickr; youAlerts(); if (S.view === 'talk') { renderList(); renderRail(); } })
+      .catch(e => { SOC.flickrErr = msg(e); if (!SOC.flickr && S.view === 'talk') renderList(); });
+    else SOC.flickr = null;
   }
   async function loadTalk() {
     SOC.checkedAt = new Date().toISOString();
@@ -7117,7 +7352,7 @@
   document.addEventListener('click', e => {
     if (e.target.id === 'talkConnect') { openAccounts(); return; }
     if (e.target.id === 'talkRefresh' && SOC.tab === 'search' && SOC.sq) { runSearch(SOC.sq); return; }
-    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.tumblr = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
+    if (e.target.id === 'talkRefresh') { SOC.shared = null; SOC.mentions = null; SOC.comments = null; SOC.tumblr = null; SOC.flickr = null; SOC.whole.clear(); loadTalk(); renderList(); return; }
     const b = e.target.closest('[data-talk]'); if (!b) return;
     const k = b.dataset.talk;
     if (k === 'nbwho') { if (!b.dataset.feed) { SOC.nbWho = ''; renderList(); return; }
