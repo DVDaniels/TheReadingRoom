@@ -13,8 +13,9 @@
   // Mastodon and Bluesky (see that section)
   const SOC = { accounts: {}, conv: null, loading: false, open: new Set(), threads: new Map(), whole: new Map(), rootOf: new Map(), wideOpen: new Set(), err: [], tab: 'blogs', profiles: null, followers: null, shared: null, mentions: null, readers: null, theirBlogs: null };
   const NET = { bluesky: 'Bluesky', mastodon: 'Mastodon', gab: 'Gab', tumblr: 'Tumblr' };
-  // the networks you can share copies to and talk on (Gab runs a version of Mastodon: its own account, Mastodon's ways)
-  const SOC_NETS = ['bluesky', 'mastodon', 'gab'];
+  // the networks you can share copies to and talk on. Gab (a version of Mastodon) was tried Nov 26 and taken out: gab.com
+  // turns away outside apps, so it's left out here; the Rust side (MASTO_KEY "gab") stays, switched off with no way to connect.
+  const SOC_NETS = ['bluesky', 'mastodon'];
   const mastoLike = n => n === 'mastodon' || n === 'gab';
   // Where your own posts go: a WordPress site, or a Tumblr blog when no WordPress site is connected (David, Nov 25)
   // …or a Micro.blog, Pika or other IndieWeb site, through Micropub (David, Nov 25)
@@ -3831,7 +3832,7 @@
       ? `<p>Connected as <b>${esc(a.handle)}</b>.</p><div class="row"><button class="btn" data-disconnect="${net}">Disconnect</button></div>`
       : body}</section>`;
     const wp = SOC.accounts.wordpress;
-    return `<h2 id="socialTitle">Your site, Tumblr, Flickr, Mastodon, Gab &amp; Bluesky</h2>
+    return `<h2 id="socialTitle">Your site, Tumblr, Flickr, Mastodon &amp; Bluesky</h2>
       <p>Connect your own site and accounts to post notes and stories with your thoughts, and to see and answer the replies in Conversations. Sign-ins are kept in Apple’s Keychain and sync to your other Apple devices through iCloud Keychain; they’re sent only to your own site and servers.</p>
       <section class="acct"><h3>${ICONS.site}Your site <small class="acct-sub">WordPress</small></h3>${wp
         ? `<p>Connected to <b>${esc(wp.name)}</b> (${esc(wp.site.replace(/^https?:\/\//, ''))}) as ${esc(wp.user)}. Notes go in a Notes category there.</p><div class="row"><button class="btn" data-disconnect="wordpress">Disconnect</button></div>`
@@ -3848,9 +3849,6 @@
       ${row('mastodon', SOC.accounts.mastodon, `<p>Type your server, then approve The Reading Room in the page that opens. Your server shows a code: paste it here.</p>
         <form class="acct-form" id="mastoForm"><input id="mastoServer" placeholder="mastodon.social" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Continue</button></form>
         <form class="acct-form" id="mastoCodeForm" hidden><input id="mastoCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`)}
-      ${row('gab', SOC.accounts.gab, `<p>Gab runs a version of Mastodon, so it works the same way here, as its own account next to your Mastodon one: see replies and mentions in Conversations, answer them, and share copies of your notes. Press Connect Gab, approve The Reading Room on Gab’s page, then paste the code it shows.</p>
-        <form class="acct-form" id="gabForm"><button class="btn primary" type="submit">Connect Gab</button></form>
-        <form class="acct-form" id="gabCodeForm" hidden><input id="gabCode" placeholder="Paste the code" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit">Connect</button></form>`)}
       <p class="acct-note" id="acctNote" aria-live="polite"></p>
       <div class="row sheet-foot"><button class="btn primary" type="button" id="socialDone">Done</button></div>`;
   }
@@ -4028,20 +4026,6 @@
         $('mastoForm').hidden = true; $('mastoCodeForm').hidden = false; $('mastoCode').focus();
         note('Approve The Reading Room on the page that opened, then paste the code it shows.');
       } catch (err) { note(msg(err), true); }
-    });
-    $('gabForm')?.addEventListener('submit', async e => {
-      e.preventDefault(); note('Asking Gab…');
-      try {
-        const url = await invoke('gab_begin');
-        await invoke('open_external', { url });
-        $('gabForm').hidden = true; $('gabCodeForm').hidden = false; $('gabCode').focus();
-        note('Approve The Reading Room on the page that opened, then paste the code it shows.');
-      } catch (err) { note(msg(err), true); }
-    });
-    $('gabCodeForm')?.addEventListener('submit', async e => {
-      e.preventDefault(); note('Connecting to Gab…');
-      try { SOC.accounts = await invoke('gab_finish', { code: $('gabCode').value }); openAccounts(); renderRail(); loadConversations(true); }
-      catch (err) { note(msg(err), true); }
     });
     $('mastoCodeForm')?.addEventListener('submit', async e => {
       e.preventDefault(); note('Connecting to Mastodon…');

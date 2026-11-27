@@ -10,9 +10,6 @@ NEW: A TUMBLR TAB (PLUS)
 Tumblr has its own tab under Writing. Write a note or a post (photo, tags), then Post now, Save as draft, Add to queue or Schedule it. See Your numbers, the people talking to you, and your Posts, Drafts and Queue (open, post a draft now, or delete).
 Writing is for your own site. Have Tumblr too? Tick "Also post to Tumblr" in Writing or the note sheet to send the full post there as well.
 
-NEW: GAB
-Settings › Connections › Connect Gab. It works like Mastodon, as its own account.
-
 NEW: A FLICKR TAB
 Settings › Connections › Connect Flickr, approve on Flickr, paste the code. See your contacts' photos (friends-only too), comments, and your photos. Tap a photo to open it here: fave, comment, reply, edit your own. Tap a name to Follow them as a feed. Plus: upload, or pick a Flickr photo for a note. Comments also show in Conversations › You.
 
