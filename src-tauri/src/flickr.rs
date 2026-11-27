@@ -621,6 +621,119 @@ pub async fn flickr_picture(url: String) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", if mime.starts_with("image/") { &mime } else { "image/jpeg" }, base64::engine::general_purpose::STANDARD.encode(&bytes)))
 }
 
+// ------------------------------------------------------------------ albums, faves, search (David, Nov 26: "Folders? Albums?
+// Search for other users pictures?")
+
+const LIST_EXTRAS: &str = "date_upload,owner_name,icon_server,views,count_faves,count_comments";
+
+fn photo_list(r: &Value, key: &str, owner: &str) -> Value {
+    let me = me();
+    let photos: Vec<Value> = r[key]["photo"].as_array().cloned().unwrap_or_default().iter().map(|x| {
+        let mut x = x.clone();
+        if st(&x, "owner").is_empty() && !owner.is_empty() {
+            x["owner"] = json!(owner);
+        }
+        photo(&x, &me)
+    }).collect();
+    json!({ "photos": photos, "page": num(&r[key]["page"]), "pages": num(&r[key]["pages"]), "total": num(&r[key]["total"]) })
+}
+
+fn album_item(a: &Value, owner: &str) -> Value {
+    let cover = json!({ "id": st(a, "primary"), "server": st(a, "server"), "secret": st(a, "secret") });
+    let count = num(&a["photos"]) + num(&a["videos"]);
+    json!({
+        "id": st(a, "id"), "owner": owner, "title": words(&a["title"]), "description": plain(&words(&a["description"])),
+        "count": if count > 0 { count } else { num(&a["count_photos"]) },
+        "cover": img(&cover, "z"), "thumb": img(&cover, "q"),
+        "updated": when(&a["date_update"]),
+        "page": format!("https://www.flickr.com/photos/{owner}/albums/{}/", st(a, "id")),
+    })
+}
+
+/// Albums: yours, or someone else's (the ones you can see), newest first as Flickr orders them.
+#[tauri::command]
+pub async fn flickr_albums(nsid: Option<String>) -> Result<Vec<Value>, String> {
+    let owner = nsid.filter(|n| !n.is_empty()).unwrap_or_else(me);
+    let r = api("flickr.photosets.getList", &[("user_id", owner.clone()), ("per_page", "200".to_string())]).await?;
+    Ok(r["photosets"]["photoset"].as_array().cloned().unwrap_or_default().iter().map(|a| album_item(a, &owner)).collect())
+}
+
+/// The photos in an album (60 a page), oldest first as on Flickr.
+#[tauri::command]
+pub async fn flickr_album(id: String, owner: String, page: Option<u32>) -> Result<Value, String> {
+    let r = api("flickr.photosets.getPhotos", &[
+        ("photoset_id", id), ("user_id", owner.clone()), ("per_page", "60".to_string()), ("page", page.unwrap_or(1).max(1).to_string()),
+        ("extras", LIST_EXTRAS.to_string()),
+    ]).await?;
+    let mut out = photo_list(&r, "photoset", &owner);
+    out["title"] = json!(words(&r["photoset"]["title"]));
+    Ok(out)
+}
+
+/// Photos you faved on Flickr, newest fave first (50 a page).
+#[tauri::command]
+pub async fn flickr_faves(page: Option<u32>) -> Result<Value, String> {
+    let r = api("flickr.favorites.getList", &[
+        ("user_id", me()), ("per_page", "50".to_string()), ("page", page.unwrap_or(1).max(1).to_string()), ("extras", LIST_EXTRAS.to_string()),
+    ]).await?;
+    Ok(photo_list(&r, "photos", ""))
+}
+
+/// Everyone's photos: words searched in titles, descriptions and tags, sorted "relevance", "interesting" or
+/// "recent"; SafeSearch on. With no words, Flickr's Explore (its pick of interesting photos lately). A word that
+/// is someone's exact Flickr name also brings them up, to open their page.
+#[tauri::command]
+pub async fn flickr_search(text: String, sort: Option<String>, page: Option<u32>) -> Result<Value, String> {
+    let q = text.trim().to_string();
+    let page = page.unwrap_or(1).max(1).to_string();
+    if q.is_empty() {
+        let r = api("flickr.interestingness.getList", &[("per_page", "48".to_string()), ("page", page), ("extras", LIST_EXTRAS.to_string())]).await?;
+        let mut out = photo_list(&r, "photos", "");
+        out["explore"] = json!(true);
+        return Ok(out);
+    }
+    let sort = match sort.as_deref() { Some("interesting") => "interestingness-desc", Some("recent") => "date-posted-desc", _ => "relevance" };
+    let r = api("flickr.photos.search", &[
+        ("text", q.clone()), ("sort", sort.to_string()), ("safe_search", "1".to_string()), ("content_types", "0".to_string()),
+        ("media", "photos".to_string()), ("per_page", "48".to_string()), ("page", page.clone()), ("extras", LIST_EXTRAS.to_string()),
+    ]).await?;
+    let mut out = photo_list(&r, "photos", "");
+    if page == "1" && !q.contains(' ') {
+        if let Ok(u) = api("flickr.people.findByUsername", &[("username", q.clone())]).await {
+            let nsid = st(&u["user"], "nsid");
+            if !nsid.is_empty() {
+                out["person"] = json!({ "nsid": nsid, "name": words(&u["user"]["username"]) });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The albums one of your photos is in.
+#[tauri::command]
+pub async fn flickr_contexts(id: String) -> Result<Vec<Value>, String> {
+    let r = api("flickr.photos.getAllContexts", &[("photo_id", id)]).await?;
+    Ok(r["set"].as_array().cloned().unwrap_or_default().iter().map(|s| json!({ "id": st(s, "id"), "title": words(&s["title"]) })).collect())
+}
+
+/// Put one of your photos in one of your albums, or in a new album named `new_title` (Flickr makes an album with
+/// its first photo). Returns the albums it's in now.
+#[tauri::command]
+pub async fn flickr_add_to_album(photo_id: String, album_id: Option<String>, new_title: Option<String>) -> Result<Vec<Value>, String> {
+    if let Some(t) = new_title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+        api_post("flickr.photosets.create", &[("title", t), ("primary_photo_id", photo_id.clone())]).await?;
+    } else if let Some(a) = album_id.filter(|a| !a.is_empty()) {
+        if let Err(e) = api_post("flickr.photosets.addPhoto", &[("photoset_id", a), ("photo_id", photo_id.clone())]).await {
+            if !e.contains("already in") {
+                return Err(e);
+            }
+        }
+    } else {
+        return Err("Pick an album, or name a new one.".into());
+    }
+    flickr_contexts(photo_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -666,6 +779,15 @@ mod tests {
         let bad = "<rsp stat=\"fail\">\n<err code=\"5\" msg=\"Filetype was not recognised\" />\n</rsp>";
         assert_eq!(upload_id(bad), None);
         assert_eq!(upload_error(bad), "Filetype was not recognised");
+    }
+
+    #[test]
+    fn albums_read() {
+        let a = album_item(&json!({ "id": "721", "primary": "54", "secret": "s", "server": "65535", "photos": 12, "videos": 1, "title": { "_content": "Fall walks" }, "description": { "_content": "" }, "date_update": "1764200000" }), "me@N00");
+        assert_eq!(st(&a, "title"), "Fall walks");
+        assert_eq!(a["count"], 13);
+        assert_eq!(st(&a, "cover"), "https://live.staticflickr.com/65535/54_s_z.jpg");
+        assert_eq!(st(&a, "page"), "https://www.flickr.com/photos/me@N00/albums/721/");
     }
 
     #[test]

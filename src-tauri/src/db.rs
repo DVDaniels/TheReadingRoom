@@ -45,6 +45,8 @@ pub struct Feed {
     pub recent: i64,
     /// The newest story's date (for the feed checkup: feeds that have gone quiet)
     pub latest: Option<String>,
+    /// The feed accepts tips (its value tag): JSON {kind, names, address}, or empty
+    pub tips: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -156,6 +158,9 @@ pub fn open(path: &Path, seed_defaults: bool) -> rusqlite::Result<Connection> {
     // Version 0.2 additions
     if !has_column(&conn, "feeds", "folder_id")? {
         conn.execute("ALTER TABLE feeds ADD COLUMN folder_id INTEGER", [])?;
+    }
+    if !has_column(&conn, "feeds", "tips")? {
+        conn.execute("ALTER TABLE feeds ADD COLUMN tips TEXT DEFAULT ''", [])?;
     }
     if !has_column(&conn, "items", "image")? {
         conn.execute("ALTER TABLE items ADD COLUMN image TEXT DEFAULT ''", [])?;
@@ -403,12 +408,13 @@ fn feed_from_row(r: &rusqlite::Row) -> rusqlite::Result<Feed> {
         folder_id: r.get(7)?,
         recent: r.get(8)?,
         latest: r.get(9)?,
+        tips: r.get::<_, Option<String>>(10)?.unwrap_or_default(),
     })
 }
 
 const FEED_COLS: &str = "id, url, title, site, status, error, last_fetched, folder_id,
     (SELECT COUNT(*) FROM items i WHERE i.feed_id = feeds.id AND i.date >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')) AS recent,
-    (SELECT MAX(date) FROM items i WHERE i.feed_id = feeds.id) AS latest";
+    (SELECT MAX(date) FROM items i WHERE i.feed_id = feeds.id) AS latest, tips";
 
 pub fn feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut st = conn.prepare(&format!("SELECT {FEED_COLS} FROM feeds ORDER BY title COLLATE NOCASE"))?;
@@ -423,6 +429,12 @@ pub fn feeds_by_ids(conn: &Connection, ids: &[i64]) -> rusqlite::Result<Vec<Feed
 pub fn feed(conn: &Connection, id: i64) -> rusqlite::Result<Option<Feed>> {
     conn.query_row(&format!("SELECT {FEED_COLS} FROM feeds WHERE id=?1"), [id], feed_from_row)
         .optional()
+}
+
+/// What the feed says about tips, from its latest read (empty when it no longer says)
+pub fn set_tips(conn: &Connection, id: i64, tips: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE feeds SET tips=?1 WHERE id=?2 AND COALESCE(tips,'')<>?1", params![tips, id])?;
+    Ok(())
 }
 
 pub fn url_exists(conn: &Connection, url: &str) -> rusqlite::Result<bool> {

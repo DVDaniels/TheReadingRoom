@@ -10,17 +10,14 @@ NEW: A TUMBLR TAB (PLUS)
 Tumblr has its own tab under Writing. Write a note or a post (photo, tags), then Post now, Save as draft, Add to queue or Schedule it. See Your numbers, the people talking to you, and your Posts, Drafts and Queue (open, post a draft now, or delete).
 Writing is for your own site. Have Tumblr too? Tick "Also post to Tumblr" in Writing or the note sheet to send the full post there as well.
 
-NEW: GAB
-Settings › Connections › Connect Gab. It works like Mastodon, as its own account.
+NEW: TIPS
+Feed checkup counts feeds that accept tips; such a feed shows ⚡ Accepts tips. The app never sends money.
 
 NEW: A FLICKR TAB
-Settings › Connections › Connect Flickr, approve on Flickr, paste the code. See your contacts' photos (friends-only too), comments, and your photos. Tap a photo to open it here: fave, comment, reply, edit your own. Tap a name to Follow them as a feed. Plus: upload, or pick a Flickr photo for a note. Comments also show in Conversations › You.
+Settings › Connections › Connect Flickr, approve on Flickr, paste the code. See your contacts' photos (friends-only too), comments, and your photos. Tap a photo to open it here: fave, comment, reply, edit your own. Tap a name to Follow them as a feed. Plus: upload, or pick a Flickr photo for a note. Comments also show in Conversations › You. New: Flickr folders in the sidebar; albums (add your photos or make one); search everyone's photos.
 
 NEW: TUMBLR IN CONVERSATIONS
 Replies, reblogs with words, mentions and asks from Tumblr show in Conversations › You, with a Tumblr chip. Reply on Tumblr opens your browser.
-
-NEW: REPLIES TELL THE WRITER
-When you reply to or repost a post from your own site, the app now tells the writer's site itself (a Webmention), and says whether their site was told.
 
 ALSO IN 1.2.10
 - A first run for new readers: pick circles of writers who answer each other (Help › Start with a few people › Pick writers by topic).

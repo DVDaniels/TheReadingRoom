@@ -205,7 +205,7 @@ mod tests {
     fn round_trips_folders() {
         use crate::db::{Feed, Folder};
         let folders = vec![Folder { id: 1, name: "Crypto".into(), parent_id: None }, Folder { id: 2, name: "Charlotte NC".into(), parent_id: Some(3) }, Folder { id: 3, name: "Blogroll".into(), parent_id: None }];
-        let f = |id, folder_id| Feed { id, url: format!("https://f{id}.com/rss"), title: format!("F{id}"), site: String::new(), status: "ok".into(), error: String::new(), last_fetched: None, folder_id, recent: 0, latest: None };
+        let f = |id, folder_id| Feed { id, url: format!("https://f{id}.com/rss"), title: format!("F{id}"), site: String::new(), status: "ok".into(), error: String::new(), last_fetched: None, folder_id, recent: 0, latest: None, tips: String::new() };
         let xml = super::export(&folders, &[f(1, Some(1)), f(2, None), f(3, Some(2)), f(4, Some(3))], "now");
         let back = super::parse(&xml).unwrap();
         let find = |u: &str| back.iter().find(|o| o.url.contains(u)).unwrap();

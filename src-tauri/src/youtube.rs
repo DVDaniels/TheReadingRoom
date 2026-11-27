@@ -116,7 +116,7 @@ pub fn parse_page(html: &str, now: chrono::DateTime<chrono::Utc>) -> Option<Fetc
     if items.is_empty() {
         return None;
     }
-    Some(Fetched { url: format!("https://www.youtube.com/feeds/videos.xml?channel_id={id}"), title, site, items })
+    Some(Fetched { url: format!("https://www.youtube.com/feeds/videos.xml?channel_id={id}"), title, site, items, tips: String::new() })
 }
 
 fn push(items: &mut Vec<ParsedItem>, vid: &str, title: &str, ago: &str, thumb: &str, members: bool, now: chrono::DateTime<chrono::Utc>) {
