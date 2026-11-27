@@ -790,21 +790,107 @@ fn person_item(c: &Value) -> Value {
     })
 }
 
-/// The descriptions of some photos (up to 50), for lists Flickr sends without them (your contacts' latest photos).
-/// One question per photo, six at a time; a photo that can't be read is left out.
+/// The descriptions of some photos (up to 50), for lists Flickr sends without them (your contacts' latest photos)
+/// and for other people's photos. Flickr's API now refuses details of other members' photos to keys like the app's
+/// ("This API key can only access the calling user's own photos", Nov 27), so: your own photos through
+/// photos.getInfo, everyone else's from their public photo feed (the one Follow in The Reading Room uses), which
+/// carries each recent public photo's description. One feed per person, four at a time; photos it doesn't cover
+/// (older, or friends-only) are left out.
 #[tauri::command]
-pub async fn flickr_descriptions(ids: Vec<String>) -> Result<Value, String> {
+pub async fn flickr_descriptions(photos: Vec<Value>) -> Result<Value, String> {
     use futures::stream::{self, StreamExt};
-    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(50).collect();
-    let got: Vec<(String, String)> = stream::iter(ids.into_iter().map(|id| async move {
+    let me = me();
+    let digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    let photos: Vec<(String, String)> = photos.iter().map(|p| (st(p, "id"), st(p, "owner"))).filter(|(i, _)| digits(i)).take(50).collect();
+    let mut out = serde_json::Map::new();
+    let mine: Vec<String> = photos.iter().filter(|(_, o)| *o == me).map(|(i, _)| i.clone()).collect();
+    let got: Vec<(String, String)> = stream::iter(mine.into_iter().map(|id| async move {
         let d = api("flickr.photos.getInfo", &[("photo_id", id.clone())]).await.map(|v| short(&plain(&words(&v["photo"]["description"])), 280)).unwrap_or_default();
         (id, d)
     })).buffer_unordered(6).collect().await;
-    let mut out = serde_json::Map::new();
     for (id, d) in got {
         out.insert(id, json!(d));
     }
+    let mut owners: Vec<String> = photos.iter().filter(|(_, o)| *o != me && !o.is_empty()).map(|(_, o)| o.clone()).collect();
+    owners.sort();
+    owners.dedup();
+    owners.truncate(16);
+    let feeds: Vec<Vec<(String, String)>> = stream::iter(owners.into_iter().map(|o| async move { public_descriptions(&o).await })).buffer_unordered(4).collect().await;
+    let want: std::collections::HashSet<&String> = photos.iter().map(|(i, _)| i).collect();
+    for (id, d) in feeds.into_iter().flatten() {
+        if want.contains(&id) {
+            out.insert(id, json!(d));
+        }
+    }
     Ok(Value::Object(out))
+}
+
+/// Someone's public photo feed → (photo id, description) for each of their latest public photos.
+async fn public_descriptions(nsid: &str) -> Vec<(String, String)> {
+    let url = "https://www.flickr.com/services/feeds/photos_public.gne";
+    let q = vec![("id".to_string(), nsid.to_string()), ("format".to_string(), "atom".to_string())];
+    match get_text(url, &q).await {
+        Ok((200, xml)) => feed_descriptions(&xml),
+        _ => Vec::new(),
+    }
+}
+
+/// Flickr's public feed puts "<p>Name posted a photo:</p> <p><a><img></a></p>" before the photo's own description.
+fn feed_descriptions(xml: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for entry in xml.split("<entry>").skip(1) {
+        let id = entry.split("<id>").nth(1).and_then(|r| r.split("</id>").next()).and_then(|t| t.rsplit('/').next()).unwrap_or("").trim().to_string();
+        let html = entry.split("<content type=\"html\">").nth(1).and_then(|r| r.split("</content>").next()).unwrap_or("");
+        let html = html_escape::decode_html_entities(html).to_string();
+        let parts: Vec<&str> = html.split("</p>").collect();
+        let body = if parts.len() > 2 { parts[2..].join("</p>") } else { String::new() };
+        let d = short(&plain(&body), 280);
+        if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) && !d.is_empty() {
+            out.push((id, d));
+        }
+    }
+    out
+}
+
+/// A photo's comments on their own, for when Flickr won't give the app the photo's details (someone else's photo).
+#[tauri::command]
+pub async fn flickr_comments(id: String) -> Result<Vec<Value>, String> {
+    let me = me();
+    let c = api("flickr.photos.comments.getList", &[("photo_id", id)]).await?;
+    Ok(c["comments"]["comment"].as_array().cloned().unwrap_or_default().iter().map(|c| comment_item(c, &me)).collect())
+}
+
+/// Who can see every photo in one of your albums (David, Nov 27: "make an entire album for everyone when it's on
+/// Friends and Family"). Flickr albums have no privacy of their own; each photo has. Goes through the album's photos
+/// (500 a page) and sets each one ("public", "friends", "family", "both", "private"), four at a time, skipping ones
+/// already set that way. Returns {changed, same, failed}.
+#[tauri::command]
+pub async fn flickr_album_who(id: String, who: String) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let me = me();
+    let (public, friend, family) = match who.as_str() { "public" => (1, 0, 0), "friends" => (0, 1, 0), "family" => (0, 0, 1), "both" => (0, 1, 1), "private" => (0, 0, 0), _ => return Err("Pick who can see them.".into()) };
+    let mut todo: Vec<String> = Vec::new();
+    let mut same = 0;
+    let mut page = 1;
+    loop {
+        let r = api("flickr.photosets.getPhotos", &[("photoset_id", id.clone()), ("user_id", me.clone()), ("per_page", "500".to_string()), ("page", page.to_string())]).await?;
+        for x in r["photoset"]["photo"].as_array().cloned().unwrap_or_default() {
+            if (num(&x["ispublic"]), num(&x["isfriend"]), num(&x["isfamily"])) == (public, friend, family) {
+                same += 1;
+            } else {
+                todo.push(st(&x, "id"));
+            }
+        }
+        if page >= num(&r["photoset"]["pages"]).max(1) || page >= 20 {
+            break;
+        }
+        page += 1;
+    }
+    let results: Vec<bool> = stream::iter(todo.into_iter().map(|pid| async move {
+        api_post("flickr.photos.setPerms", &[("photo_id", pid), ("is_public", public.to_string()), ("is_friend", friend.to_string()), ("is_family", family.to_string())]).await.is_ok()
+    })).buffer_unordered(4).collect().await;
+    let changed = results.iter().filter(|ok| **ok).count();
+    Ok(json!({ "changed": changed, "same": same, "failed": results.len() - changed }))
 }
 
 // ------------------------------------------------------------------ managing your photos and albums (David, Nov 27:
@@ -883,6 +969,43 @@ pub async fn flickr_delete(id: String) -> Result<(), String> {
     }
 }
 
+/// Several of your photos at once (David, Nov 27: "pick multiple pictures to delete", "change their status from
+/// public to private"): who can see them, or delete them. Four at a time; returns {done, failed, done_ids}.
+#[tauri::command]
+pub async fn flickr_photos_who(ids: Vec<String>, who: String) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let (public, friend, family) = match who.as_str() { "public" => (1, 0, 0), "friends" => (0, 1, 0), "family" => (0, 0, 1), "both" => (0, 1, 1), "private" => (0, 0, 0), _ => return Err("Pick who can see them.".into()) };
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(500).collect();
+    let res: Vec<(String, bool)> = stream::iter(ids.into_iter().map(|pid| async move {
+        let ok = api_post("flickr.photos.setPerms", &[("photo_id", pid.clone()), ("is_public", public.to_string()), ("is_friend", friend.to_string()), ("is_family", family.to_string())]).await.is_ok();
+        (pid, ok)
+    })).buffer_unordered(4).collect().await;
+    Ok(batch_result(res))
+}
+
+#[tauri::command]
+pub async fn flickr_delete_many(ids: Vec<String>) -> Result<Value, String> {
+    use futures::stream::{self, StreamExt};
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit())).take(500).collect();
+    // ask once first: an old connection without the delete permission fails every photo the same way
+    if let Some(first) = ids.first().cloned() {
+        flickr_delete(first.clone()).await?;
+        let rest = ids[1..].to_vec();
+        let mut res: Vec<(String, bool)> = stream::iter(rest.into_iter().map(|pid| async move {
+            let ok = api_post("flickr.photos.delete", &[("photo_id", pid.clone())]).await.is_ok();
+            (pid, ok)
+        })).buffer_unordered(4).collect().await;
+        res.insert(0, (first, true));
+        return Ok(batch_result(res));
+    }
+    Ok(batch_result(Vec::new()))
+}
+
+fn batch_result(res: Vec<(String, bool)>) -> Value {
+    let done: Vec<&String> = res.iter().filter(|(_, ok)| *ok).map(|(i, _)| i).collect();
+    json!({ "done": done.len(), "failed": res.len() - done.len(), "done_ids": done })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -928,6 +1051,17 @@ mod tests {
         let bad = "<rsp stat=\"fail\">\n<err code=\"5\" msg=\"Filetype was not recognised\" />\n</rsp>";
         assert_eq!(upload_id(bad), None);
         assert_eq!(upload_error(bad), "Filetype was not recognised");
+    }
+
+    #[test]
+    fn descriptions_from_public_feed() {
+        let xml = r#"<feed><entry><title>Fog</title><id>tag:flickr.com,2005:/photo/54001</id><content type="html">&lt;p&gt;&lt;a href=&quot;https://www.flickr.com/people/ana/&quot;&gt;Ana&lt;/a&gt; posted a photo:&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;https://www.flickr.com/photos/ana/54001/&quot; title=&quot;Fog&quot;&gt;&lt;img src=&quot;x.jpg&quot; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;Fog lifting off the harbor. &lt;a href=&quot;https://ana.blog&quot;&gt;More here&lt;/a&gt;&lt;/p&gt;</content></entry><entry><id>tag:flickr.com,2005:/photo/54002</id><content type="html">&lt;p&gt;Ana posted a photo:&lt;/p&gt; &lt;p&gt;&lt;img src=&quot;y.jpg&quot;&gt;&lt;/p&gt; </content></entry></feed>"#;
+        let d = feed_descriptions(xml);
+        assert_eq!(d, vec![("54001".to_string(), "Fog lifting off the harbor. More here".to_string())]);
     }
 
     #[test]
