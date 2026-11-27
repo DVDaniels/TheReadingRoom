@@ -6903,7 +6903,7 @@
     const n = S2.ids.size, list = flListOf(key);
     if (S2.ask) return `<div class="fl-selbar flv-del" role="region" aria-label="Delete the selected photos"><p><b>Delete ${n} ${n === 1 ? 'photo' : 'photos'} from Flickr for good?</b> Their comments, faves and places in albums go too. This can’t be undone.</p>
       <div class="tb-acts"><button class="btn" type="button" data-fl="selkeep">Keep them</button><button class="btn danger" type="button" data-fl="seldel"${S2.busy ? ' disabled' : ''}>${S2.busy ? 'Deleting…' : `Delete ${n} for good`}</button></div></div>`;
-    return `<div class="fl-selbar" role="region" aria-label="Selected photos"><b>${n ? `${n} selected` : 'Press photos to select them'}</b>
+    return `<div class="fl-selbar" role="region" aria-label="Selected photos"><b>${n ? `${n} selected` : 'Press photos to select them'}</b>${IOS || n > 1 ? '' : '<span class="tb-meta fl-seltip">⌘-click to add more · ⇧-click for a run · Delete key to delete</span>'}
       <button class="b-link" type="button" data-fl="selall">${n && n === list.length ? 'Select none' : `Select all ${list.length}`}</button>
       <label class="fl-see">Who can see them <select id="flSelWho"${n && !S2.busy ? '' : ' disabled'}><option value="">Choose…</option>${FL_SEE.map(([k, l]) => `<option value="${k}"${S2.who === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
       <button class="btn sm" type="button" data-fl="selwho"${n && S2.who && !S2.busy ? '' : ' disabled'}>${S2.busy ? 'Changing…' : 'Change'}</button>
@@ -6911,14 +6911,37 @@
       <button class="btn sm" type="button" data-fl="seloff">Done</button>
       ${S2.say ? `<p class="tm-tip tb-say${S2.sayErr ? ' err' : ''}" role="status">${esc(S2.say)}</p>` : ''}</div>`;
   }
-  const flSelReset = () => { FL.sel = { on: false, key: '', ids: new Set(), ask: false, who: '', busy: false, say: '', sayErr: false }; };
+  const flSelReset = () => { FL.sel = { on: false, key: '', ids: new Set(), ask: false, who: '', busy: false, say: '', sayErr: false, anchor: -1 }; };
+  // ⌘-click (Ctrl-click on other keyboards) a photo on Your photos, Home or one of your albums to select it without
+  // pressing Select first; ⇧-click selects every photo between the last one and this one (David, Nov 27: "hold
+  // command then click on the images and then do a mass delete"). With photos selected: Delete key asks to delete
+  // them, ⌘A selects all, Escape stops selecting.
+  const flSelectable = key => key === 'mine' || (key === 'album' && !!FL.album?.mine);
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.fl-tile[data-list]'); if (!b || !b.closest('.flickr-tab')) return;
+    const key = b.dataset.list, cmd = e.metaKey || e.ctrlKey, S2 = FL.sel, picking = S2.on && S2.key === key;
+    if (!flSelectable(key) || !(cmd || (e.shiftKey && picking))) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!picking) { flSelReset(); FL.sel.on = true; FL.sel.key = key; }
+    const S3 = FL.sel, list = flListOf(key), i = +b.dataset.i, id = b.dataset.id;
+    if (e.shiftKey && S3.anchor >= 0) { const [a, z] = S3.anchor < i ? [S3.anchor, i] : [i, S3.anchor]; list.slice(a, z + 1).forEach(p => S3.ids.add(p.id)); }
+    else if (S3.ids.has(id)) S3.ids.delete(id); else S3.ids.add(id);
+    S3.anchor = i; S3.ask = false; S3.say = ''; flPaint();
+  }, true);
+  document.addEventListener('keydown', e => {
+    const S2 = FL.sel; if (!S2.on || S2.busy || S.view !== 'flickr' || flViewOpen()) return;
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && S2.ids.size && !S2.ask) { e.preventDefault(); S2.ask = true; flPaint(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); flListOf(S2.key).forEach(p => S2.ids.add(p.id)); S2.say = ''; flPaint(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); if (S2.ask) S2.ask = false; else flSelReset(); flPaint(); }
+  });
   document.addEventListener('change', e => { if (e.target.id === 'flSelWho') { FL.sel.who = e.target.value; flPaint(); } });
   document.addEventListener('click', async e => {
     const b = e.target.closest('[data-fl]'); if (!b || !b.closest('.flickr-tab')) return;
     const k = b.dataset.fl, S2 = FL.sel;
     if (k === 'selon') { if (S2.on && S2.key === b.dataset.k) flSelReset(); else { flSelReset(); FL.sel.on = true; FL.sel.key = b.dataset.k; } flPaint(); return; }
     if (k === 'seloff') { flSelReset(); flPaint(); return; }
-    if (k === 'pick1') { const id = b.dataset.id; if (S2.ids.has(id)) S2.ids.delete(id); else S2.ids.add(id); S2.ask = false; S2.say = ''; flPaint(); return; }
+    if (k === 'pick1') { const id = b.dataset.id; if (S2.ids.has(id)) S2.ids.delete(id); else S2.ids.add(id); S2.anchor = +b.dataset.i; S2.ask = false; S2.say = ''; flPaint(); return; }
     if (k === 'selall') { const list = flListOf(S2.key); if (S2.ids.size === list.length) S2.ids.clear(); else list.forEach(p => S2.ids.add(p.id)); S2.say = ''; flPaint(); return; }
     if (k === 'selask') { S2.ask = true; flPaint(); return; }
     if (k === 'selkeep') { S2.ask = false; flPaint(); return; }
