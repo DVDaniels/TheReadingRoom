@@ -1,4 +1,4 @@
-Version 1.2.11 (test build). This build lets you post from The Reading Room Plus to Tumblr, Micro.blog, Pika and other IndieWeb sites, and tells writers when you reply. It also has the first run for new readers and the movable note.
+Version 1.4.0 (test build). This build lets you post from The Reading Room Plus to Tumblr, Micro.blog, Pika and other IndieWeb sites, and tells writers when you reply. It also has the first run for new readers and the movable note.
 
 NEW: POST TO TUMBLR, MICRO.BLOG AND PIKA (PLUS)
 No WordPress site? Settings › Connections now connects:
