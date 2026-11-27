@@ -4,7 +4,7 @@
   // Posting to your own site is part of The Reading Room Plus: site_note (Notes, reposts, replies, Weeknotes, What I read),
   // site_post and site_post_publish (full posts from Writing)
   // and liking (taking a like back stays free). Everything else goes straight through.
-  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || cmd === 'tumblr_post' || cmd === 'tumblr_publish' || cmd === 'youtube_upload' || cmd === 'flickr_upload' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
+  const invoke = (cmd, args) => (cmd === 'site_note' || cmd === 'site_post' || cmd === 'site_post_publish' || cmd === 'tumblr_write' || cmd === 'tumblr_post' || cmd === 'tumblr_publish' || cmd === 'youtube_upload' || cmd === 'youtube_video_edit' || cmd === 'youtube_video_delete' || cmd === 'flickr_upload' || (cmd === 'site_like' && args?.on !== false)) && !plusOk() ? plusBlocked(cmd) : tauriInvoke(cmd, args);
   const { listen } = window.__TAURI__.event;
 
   const $ = id => document.getElementById(id);
@@ -2585,7 +2585,97 @@
       <div class="yt-main"><b class="yt-title">${esc(v.title || 'Untitled')}</b>
         <span class="yt-meta"><span class="yt-vis yt-${esc(v.privacy)}">${esc(sched || YT_SEEN[v.privacy] || v.privacy)}</span> ${esc(ytWhen(v.date))}${state}</span>
         <span class="yt-nums">${nfmt(v.views)} views · ${nfmt(v.likes)} likes · ${nfmt(v.comments)} comments</span>
-        <span class="yt-acts"><button class="linkish" type="button" data-yt="open" data-url="${esc(v.link)}">Watch</button><button class="linkish" type="button" data-yt="open" data-url="${esc(v.studio)}">Edit in Studio</button></span></div></li>`;
+        <span class="yt-acts"><button class="linkish" type="button" data-yt="open" data-url="${esc(v.link)}">Watch</button><button class="linkish" type="button" data-yt="edit" data-id="${esc(v.id)}"${YT.edit?.id === v.id ? ' aria-expanded="true"' : ''}>${YT.edit?.id === v.id ? 'Close' : 'Edit'}</button></span>
+        ${YT.edit?.id === v.id ? ytEditHtml(v) : ''}</div></li>`;
+  }
+  // Edit a video here (David, Nov 27: "edit and delete videos in the youtube tab … so you don't need to visit
+  // YouTube"): title, description, tags, who can see it or a time to go public, made for kids, category, license,
+  // embedding, like count; Delete with a can't-be-undone step. Rust: youtube_video_get / _edit / _delete (Plus).
+  const YT_WHO = [['public', 'Public'], ['unlisted', 'Unlisted (anyone with the link)'], ['private', 'Private'], ['scheduled', 'Private until a date and time, then public']];
+  function ytEditHtml(v) {
+    const E = YT.edit, f = E.f, m = E.more;
+    if (E.delAsk) return `<div class="yt-edit flv-del"><p><b>Delete “${esc(v.title)}” from YouTube for good?</b> Its ${nfmt(v.views)} views, ${nfmt(v.comments)} comments and likes go with it. This can’t be undone.</p>
+      <div class="tb-acts"><button class="btn" type="button" data-yt="delno">Keep it</button><button class="btn danger" type="button" data-yt="delyes"${E.busy ? ' disabled' : ''}>${E.busy ? 'Deleting…' : 'Delete for good'}</button></div></div>`;
+    const lim = (n, max) => `<small class="yt-lim${n > max ? ' over' : ''}">${n} / ${max}</small>`;
+    return `<div class="yt-edit" role="group" aria-label="Edit ${esc(v.title)}">
+      <label>Title ${lim([...f.title].length, 100)}<input id="ytETitle" class="tb-in" value="${esc(f.title)}" maxlength="100"></label>
+      <label>Description ${lim([...f.description].length, 5000)}<textarea id="ytEDesc" class="tb-in" rows="6">${esc(f.description)}</textarea></label>
+      <p class="tm-tip">Chapters: put times at the start of lines, starting with 0:00 (“0:00 Intro”, “1:30 The setup”), and YouTube splits the video into chapters.</p>
+      <label>Tags<input id="ytETags" class="tb-in" value="${esc(f.tags)}" placeholder="Separated by commas" autocapitalize="off"></label>
+      <label>Who can see it<select id="ytEWho">${YT_WHO.map(([k, l]) => `<option value="${k}"${f.who === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${f.who === 'scheduled' ? `<label>Goes public on<input id="ytEAt" class="tb-in" type="datetime-local" value="${esc(f.at)}"></label>` : ''}
+      ${m ? `<label>Category<select id="ytECat">${m.categories.map(c => `<option value="${esc(c.id)}"${c.id === f.category ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <fieldset class="yt-kids"><legend>Made for kids?</legend><label><input type="radio" name="ytEKids" value="1"${f.kids ? ' checked' : ''}> Yes</label><label><input type="radio" name="ytEKids" value="0"${f.kids ? '' : ' checked'}> No</label></fieldset>
+        <label>License<select id="ytELic"><option value="youtube"${f.license !== 'creativeCommon' ? ' selected' : ''}>Standard YouTube License</option><option value="creativeCommon"${f.license === 'creativeCommon' ? ' selected' : ''}>Creative Commons (attribution)</option></select></label>
+        <label class="yt-check"><input type="checkbox" id="ytEEmbed"${f.embeddable ? ' checked' : ''}> Others can embed it on their sites</label>
+        <label class="yt-check"><input type="checkbox" id="ytEStats"${f.publicStats ? ' checked' : ''}> Show how many likes it has</label>`
+        : `<p class="tm-tip">${E.err ? `${esc(E.err)} <button class="b-link" type="button" data-yt="editload">Try again</button>` : 'Getting the rest of its settings from YouTube…'}</p>`}
+      <div class="tb-acts"><button class="btn" type="button" data-yt="edit" data-id="${esc(v.id)}">Cancel</button><button class="btn primary" type="button" data-yt="save"${E.busy || !m ? ' disabled' : ''}>${E.busy ? 'Saving…' : 'Save on YouTube'}</button></div>
+      ${E.say ? `<p class="tm-tip tb-say${E.sayErr ? ' err' : ''}" role="status">${esc(E.say)}</p>` : ''}
+      <button class="b-link yt-delask" type="button" data-yt="delask">Delete this video…</button></div>`;
+  }
+  const ytLocal = iso => { if (!iso) return ''; const d = new Date(iso), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
+  function ytEditOpen(v) {
+    const sched = v.privacy === 'private' && v.publishAt;
+    YT.edit = { id: v.id, busy: false, err: '', say: '', sayErr: false, delAsk: false, more: null,
+      f: { title: v.title || '', description: v.description || '', tags: (v.tags || []).join(', '), who: sched ? 'scheduled' : v.privacy || 'private', at: sched ? ytLocal(v.publishAt) : '',
+        category: '', kids: false, license: 'youtube', embeddable: true, publicStats: true } };
+    ytEditLoad();
+  }
+  function ytEditLoad() {
+    const E = YT.edit; if (!E) return; E.err = '';
+    tauriInvoke('youtube_video_get', { id: E.id, channel: SOC.accounts?.youtube?.channel || null }).then(m => {
+      if (YT.edit !== E) return; E.more = m; Object.assign(E.f, { category: m.category, kids: !!m.kids, license: m.license || 'youtube', embeddable: m.embeddable !== false, publicStats: m.publicStats !== false });
+    }).catch(e => { if (YT.edit === E) E.err = msg(e); }).finally(() => { if (S.view === 'channel') renderList(); });
+  }
+  // what's typed stays when the tab repaints
+  document.addEventListener('input', e => {
+    const E = YT.edit; if (!E) return;
+    const map = { ytETitle: 'title', ytEDesc: 'description', ytETags: 'tags', ytEAt: 'at' }; const k = map[e.target.id];
+    if (k) { E.f[k] = e.target.value; if (k === 'title' || k === 'description') { const l = e.target.closest('label')?.querySelector('.yt-lim'); const max = k === 'title' ? 100 : 5000, n = [...e.target.value].length; if (l) { l.textContent = `${n} / ${max}`; l.classList.toggle('over', n > max); } } }
+  });
+  document.addEventListener('change', e => {
+    const E = YT.edit; if (!E) return; const t = e.target;
+    if (t.id === 'ytEWho') { E.f.who = t.value; if (t.value === 'scheduled' && !E.f.at) E.f.at = ytLocal(new Date(Date.now() + 864e5).toISOString()); renderList(); }
+    if (t.id === 'ytECat') E.f.category = t.value;
+    if (t.name === 'ytEKids') E.f.kids = t.value === '1';
+    if (t.id === 'ytELic') E.f.license = t.value;
+    if (t.id === 'ytEEmbed') E.f.embeddable = t.checked;
+    if (t.id === 'ytEStats') E.f.publicStats = t.checked;
+  });
+  async function ytEditAct(k, b) {
+    if (k === 'edit') { const v = (YT.data?.videos || []).find(x => x.id === b.dataset.id); if (!v) return; if (YT.edit?.id === v.id) YT.edit = null; else ytEditOpen(v); renderList(); return; }
+    const E = YT.edit; if (!E) return;
+    if (k === 'editload') { ytEditLoad(); renderList(); return; }
+    if (k === 'delask') { E.delAsk = true; renderList(); return; }
+    if (k === 'delno') { E.delAsk = false; renderList(); return; }
+    const ch = SOC.accounts?.youtube?.channel || null;
+    if (k === 'delyes') {
+      E.busy = true; renderList();
+      try {
+        await invoke('youtube_video_delete', { id: E.id, channel: ch });
+        if (YT.data) { YT.data.videos = YT.data.videos.filter(v => v.id !== E.id); if (YT.data.count) YT.data.count--; }
+        YT.edit = null; status('Deleted from YouTube.');
+      } catch (err) { E.busy = false; E.delAsk = false; E.say = msg(err); E.sayErr = true; }
+      renderList(); return;
+    }
+    if (k === 'save') {
+      const f = E.f;
+      if (!f.title.trim()) { E.say = 'A video needs a title.'; E.sayErr = true; renderList(); $('ytETitle')?.focus(); return; }
+      let at = null;
+      if (f.who === 'scheduled') { const d = new Date(f.at); if (!f.at || isNaN(d) || d < Date.now() + 60e3) { E.say = 'Pick a date and time in the future for it to go public.'; E.sayErr = true; renderList(); return; } at = d.toISOString(); }
+      E.busy = true; E.say = ''; renderList();
+      try {
+        const r = await invoke('youtube_video_edit', { channel: ch, edit: { id: E.id, title: f.title, description: f.description, tags: f.tags.split(',').map(t => t.trim()).filter(Boolean),
+          privacy: f.who === 'scheduled' ? 'private' : f.who, publishAt: at, kids: f.kids, category: f.category || null, embeddable: f.embeddable, publicStats: f.publicStats, license: f.license } });
+        const v = (YT.data?.videos || []).find(x => x.id === E.id); if (v) Object.assign(v, { title: r.title, description: r.description, tags: r.tags || [], privacy: r.privacy, publishAt: r.publishAt });
+        YT.edit = null; status('Saved on YouTube.');
+      } catch (err) {
+        E.busy = false; E.sayErr = true;
+        E.say = /private|forbidden|not allowed|privacyStatus/i.test(msg(err)) && f.who !== 'private' && !YT_AUDITED ? `${msg(err)} Until YouTube finishes checking The Reading Room, it may keep videos Private when an app changes them.` : msg(err);
+      }
+      renderList(); return;
+    }
   }
   function ytChannelHtml() {
     const acct = SOC.accounts?.youtube;
@@ -2667,6 +2757,7 @@
     if (k === 'all') { YT.all = !YT.all; renderList(); }
     if (k === 'upload') { if (!plusOk()) { openPlus(); return; } ytUploadSheet(); }
     if (k === 'retry' && YT.up) ytSend(YT.up.info);
+    if (['edit', 'editload', 'delask', 'delno', 'delyes', 'save'].includes(k)) { if (!plusOk()) { openPlus(); return; } ytEditAct(k, b); }
   });
 
   // ---- the Your channel tab (Plus): your own YouTube channel, apart from Writing (David, Nov 26: "a separate tab that

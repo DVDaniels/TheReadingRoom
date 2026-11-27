@@ -3260,3 +3260,14 @@ body.flv-open #shareMenu { z-index: 1000; }
 .flickr-tab .fl-selbar.flv-del { width: min(560px, calc(100vw - 24px)); }
 @media (min-width: 901px) { .flickr-tab .fl-selbar { left: calc(50% + 135px); } }
 @media (max-width: 900px) { .flickr-tab .fl-selbar, .flickr-tab .fl-selbar.flv-del { left: 12px; right: 12px; transform: none; width: auto; max-width: none; } }
+/* YouTube: edit a video in the list */
+.yt-edit { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 4px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card, var(--surface)); }
+.yt-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.yt-edit label.yt-check { flex-direction: row; align-items: center; gap: 8px; }
+.yt-edit .yt-lim { float: right; color: var(--muted); font-size: 12px; } .yt-edit .yt-lim.over { color: var(--danger, #c0392b); }
+.yt-edit .yt-kids { border: 0; padding: 0; margin: 0; display: flex; gap: 16px; align-items: center; font-size: 13.5px; }
+.yt-edit .yt-kids legend { float: left; margin-right: 8px; }
+.yt-edit .yt-kids label { flex-direction: row; align-items: center; gap: 6px; }
+.yt-edit .yt-delask { align-self: flex-start; color: var(--danger, #c0392b); }
+.yt-edit.flv-del { border-color: color-mix(in srgb, var(--danger, #c0392b) 50%, transparent); }
+.yt-edit .btn.danger { background: #c0392b; border-color: #c0392b; color: #fff; }

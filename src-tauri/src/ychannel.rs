@@ -864,6 +864,105 @@ pub async fn youtube_activity(posted: Vec<Posted>) -> Result<Vec<Value>, String>
     Ok(ev)
 }
 
+// ------------------------------------------------------------------ editing and deleting your videos (David, Nov 27: "edit
+// and delete videos in the youtube tab … do as much as you can from the app so you don't need to visit YouTube")
+
+/// What a video's edit form needs that the list doesn't carry: its category, made-for-kids answer, license,
+/// embedding and whether its like count shows, plus the categories YouTube lets you pick (US list).
+#[tauri::command]
+pub async fn youtube_video_get(id: String, channel: Option<String>) -> Result<Value, String> {
+    let ch = pick(channel.as_deref())?;
+    let v = api(&ch, reqwest::Method::GET, &format!("/videos?part=snippet,status&id={}", urlencoding(&id)), None).await?;
+    let item = v["items"][0].clone();
+    if item.is_null() {
+        return Err("YouTube couldn't find that video. It may have been deleted on YouTube.".into());
+    }
+    let cats = api(&ch, reqwest::Method::GET, "/videoCategories?part=snippet&regionCode=US", None).await.unwrap_or(Value::Null);
+    let categories: Vec<Value> = cats["items"].as_array().cloned().unwrap_or_default().iter()
+        .filter(|c| c["snippet"]["assignable"].as_bool().unwrap_or(false))
+        .map(|c| json!({ "id": st(c, "id"), "name": st(c, "snippet.title") })).collect();
+    Ok(json!({
+        "id": id, "category": st(&item, "snippet.categoryId"),
+        "kids": item["status"]["selfDeclaredMadeForKids"].as_bool().or_else(|| item["status"]["madeForKids"].as_bool()).unwrap_or(false),
+        "license": st(&item, "status.license"), "embeddable": item["status"]["embeddable"].as_bool().unwrap_or(true),
+        "publicStats": item["status"]["publicStatsViewable"].as_bool().unwrap_or(true),
+        "language": st(&item, "snippet.defaultLanguage"),
+        "categories": categories,
+    }))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoEdit {
+    id: String,
+    title: String,
+    description: String,
+    tags: Vec<String>,
+    privacy: String,
+    publish_at: Option<String>,
+    kids: bool,
+    category: Option<String>,
+    embeddable: Option<bool>,
+    public_stats: Option<bool>,
+    license: Option<String>,
+}
+
+/// Change a video: title, description, tags, who can see it (public / unlisted / private, or private until a date),
+/// made for kids, category, license, embedding and whether its like count shows. YouTube replaces the whole
+/// snippet and status, so the video's other settings are read first and sent back unchanged. 50 units (+1 to read).
+#[tauri::command]
+pub async fn youtube_video_edit(edit: VideoEdit, channel: Option<String>) -> Result<Value, String> {
+    let ch = pick(channel.as_deref())?;
+    let title = edit.title.trim().to_string();
+    if title.is_empty() {
+        return Err("A video needs a title.".into());
+    }
+    if title.chars().count() > 100 {
+        return Err("YouTube titles can be up to 100 characters.".into());
+    }
+    if edit.description.chars().count() > 5000 {
+        return Err("YouTube descriptions can be up to 5,000 characters.".into());
+    }
+    let cur = api(&ch, reqwest::Method::GET, &format!("/videos?part=snippet,status&id={}", urlencoding(&edit.id)), None).await?;
+    let item = cur["items"][0].clone();
+    if item.is_null() {
+        return Err("YouTube couldn't find that video. It may have been deleted on YouTube.".into());
+    }
+    let mut snippet = item["snippet"].clone();
+    for k in ["thumbnails", "localized", "channelTitle", "channelId", "publishedAt", "liveBroadcastContent"] {
+        if let Some(o) = snippet.as_object_mut() {
+            o.remove(k);
+        }
+    }
+    snippet["title"] = json!(title);
+    snippet["description"] = json!(edit.description.replace('<', "‹").replace('>', "›"));
+    snippet["tags"] = json!(edit.tags.iter().map(|t| t.trim().trim_start_matches('#').to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>());
+    if let Some(c) = edit.category.filter(|c| !c.is_empty()) {
+        snippet["categoryId"] = json!(c);
+    }
+    let mut status = json!({ "privacyStatus": match edit.privacy.as_str() { "public" => "public", "unlisted" => "unlisted", _ => "private" }, "selfDeclaredMadeForKids": edit.kids });
+    if let Some(at) = edit.publish_at.filter(|a| !a.trim().is_empty()) {
+        status["privacyStatus"] = json!("private");
+        status["publishAt"] = json!(at.trim());
+    }
+    status["embeddable"] = json!(edit.embeddable.unwrap_or_else(|| item["status"]["embeddable"].as_bool().unwrap_or(true)));
+    status["publicStatsViewable"] = json!(edit.public_stats.unwrap_or_else(|| item["status"]["publicStatsViewable"].as_bool().unwrap_or(true)));
+    status["license"] = json!(edit.license.filter(|l| l == "youtube" || l == "creativeCommon").unwrap_or_else(|| st(&item, "status.license")));
+    let body = json!({ "id": edit.id, "snippet": snippet, "status": status });
+    let r = api(&ch, reqwest::Method::PUT, "/videos?part=snippet,status", Some(&body)).await?;
+    Ok(json!({
+        "id": st(&r, "id"), "title": st(&r, "snippet.title"), "description": st(&r, "snippet.description"), "tags": r["snippet"]["tags"].clone(),
+        "privacy": st(&r, "status.privacyStatus"), "publishAt": st(&r, "status.publishAt"),
+    }))
+}
+
+/// Delete one of your videos from YouTube for good (its views, comments and likes go with it). 50 units.
+#[tauri::command]
+pub async fn youtube_video_delete(id: String, channel: Option<String>) -> Result<(), String> {
+    let ch = pick(channel.as_deref())?;
+    api(&ch, reqwest::Method::DELETE, &format!("/videos?id={}", urlencoding(&id)), None).await.map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
