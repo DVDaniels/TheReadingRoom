@@ -156,7 +156,7 @@ pub async fn flickr_begin() -> Result<String, String> {
     }
     *pending().lock().await = Some((tok.clone(), sec));
     let mut u = url::Url::parse(&format!("{OAUTH}/authorize")).map_err(|e| e.to_string())?;
-    u.query_pairs_mut().append_pair("oauth_token", &tok).append_pair("perms", "write");
+    u.query_pairs_mut().append_pair("oauth_token", &tok).append_pair("perms", "delete"); // delete includes write: deleting photos needs it (Nov 27)
     Ok(u.to_string())
 }
 
@@ -541,6 +541,7 @@ pub async fn flickr_photo(id: String) -> Result<Value, String> {
         "who": who_sees(&p["visibility"]),
         "views": num(&p["views"]), "faves": faves, "count": num(&p["comments"]["_content"]),
         "faved": num(&p["isfavorite"]) == 1,
+        "license": num(&p["license"]),
         "links": links_in(&words(&p["description"])),
         "can_share": nsid == me || p["usage"]["canshare"].is_null() || num(&p["usage"]["canshare"]) == 1,
         "can_comment": num(&can["cancomment"]) == 1 || nsid == me,
@@ -610,7 +611,13 @@ pub async fn flickr_person(nsid: String, page: Option<u32>) -> Result<Value, Str
 /// Change one of your photos: its title, description, tags and who can see it ("public", "friends", "family",
 /// "both", "private"). Only what changed is sent; returns the photo as the viewer shows it.
 #[tauri::command]
-pub async fn flickr_edit(id: String, title: Option<String>, description: Option<String>, tags: Option<String>, who: Option<String>) -> Result<Value, String> {
+pub async fn flickr_edit(id: String, title: Option<String>, description: Option<String>, tags: Option<String>, who: Option<String>, taken: Option<String>, license: Option<i64>) -> Result<Value, String> {
+    if let Some(t) = taken.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        api_post("flickr.photos.setDates", &[("photo_id", id.clone()), ("date_taken", taken_for_flickr(t)?), ("date_taken_granularity", "0".to_string())]).await?;
+    }
+    if let Some(l) = license {
+        api_post("flickr.photos.licenses.setLicense", &[("photo_id", id.clone()), ("license_id", l.to_string())]).await?;
+    }
     if title.is_some() || description.is_some() {
         api_post("flickr.photos.setMeta", &[
             ("photo_id", id.clone()), ("title", title.unwrap_or_default().trim().to_string()), ("description", description.unwrap_or_default().trim().to_string()),
@@ -800,6 +807,82 @@ pub async fn flickr_descriptions(ids: Vec<String>) -> Result<Value, String> {
     Ok(Value::Object(out))
 }
 
+// ------------------------------------------------------------------ managing your photos and albums (David, Nov 27:
+// "can I manage my own flickr profile from the app?" → "both": albums and photos here, the profile on Flickr's site,
+// because Flickr's API has no way to change a profile)
+
+/// "2026-11-26T07:12" (a date-and-time box) or "2026-11-26" → Flickr's "2026-11-26 07:12:00".
+fn taken_for_flickr(t: &str) -> Result<String, String> {
+    let t = t.replace('T', " ");
+    let (d, h) = t.split_once(' ').unwrap_or((t.as_str(), "00:00"));
+    let ok = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok();
+    if !ok {
+        return Err("That date doesn't look right.".into());
+    }
+    let h = if h.len() == 5 { format!("{h}:00") } else { h.chars().take(8).collect() };
+    Ok(format!("{d} {h}"))
+}
+
+/// The licenses you can put on a photo, as Flickr names them (Flickr's Commons-only ones left out).
+#[tauri::command]
+pub async fn flickr_licenses() -> Result<Vec<Value>, String> {
+    let r = api("flickr.photos.licenses.getInfo", &[]).await?;
+    Ok(r["licenses"]["license"].as_array().cloned().unwrap_or_default().iter()
+        .filter(|l| !matches!(num(&l["id"]), 7 | 8))
+        .map(|l| json!({ "id": num(&l["id"]), "name": st(l, "name") })).collect())
+}
+
+/// Rename an album and change its description.
+#[tauri::command]
+pub async fn flickr_album_edit(id: String, title: String, description: String) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("An album needs a name.".into());
+    }
+    api_post("flickr.photosets.editMeta", &[("photoset_id", id), ("title", title), ("description", description.trim().to_string())]).await.map(|_| ())
+}
+
+/// Make one of an album's photos its cover.
+#[tauri::command]
+pub async fn flickr_album_cover(id: String, photo_id: String) -> Result<(), String> {
+    api_post("flickr.photosets.setPrimaryPhoto", &[("photoset_id", id), ("photo_id", photo_id)]).await.map(|_| ())
+}
+
+/// Take a photo out of an album (the photo stays on Flickr). Returns the albums it's in now.
+#[tauri::command]
+pub async fn flickr_album_remove(id: String, photo_id: String) -> Result<Vec<Value>, String> {
+    api_post("flickr.photosets.removePhoto", &[("photoset_id", id), ("photo_id", photo_id.clone())]).await?;
+    flickr_contexts(photo_id).await
+}
+
+/// Delete an album. Its photos stay on Flickr.
+#[tauri::command]
+pub async fn flickr_album_delete(id: String) -> Result<(), String> {
+    api_post("flickr.photosets.delete", &[("photoset_id", id)]).await.map(|_| ())
+}
+
+/// Put your albums in this order (the ones left out follow, as they were).
+#[tauri::command]
+pub async fn flickr_albums_order(ids: Vec<String>) -> Result<(), String> {
+    let ids: Vec<String> = ids.into_iter().filter(|i| !i.is_empty()).collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    api_post("flickr.photosets.orderSets", &[("photoset_ids", ids.join(","))]).await.map(|_| ())
+}
+
+/// Delete one of your photos from Flickr for good. Needs the "delete" permission: a Flickr connection made before
+/// Nov 27 only has "write", so Flickr refuses and the app asks you to connect again.
+#[tauri::command]
+pub async fn flickr_delete(id: String) -> Result<(), String> {
+    match api_post("flickr.photos.delete", &[("photo_id", id)]).await {
+        Ok(_) => Ok(()),
+        Err(e) if e.contains("isn't allowed") || e.contains("Insufficient") || e.contains("permission") =>
+            Err("To delete photos, connect Flickr again (Settings › Connections › Disconnect, then Connect Flickr): the app now asks Flickr for permission to delete.".into()),
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -845,6 +928,14 @@ mod tests {
         let bad = "<rsp stat=\"fail\">\n<err code=\"5\" msg=\"Filetype was not recognised\" />\n</rsp>";
         assert_eq!(upload_id(bad), None);
         assert_eq!(upload_error(bad), "Filetype was not recognised");
+    }
+
+    #[test]
+    fn dates_for_flickr() {
+        assert_eq!(taken_for_flickr("2026-11-26T07:12").unwrap(), "2026-11-26 07:12:00");
+        assert_eq!(taken_for_flickr("2026-11-26").unwrap(), "2026-11-26 00:00:00");
+        assert_eq!(taken_for_flickr("2026-11-26 07:12:30").unwrap(), "2026-11-26 07:12:30");
+        assert!(taken_for_flickr("Nov 26").is_err());
     }
 
     #[test]

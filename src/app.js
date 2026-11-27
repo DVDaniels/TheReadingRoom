@@ -6737,6 +6737,33 @@
     if (k === 'open' && isWeb(b.dataset.url)) { tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); return; }
     if (k === 'who') { FL.who = b.dataset.k; store.set('flWho', FL.who); FL.contacts = null; FL.cErr = ''; FL.cShow = 24; flPaint(); return; }
     if (k === 'cmore') { FL.cShow += 24; flPaint(); return; }
+    if (k === 'aedit' || k === 'anoedit' || k === 'adelask' || k === 'adelno') { const A = FL.album; if (!A) return; A.editing = k === 'aedit'; A.delAsk = k === 'adelask'; flPaint(); if (k === 'aedit') $('flAT')?.focus(); return; }
+    if (k === 'asave') {
+      const A = FL.album; if (!A) return; const title = ($('flAT')?.value || '').trim(), description = ($('flAD')?.value || '').trim();
+      if (!title) { $('flAT')?.focus(); return; }
+      A.saving = true; flPaint();
+      invoke('flickr_album_edit', { id: A.id, title, description }).then(() => { A.title = title; A.description = description; A.editing = false; status('Saved on Flickr.'); FL.albumsMine = { data: null, busy: false, err: '' }; renderHead(); })
+        .catch(err => status(msg(err), true)).finally(() => { A.saving = false; flPaint(); });
+      return;
+    }
+    if (k === 'adelyes') {
+      const A = FL.album; if (!A) return; A.saving = true; flPaint();
+      invoke('flickr_album_delete', { id: A.id }).then(() => { status(`Deleted the album “${A.title}”. Its photos are still on Flickr.`); FL.album = null; FL.albumsMine = { data: null, busy: false, err: '' }; renderHead(); })
+        .catch(err => { A.saving = false; status(msg(err), true); }).finally(() => flPaint());
+      return;
+    }
+    if (k === 'arrange') { FL.arrange = (FL.albumsMine.data || []).slice(); flPaint(); return; }
+    if (k === 'anoarr') { FL.arrange = null; flPaint(); return; }
+    if (k === 'aup' || k === 'adown' || k === 'atop') {
+      const L = FL.arrange, i = +b.dataset.i, j = k === 'aup' ? i - 1 : k === 'adown' ? i + 1 : 0; if (!L || j < 0 || j >= L.length) return;
+      const [a] = L.splice(i, 1); L.splice(j, 0, a); flPaint(); return;
+    }
+    if (k === 'asaveorder') {
+      FL.arrSaving = true; flPaint();
+      invoke('flickr_albums_order', { ids: FL.arrange.map(a => a.id) }).then(() => { FL.albumsMine.data = FL.arrange; FL.arrange = null; status('Album order saved on Flickr.'); })
+        .catch(err => status(msg(err), true)).finally(() => { FL.arrSaving = false; flPaint(); });
+      return;
+    }
     if (k === 'cview') { FL.cView = b.dataset.k; store.set('flCView', FL.cView); flPaint(); return; }
     if (k === 'pshow') { FL.pShow += 30; flPaint(); return; }
     if (k === 'flfollow' && isWeb(b.dataset.url)) { FL.flWait = b.dataset.nsid; tauriInvoke('open_external', { url: b.dataset.url }).catch(err => status(msg(err), true)); flPaint(); return; }
@@ -6768,6 +6795,7 @@
     return [item, ...FL_SUBS.slice(1).map(([k, l]) => sub(k, l))];
   }
   function flGo(k) {
+    FL.arrange = null;
     FL.sub = k; FL.person = null; if (k !== 'albums') FL.album = null;
     if (S.view !== 'flickr') selectView('flickr'); else { renderHead(); flPaint(); renderRail(); }
     $('main')?.scrollTo({ top: 0 }); $('listView')?.scrollTo({ top: 0 }); if (isPhone()) setScreen('list');
@@ -6788,12 +6816,24 @@
     if (FL.album) {
       const A = FL.album, d = A.data;
       if (!d && !A.busy && !A.err) flPageLoad(A, 'flickr_album', { id: A.id, owner: A.owner }, 1);
+      const manage = !A.mine ? '' : A.editing ? `<div class="fl-aedit"><input id="flAT" class="tb-in" value="${esc(A.title)}" maxlength="120" placeholder="Album name"><textarea id="flAD" class="tb-in" rows="2" placeholder="Description (optional)">${esc(A.description || '')}</textarea>
+          <div class="tb-acts"><button class="btn" type="button" data-fl="anoedit">Cancel</button><button class="btn primary" type="button" data-fl="asave"${A.saving ? ' disabled' : ''}>${A.saving ? 'Saving…' : 'Save on Flickr'}</button></div></div>`
+        : A.delAsk ? `<div class="flv-del fl-adel"><p><b>Delete the album “${esc(A.title)}”?</b> Its ${nfmt(A.count || d?.total || 0)} photos stay on Flickr; only the album goes. This can’t be undone.</p>
+          <div class="tb-acts"><button class="btn" type="button" data-fl="adelno">Keep it</button><button class="btn danger" type="button" data-fl="adelyes"${A.saving ? ' disabled' : ''}>Delete the album</button></div></div>`
+        : `<div class="fl-amanage">${A.description ? `<p class="flp-about">${esc(A.description)}</p>` : ''}<button class="b-link" type="button" data-fl="aedit">Rename or describe</button><button class="b-link" type="button" data-fl="adelask">Delete album…</button><span class="tm-tip">To change the cover or take a photo out, open the photo.</span></div>`;
       return `<button class="b-link fl-back" type="button" data-fl="albums">‹ ${A.mine ? 'Your albums' : 'Their albums'}</button>
-        <section class="b-panel" aria-label="${esc(A.title)}"><div class="bp-head"><h3 class="b-sub">${esc(A.title)}</h3><span class="bp-meta">${d ? `${nfmt(d.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(A.page)}">Open on Flickr</button></span></div>
+        <section class="b-panel" aria-label="${esc(A.title)}"><div class="bp-head"><h3 class="b-sub">${esc(A.title)}</h3><span class="bp-meta">${d ? `${nfmt(d.total)} photos · ` : ''}<button class="b-link" type="button" data-fl="open" data-url="${esc(A.page)}">Open on Flickr</button></span></div>${manage}
         ${!d ? flWait(A, 'the album') : d.photos.length ? flGridHtml(d.photos, 'album', A.mine) + flMore(d.page < d.pages, A.busy, 'amore') : '<p class="day-note">This album is empty.</p>'}</section>`;
     }
     const L = flAlbumsMineLoad();
-    return `<section class="b-panel" aria-label="Your albums"><div class="bp-head"><h3 class="b-sub">Your albums</h3><span class="bp-meta">${L.data ? `${L.data.length} albums · ` : ''}Add a photo to an album from the photo itself</span></div>
+    if (FL.arrange && L.data) {
+      const list = FL.arrange;
+      return `<section class="b-panel" aria-label="Arrange your albums"><div class="bp-head"><h3 class="b-sub">Arrange your albums</h3><span class="bp-meta">The order they show in on your Flickr</span></div>
+        <ol class="fl-arrange">${list.map((a, i) => `<li><img src="${esc(a.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span>${esc(a.title || 'Untitled album')}</span>
+          <button class="btn sm" type="button" data-fl="aup" data-i="${i}" aria-label="Move ${esc(a.title)} up"${i ? '' : ' disabled'}>↑</button><button class="btn sm" type="button" data-fl="adown" data-i="${i}" aria-label="Move ${esc(a.title)} down"${i < list.length - 1 ? '' : ' disabled'}>↓</button><button class="btn sm" type="button" data-fl="atop" data-i="${i}"${i ? '' : ' disabled'}>To the top</button></li>`).join('')}</ol>
+        <div class="tb-acts"><button class="btn" type="button" data-fl="anoarr">Cancel</button><button class="btn primary" type="button" data-fl="asaveorder"${FL.arrSaving ? ' disabled' : ''}>${FL.arrSaving ? 'Saving…' : 'Save the order on Flickr'}</button></div></section>`;
+    }
+    return `<section class="b-panel" aria-label="Your albums"><div class="bp-head"><h3 class="b-sub">Your albums</h3><span class="bp-meta">${L.data ? `${L.data.length} albums · ` : ''}${L.data?.length > 1 ? '<button class="b-link" type="button" data-fl="arrange">Arrange</button> · ' : ''}Add a photo to an album from the photo itself</span></div>
       ${!L.data ? flWait(L, 'your albums') : L.data.length ? flAlbumGridHtml(L.data, true) : '<p class="day-note">No albums yet. Open one of your photos and choose Add to album to start one.</p>'}</section>`;
   }
   function flAlbumsMineLoad() {
@@ -6809,7 +6849,11 @@
     const albums = `<section class="b-panel" aria-label="Your latest albums"><div class="bp-head"><h3 class="b-sub">Your latest albums</h3><span class="bp-meta">${L.data ? `${nfmt(L.data.length)} albums · ` : ''}<button class="b-link" type="button" data-flsub="albums">All albums</button></span></div>
       ${!L.data ? flWait(L, 'your albums') : newest.length ? flAlbumGridHtml(newest, true) : '<p class="day-note">No albums yet. Open one of your photos and choose Add to album to start one.</p>'}</section>`;
     const talk = FL.act?.length ? flCommentsHtml(3) : '';
-    return albums + flMineHtml(true) + talk;
+    const a = SOC.accounts.flickr || {};
+    const profile = `<div class="fl-profile"><span>${esc(a.name || a.handle || 'You')} on Flickr${a.handle && a.name && a.handle !== a.name ? ` · ${esc(a.handle)}` : ''}</span>
+      <button class="b-link" type="button" data-fl="open" data-url="https://www.flickr.com/people/${esc(encodeURIComponent(a.nsid || 'me'))}/">Edit your profile on Flickr ↗</button>
+      <span class="tm-tip">Flickr only lets your name, about text and pictures be changed on its site.</span></div>`;
+    return profile + albums + flMineHtml(true) + talk;
   }
   const flAlbumGridHtml = (list, mine) => `<div class="fl-grid fl-albums">${list.map((a, i) => `<button class="fl-tile" type="button" data-fl="album" data-i="${i}" data-id="${esc(a.id)}" data-mine="${mine ? 1 : 0}">
       <span class="fl-pic">${a.cover ? `<img src="${esc(a.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="fl-lock">${nfmt(a.count)} photos</span></span>
@@ -6904,7 +6948,13 @@
         <label>Description<textarea id="flvDesc" class="tb-in" rows="4">${esc(d.description)}</textarea></label>
         <label>Tags<input id="flvTags" class="tb-in" value="${esc(d.tags.join(', '))}" placeholder="Separated by commas" autocapitalize="off"></label>
         <label>Who can see it<select id="flvSee">${FL_SEE.map(([k, l]) => `<option value="${k}"${d.who === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-        <div class="tb-acts"><button class="btn" type="button" data-flv="noedit">Cancel</button><button class="btn primary" type="button" data-flv="save"${FLV.sending ? ' disabled' : ''}>${FLV.sending ? 'Saving…' : 'Save on Flickr'}</button></div></div>`;
+        <label>Taken<input id="flvTaken" class="tb-in" type="datetime-local" value="${esc((d.taken || '').slice(0, 16))}"></label>
+        <label>License<select id="flvLicense">${(FL.licenses || [{ id: d.license, name: 'As it is now' }]).map(l => `<option value="${l.id}"${l.id === d.license ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
+        <div class="tb-acts"><button class="btn" type="button" data-flv="noedit">Cancel</button><button class="btn primary" type="button" data-flv="save"${FLV.sending ? ' disabled' : ''}>${FLV.sending ? 'Saving…' : 'Save on Flickr'}</button></div>
+        ${FLV.delAsk ? `<div class="flv-del"><p><b>Delete this photo from Flickr for good?</b> Its comments, faves and place in albums go too. This can’t be undone.</p>
+          <div class="tb-acts"><button class="btn" type="button" data-flv="delno">Keep it</button><button class="btn danger" type="button" data-flv="delyes"${FLV.sending ? ' disabled' : ''}>Delete for good</button></div></div>`
+          : '<button class="b-link flv-delask" type="button" data-flv="delask">Delete this photo…</button>'}
+        ${FLV.say ? `<p class="tm-tip tb-say${FLV.sayErr ? ' err' : ''}" role="status">${esc(FLV.say)}</p>` : ''}</div>`;
     else {
       const when = [d.taken ? `Taken ${fmtDay(d.taken)}` : '', d.posted ? `posted ${fmtWhen(d.posted)}` : ''].filter(Boolean).join(', ');
       side = `<div class="flv-who"><span class="nb-av md"><img class="nb-face-img" src="${esc(d.face)}" alt="" referrerpolicy="no-referrer">${esc((d.name || '?')[0].toUpperCase())}</span>
@@ -6936,9 +6986,15 @@
     const ctx = FLV.ctx, mine = FL.albumsMine.data || [];
     const inIds = new Set((ctx || []).map(c => c.id));
     const choices = mine.filter(a => !inIds.has(a.id));
-    return `<div class="flv-albums"><p class="flv-meta">${ctx == null ? 'Looking for its albums…' : ctx.length ? `In ${ctx.map(c => `“${esc(c.title)}”`).join(', ')}` : 'Not in an album yet'}</p>
+    return `<div class="flv-albums">${ctx == null ? '<p class="flv-meta">Looking for its albums…</p>' : ctx.length ? `<p class="flv-meta">In ${ctx.length === 1 ? 'an album' : `${ctx.length} albums`}</p><ul class="flv-inlist">${ctx.map(c => `<li><span>“${esc(c.title)}”</span>
+        <button class="b-link" type="button" data-flv="cover" data-a="${esc(c.id)}"${FLV.sending ? ' disabled' : ''}>Make it the cover</button><button class="b-link" type="button" data-flv="takeout" data-a="${esc(c.id)}"${FLV.sending ? ' disabled' : ''}>Take it out</button></li>`).join('')}</ul>` : '<p class="flv-meta">Not in an album yet</p>'}
       ${FLV.newAlbum ? `<div class="flv-addrow"><input id="flvAlbumNew" class="tb-in" placeholder="Name the new album" maxlength="120"><button class="btn primary" type="button" data-flv="newalbum"${FLV.sending ? ' disabled' : ''}>Make it</button><button class="btn" type="button" data-flv="noalbum">Cancel</button></div>`
         : `<div class="flv-addrow"><select id="flvAlbum" aria-label="Add to album"><option value="">Add to album…</option>${choices.map(a => `<option value="${esc(a.id)}">${esc(a.title || 'Untitled album')}</option>`).join('')}<option value="+">New album…</option></select><button class="btn" type="button" data-flv="addalbum"${FLV.sending ? ' disabled' : ''}>Add</button></div>`}</div>`;
+  }
+  // keep what's typed in the edit form when the viewer paints again
+  function flvKeepEdit() {
+    const ids = ['flvTitle', 'flvDesc', 'flvTags', 'flvSee', 'flvTaken', 'flvLicense'], v = Object.fromEntries(ids.map(i => [i, $(i)?.value]));
+    return () => ids.forEach(i => { if ($(i) && v[i] != null) $(i).value = v[i]; });
   }
   function flViewPaint(focusBox) {
     let el = $('flView');
@@ -6981,8 +7037,27 @@
     // Flickr address — a note on your site, Bluesky, Mastodon, X, LinkedIn, email, copy, or the iPhone's sheet.
     // Bluesky, Mastodon and the rest show Flickr's own preview of the photo, credited to the person who took it.
     if (k === 'share') { openShareMenu(b, { id: `flickr-${d.id}`, feed_id: null, title: `${d.title || 'A photo'} by ${d.mine ? (SOC.accounts.flickr?.name || d.name) : d.name}`, link: d.page, image: d.small || d.img, byline: d.name }); return; }
-    if (k === 'edit') { FLV.edit = true; FLV.say = ''; flViewPaint(); $('flvTitle')?.focus(); return; }
-    if (k === 'noedit') { FLV.edit = false; flViewPaint(); return; }
+    if (k === 'edit') {
+      FLV.edit = true; FLV.say = ''; FLV.delAsk = false; flViewPaint(); $('flvTitle')?.focus();
+      if (!FL.licenses) tauriInvoke('flickr_licenses').then(l => { if (l?.length) { FL.licenses = l; if (FLV.edit) { const keep = flvKeepEdit(); flViewPaint(); keep(); } } }).catch(() => {});
+      return;
+    }
+    if (k === 'noedit') { FLV.edit = false; FLV.delAsk = false; flViewPaint(); return; }
+    if (k === 'delask') { const keep = flvKeepEdit(); FLV.delAsk = true; FLV.say = ''; flViewPaint(); keep(); return; }
+    if (k === 'delno') { const keep = flvKeepEdit(); FLV.delAsk = false; flViewPaint(); keep(); return; }
+    if (k === 'delyes') {
+      FLV.sending = true; flViewPaint();
+      try {
+        await invoke('flickr_delete', { id: d.id });
+        const id = d.id;
+        for (const L of [FL.mine, FL.album?.data?.photos, FL.faves.data?.photos]) if (Array.isArray(L)) { const i = L.findIndex(p => p.id === id); if (i >= 0) L.splice(i, 1); }
+        if (FL.total) FL.total--;
+        FL.albumsMine = { data: null, busy: false, err: '' };
+        FLV.sending = false; FLV.delAsk = false; FLV.edit = false;
+        flViewClose(); status('Deleted from your Flickr.'); flRepaint();
+      } catch (err) { FLV.sending = false; FLV.say = msg(err); FLV.sayErr = true; const keep = flvKeepEdit(); flViewPaint(); keep(); }
+      return;
+    }
     if (k === 'reply') { const t = $('flvText'); const start = `@${b.dataset.name} `; FLV.draft = (t?.value || '').startsWith('@') || !(t?.value) ? start : `${start}${t.value}`; flViewPaint(true); return; }
     if (k === 'fave') {
       const on = !d.faved; d.faved = on; if (d.faves >= 0) d.faves += on ? 1 : -1; flViewPaint();
@@ -7001,13 +7076,16 @@
     if (k === 'save') {
       const ch = {};
       const t = $('flvTitle').value.trim(), ds = $('flvDesc').value.trim(), tg = $('flvTags').value, w = $('flvSee').value;
+      const tk = $('flvTaken')?.value || '', lic = Number($('flvLicense')?.value ?? d.license);
+      if (tk && tk !== (d.taken || '').slice(0, 16)) ch.taken = tk;
+      if (FL.licenses && lic !== d.license) ch.license = lic;
       if (t !== d.title || ds !== d.description) { ch.title = t; ch.description = ds; }
       if (tg.split(',').map(x => x.trim()).filter(Boolean).join(',') !== d.tags.join(',')) ch.tags = tg;
       if (w !== d.who) ch.who = w;
       if (!Object.keys(ch).length) { FLV.edit = false; flViewPaint(); return; }
       FLV.sending = true; flViewPaint();
       try {
-        const nd = await invoke('flickr_edit', { id: d.id, title: ch.title ?? null, description: ch.description ?? null, tags: ch.tags ?? null, who: ch.who ?? null });
+        const nd = await invoke('flickr_edit', { id: d.id, title: ch.title ?? null, description: ch.description ?? null, tags: ch.tags ?? null, who: ch.who ?? null, taken: ch.taken ?? null, license: ch.license ?? null });
         FLV.data = nd; FLV.edit = false; FLV.say = 'Saved on Flickr.'; FLV.sayErr = false;
         const tile = FLV.list[FLV.i]; if (tile) { tile.title = nd.title; tile.public = nd.who === 'public'; tile.friend = ['friends', 'both'].includes(nd.who); tile.family = ['family', 'both'].includes(nd.who); }
         flRepaint();
@@ -7016,6 +7094,19 @@
       return;
     }
     if (k === 'noalbum') { FLV.newAlbum = false; flViewPaint(); return; }
+    if (k === 'cover' || k === 'takeout') {
+      FLV.sending = true; flViewPaint();
+      const title = (FLV.ctx || []).find(c => c.id === b.dataset.a)?.title || 'the album';
+      try {
+        if (k === 'cover') { await invoke('flickr_album_cover', { id: b.dataset.a, photoId: d.id }); FLV.say = `Now the cover of “${title}”.`; }
+        else {
+          FLV.ctx = await invoke('flickr_album_remove', { id: b.dataset.a, photoId: d.id }); FLV.say = `Taken out of “${title}”. The photo stays on Flickr.`;
+          if (FL.album?.mine && FL.album.id === b.dataset.a && FL.album.data) FL.album.data.photos = FL.album.data.photos.filter(p => p.id !== d.id);
+        }
+        FLV.sayErr = false; FL.albumsMine = { data: null, busy: false, err: '' }; flAlbumsMineLoad(); flRepaint();
+      } catch (err) { FLV.say = msg(err); FLV.sayErr = true; }
+      FLV.sending = false; flViewPaint(); return;
+    }
     if (k === 'addalbum' || k === 'newalbum') {
       const pick = k === 'addalbum' ? ($('flvAlbum')?.value || '') : '+';
       if (pick === '+' && k === 'addalbum') { FLV.newAlbum = true; flViewPaint(); $('flvAlbumNew')?.focus(); return; }
