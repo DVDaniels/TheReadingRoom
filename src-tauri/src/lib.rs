@@ -2538,6 +2538,28 @@ async fn topic_search(state: State<'_, Shared>, query: String) -> Result<topics:
     Ok(topics::search(&state.client, &query).await)
 }
 
+/// More "Personal sites about …" for a search (Marginalia, 20 a page).
+#[tauri::command]
+async fn web_search(state: State<'_, Shared>, query: String, page: Option<u32>) -> Result<serde_json::Value, String> {
+    if query.trim().len() < 2 { return Err("Type a few words to search for.".into()); }
+    let (web, pages) = topics::web_page(&state.client, query.trim(), page.unwrap_or(1)).await?;
+    Ok(serde_json::json!({ "web": web, "pages": pages }))
+}
+
+/// Find blogs about a topic: sites rather than pages, each with its feed when Marginalia knows it.
+#[tauri::command]
+async fn blogs_about(state: State<'_, Shared>, query: String, page: Option<u32>) -> Result<serde_json::Value, String> {
+    if query.trim().len() < 2 { return Err("Type a few words to search for.".into()); }
+    let (blogs, pages) = topics::blogs_about(&state.client, query.trim(), page.unwrap_or(1)).await?;
+    Ok(serde_json::json!({ "blogs": blogs, "pages": pages }))
+}
+
+/// Sites like this one (Marginalia: sites linked from the same places), for a person's page.
+#[tauri::command]
+async fn similar_sites(state: State<'_, Shared>, site: String) -> Result<Vec<topics::Similar>, String> {
+    topics::similar_sites(&state.client, &site).await
+}
+
 /// The newest posts from personal sites, from Kagi Small Web, for Discover.
 #[tauri::command]
 async fn smallweb_feed(state: State<'_, Shared>) -> Result<Vec<topics::SmallPost>, String> {
@@ -3125,6 +3147,9 @@ pub fn run() {
             social::social_search,
             social::social_blog_mentions,
             topic_search,
+            web_search,
+            blogs_about,
+            similar_sites,
             smallweb_feed,
             set_badge,
             book_text,

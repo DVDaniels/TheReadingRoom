@@ -66,7 +66,7 @@ def run(name, steps, w, h, dark, platform, scale, mail=False, site=False, inbox=
         pg = ctx.new_page()
         pg.clock.set_fixed_time(data.NOW)
         errs = []
-        pg.on('pageerror', lambda e: errs.append(str(e)))
+        pg.on('pageerror', lambda e: errs.append(str(e) + ' @ ' + (e.stack or '').split(chr(10))[1][:160] if (e.stack or '').count(chr(10)) else str(e)))
         pg.goto((tmp / 'index.html').as_uri())
         pg.wait_for_timeout(800)
         if steps:

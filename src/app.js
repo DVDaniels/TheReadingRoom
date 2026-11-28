@@ -71,6 +71,7 @@
     write: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
     talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5" stroke-linecap="round"/></svg>',
     trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
   };
@@ -165,7 +166,7 @@
     return String(i.feed_id) === String(view);
   }
   // (Email's Sent, Archive, Trash and Spam always show everything: their emails come in read)
-  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'trending', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
+  const usesUnreadFilter = () => !['saved', 'recent', 'annotated', 'discover', 'search', 'trending', 'guide', 'talk', 'jobs', 'books', 'edition', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr'].includes(S.view) && !(S.view === 'email' && typeof mailFolder === 'function' && mailFolder() !== 'inbox');
   // ---- muted words: stories mentioning them stay out of sight (not in Read later or Annotated)
   let muteRe = null;
   function buildMutes() {
@@ -426,6 +427,7 @@
       group('write', 'Write', [...wrNavItems(), tbNavItem(), chNavItem(), ...flNavItems()], plusLive() ? '<span class="wr-plus grp-plus" title="Writing, your site, Tumblr, YouTube and uploading to Flickr are part of The Reading Room Plus">Plus</span>' : '') +
       '<hr class="nav-gap">' +
       group('explore', 'Explore', [
+        { view: 'search', label: 'Search', count: '', icon: ICONS.search },
         { view: 'discover', label: 'Discover', count: newSuggestions() || '', icon: ICONS.discover },
         { view: 'talk', label: 'Conversations', count: (newYou() + newAnswers() + nbUnread().length) || '', icon: ICONS.talk },
         { view: 'trending', label: 'Trending', count: '', icon: ICONS.trending },
@@ -491,7 +493,7 @@
   // ------------------------------------------------------------ render: header
   function viewName() {
     if (S.view === 'email' && mailFolder() !== 'inbox') return MAIL_FOLDERS[mailFolder()];
-    const names = { trending: 'Trending', write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', channel: 'YouTube', flickr: 'Flickr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
+    const names = { search: 'Search', trending: 'Trending', write: 'Writing', site: siteTabName(), tumblr: 'Tumblr', channel: 'YouTube', flickr: 'Flickr', myday: 'My Day', today: 'Today', all: 'All stories', saved: 'Read later', annotated: 'Annotated', recent: 'Recently read', discover: 'Discover', people: 'People', videos: 'Videos', guide: 'How to use The Reading Room', edition: 'The Morning Edition', talk: 'Conversations', jobs: 'Help Wanted', books: 'Books', email: 'Email' };
     if (names[S.view]) return names[S.view];
     const folder = folderOf(S.view); if (folder) return folder.name;
     return feedById(S.view)?.title || 'Feed';
@@ -504,7 +506,7 @@
   // Full-window pages: Discover, the guide and Conversations always; Help Wanted until you open an ad,
   // then it sits beside the reader like any list, with Back to close the ad.
   function syncWide() {
-    document.body.classList.toggle('discover-view', ['discover', 'trending', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'channel' || S.view === 'flickr') && !S.readerId));
+    document.body.classList.toggle('discover-view', ['discover', 'trending', 'guide', 'talk', 'books'].includes(S.view) || ((S.view === 'jobs' || S.view === 'search' || S.view === 'edition' || S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'channel' || S.view === 'flickr') && !S.readerId));
     // Writing uses My Day's width and panels
     document.body.classList.toggle('myday-view', S.view === 'myday' || S.view === 'write' || S.view === 'site' || S.view === 'tumblr' || S.view === 'channel' || S.view === 'flickr');
     document.body.classList.toggle('books-view', S.view === 'books');
@@ -556,6 +558,7 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
+      : S.view === 'search' ? (SR.q ? `Everything about “${SR.q}”` : 'What you follow, blogs, personal sites and what people are saying, at once')
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
@@ -575,7 +578,7 @@
     $('q').placeholder = onMail ? 'Search email' : 'Search stories';
     $('mailCheck').disabled = !!MAIL.checking || S.refreshing; $('mailCheck').classList.toggle('spinning', !!MAIL.checking);
     { const b = $('hideViewBtn'); if (b) b.hidden = !OPTIONAL_VIEWS.some(([v]) => v === S.view) || hiddenViews().has(S.view); }
-    $('viewSub').textContent = ['discover', 'trending', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
+    $('viewSub').textContent = ['discover', 'search', 'trending', 'guide', 'talk', 'books', 'edition', 'email', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr'].includes(S.view) ? lead : S.view === 'jobs' ? `${lead} · ${when}` : `${lead}${muted} · ${when}`;
     paintTalkHead();
     syncWide();
     $('fAll').setAttribute('aria-pressed', String(!S.unreadOnly));
@@ -931,6 +934,7 @@
       return;
     }
     if (S.view === 'jobs') { $('list').innerHTML = jobsHtml(); return; }
+    if (S.view === 'search') { $('list').innerHTML = searchAllHtml(); if (!SR.q) setTimeout(() => { if (S.view === 'search' && !SR.q && document.activeElement?.id !== 'allQ' && !isPhone()) $('allQ')?.focus(); }, 0); return; }
     if (S.view === 'edition') { $('list').innerHTML = editionHtml(); return; }
     if (S.view === 'myday') { paintMyDay(); return; }
     if (S.view === 'write' || S.view === 'site') { wrPaint(); return; }
@@ -945,7 +949,7 @@
     const older = S.view === 'email' ? '' : olderHtml(new Set(all.map(i => i.id)));
     if (!list.length) {
       const [t, d] = emptyText();
-      $('list').innerHTML = brief + (older || !t ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older + (S.view === 'email' ? mailOlderHtml() : '');
+      $('list').innerHTML = everywhereHtml() + brief + (older || !t ? '' : `<div class="empty"><strong>${t}</strong><span>${d}</span></div>`) + older + (S.view === 'email' ? mailOlderHtml() : '');
       return;
     }
     if (S.view === 'email') {
@@ -953,7 +957,7 @@
         + (all.length > list.length ? `<button class="btn more" id="more">Show ${Math.min(60, all.length - list.length)} more</button>` : mailOlderHtml());
       return;
     }
-    let out = brief, lastDay = '';
+    let out = everywhereHtml() + brief, lastDay = '';
     const groupBy = S.view === 'recent' ? i => dayLabel(i.read_at) : i => dayLabel(i.date);
     for (const it of list) {
       const day = groupBy(it);
@@ -1077,12 +1081,24 @@
       ["Tracy Durnell", "https://tracydurnell.com/", "https://tracydurnell.com/feed/", "Weeknotes and a “mind garden” of ideas, books and making."]] }];
   const frCircle = c => ({ id: c.id, name: c.name, about: c.about || '', writers: (c.writers || []).map(w => Array.isArray(w)
     ? { name: w[0], site: w[1], feed: w[2] || '', about: w[3] || '', maker: !!w[4] } : { name: w.name, site: w.site, feed: w.feed || '', about: w.about || '', maker: !!w.maker }) });
-  const FR = { step: 'welcome', circles: CIRCLES_BUNDLED.map(frCircle), on: new Set(), done: 0, total: 0, failed: [] };
+  const FR = { step: 'welcome', circles: CIRCLES_BUNDLED.map(frCircle), on: new Set(), done: 0, total: 0, failed: [], q: '', picked: new Map() };
   const firstRunDue = () => !store.get('firstRun') && !S.feeds.length && !$('firstRun');
   function frWriters() {
     const seen = new Set(), out = [];
     for (const c of FR.circles) if (FR.on.has(c.id)) for (const w of c.writers) { const k = hostOfU(w.site); if (!seen.has(k)) { seen.add(k); out.push(w); } }
+    // blogs picked from "Find blogs about …"
+    for (const b of FR.picked.values()) { const w = { name: b.site, site: `https://${b.site}/`, feed: b.feed || '', about: b.post_title ? `Wrote “${b.post_title}”` : 'Found with Marginalia Search' }; const k = hostOfU(w.site); if (!seen.has(k)) { seen.add(k); out.push(w); } }
     return out;
+  }
+  // First run: blogs about anything, from Marginalia; tap to add one to the writers you'll follow
+  function frFoundHtml() {
+    if (!FR.q) return '';
+    if (BL.q !== FR.q) setTimeout(() => blogsLoad(FR.q), 0);
+    const list = BL.q === FR.q ? BL.list.slice(0, BL.shown) : [];
+    if (!list.length) return `<p class="fr-small">${BL.q === FR.q && !BL.busy ? esc(BL.err || 'No blogs came up for that. Try other words.') : `Looking for blogs about “${esc(FR.q)}”…`}</p>`;
+    const more = BL.list.length > BL.shown || BL.page < BL.pages;
+    return `<p class="fr-k">Blogs about “${esc(FR.q)}” · tap to add</p><ul class="fr-list fr-found">${list.map(b => `<li><button type="button" class="fr-blogpick" data-fr-blog="${esc(b.site)}" aria-pressed="${FR.picked.has(b.site)}">${frAv(b.site, b.site)}<span><b>${esc(b.site)}</b>${b.post_title ? `<br><small>${esc(b.post_title)}</small>` : ''}</span><i aria-hidden="true">${FR.picked.has(b.site) ? '✓' : '+'}</i></button></li>`).join('')}</ul>
+      ${more ? `<button class="linkish" type="button" data-blogs="more"${BL.busy ? ' disabled' : ''}>${BL.busy ? 'Looking…' : 'Show more'}</button>` : ''}<p class="fr-small">Found with Marginalia Search, a search engine for the small web.</p>`;
   }
   const frAv = (name, key, cls = '') => `<span class="fr-av${cls}" style="--h:${hueFor(key)}" aria-hidden="true">${esc((name || '?').trim()[0] || '?')}</span>`;
   function frHtml() {
@@ -1108,11 +1124,13 @@
         <h2>What do you like reading about?</h2>
         <p class="fr-lede">Pick one or more. Each is a small circle of writers who read and answer each other, so conversations start right away.</p>
         <div class="fr-chips" role="group" aria-label="Topics">${FR.circles.map(c => `<button class="fr-chip" data-fr-circle="${esc(c.id)}" aria-pressed="${FR.on.has(c.id)}" title="${esc(c.about)}">${esc(c.name)}</button>`).join('')}</div>
+        <form class="fr-find" id="frFind" role="search"><input id="frQ" type="search" value="${esc(FR.q)}" placeholder="Or find blogs about something else, like knitting" autocomplete="off" aria-label="Find blogs about a topic" enterkeyhint="search"><button class="btn" type="submit">Find</button></form>
+        ${frFoundHtml()}
         ${ws.length ? `<p class="fr-k">Your circle · ${ws.length} writer${ws.length === 1 ? '' : 's'}</p>
-        <ul class="fr-list">${ws.map(w => `<li${w.maker ? ' class="fr-maker"' : ''}>${frAv(w.name, w.site)}<span><b>${esc(w.name)}</b> <small>${esc(hostOfU(w.site))}</small><br>${esc(w.about)}</span></li>`).join('')}</ul>
-        <p class="fr-small">They link to each other often. You can unfollow anyone later, or add your own.</p>`
+        <ul class="fr-list">${ws.map(w => `<li${w.maker ? ' class="fr-maker"' : ''}>${frAv(w.name, w.site)}<span><b>${esc(w.name)}</b> ${w.name === hostOfU(w.site) ? '' : `<small>${esc(hostOfU(w.site))}</small>`}<br>${esc(w.about)}</span></li>`).join('')}</ul>
+        <p class="fr-small">${FR.on.size ? 'They link to each other often. ' : ''}You can unfollow anyone later, or add your own.</p>`
         : `<p class="fr-small fr-hint">Tap a topic to see who’s in it.</p>`}
-        <div class="fr-foot"><button class="btn primary fr-go" data-fr="follow"${ws.length ? '' : ' disabled'}>Follow ${ws.length ? `these ${ws.length} writers` : 'writers'}</button>
+        <div class="fr-foot"><button class="btn primary fr-go" data-fr="follow"${ws.length ? '' : ' disabled'}>Follow ${ws.length === 1 ? 'this writer' : ws.length ? `these ${ws.length} writers` : 'writers'}</button>
         <button class="linkish" data-fr="skip">Skip and add my own feeds</button></div>
       </div>`;
     }
@@ -1181,7 +1199,7 @@
     await load();
     FR.step = 'thread'; frPaint();
   }
-  function frPaint() { const el = $('firstRun'); if (el) { el.innerHTML = frHtml(); el.scrollTop = 0; } }
+  function frPaint() { const el = $('firstRun'); if (!el) return; const y = el.scrollTop, same = FR.painted === FR.step; el.innerHTML = frHtml(); el.scrollTop = same ? y : 0; FR.painted = FR.step; }
   function frClose(view) {
     store.set('firstRun', '1');
     const el = $('firstRun'); if (el) el.remove();
@@ -1192,10 +1210,13 @@
     if ($('firstRun')) return;
     const el = document.createElement('div'); el.id = 'firstRun'; el.className = 'fr'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Welcome to The Reading Room');
     document.body.appendChild(el); document.body.classList.add('fr-on');
-    FR.step = step; FR.on.clear(); frPaint();
+    FR.step = step; FR.on.clear(); FR.picked.clear(); FR.q = ''; frPaint();
+    el.addEventListener('submit', e => { if (e.target.id !== 'frFind') return; e.preventDefault(); const q = ($('frQ')?.value || '').trim(); if (q.length < 2) return; FR.q = q; frPaint(); });
     el.addEventListener('click', e => {
       const c = e.target.closest('[data-fr-circle]');
       if (c) { const id = c.dataset.frCircle; FR.on.has(id) ? FR.on.delete(id) : FR.on.add(id); frPaint(); return; }
+      const pb = e.target.closest('[data-fr-blog]');
+      if (pb) { const site = pb.dataset.frBlog, b = BL.list.find(x => x.site === site); if (FR.picked.has(site)) FR.picked.delete(site); else if (b) FR.picked.set(site, b); frPaint(); return; }
       const o = e.target.closest('[data-fr-open]');
       if (o) { const id = o.dataset.frOpen; frClose('talk'); openReader(id); return; }
       const b = e.target.closest('[data-fr]'); if (!b) return;
@@ -1223,7 +1244,7 @@
       setTimeout(scanSites, 4000);
       const oldMine = store.get('myFeed'); // earlier builds kept this on one device only
       if (oldMine && !('mine' in S.prefs)) { const f = feedById(oldMine); S.prefs.mine = oldMine === 'none' ? 'none' : f ? f.url : undefined; if (S.prefs.mine) savePrefs(); store.set('myFeed', ''); }
-      const valid = ['today', 'trending', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
+      const valid = ['today', 'trending', 'myday', 'write', 'site', 'tumblr', 'channel', 'flickr', 'edition', 'email', 'all', 'saved', 'annotated', 'recent', 'discover', 'search', 'people', 'guide', 'talk', 'jobs', 'books', 'videos'].includes(S.view) || folderOf(S.view) || feedById(S.view);
       if (!valid) S.view = 'all';
       if (!loadedOnce && hiddenViews().has(S.view)) S.view = 'today';
       // Mornings start on My Day (My Day settings › Starting the day turns this off)
@@ -2454,6 +2475,7 @@
     if (recent.length && !D.res && !D.searching) out += `<div class="t-recent">${recent.map(r => `<button class="chip" data-topic="again" data-q="${esc(r)}">${esc(r)}</button>`).join('')}<button class="linkish" data-topic="clear">Clear</button></div>`;
     if (D.searching) return out + `<p class="note">Looking for personal sites and news about “${esc(D.q)}”…</p>`;
     const r = D.res; if (!r) return out;
+    out += blogsHtml(r.query);
     const topicOn = S.feeds.some(f => f.url === r.feed);
     // Personal sites first when there are some; otherwise the news leads and a quiet note follows
     let webPart = `<div class="t-head"><h2 class="sec-h">Personal sites about “${esc(r.query)}”</h2></div>`;
@@ -2463,7 +2485,7 @@
         ${w.description ? `<p>${esc(w.description)}</p>` : ''}
         <div class="t-acts">${on ? `<span class="t-on">✓ Following</span>` : `<button class="btn" data-topic="site" data-url="${esc('https://' + w.site + '/')}" data-site="${esc(w.site)}">Follow ${esc(w.site)}</button>`}
           ${D.err?.[w.site] ? `<span class="fol-err">${esc(D.err[w.site])}</span>` : ''}</div></div></article>`;
-    }).join('')}</div><p class="disc-foot">Personal sites found with <a href="https://marginalia-search.com/">Marginalia Search</a>, a search engine for the small, independent web.</p>`;
+    }).join('')}</div>${(r.web_pages || 1) > (r.web_page || 1) ? `<button class="btn more" type="button" data-topic="webmore"${D.webBusy ? ' disabled' : ''}>${D.webBusy ? 'Getting more…' : 'Show more personal sites'}</button>` : ''}<p class="disc-foot">Personal sites found with <a href="https://marginalia-search.com/">Marginalia Search</a>, a search engine for the small, independent web.</p>`;
     else webPart = `<p class="note t-webnote">${esc(r.web_error || 'No personal sites came up for this one. Try fewer or different words.')}</p>`;
     if (r.web.length) out += webPart;
     // News
@@ -2479,6 +2501,144 @@
       <p class="disc-foot">From <a href="https://kagi.com/smallweb">Kagi Small Web</a>, an open list of personal sites and their newest posts.</p>`;
     return out + `<hr class="t-rule">`;
   }
+  // ---- Blogs to follow, found with Marginalia (a search engine for the small web; results CC-BY-NC-SA, credited
+  // under them): "Blogs about …" in Discover's search, Search and the first run; "Sites like this one" on a person's
+  // page. A blog is a site, not one page: each card is the site, a post of theirs that matched, and Follow.
+  const BL = { q: '', list: [], page: 0, pages: 1, busy: false, err: '', shown: 6 };
+  const blogUrl = b => b.feed || `https://${b.site}/`;
+  const blogsRepaint = () => { if ($('firstRun')) frPaint(); if (['discover', 'search'].includes(S.view)) renderList(); };
+  async function blogsLoad(q, next) {
+    if (BL.busy && BL.q === q) return;
+    if (BL.q !== q) Object.assign(BL, { q, list: [], page: 0, pages: 1, err: '', shown: 6 });
+    if (next && BL.page >= BL.pages) return;
+    BL.busy = true; BL.err = ''; blogsRepaint();
+    try {
+      const r = await invoke('blogs_about', { query: q, page: BL.page + 1 });
+      if (BL.q !== q) return;
+      const have = new Set(BL.list.map(b => b.site));
+      BL.list.push(...(r.blogs || []).filter(b => !have.has(b.site))); BL.page++; BL.pages = r.pages || 1;
+    } catch (e) { if (BL.q === q) BL.err = msg(e); }
+    finally { if (BL.q === q) { BL.busy = false; blogsRepaint(); } }
+  }
+  function blogCardHtml(b) {
+    const on = followsHost(b.site) || D.added.has(b.site);
+    const about = b.description && b.description !== b.post_title ? (b.description.length > 170 ? b.description.slice(0, 168) + '…' : b.description) : '';
+    return `<article class="bl-card">${frAv(b.site.replace(/^www\./, ''), b.site, ' bl-av')}<div class="bl-body"><b class="bl-name">${esc(b.site)}</b>
+      ${b.post_title ? `<a class="bl-post" href="${esc(b.post_url)}">${esc(b.post_title)}</a>` : ''}${about ? `<p>${esc(about)}</p>` : ''}
+      <div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="btn" type="button" data-topic="site" data-url="${esc(blogUrl(b))}" data-site="${esc(b.site)}">Follow</button>`}
+        <a class="linkish" href="https://${esc(b.site)}/">Visit</a>${D.err?.[b.site] ? `<span class="fol-err">${esc(D.err[b.site])}</span>` : ''}</div></div></article>`;
+  }
+  // "Blogs about …": up to six, then six more at a time, asking Marginalia for the next page when they run out
+  function blogsHtml(q, { title = `Blogs about “${esc(q)}”`, lede = 'Whole blogs to follow, not just one page. Each shows a post of theirs that matched.' } = {}) {
+    if (BL.q !== q) setTimeout(() => blogsLoad(q), 0);
+    const mine = BL.q === q, list = mine ? BL.list : [], shown = list.slice(0, BL.shown);
+    const more = mine && (list.length > BL.shown || BL.page < BL.pages);
+    const body = shown.length ? `<div class="bl-grid">${shown.map(blogCardHtml).join('')}</div>${more ? `<button class="btn more" type="button" data-blogs="more"${BL.busy ? ' disabled' : ''}>${BL.busy ? 'Looking for more…' : 'Show more blogs'}</button>` : ''}`
+      : !mine || BL.busy ? `<p class="note">Looking for blogs about “${esc(q)}”…</p>`
+      : `<p class="note">${esc(BL.err || 'No blogs came up for this one. Try fewer or different words.')}${BL.err ? ' <button class="linkish" type="button" data-blogs="retry">Try again</button>' : ''}</p>`;
+    return `<section class="bl"><div class="t-head"><h2 class="sec-h">${title}</h2></div><p class="sec-p">${lede}</p>${body}
+      ${shown.length ? '<p class="disc-foot">Found with <a href="https://marginalia-search.com/">Marginalia Search</a>, a search engine for the small, independent web.</p>' : ''}</section>`;
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-blogs]'); if (!b) return;
+    if (b.dataset.blogs === 'retry') { const q = BL.q; BL.q = ''; blogsLoad(q); return; }
+    if (BL.list.length > BL.shown) { BL.shown += 6; blogsRepaint(); }
+    else { BL.shown += 6; blogsLoad(BL.q, true); }
+  });
+  // More "Personal sites about …" (20 a page)
+  async function webMore(R, still) {
+    if (!R || D.webBusy) return;
+    D.webBusy = true; renderList();
+    try {
+      const r = await invoke('web_search', { query: R.query, page: (R.web_page || 1) + 1 });
+      const have = new Set(R.web.map(w => w.url));
+      R.web.push(...(r.web || []).filter(w => !have.has(w.url))); R.web_page = (R.web_page || 1) + 1; R.web_pages = r.pages || R.web_pages;
+      const want = (r.web || []).map(w => w.url).filter(u => !D.imgs.has(u));
+      if (want.length) invoke('page_images', { urls: want }).then(list => { for (const [u, img] of list) D.imgs.set(u, img || ''); if (still()) renderList(); }).catch(() => {});
+    } catch (e) { status(msg(e), true); }
+    D.webBusy = false; if (still()) renderList();
+  }
+
+  // ---- Search: one box for everything (David, Nov 27: "can you do it all?"): what you follow, blogs about it,
+  // pages on personal sites, and what people are saying on Bluesky and Mastodon. Search stories (the box above a
+  // list) only filters that list; its "Search everywhere" opens this.
+  const SR = { q: '', feeds: [], allFeeds: false, web: null, webErr: '', soc: null };
+  const srAllPast = () => { try { return JSON.parse(store.get('allSearches') || '[]'); } catch { return []; } };
+  function srFollowMatches(q) {
+    const words = srWords(q); if (!words.length) return [];
+    return S.items.filter(i => !isMuted(i)).filter(i => { const t = `${i.title} ${i.summary} ${i.byline || ''}`.toLowerCase(); return words.every(w => t.includes(w)); })
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  }
+  async function searchAll(q) {
+    q = (q || '').trim(); if (q.length < 2) return;
+    Object.assign(SR, { q, feeds: srFollowMatches(q), allFeeds: false, web: null, webErr: '', soc: anySocial() ? { loading: true, posts: [], errors: [] } : null });
+    store.set('allSearches', JSON.stringify([q, ...srAllPast().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8)));
+    if (S.view !== 'search') selectView('search'); else renderList();
+    blogsLoad(q);
+    invoke('web_search', { query: q, page: 1 }).then(r => { if (SR.q !== q) return; SR.web = { query: q, web: r.web || [], web_page: 1, web_pages: r.pages || 1 };
+      const want = SR.web.web.map(w => w.url).filter(u => !D.imgs.has(u));
+      if (want.length) invoke('page_images', { urls: want }).then(list => { for (const [u, img] of list) D.imgs.set(u, img || ''); if (S.view === 'search') renderList(); }).catch(() => {});
+    }).catch(e => { if (SR.q === q) { SR.web = { query: q, web: [] }; SR.webErr = msg(e); } }).finally(() => { if (S.view === 'search' && SR.q === q) renderList(); });
+    if (SR.soc) invoke('social_search', { query: q }).then(r => { if (SR.q === q) SR.soc = { posts: r.posts || [], errors: r.errors || [] }; })
+      .catch(e => { if (SR.q === q) SR.soc = { posts: [], errors: [msg(e)] }; }).finally(() => { if (S.view === 'search' && SR.q === q) renderList(); });
+  }
+  function srSocialRow(n) {
+    const a = n.author || {};
+    return `<article class="sa-soc">${isWeb(a.avatar) ? `<img class="n-av" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="n-av fav" style="background:hsl(${hueFor(a.handle || '')} 45% 42%)">${esc((a.name || '?')[0])}</span>`}
+      <div><div class="n-who"><b>${esc(a.name || '')}</b> <span>${esc(a.handle || '')}</span> <span class="n-net">${ICON_NET[n.network] || ''}</span> <time>${esc(fmtWhen(n.created_at))}</time></div>
+      <p>${esc((n.text || '').length > 280 ? n.text.slice(0, 278) + '…' : n.text || '')}</p>${isWeb(n.url) ? `<a class="linkish" href="${esc(n.url)}">Open</a>` : ''}</div></article>`;
+  }
+  function searchAllHtml() {
+    const q = SR.q, past = srAllPast();
+    const form = `<form class="t-search" id="allForm" role="search"><span class="t-field"><input id="allQ" type="search" value="${esc(q)}" placeholder="Search everything, like home espresso or Outlook down" autocomplete="off" aria-label="Search everything" enterkeyhint="search"></span>
+      <button class="btn primary" type="submit">Search</button></form>`;
+    if (!q) return `${form}${past.length ? `<div class="t-recent">${past.map(p => `<button class="chip" type="button" data-allq="${esc(p)}">${esc(p)}</button>`).join('')}<button class="linkish" type="button" data-allq="">Clear</button></div>` : ''}
+      <p class="sec-p sa-intro">One search for everything at once: the posts you follow, blogs about it you could follow, pages on personal sites, and what people are saying on Bluesky and Mastodon right now.</p>`;
+    const feeds = SR.feeds, shownF = SR.allFeeds ? feeds : feeds.slice(0, 6);
+    const follow = `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">In what you follow</h2><span class="bp-meta">${feeds.length ? `${feeds.length} post${feeds.length === 1 ? '' : 's'}` : ''}</span></div>
+      ${feeds.length ? `<ul class="sr-feeds">${shownF.map(i => { const f = feedById(i.feed_id); return `<li><button class="sr-item" type="button" data-open="${esc(i.id)}">${f ? nbFace(f, 'nb-av sm') : ''}<span><b>${esc(headline(i) || (i.summary || '').slice(0, 100))}</b><small>${esc(f?.title || '')} · ${esc(fmtWhen(i.date))}</small></span></button></li>`; }).join('')}</ul>
+        ${feeds.length > shownF.length ? `<button class="linkish" type="button" data-allfeeds>Show all ${feeds.length}</button>` : ''}` : '<p class="note">Nothing in what you follow mentions it.</p>'}</section>`;
+    const W = SR.web;
+    const web = `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">On personal sites</h2></div>${!W ? '<p class="note">Looking on personal sites…</p>'
+      : W.web.length ? `<div class="t-results">${W.web.map(w => `<article class="t-hit">${tThumb(D.imgs.get(w.url), w.site, w.url, !D.imgs.has(w.url))}<div class="t-body"><a class="t-title" href="${esc(w.url)}">${esc(w.title || w.site)}</a><span class="t-site">${esc(w.site)}</span>${w.description ? `<p>${esc(w.description)}</p>` : ''}
+          <div class="t-acts">${followsHost(w.site) || D.added.has(w.site) ? '<span class="t-on">✓ Following</span>' : `<button class="btn" type="button" data-topic="site" data-url="${esc('https://' + w.site + '/')}" data-site="${esc(w.site)}">Follow ${esc(w.site)}</button>`}${D.err?.[w.site] ? `<span class="fol-err">${esc(D.err[w.site])}</span>` : ''}</div></div></article>`).join('')}</div>
+        ${(W.web_pages || 1) > (W.web_page || 1) ? `<button class="btn more" type="button" data-allweb${D.webBusy ? ' disabled' : ''}>${D.webBusy ? 'Getting more…' : 'Show more'}</button>` : ''}<p class="disc-foot">Found with <a href="https://marginalia-search.com/">Marginalia Search</a>.</p>`
+      : `<p class="note">${esc(SR.webErr || 'No personal sites came up for this one.')}</p>`}</section>`;
+    const nets = SOC_NETS.filter(n => SOC.accounts[n]).map(n => NET[n]);
+    const soc = `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">What people are saying</h2></div>${!SR.soc ? '<p class="note">Connect Bluesky or Mastodon in Settings › Connections to see what everyone is saying about it right now.</p>'
+      : SR.soc.loading ? `<p class="note">Looking on ${esc(nets.join(' and '))}…</p>`
+      : `${SR.soc.posts.length ? SR.soc.posts.slice(0, 5).map(srSocialRow).join('') : `<p class="note">Nothing on ${esc(nets.join(' or '))} about it yet.</p>`}${SR.soc.errors.length ? `<p class="note err">${SR.soc.errors.map(esc).join(' · ')}</p>` : ''}
+        ${SR.soc.posts.length > 5 ? `<button class="linkish" type="button" data-alltalk>See all ${SR.soc.posts.length} in Conversations</button>` : ''}`}</section>`;
+    return `${form}<div class="sa">${follow}${blogsHtml(q)}${web}${soc}</div>`;
+  }
+  document.addEventListener('submit', e => { if (e.target.id !== 'allForm') return; e.preventDefault(); searchAll($('allQ').value); });
+  document.addEventListener('click', e => {
+    const p = e.target.closest('[data-allq]');
+    if (p) { if (p.dataset.allq) searchAll(p.dataset.allq); else { store.set('allSearches', '[]'); renderList(); } return; }
+    if (e.target.closest('[data-allfeeds]')) { SR.allFeeds = true; renderList(); return; }
+    if (e.target.closest('[data-allweb]')) { webMore(SR.web, () => S.view === 'search'); return; }
+    if (e.target.closest('[data-alltalk]')) { const q = SR.q; selectView('talk'); runSearch(q); return; }
+    if (e.target.closest('[data-everywhere]')) { const q = S.q; S.q = ''; if ($('q')) $('q').value = ''; searchAll(q); }
+  });
+
+  // Typing in Search stories filters the list you're on; this line takes the same words to Search
+  const everywhereHtml = () => S.q && S.q.trim().length > 1 && S.view !== 'email' ? `<button class="sa-everywhere" type="button" data-everywhere>Search everywhere for “${esc(S.q.trim())}” ›</button>` : '';
+  // ---- Sites like this one, on a person's page: Marginalia's "similar" sites (linked from the same places), blogs
+  // (ones with a feed) first, the ones you follow left out.
+  const SIM = new Map(); // host → { list, err, busy }
+  function similarHtml(host) {
+    if (!host) return '';
+    let s = SIM.get(host);
+    if (!s) {
+      s = { list: null, err: '', busy: true }; SIM.set(host, s);
+      invoke('similar_sites', { site: host }).then(l => { s.list = l || []; }).catch(e => { s.list = []; s.err = msg(e); })
+        .finally(() => { s.busy = false; if (SOC.person) renderList(); });
+    }
+    const list = (s.list || []).filter(x => !followsHost(x.site) || D.added.has(x.site)).slice(0, 6);
+    if (!s.busy && !list.length) return '';
+    return s.busy ? '<p class="sec-s">Looking for sites like this one…</p>'
+      : `<div class="bl-grid bl-sim">${list.map(x => blogCardHtml({ site: x.site, feed: x.feed })).join('')}</div><p class="sec-s">Sites linked from the same places, found with <a href="https://marginalia-search.com/">Marginalia Search</a>.</p>`;
+  }
   // A result's picture: the page's featured image, a soft placeholder while it loads, or a tile with the site's initial
   function tThumb(img, name, href, loading) {
     const letter = esc(((name || '•').replace(/^www\./, '')[0] || '•').toUpperCase()), hue = hueFor((name || '').toLowerCase());
@@ -2490,6 +2650,7 @@
     if (k === 'again') return topicSearch(b.dataset.q);
     if (k === 'clear') { store.set('topicSearches', '[]'); renderList(); return; }
     if (k === 'reset') return clearTopic();
+    if (k === 'webmore') return webMore(D.res, () => S.view === 'discover');
     const site = b.dataset.site || '';
     b.disabled = true; b.textContent = 'Adding…';
     try {
@@ -6826,6 +6987,7 @@
       ${sec('Recent', stream.slice(0, shownN).map(e => e.i ? nbCard(e.i, x, soc) : nbNote(e.s)).join('') + (stream.length > shownN ? `<button class="btn nb-more" data-talk="ppmore">Show more</button>` : '') || '<p class="note">Nothing from them yet. New posts show up after the next refresh.</p>')}
       ${sec(isMine ? 'You link to' : 'They link to', linksTo.length ? `<p class="pp-sub">Blogs ${esc(f.title)} links to that you don’t follow yet.</p>${linksTo.map(writerRow).join('')}` : '')}
       ${sec(isMine ? 'Your blogroll' : 'Their blogroll', rollHtml(f))}
+      ${sec(isMine ? 'Sites like yours' : 'Sites like this one', isSocialFeed(f) ? '' : similarHtml(host))}
     </div>`;
   }
 
