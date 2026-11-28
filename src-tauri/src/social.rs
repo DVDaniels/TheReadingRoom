@@ -465,8 +465,10 @@ pub(crate) fn masto_key() -> &'static str {
 fn masto_label() -> &'static str {
     if masto_key() == "gab" { "Gab" } else { "Mastodon" }
 }
+/// Is Bluesky connected (and not skipped by the Gab pass)? It once called itself here instead of reading the sign-in,
+/// which spun for ever in the release build: every Bluesky/Mastodon request hung (Nov 25–28).
 fn bsky_on() -> bool {
-    !NO_BSKY.try_with(|b| *b).unwrap_or(false) && bsky_on()
+    !NO_BSKY.try_with(|b| *b).unwrap_or(false) && secret_get("bluesky").is_some()
 }
 /// Run an "everything" command again for your Gab account (Mastodon parts only), if Gab is connected.
 async fn on_gab<F: std::future::Future>(f: F) -> Option<F::Output> {
@@ -2938,6 +2940,14 @@ mod likes_tests {
 
 #[cfg(test)]
 mod their_likes_tests {
+    #[test]
+    fn bsky_on_answers() {
+        // it must come back (it used to call itself for ever)
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || { let _ = tx.send(super::bsky_on()); });
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(10)).is_ok(), "bsky_on() didn't return");
+    }
+
     #[test]
     fn mentions_become_links() {
         let h = super::note_html("Thanks [Jo Hart](https://johart.blog/) and see https://a.b/c too.");
