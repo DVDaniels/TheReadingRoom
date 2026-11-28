@@ -3024,6 +3024,72 @@ pub async fn social_profiles() -> Vec<Profile> {
     }
 }
 
+/// "What's stuck?": each step of reaching Bluesky and Mastodon on its own, each with its own time limit, so a step
+/// that never answers shows up by name (Nov 28: both cards and Following hung on David's Mac with no error).
+#[tauri::command]
+pub async fn social_diag() -> Vec<String> {
+    use std::time::Instant;
+    use tokio::time::timeout;
+    let mut out = Vec::new();
+    let ms = |t: Instant| format!("{:.1} s", t.elapsed().as_secs_f32());
+    async fn keychain(key: &'static str) -> Result<bool, &'static str> {
+        match timeout(Duration::from_secs(10), tokio::task::spawn_blocking(move || secret_get(key).is_some())).await {
+            Ok(Ok(found)) => Ok(found),
+            Ok(Err(_)) => Err("crashed"),
+            Err(_) => Err("no answer after 10 s"),
+        }
+    }
+    if bsky_on() {
+        let t = Instant::now();
+        match keychain("bluesky").await {
+            Ok(f) => out.push(format!("Bluesky sign-in in the Keychain: {} ({})", if f { "found" } else { "not found" }, ms(t))),
+            Err(e) => out.push(format!("Bluesky sign-in in the Keychain: {e}")),
+        }
+        let t = Instant::now();
+        match timeout(Duration::from_secs(5), bsky_slot().lock()).await {
+            Ok(g) => { drop(g); out.push(format!("Bluesky lock: free ({})", ms(t))); }
+            Err(_) => out.push("Bluesky lock: still held by another request after 5 s".into()),
+        }
+        let t = Instant::now();
+        match timeout(Duration::from_secs(40), bsky_session(false)).await {
+            Ok(Ok(s)) => out.push(format!("Bluesky sign-in: ok, server {} ({})", s.pds, ms(t))),
+            Ok(Err(e)) => out.push(format!("Bluesky sign-in: {e} ({})", ms(t))),
+            Err(_) => out.push("Bluesky sign-in: no answer after 40 s".into()),
+        }
+        let t = Instant::now();
+        match timeout(Duration::from_secs(40), social_profiles_one_bsky()).await {
+            Ok(Ok(n)) => out.push(format!("Bluesky profile: {n} followers ({})", ms(t))),
+            Ok(Err(e)) => out.push(format!("Bluesky profile: {e} ({})", ms(t))),
+            Err(_) => out.push("Bluesky profile: no answer after 40 s".into()),
+        }
+    } else {
+        out.push("Bluesky: not connected on this device".into());
+    }
+    let t = Instant::now();
+    match keychain("mastodon").await {
+        Ok(f) => out.push(format!("Mastodon sign-in in the Keychain: {} ({})", if f { "found" } else { "not found" }, ms(t))),
+        Err(e) => out.push(format!("Mastodon sign-in in the Keychain: {e}")),
+    }
+    let t = Instant::now();
+    match timeout(Duration::from_secs(40), masto(reqwest::Method::GET, "/api/v1/accounts/verify_credentials", &[], None)).await {
+        Ok(Ok(p)) => out.push(format!("Mastodon profile: {} followers ({})", p.get("followers_count").and_then(|x| x.as_i64()).unwrap_or(0), ms(t))),
+        Ok(Err(e)) => out.push(format!("Mastodon profile: {e} ({})", ms(t))),
+        Err(_) => out.push("Mastodon profile: no answer after 40 s".into()),
+    }
+    let t = Instant::now();
+    match timeout(Duration::from_secs(10), tokio::task::spawn_blocking(|| secret_get("gab").is_some())).await {
+        Ok(_) => out.push(format!("Gab check: done ({})", ms(t))),
+        Err(_) => out.push("Gab check (Keychain): no answer after 10 s".into()),
+    }
+    out
+}
+
+async fn social_profiles_one_bsky() -> Result<i64, String> {
+    let s = bsky_session(false).await?;
+    let p = bsky(true, "app.bsky.actor.getProfile", &[("actor", s.did.clone())], None).await?;
+    Ok(p.get("followersCount").and_then(|x| x.as_i64()).unwrap_or(0))
+}
+
 /// social_followers, for your Mastodon and (if connected) Gab accounts.
 #[tauri::command]
 pub async fn social_followers() -> Vec<Follower> {
