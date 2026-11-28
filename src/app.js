@@ -7720,7 +7720,16 @@
     loadReaders();
     await Promise.allSettled(tasks);
   }
-  document.addEventListener('click', e => { if (e.target.closest('[data-talkagain]')) $('talkRefresh')?.click(); });
+  document.addEventListener('click', async e => {
+    if (e.target.closest('[data-talkagain]')) { $('talkRefresh')?.click(); return; }
+    const d = e.target.closest('[data-talkdiag]'); if (!d) return;
+    // each step of reaching Bluesky and Mastodon, timed on its own (takes up to a couple of minutes when something hangs)
+    const el = sheet('talkDiag', `<h2>What’s stuck?</h2><p class="note">Trying each step of reaching Bluesky and Mastodon on its own. This can take up to two minutes.</p><ol id="diagOut" class="diag"></ol><div class="row sheet-foot"><button class="btn primary" type="button" id="diagDone">Done</button></div>`, 'What’s stuck?');
+    $('diagDone').onclick = () => { el.hidden = true; };
+    try { const lines = await invoke('social_diag'); $('diagOut').innerHTML = lines.map(l => `<li>${esc(l)}</li>`).join(''); }
+    catch (err) { $('diagOut').innerHTML = `<li>${esc(msg(err))}</li>`; }
+    $('diagOut').insertAdjacentHTML('afterend', '<p class="note">Take a screenshot of this and send it over.</p>');
+  });
   const inTime = (p, ms, why) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(why), ms))]);
   const fmtN = n => n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n || 0);
   // Your own page (the same page everyone you read has), first in the You tab
@@ -7749,7 +7758,7 @@
   }
   function profilesHtml() {
     const ps = SOC.profiles || [];
-    const missing = anySocial() && !ps.length && SOC.profilesErr ? `<p class="note pstrip-note">${esc(SOC.profilesErr)} <button class="linkish" type="button" data-talkagain>Try again</button></p>` : '';
+    const missing = anySocial() && !ps.length && SOC.profilesErr ? `<p class="note pstrip-note">${esc(SOC.profilesErr)} <button class="linkish" type="button" data-talkagain>Try again</button> · <button class="linkish" type="button" data-talkdiag>What’s stuck?</button></p>` : '';
     return `<div class="pstrip">${myPageCard()}${missing}${ps.map(p => {
       const fresh = (SOC.followers || []).filter(f => f.network === p.network && Date.now() - Date.parse(f.followed_at) < WEEK_MS).length;
       return `<button class="pcard" data-talk="open" data-url="${esc(p.url)}" title="Open your ${NET[p.network]} profile">

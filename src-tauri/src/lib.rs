@@ -3109,6 +3109,7 @@ pub fn run() {
             social::social_reply,
             social::social_moderate,
             social::social_profiles,
+            social::social_diag,
             social::social_followers,
             social::social_follow,
             social::social_shared,
