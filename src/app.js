@@ -3073,7 +3073,16 @@
   function paintMedia(it) {
     const box = $('rMedia'), yt = ytId(it.link);
     box.hidden = !(yt || it.audio); box.innerHTML = '';
-    if (yt) {
+    if (yt && it.paid) {
+      // Members-only videos (David, Nov 28: "I am a paid subscriber but I cannot watch the video in the app"): YouTube's
+      // embedded player never plays them, so offer youtube.com itself, where his own sign-in carries the membership.
+      const watch = `https://www.youtube.com/watch?v=${encodeURIComponent(yt)}`;
+      box.innerHTML = `<div class="r-video r-members"${isWeb(it.image) ? ` style="background-image:url('${esc(it.image)}')"` : ''}><div class="r-members-in">
+        <b>${LOCK} For channel members</b>
+        <p>YouTube plays members-only videos only on YouTube itself, signed in to the account that has the membership.</p>
+        <div class="r-members-acts"><button class="btn primary" type="button" data-mwatch="${esc(watch)}">${IOS ? 'Open in YouTube' : 'Watch in the app'}</button>${IOS ? '' : `<button class="btn" type="button" data-mext="${esc(watch)}">Open in your browser</button>`}</div>
+        ${IOS ? '' : '<small>The first time, sign in to YouTube in that window. It stays signed in.</small>'}</div></div>`;
+    } else if (yt) {
       const back = miniTime(yt, it.id); // coming back from the mini player: carry on from there
       box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title, back)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
       fillFollowRows(box);
@@ -8440,6 +8449,10 @@
 
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
+  document.addEventListener('click', e => {
+    const w = e.target.closest('[data-mwatch]'); if (w) { openWeb(w.dataset.mwatch); return; }
+    const x = e.target.closest('[data-mext]'); if (x) invoke('open_external', { url: x.dataset.mext }).catch(() => openWeb(x.dataset.mext));
+  });
   // A link in something you're reading or writing. A YouTube video plays the way videos do everywhere in the app —
   // just the video, in the video window on the Mac, in the mini player on iPhone and iPad; anything else opens in
   // the web window (David, Nov 28: a video link in a draft's preview opened YouTube in two windows).

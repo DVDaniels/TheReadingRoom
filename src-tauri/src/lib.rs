@@ -1599,6 +1599,9 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
     let bar = tauri::webview::WebviewBuilder::new("webbar", WebviewUrl::App("webbar.html".into()));
     let opener = app.clone();
     let page = tauri::webview::WebviewBuilder::new("webpage", WebviewUrl::External(u))
+        // It is Safari's engine: say so, or Google refuses to sign in here ("This browser or app may not be secure"),
+        // and members-only YouTube videos need that sign-in (David, Nov 28).
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15")
         // Links that ask for a new tab (Bluesky, Mastodon and many sites open outside links that way) open right here;
         // Back returns to where you were.
         .on_new_window(move |url, _features| {
