@@ -6493,7 +6493,7 @@
   // latest photos (friends-only and family-only ones too, which Flickr's public feeds leave out), comments on your
   // photos, your own photos with their numbers, and uploads (Plus). Reading here is free; uploading is Plus.
   // Rust: flickr_contacts, flickr_activity, flickr_mine, flickr_upload (flickr.rs).
-  const FL = { who: store.get('flWho') === 'friends' ? 'friends' : 'all', contacts: null, cErr: '', cBusy: false, cShow: 24,
+  const FL = { sMine: store.get('flSWho') === 'mine', who: store.get('flWho') === 'friends' ? 'friends' : 'all', contacts: null, cErr: '', cBusy: false, cShow: 24,
     act: null, aErr: '', aBusy: false, mine: null, mErr: '', mBusy: false, page: 1, pages: 1, total: 0,
     person: null, sub: '', album: null, people: { data: null, busy: false, err: '' }, sel: { on: false, key: '', ids: new Set(), ask: false, who: '', busy: false, say: '', sayErr: false }, cView: store.get('flCView') === 'photos' ? 'photos' : 'people', pq: '', pShow: 30, desc: {}, flWait: '', albumsMine: { data: null, busy: false, err: '' }, faves: { data: null, busy: false, err: '' }, q: '', sort: 'relevance', sres: { data: null, busy: false, err: '' }, files: [], upAlbum: '', upNew: '', upDone: 0, see: store.get('flSee') || 'public', sending: false, say: '', sayErr: false, link: '', at: 0 };
   const flDraft = () => { try { return JSON.parse(store.get('flDraft') || '{}') || {}; } catch { return {}; } };
@@ -6759,8 +6759,9 @@
       FL.album = { ...a, mine, from: mine ? null : FL.person, data: null, busy: false, err: '' }; FL.person = null; FL.sub = 'albums'; renderHead(); flPaint(); renderRail(); $('main')?.scrollTo({ top: 0 }); $('listView')?.scrollTo({ top: 0 }); return; }
     if (k === 'amore') { const A = FL.album; if (A?.data) flPageLoad(A, 'flickr_album', { id: A.id, owner: A.owner }, A.data.page + 1); flPaint(); return; }
     if (k === 'fmore') { if (FL.faves.data) flPageLoad(FL.faves, 'flickr_faves', {}, FL.faves.data.page + 1); flPaint(); return; }
-    if (k === 'smore') { if (FL.sres.data) flPageLoad(FL.sres, 'flickr_search', { text: FL.q, sort: FL.sort }, FL.sres.data.page + 1); flPaint(); return; }
+    if (k === 'smore') { if (FL.sres.data) flPageLoad(FL.sres, 'flickr_search', { text: FL.q, sort: FL.sort, mine: FL.sMine }, FL.sres.data.page + 1); flPaint(); return; }
     if (k === 'sort') { FL.sort = b.dataset.k; FL.sres = { data: null, busy: false, err: '' }; flPaint(); return; }
+    if (k === 'swho') { FL.sMine = b.dataset.k === 'mine'; store.set('flSWho', FL.sMine ? 'mine' : 'all'); FL.sres = { data: null, busy: false, err: '' }; flPaint(); return; }
     if (k === 'ptab') { if (FL.person) { FL.person.tab = b.dataset.k; flPaint(); } return; }
     if (k === 'pmore') { flPersonMore(); return; }
     if (k === 'follow') { b.disabled = true; b.textContent = 'Adding…';
@@ -7102,14 +7103,22 @@
   }
   function flSearchHtml() {
     const R = FL.sres, d = R.data;
-    if (!d && !R.busy && !R.err) flPageLoad(R, 'flickr_search', { text: FL.q, sort: FL.sort }, 1);
+    if (!d && !R.busy && !R.err && (FL.q || !FL.sMine)) flPageLoad(R, 'flickr_search', { text: FL.q, sort: FL.sort, mine: FL.sMine }, 1);
     const sorts = [['relevance', 'Best match'], ['interesting', 'Most interesting'], ['recent', 'Newest']];
-    return `<section class="b-panel" aria-label="Search Flickr"><form class="fl-search" id="flSearch" role="search"><input type="search" id="flQ" value="${esc(FL.q)}" placeholder="Search everyone’s photos" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Search</button></form>
+    return `<section class="b-panel" aria-label="Search Flickr"><form class="fl-search" id="flSearch" role="search"><input type="search" id="flQ" value="${esc(FL.q)}" placeholder="${FL.sMine ? 'Search your photos' : 'Search everyone’s photos'}" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Search</button></form>
+      <div class="nb-chips">${[['all', 'Everyone'], ['mine', 'Your photos']].map(([k, l]) => `<button class="nb-chip" type="button" data-fl="swho" data-k="${k}" aria-pressed="${(k === 'mine') === FL.sMine}">${l}</button>`).join('')}</div>
       ${FL.q ? `<div class="nb-chips">${sorts.map(([k, l]) => `<button class="nb-chip" type="button" data-fl="sort" data-k="${k}" aria-pressed="${FL.sort === k}">${l}</button>`).join('')}</div>` : ''}
       ${d?.person ? `<p class="fl-found">Someone on Flickr is called <b>${esc(d.person.name)}</b>. <button class="b-link" type="button" data-fl="person" data-nsid="${esc(d.person.nsid)}">See their photos</button></p>` : ''}
-      <div class="bp-head"><h3 class="b-sub">${FL.q ? `Photos about “${esc(FL.q)}”` : 'Explore'}</h3><span class="bp-meta">${FL.q ? (d ? `${nfmt(d.total)} found · SafeSearch on` : '') : 'Flickr’s pick of interesting photos lately'}</span></div>
-      ${d?.photos?.length ? flWhoTookHtml(d.photos) : ''}
-      ${!d ? flWait(R, FL.q ? 'photos' : 'Explore') : d.photos.length ? flGridHtml(d.photos, 'search', false) + flMore(d.page < d.pages, R.busy, 'smore') : '<p class="day-note">Nothing found. Try other words.</p>'}</section>`;
+      <div class="bp-head"><h3 class="b-sub">${FL.q ? `${FL.sMine ? 'Your photos' : 'Photos'} about “${esc(FL.q)}”` : FL.sMine ? 'Your photos' : 'Explore'}</h3><span class="bp-meta">${d?.restricted ? '' : FL.q ? (d ? `${nfmt(d.total)} found${FL.sMine ? '' : ' · SafeSearch on'}` : '') : FL.sMine ? 'Type a word to look through your own photos' : 'Flickr’s pick of interesting photos lately'}</span></div>
+      ${d?.photos?.length && !FL.sMine ? flWhoTookHtml(d.photos) : ''}
+      ${!FL.q && FL.sMine ? '' : d?.restricted ? flRefusedHtml() : !d ? flWait(R, FL.q ? 'photos' : 'Explore') : d.photos.length ? flGridHtml(d.photos, 'search', false) + flMore(d.page < d.pages, R.busy, 'smore') : '<p class="day-note">Nothing found. Try other words.</p>'}</section>`;
+  }
+  // Flickr lets this app search only your own photos (its key rules, error 22): say so, and offer Flickr's own search
+  // in the app's web window, or your photos.
+  function flRefusedHtml() {
+    const url = FL.q ? `https://www.flickr.com/search/?text=${encodeURIComponent(FL.q)}&safe_search=1` : 'https://www.flickr.com/explore';
+    return `<div class="fl-refused"><p class="day-note">Flickr only lets apps like this one look through <b>your own</b> photos, so searching everyone’s photos has to happen on Flickr’s site.</p>
+      <div class="wr-acts"><button class="btn primary" type="button" data-fl="flweb" data-url="${esc(url)}">${FL.q ? `Search Flickr for “${esc(FL.q)}”` : 'Open Explore on Flickr'}</button>${FL.q ? '<button class="btn" type="button" data-fl="swho" data-k="mine">Search your photos instead</button>' : ''}</div></div>`;
   }
   // the people who took these photos, to open their page and follow them (the ones you follow are marked)
   function flWhoTookHtml(photos) {

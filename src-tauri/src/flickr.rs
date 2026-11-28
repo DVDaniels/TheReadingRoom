@@ -715,22 +715,33 @@ pub async fn flickr_faves(page: Option<u32>) -> Result<Value, String> {
 /// "recent"; SafeSearch on. With no words, Flickr's Explore (its pick of interesting photos lately). A word that
 /// is someone's exact Flickr name also brings them up, to open their page.
 #[tauri::command]
-pub async fn flickr_search(text: String, sort: Option<String>, page: Option<u32>) -> Result<Value, String> {
+pub async fn flickr_search(text: String, sort: Option<String>, page: Option<u32>, mine: Option<bool>) -> Result<Value, String> {
     let q = text.trim().to_string();
     let page = page.unwrap_or(1).max(1).to_string();
     if q.is_empty() {
-        let r = api("flickr.interestingness.getList", &[("per_page", "48".to_string()), ("page", page), ("extras", LIST_EXTRAS.to_string())]).await?;
+        let r = match api("flickr.interestingness.getList", &[("per_page", "48".to_string()), ("page", page), ("extras", LIST_EXTRAS.to_string())]).await {
+            Ok(r) => r,
+            Err(e) if refused_for_others(&e) => return Ok(json!({ "photos": [], "page": 1, "pages": 1, "total": 0, "explore": true, "restricted": true })),
+            Err(e) => return Err(e),
+        };
         let mut out = photo_list(&r, "photos", "");
         out["explore"] = json!(true);
         return Ok(out);
     }
+    let mine = mine.unwrap_or(false);
     let sort = match sort.as_deref() { Some("interesting") => "interestingness-desc", Some("recent") => "date-posted-desc", _ => "relevance" };
-    let r = api("flickr.photos.search", &[
+    let mut args = vec![
         ("text", q.clone()), ("sort", sort.to_string()), ("safe_search", "1".to_string()), ("content_types", "0".to_string()),
         ("media", "photos".to_string()), ("per_page", "48".to_string()), ("page", page.clone()), ("extras", LIST_EXTRAS.to_string()),
-    ]).await?;
-    let mut out = photo_list(&r, "photos", "");
-    if page == "1" && !q.contains(' ') {
+    ];
+    if mine { args.push(("user_id", "me".to_string())); }
+    // Flickr lets this app's key search only your own photos (photos.search error 22): say so plainly instead of failing.
+    let mut out = match api("flickr.photos.search", &args).await {
+        Ok(r) => photo_list(&r, "photos", ""),
+        Err(e) if !mine && refused_for_others(&e) => json!({ "photos": [], "page": 1, "pages": 1, "total": 0, "restricted": true }),
+        Err(e) => return Err(e),
+    };
+    if page == "1" && !mine && !q.contains(' ') {
         if let Ok(u) = api("flickr.people.findByUsername", &[("username", q.clone())]).await {
             let nsid = st(&u["user"], "nsid");
             if !nsid.is_empty() {
@@ -739,6 +750,13 @@ pub async fn flickr_search(text: String, sort: Option<String>, page: Option<u32>
         }
     }
     Ok(out)
+}
+
+/// Flickr refuses this app's key anything about other members' photos: "This API key can only search the calling
+/// user's own photos" (error 22) or "…can only access the calling user's own photos".
+fn refused_for_others(e: &str) -> bool {
+    let e = e.to_lowercase();
+    e.contains("api key can only") || e.contains("calling user's own photos") || e.contains("calling user’s own photos")
 }
 
 /// The albums one of your photos is in.
@@ -1141,6 +1159,13 @@ mod tests {
         let bad = "<rsp stat=\"fail\">\n<err code=\"5\" msg=\"Filetype was not recognised\" />\n</rsp>";
         assert_eq!(upload_id(bad), None);
         assert_eq!(upload_error(bad), "Filetype was not recognised");
+    }
+
+    #[test]
+    fn refused_for_others_matches_flickr() {
+        assert!(super::refused_for_others("Flickr said: This API key can only search the calling user's own photos"));
+        assert!(super::refused_for_others("This API key can only access the calling user's own photos"));
+        assert!(!super::refused_for_others("Flickr didn't answer."));
     }
 
     #[test]

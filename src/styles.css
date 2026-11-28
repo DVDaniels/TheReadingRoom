@@ -3222,3 +3222,5 @@ body.flv-open #shareMenu { z-index: 1000; }
 .flickr-tab .fl-bulk .tb-acts { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: -10px; padding: 8px 0 2px; background: var(--card, var(--surface)); }
 @media (min-width: 901px) { .flickr-tab .fl-selbar { left: calc(50% + 135px); } }
 @media (max-width: 900px) { .flickr-tab .fl-selbar, .flickr-tab .fl-selbar.flv-del { left: 12px; right: 12px; transform: none; width: auto; max-width: none; } }
+
+.fl-refused .wr-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
