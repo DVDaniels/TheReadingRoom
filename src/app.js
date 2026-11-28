@@ -4094,7 +4094,7 @@
     el.querySelector('.sheet').classList.add('wr-pv');
     el.onclick = e => {
       const b = e.target.closest('[data-wrpv]');
-      if (!b) { const a = e.target.closest('.prose a[href]'); if (a) { e.preventDefault(); invoke('open_external', { url: a.href }).catch(() => {}); } return; }
+      if (!b) return; // links: the app-wide handler opens them (a video link plays the video) — this used to open Safari as well
       const k = b.dataset.wrpv; el.hidden = true;
       if (k === 'post') wrPost(false);
       if (k === 'edit') wrEdit(v.id);
@@ -9108,6 +9108,17 @@
 
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
+  // A link in something you're reading or writing. A YouTube video plays the way videos do everywhere in the app —
+  // just the video, in the video window on the Mac, in the mini player on iPhone and iPad; anything else opens in
+  // the web window (David, Nov 28: a video link in a draft's preview opened YouTube in two windows).
+  function openLink(url, title = '') {
+    const id = ytId(url);
+    if (!id) return openWeb(url);
+    const t = Number((/[?&#]t=(\d+)/.exec(url) || [])[1]) || 0;
+    const name = /^\s*(https?:|www\.)/i.test(title || '') ? 'Video' : (title || '').trim().slice(0, 120) || 'Video';
+    if (IOS) { openMini({ kind: 'yt', v: id, title: name, t, item: null }); return; }
+    invoke('open_player', { url: ytPlayUrl(id, name, { t, auto: 1 }), title: name }).catch(() => openWeb(url));
+  }
   let listScroll = 0, articleHtml = '', articleFor = null;
 
   // Wide windows show the list and the article side by side (the breakpoint matches styles.css).
@@ -9945,7 +9956,7 @@
   $('rNext').onclick = () => step(1);
   $('reader').addEventListener('click', e => {
     const a = e.target.closest('a[href]');
-    if (a) { e.preventDefault(); openWeb(a.href); return; }
+    if (a) { e.preventDefault(); openLink(a.href, a.textContent); return; }
     const ts = e.target.closest('[data-ts]');
     if (ts) { // a chapter time in a video's description: play the video above from there
       const it = item(S.readerId), id = ytId(it?.link), v = $('rMedia').querySelector('.r-video');
@@ -9965,7 +9976,7 @@
     if (e.target.closest('.reader, .pop, .menu')) return; // the reader handles its own clicks
     // Every web link opens inside the app, in its web window (a book's own footnotes stay in the book).
     const a = e.target.closest('a[href]');
-    if (a) { e.preventDefault(); if (S.view === 'books' && a.closest('.bk-text') && bookLink(a)) return; openWeb(a.href); return; }
+    if (a) { e.preventDefault(); if (S.view === 'books' && a.closest('.bk-text') && bookLink(a)) return; openLink(a.href, a.textContent); return; }
 
     const grp = e.target.closest('[data-group]');
     if (grp) { const g = grp.dataset.group; foldedGroups.has(g) ? foldedGroups.delete(g) : foldedGroups.add(g); saveFoldedGroups(); renderRail(); return; }
