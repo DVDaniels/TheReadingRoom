@@ -9891,6 +9891,21 @@
     const r = e.currentTarget.getBoundingClientRect();
     menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 8) + 'px';
   };
+  // App icon: Green or Midnight (Rust: app_icon_set). iPhone/iPad keep it themselves; the Mac's Dock icon is set at
+  // every start (Finder and Launchpad keep the green one). Each device keeps its own choice.
+  const appIcon = () => { try { return localStorage.getItem('appIcon') === 'midnight' ? 'midnight' : 'green'; } catch { return 'green'; } };
+  function paintAppIcon() {
+    document.querySelectorAll('#setIcon button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.appicon === appIcon())));
+    const n = $('setIconNote'); if (n) n.textContent = IOS ? 'Your Home Screen shows the one you pick. iPhone and iPad say so with a short note.'
+      : 'The Dock shows the one you pick while the app is open. Finder and Launchpad keep the green one.';
+  }
+  $('setIcon')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-appicon]'); if (!b) return;
+    try { localStorage.setItem('appIcon', b.dataset.appicon); } catch {}
+    paintAppIcon(); invoke('app_icon_set', { name: b.dataset.appicon }).catch(() => {});
+  });
+  paintAppIcon();
+  if (appIcon() === 'midnight') invoke('app_icon_set', { name: 'midnight' }).catch(() => {});
   $('typeMenu').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.size) typePrefs.size = Math.max(14, Math.min(28, typePrefs.size + Number(b.dataset.size)));

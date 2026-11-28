@@ -90,6 +90,11 @@ jobs:
           missing=$(python3 -c "import json,os,sys;d=sys.argv[1];print(' '.join(i['filename'] for i in json.load(open(d+'/Contents.json'))['images'] if i.get('filename') and not os.path.exists(d+'/'+i['filename'])))" "$ICONSET")
           [ -z "$missing" ] || { echo "::error title=App icon::Missing icon files: $missing"; exit 1; }
           echo "::notice title=App icon::Copied $(ls src-tauri/icons/ios/*.png | wc -l | tr -d ' ') icon files into $ICONSET"
+          # The Midnight icon, chosen in Settings › Appearance (one 1024 picture; Xcode makes the sizes)
+          ALTSET="$(dirname "$ICONSET")/AppIcon-Midnight.appiconset"
+          mkdir -p "$ALTSET" && cp src-tauri/icons/ios-midnight-1024.png "$ALTSET/"
+          printf '%s' '{"images":[{"filename":"ios-midnight-1024.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$ALTSET/Contents.json"
+          echo "::notice title=App icon::Added $ALTSET"
           # Not using encryption beyond HTTPS: answer Apple's export question once, in the app itself.
           PLIST="$(find src-tauri/gen/apple -name Info.plist -path '*_iOS*' | head -1)"
           echo "::notice title=Info.plist::$PLIST"

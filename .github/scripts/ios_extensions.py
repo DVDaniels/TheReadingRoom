@@ -46,6 +46,8 @@ def main():
 
     # the app: signed by hand, allowed into the shared keychain group, and told its name
     app.setdefault("settings", {}).setdefault("base", {}).update(signing(PROFILES["main"]))
+    # the Midnight app icon (AppIcon-Midnight.appiconset, put in by ios.yml) as an alternate icon
+    app["settings"]["base"]["ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES"] = "AppIcon-Midnight"
     ent = app.setdefault("entitlements", {"path": f"{app_name}/{app_name}.entitlements"})
     ent.setdefault("properties", {})["keychain-access-groups"] = [f"$(AppIdentifierPrefix){BUNDLE}", f"$(AppIdentifierPrefix){BUNDLE}.shared"]
     app.setdefault("info", {}).setdefault("properties", {})["ReadingRoomKeychainGroup"] = GROUP

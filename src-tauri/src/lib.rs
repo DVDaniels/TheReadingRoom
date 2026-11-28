@@ -22,6 +22,7 @@ mod share;
 mod email;
 mod webmention;
 mod review;
+mod appicon;
 mod youtube;
 mod offline;
 mod daybook;
@@ -3229,6 +3230,7 @@ pub fn run() {
             open_player,
             open_external,
             review::request_review,
+            appicon::app_icon_set,
             add_highlight,
             set_note,
             delete_highlight,
