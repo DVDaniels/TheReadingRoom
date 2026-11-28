@@ -1601,7 +1601,7 @@ async fn open_web(app: AppHandle, url: String) -> Result<(), String> {
     let page = tauri::webview::WebviewBuilder::new("webpage", WebviewUrl::External(u))
         // It is Safari's engine: say so, or Google refuses to sign in here ("This browser or app may not be secure"),
         // and members-only YouTube videos need that sign-in (David, Nov 28).
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15")
+        .user_agent(SAFARI_UA)
         // Links that ask for a new tab (Bluesky, Mastodon and many sites open outside links that way) open right here;
         // Back returns to where you were.
         .on_new_window(move |url, _features| {
@@ -1724,6 +1724,34 @@ async fn open_share(app: AppHandle, url: String) -> Result<(), String> {
 /// shows the video's page only (readingroomapp.com/play for YouTube, or the file itself) and gets no
 /// access to the app. One window, reused.
 #[cfg(desktop)]
+const SAFARI_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
+
+/// On a youtube.com watch page in the video window: hide everything but the player and stretch it over the window.
+/// YouTube changes pages without reloading, so the style stays put and the player is nudged to resize a few times.
+#[cfg(desktop)]
+const PLAYER_ONLY_JS: &str = r#"(() => {
+  if (!/(^|\.)youtube\.com$/.test(location.hostname)) return;
+  const css = `
+    html, body, ytd-app { overflow: hidden !important; background: #000 !important; }
+    #masthead-container, ytd-masthead, tp-yt-app-drawer, ytd-mini-guide-renderer, #secondary, #below, #comments,
+    ytd-watch-metadata, #related, #chat, ytd-popup-container, tp-yt-iron-overlay-backdrop, ytd-consent-bump-v2-lightbox { display: none !important; }
+    #movie_player { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
+      max-height: none !important; z-index: 2147483646 !important; background: #000 !important; }
+    #movie_player video { width: 100% !important; height: 100% !important; left: 0 !important; top: 0 !important; object-fit: contain !important; }`;
+  const add = () => {
+    if (!location.pathname.startsWith('/watch')) { document.getElementById('rr-player-only')?.remove(); return; }
+    if (document.getElementById('rr-player-only')) return;
+    const to = document.head || document.documentElement; if (!to) return; // too early: the timer below tries again
+    const st = document.createElement('style'); st.id = 'rr-player-only'; st.textContent = css;
+    to.appendChild(st);
+  };
+  add();
+  document.addEventListener('DOMContentLoaded', add);
+  window.addEventListener('yt-navigate-finish', add);
+  let n = 0; const t = setInterval(() => { add(); window.dispatchEvent(new Event('resize')); if (++n > 20) clearInterval(t); }, 500);
+})();"#;
+
+#[cfg(desktop)]
 #[tauri::command]
 async fn open_player(app: AppHandle, url: String, title: String) -> Result<(), String> {
     let u = web_url(&url)?;
@@ -1740,6 +1768,11 @@ async fn open_player(app: AppHandle, url: String, title: String) -> Result<(), S
         .inner_size(640.0, 360.0)
         .min_inner_size(320.0, 180.0)
         .always_on_top(true)
+        // Members-only videos play only on youtube.com's own page; in this window that page shows just the player
+        // (David, Nov 28: "any way to get these videos in just the video screen?"). Same Safari identity as the web
+        // window, which shares its YouTube sign-in.
+        .user_agent(SAFARI_UA)
+        .initialization_script(PLAYER_ONLY_JS)
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())

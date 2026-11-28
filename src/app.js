@@ -3080,8 +3080,8 @@
       box.innerHTML = `<div class="r-video r-members"${isWeb(it.image) ? ` style="background-image:url('${esc(it.image)}')"` : ''}><div class="r-members-in">
         <b>${LOCK} For channel members</b>
         <p>YouTube plays members-only videos only on YouTube itself, signed in to the account that has the membership.</p>
-        <div class="r-members-acts"><button class="btn primary" type="button" data-mwatch="${esc(watch)}">${IOS ? 'Open in YouTube' : 'Watch in the app'}</button>${IOS ? '' : `<button class="btn" type="button" data-mext="${esc(watch)}">Open in your browser</button>`}</div>
-        ${IOS ? '' : '<small>The first time, sign in to YouTube in that window. It stays signed in.</small>'}</div></div>`;
+        <div class="r-members-acts"><button class="btn primary" type="button" data-mwatch="${esc(watch)}" data-title="${esc(it.title || '')}">${IOS ? 'Open in YouTube' : 'Watch in the app'}</button>${IOS ? '' : `<button class="btn" type="button" data-mext="${esc(watch)}">Open in your browser</button>`}</div>
+        ${IOS ? '' : '<small>Plays in the video window. If YouTube asks you to sign in, use View original once to sign in to YouTube; the video window then knows you.</small>'}</div></div>`;
     } else if (yt) {
       const back = miniTime(yt, it.id); // coming back from the mini player: carry on from there
       box.innerHTML = `<div class="r-video">${ytPlayer(yt, it.title, back)}</div>${isYouTubeFeed(feedById(it.feed_id)) ? '' : followRow(yt)}`;
@@ -8450,7 +8450,8 @@
   // ------------------------------------------------------------ reader
   const openWeb = url => { if (isWeb(url)) invoke('open_web', { url }).catch(e => status(msg(e), true)); };
   document.addEventListener('click', e => {
-    const w = e.target.closest('[data-mwatch]'); if (w) { openWeb(w.dataset.mwatch); return; }
+    // Mac: the video window, where youtube.com shows just the player (David, Nov 28); iPhone/iPad: YouTube itself
+    const w = e.target.closest('[data-mwatch]'); if (w) { if (IOS) openWeb(w.dataset.mwatch); else invoke('open_player', { url: w.dataset.mwatch, title: w.dataset.title || 'Video' }).catch(() => openWeb(w.dataset.mwatch)); return; }
     const x = e.target.closest('[data-mext]'); if (x) invoke('open_external', { url: x.dataset.mext }).catch(() => openWeb(x.dataset.mext));
   });
   // A link in something you're reading or writing. A YouTube video plays the way videos do everywhere in the app —
