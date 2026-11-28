@@ -3369,3 +3369,7 @@ body.flv-open #shareMenu { z-index: 1000; }
 .sa-x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 2px 4px; cursor: pointer; border-radius: 6px; }
 .sa-x:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 body.sa-plain #listTop .head { display: none; }
+/* Discover: a door to Search */
+.sa-door { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 620px; margin: 4px 0 18px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: 15px var(--font-ui); text-align: left; cursor: pointer; }
+.sa-door:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--ink); }
+.sa-door svg { width: 18px; height: 18px; flex: none; }

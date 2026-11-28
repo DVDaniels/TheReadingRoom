@@ -558,7 +558,7 @@
       : S.view === 'people' ? `${unreadIn('people')} unread from people you read`
       : S.view === 'videos' ? (S.vchan && feedById(S.vchan) ? `${S.items.filter(i => !i.read && isVideoItem(i) && String(i.feed_id) === String(S.vchan)).length} unwatched from ${feedById(S.vchan).title}` : `${unreadIn('videos')} unwatched from the channels you follow`)
       : S.view === 'guide' ? 'A five-minute introduction to RSS and this app'
-      : S.view === 'search' ? (SR.q ? `Everything about “${SR.q}”` : 'What you follow, blogs, personal sites and what people are saying, at once')
+      : S.view === 'search' ? (SR.q ? `Everything about “${SR.q}”` : 'What you follow, blogs, personal sites, the news and what people are saying')
       : S.view === 'edition' ? 'Yesterday’s reading as a front page, made at 6 every morning'
       : S.view === 'myday' ? (MD.mode === 'week' ? 'Look back at the week, then point the next one' : 'Your goals, your calendar and the markets')
       : S.view === 'write' ? (WR.sub ? `Writing › ${WR.sub.startsWith('cat-') ? (WR.cats || []).find(c => 'cat-' + c.id === WR.sub)?.name || '' : { ideas: 'Ideas', drafts: 'Drafts', posts: 'Posts', notes: 'Notes', weeknotes: 'Weeknotes' }[WR.sub]}` : 'Notes, posts and Weeknotes for your own site')
@@ -2469,6 +2469,10 @@
     }).catch(() => {});
   }
   const followsHost = h => S.feeds.some(f => [hostOfU(f.site), hostOfU(f.url)].some(x => x && bareHost(x) === bareHost(h)));
+  // Discover is for browsing now; typing happens on Search (David, Nov 28). This box opens Search.
+  function discSearchDoorHtml() {
+    return `<button class="sa-door" type="button" data-searchdoor>${ICONS.search}<span>Looking for something? Search blogs, personal sites and the news</span></button>`;
+  }
   function searchHtml() {
     const recent = recentSearches();
     let out = `<form class="t-search" id="topicForm" role="search"><span class="t-field"><input id="topicQ" type="search" placeholder="Search a topic, like slow travel or home espresso" value="${esc(D.q)}" autocomplete="off" aria-label="Search a topic">
@@ -2573,12 +2577,13 @@
   }
   async function searchAll(q) {
     q = (q || '').trim(); if (q.length < 2) return;
-    Object.assign(SR, { q, feeds: srFollowMatches(q), allFeeds: false, web: null, webErr: '', soc: anySocial() ? { loading: true, posts: [], errors: [] } : null });
+    Object.assign(SR, { q, feeds: srFollowMatches(q), allFeeds: false, allNews: false, web: null, webErr: '', soc: anySocial() ? { loading: true, posts: [], errors: [] } : null });
     store.set('allSearches', JSON.stringify([q, ...srAllPast().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8)));
     if (S.view !== 'search') selectView('search'); else renderList();
     blogsLoad(q);
-    invoke('web_search', { query: q, page: 1 }).then(r => { if (SR.q !== q) return; SR.web = { query: q, web: r.web || [], web_page: 1, web_pages: r.pages || 1 };
-      const want = SR.web.web.map(w => w.url).filter(u => !D.imgs.has(u));
+    invoke('topic_search', { query: q }).then(r => { if (SR.q !== q) return; SR.web = { ...r, query: q, web: r.web || [], news: r.news || [], small: r.small || [], web_page: 1, web_pages: r.web_pages || 1 };
+      if (r.web_error && !SR.web.web.length) SR.webErr = r.web_error;
+      const want = [...SR.web.web.map(w => w.url), ...SR.web.small.map(p => p.link)].filter(u => !D.imgs.has(u));
       if (want.length) invoke('page_images', { urls: want }).then(list => { for (const [u, img] of list) D.imgs.set(u, img || ''); if (S.view === 'search') renderList(); }).catch(() => {});
     }).catch(e => { if (SR.q === q) { SR.web = { query: q, web: [] }; SR.webErr = msg(e); } }).finally(() => { if (S.view === 'search' && SR.q === q) renderList(); });
     if (SR.soc) invoke('social_search', { query: q }).then(r => { if (SR.q === q) SR.soc = { posts: r.posts || [], errors: r.errors || [] }; })
@@ -2598,7 +2603,7 @@
       <form id="allForm" role="search" class="sa-homeform"><span class="sa-box">${ICONS.search}<input id="allQ" type="search" value="" placeholder="" autocomplete="off" aria-label="Search everything" enterkeyhint="search"></span>
         <div class="sa-btns"><button class="btn" type="submit">Search</button><button class="btn" type="button" data-lucky${SR.lucky ? ' disabled' : ''}>${SR.lucky ? 'Feeling lucky…' : 'I’m feeling lucky'}</button></div></form>
       ${SR.luckyErr ? `<p class="note sa-err">${esc(SR.luckyErr)}</p>` : ''}
-      <p class="sa-what">What you follow, blogs, personal sites and what people are saying.</p>
+      <p class="sa-what">What you follow, blogs, personal sites, the news and what people are saying.</p>
       ${past.length ? `<p class="sa-past">${past.slice(0, 5).map(p => `<button class="linkish" type="button" data-allq="${esc(p)}">${esc(p)}</button>`).join(' · ')} · <button class="linkish sa-forget" type="button" data-allq="">Clear</button></p>` : ''}</div>`;
     const form = `<form class="sa-bar" id="allForm" role="search"><span class="sa-box">${ICONS.search}<input id="allQ" type="search" value="${esc(q)}" autocomplete="off" aria-label="Search everything" enterkeyhint="search"><button class="sa-x" type="button" data-allclear aria-label="Clear the search" title="Clear">×</button></span>
       <button class="btn primary" type="submit">Search</button></form>`;
@@ -2617,7 +2622,20 @@
       : SR.soc.loading ? `<p class="note">Looking on ${esc(nets.join(' and '))}…</p>`
       : `${SR.soc.posts.length ? SR.soc.posts.slice(0, 5).map(srSocialRow).join('') : `<p class="note">Nothing on ${esc(nets.join(' or '))} about it yet.</p>`}${SR.soc.errors.length ? `<p class="note err">${SR.soc.errors.map(esc).join(' · ')}</p>` : ''}
         ${SR.soc.posts.length > 5 ? `<button class="linkish" type="button" data-alltalk>See all ${SR.soc.posts.length} in Conversations</button>` : ''}`}</section>`;
-    return `${form}<div class="sa">${follow}${blogsHtml(q)}${web}${soc}</div>`;
+    // In the news (Follow this topic adds a news search to your feeds) and fresh small-web posts — from Discover's old search
+    let news = '';
+    if (W) {
+      const topicOn = S.feeds.some(f => f.url === W.feed);
+      news = `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">In the news</h2>${W.news?.length ? (topicOn ? '<span class="t-on">✓ Following this topic</span>' : `<button class="btn" type="button" data-topic="topic" data-q="${esc(q)}">Follow this topic</button>`) : ''}</div>
+        ${W.news?.length ? `<p class="sec-p">Following the topic adds a news search to your feeds, so new stories about it arrive with everything else.</p><div class="t-results">${W.news.slice(0, SR.allNews ? 15 : 5).map(n => {
+          const h = hostOfU(n.source_url), on = h && (followsHost(h) || D.added.has(h));
+          return `<article class="t-hit">${tThumb('', n.source || h, n.link)}<div class="t-body"><a class="t-title" href="${esc(n.link)}">${esc(n.title)}</a><span class="t-site">${esc(n.source)}${n.date ? ` · ${esc(agoWords(n.date))}` : ''}</span>
+            ${h ? `<div class="t-acts">${on ? '<span class="t-on">✓ Following</span>' : `<button class="linkish" type="button" data-topic="site" data-url="${esc(n.source_url)}" data-site="${esc(h)}">Follow ${esc(n.source)}</button>`}${D.err?.[h] ? `<span class="fol-err">${esc(D.err[h])}</span>` : ''}</div>` : ''}</div></article>`;
+        }).join('')}</div>${!SR.allNews && W.news.length > 5 ? `<button class="linkish" type="button" data-allnews>Show ${Math.min(15, W.news.length)} stories</button>` : ''}` : `<p class="note">${esc(W.news_error || 'No news stories came up.')}</p>`}</section>`;
+      if (W.small?.length) news += `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">Fresh from personal sites</h2></div><div class="t-results">${W.small.map(smallHit).join('')}</div>
+        <p class="disc-foot">From <a href="https://kagi.com/smallweb">Kagi Small Web</a>, an open list of personal sites and their newest posts.</p></section>`;
+    }
+    return `${form}<div class="sa">${follow}${blogsHtml(q)}${web}${news}${soc}</div>`;
   }
   document.addEventListener('submit', e => { if (e.target.id !== 'allForm') return; e.preventDefault(); const q = $('allQ').value.trim(); if (q) searchAll(q); else srClear(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'allQ' && SR.q) { e.preventDefault(); srClear(); } });
@@ -2647,8 +2665,10 @@
     if (e.target.closest('[data-allclear]')) { srClear(); return; }
     if (e.target.closest('[data-lucky]')) { feelingLucky(($('allQ')?.value || '').trim()); return; }
     if (e.target.closest('[data-allfeeds]')) { SR.allFeeds = true; renderList(); return; }
+    if (e.target.closest('[data-allnews]')) { SR.allNews = true; renderList(); return; }
     if (e.target.closest('[data-allweb]')) { webMore(SR.web, () => S.view === 'search'); return; }
     if (e.target.closest('[data-alltalk]')) { const q = SR.q; selectView('talk'); runSearch(q); return; }
+    if (e.target.closest('[data-searchdoor]')) { selectView('search'); if (SR.q) srClear(); return; }
     if (e.target.closest('[data-everywhere]')) { const q = S.q; S.q = ''; if ($('q')) $('q').value = ''; searchAll(q); }
   });
 
@@ -3412,7 +3432,7 @@
   });
 
   function discoverHtml() {
-    return searchHtml() + (D.res || D.searching ? '' : sharedChannelsHtml() + smallWebHtml()) + blogrollHtml();
+    return discSearchDoorHtml() + sharedChannelsHtml() + smallWebHtml() + blogrollHtml();
   }
   // ---- Kagi Small Web: the newest posts from an open list of personal sites, with a Follow button for each site
   function smallHit(p) {
