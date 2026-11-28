@@ -127,8 +127,11 @@
     if (m < 60) return m + 'm';
     const h = Math.round(m / 60); if (h < 24) return h + 'h';
     const d = Math.round(h / 24); if (d < 30) return d + 'd';
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const dt = new Date(iso); // older: the date, with the year when it isn't this year ("Jun 20, 2020")
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(dt.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
   }
+  // "5m ago", "3d ago", but a plain date for anything older (never "Jun 20 ago")
+  function agoWords(d) { const a = ago(d); return a === 'now' ? 'just now' : /^\d+[a-z]+$/.test(a) ? a + ' ago' : a; }
   function dayLabel(iso) {
     const d = new Date(iso), today = new Date(), y = new Date(); y.setDate(today.getDate() - 1);
     if (d.toDateString() === today.toDateString()) return 'Today';
@@ -1322,7 +1325,7 @@
         ${(S.alsoFeeds?.get(f.id) || []).map(sf => `<button class="p-net" data-view="${sf.id}" title="${esc(f.title)} on ${NET[socialNet(sf)]}" aria-label="${NET[socialNet(sf)]}">${ICON_NET[socialNet(sf)]}</button>`).join('')}
         ${isWeb(f.site) ? `<a class="p-site" href="${esc(f.site)}" title="Visit ${esc(f.title)}">${esc(f.site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : ''}</header>
       ${pic ? `<img class="thumb p-img" src="${esc(top.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" data-act="open" data-tile="${esc(tileFor(f))}">` : ''}
-      <div class="p-meta"><time datetime="${esc(top.date)}">${esc(ago(top.date) === 'now' ? 'just now' : ago(top.date) + ' ago')}</time>
+      <div class="p-meta"><time datetime="${esc(top.date)}">${esc(agoWords(top.date))}</time>
         <button class="icon h-save${top.saved ? ' on' : ''}" data-act="save" title="${top.saved ? 'Remove from Read later' : 'Read later'}" aria-label="${top.saved ? 'Remove from Read later' : 'Read later'}">${top.saved ? ICONS.saved : ICONS.save}</button></div>
       <button class="p-title" data-act="open">${esc(top.title)}</button>
       ${top.summary ? `<p class="p-sum${pic ? '' : ' long'}">${esc(top.summary)}</p>` : ''}
@@ -1597,7 +1600,7 @@
 
   function discoverSub() {
     if (D.running) return D.total ? `Reading ${D.done} of ${D.total} sites…` : 'Looking through the sites you follow…';
-    if (D.report) return `Search any topic, or see what the ${D.report.sites} sites you follow recommend · updated ${ago(D.report.at) === 'now' ? 'just now' : ago(D.report.at) + ' ago'}`;
+    if (D.report) return `Search any topic, or see what the ${D.report.sites} sites you follow recommend · updated ${agoWords(D.report.at)}`;
     return 'Search any topic, or see blogs recommended by the sites you follow';
   }
   function whyLine(s) {
@@ -1616,7 +1619,7 @@
         <h3>${isWeb(s.site) ? `<a href="${esc(s.site)}">${esc(s.title)}</a>` : esc(s.title)}</h3>
         <div class="dom">${d}</div>
         <div class="why">${whyLine(s)}</div>
-        ${latest && !open ? `<div class="latest">Latest: <a href="${esc(latest.link)}">${esc(latest.title)}</a> · ${ago(latest.date) === 'now' ? 'just now' : ago(latest.date) + ' ago'}</div>` : ''}
+        ${latest && !open ? `<div class="latest">Latest: <a href="${esc(latest.link)}">${esc(latest.title)}</a> · ${agoWords(latest.date)}</div>` : ''}
         ${open ? `<ul class="posts">${s.posts.map(p => `<li><a href="${esc(p.link)}">${esc(p.title)}</a><time>${ago(p.date)}</time></li>`).join('')}</ul>` : ''}
       </div>
       <div class="sug-acts">
@@ -2291,7 +2294,6 @@
     await addJobFeeds([localJobsQuery(S.prefs.jobPlace)]);
   }
   // "3h ago", "just now", or a plain date for older things (never "Sep 26 ago")
-  const agoWords = d => { const a = ago(d); return a === 'now' ? 'just now' : /^\d+[a-z]+$/.test(a) ? a + ' ago' : a; };
   const nearPlace = () => (S.prefs.jobPlace || '').split(',')[0].trim().toLowerCase();
   const newJobs = () => { const t = Number(store.get('jobsSeen')) || 0; return S.items.filter(i => isJobItem(i) && Date.parse(i.date) > t).length; };
   const RING = (anim) => `<svg class="ring${anim ? ' draw' : ''}" viewBox="0 0 200 100" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M40 8C100 0 186 4 196 42C202 82 132 98 72 95C22 92 0 72 4 46C8 20 44 6 104 4" fill="none" stroke="var(--pen)" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
@@ -5791,7 +5793,7 @@
   }
 
   // ---- Conversations: your shared stories and the replies to them
-  const fmtWhen = d => { const a = ago(d); return a === 'now' ? 'just now' : `${a} ago`; };
+  const fmtWhen = agoWords;
   const isMe = a => [SOC.accounts.bluesky?.handle, SOC.accounts.mastodon?.handle, SOC.accounts.gab?.handle].some(h => h && (h === a.handle || h.startsWith(a.handle + '@')));
   // Web addresses in a post become links that open in the web window
   function linkText(t) {
@@ -10429,7 +10431,7 @@
     $('syncDot').className = 'dot' + (sync.error ? ' err' : sync.on ? ' on' : '');
     $('syncLabel').textContent = !sync.on ? (IOS ? 'Sync with your Macs: off' : 'Sync between Macs: off')
       : sync.error ? 'Sync needs attention'
-      : sync.lastSync ? `Synced ${ago(sync.lastSync) === 'now' ? 'just now' : ago(sync.lastSync) + ' ago'}` : 'Syncing…';
+      : sync.lastSync ? `Synced ${agoWords(sync.lastSync)}` : 'Syncing…';
   }
   function renderSyncPanel() {
     if (!sync || $('syncPanel').hidden) return;
@@ -10462,14 +10464,14 @@
       return;
     }
     const peers = sync.peers.length
-      ? sync.peers.map(p => `<span class="peer">${esc(p.name)} <small>· updated ${esc(ago(p.lastSeen) === 'now' ? 'just now' : ago(p.lastSeen) + ' ago')}</small></span>`).join('')
+      ? sync.peers.map(p => `<span class="peer">${esc(p.name)} <small>· updated ${esc(agoWords(p.lastSeen))}</small></span>`).join('')
       : '<span class="peer"><small>None yet. Turn on sync on your other Mac and pick this same folder.</small></span>';
     body.innerHTML = `
       <dl class="facts">
         <dt>Folder</dt><dd>${esc(sync.label || sync.folder)}</dd>
         <dt>${IOS ? 'This device' : 'This Mac'}</dt><dd>${esc(sync.thisMac)}</dd>
         <dt>${IOS ? 'Your Macs' : 'Other Macs'}</dt><dd>${peers}</dd>
-        <dt>Last synced</dt><dd>${sync.lastSync ? esc(ago(sync.lastSync) === 'now' ? 'Just now' : ago(sync.lastSync) + ' ago') : 'Not yet'}</dd>
+        <dt>Last synced</dt><dd>${sync.lastSync ? esc(agoWords(sync.lastSync)) : 'Not yet'}</dd>
       </dl>
       ${sync.error ? `<p class="note err">${esc(sync.error)}</p>` : ''}
       <p>Changes sync within about half a minute while the app is open.</p>
