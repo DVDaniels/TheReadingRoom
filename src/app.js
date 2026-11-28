@@ -9869,7 +9869,8 @@
     root.style.setProperty('--read-size', typePrefs.size + 'px');
     root.style.setProperty('--measure', WIDTHS[typePrefs.width][0]);
     root.style.setProperty('--reader-max', WIDTHS[typePrefs.width][1]);
-    if (typePrefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = typePrefs.theme;
+    if (typePrefs.theme === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = typePrefs.theme === 'midnight' ? 'dark' : typePrefs.theme;
+    if (typePrefs.theme === 'midnight') root.dataset.skin = 'midnight'; else root.removeAttribute('data-skin'); // Midnight = Dark + the Ledger-style skin
     root.dataset.readFont = typePrefs.font;
     root.style.zoom = typePrefs.ui === 1 ? '' : String(typePrefs.ui); // text size for the whole app
     document.querySelectorAll('#fontSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.font === typePrefs.font)));
