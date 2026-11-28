@@ -916,6 +916,7 @@
   }
   function renderList() { const keep = keepTyping(); renderListNow(); keep(); }
   function renderListNow() {
+    document.body.classList.toggle('sa-plain', S.view === 'search' && !SR.q);
     syncHome(); paintUpNext();
     if (S.view === 'discover') { $('list').innerHTML = discoverHtml(); return; }
     if (S.view === 'trending') { $('list').innerHTML = trendingHtml(); return; }
@@ -1281,6 +1282,7 @@
   }
 
   function selectView(v) {
+    if (v === 'search' && S.view === 'search' && SR.q) { srClear(); return; } // Search again: back to the plain page
     const was = S.view;
     if (v !== 'write' && document.body.classList.contains('wr-focus')) { document.body.classList.remove('wr-focus'); try { WR.focus = false; } catch {} }
     if (was !== undefined && String(was) !== String(v)) maybeAskReview(); // moving between views is a quiet moment too (the Mac rarely closes the reader)
@@ -2583,12 +2585,18 @@
       <div><div class="n-who"><b>${esc(a.name || '')}</b> <span>${esc(a.handle || '')}</span> <span class="n-net">${ICON_NET[n.network] || ''}</span> <time>${esc(fmtWhen(n.created_at))}</time></div>
       <p>${esc((n.text || '').length > 280 ? n.text.slice(0, 278) + '…' : n.text || '')}</p>${isWeb(n.url) ? `<a class="linkish" href="${esc(n.url)}">Open</a>` : ''}</div></article>`;
   }
+  // Search: a plain page like Google's front page until you search (David, Nov 28: "very minimalistic ... a search
+  // and the I'm feeling lucky button"); then a slim box with × above the results.
   function searchAllHtml() {
     const q = SR.q, past = srAllPast();
-    const form = `<form class="t-search" id="allForm" role="search"><span class="t-field"><input id="allQ" type="search" value="${esc(q)}" placeholder="Search everything, like home espresso or Outlook down" autocomplete="off" aria-label="Search everything" enterkeyhint="search"></span>
+    if (!q) return `<div class="sa-home"><h2 class="sa-mark">Search</h2>
+      <form id="allForm" role="search" class="sa-homeform"><span class="sa-box">${ICONS.search}<input id="allQ" type="search" value="" placeholder="" autocomplete="off" aria-label="Search everything" enterkeyhint="search"></span>
+        <div class="sa-btns"><button class="btn" type="submit">Search</button><button class="btn" type="button" data-lucky${SR.lucky ? ' disabled' : ''}>${SR.lucky ? 'Feeling lucky…' : 'I’m feeling lucky'}</button></div></form>
+      ${SR.luckyErr ? `<p class="note sa-err">${esc(SR.luckyErr)}</p>` : ''}
+      <p class="sa-what">What you follow, blogs, personal sites and what people are saying.</p>
+      ${past.length ? `<p class="sa-past">${past.slice(0, 5).map(p => `<button class="linkish" type="button" data-allq="${esc(p)}">${esc(p)}</button>`).join(' · ')} · <button class="linkish sa-forget" type="button" data-allq="">Clear</button></p>` : ''}</div>`;
+    const form = `<form class="sa-bar" id="allForm" role="search"><span class="sa-box">${ICONS.search}<input id="allQ" type="search" value="${esc(q)}" autocomplete="off" aria-label="Search everything" enterkeyhint="search"><button class="sa-x" type="button" data-allclear aria-label="Clear the search" title="Clear">×</button></span>
       <button class="btn primary" type="submit">Search</button></form>`;
-    if (!q) return `${form}${past.length ? `<div class="t-recent">${past.map(p => `<button class="chip" type="button" data-allq="${esc(p)}">${esc(p)}</button>`).join('')}<button class="linkish" type="button" data-allq="">Clear</button></div>` : ''}
-      <p class="sec-p sa-intro">One search for everything at once: the posts you follow, blogs about it you could follow, pages on personal sites, and what people are saying on Bluesky and Mastodon right now.</p>`;
     const feeds = SR.feeds, shownF = SR.allFeeds ? feeds : feeds.slice(0, 6);
     const follow = `<section class="sa-sec"><div class="t-head"><h2 class="sec-h">In what you follow</h2><span class="bp-meta">${feeds.length ? `${feeds.length} post${feeds.length === 1 ? '' : 's'}` : ''}</span></div>
       ${feeds.length ? `<ul class="sr-feeds">${shownF.map(i => { const f = feedById(i.feed_id); return `<li><button class="sr-item" type="button" data-open="${esc(i.id)}">${f ? nbFace(f, 'nb-av sm') : ''}<span><b>${esc(headline(i) || (i.summary || '').slice(0, 100))}</b><small>${esc(f?.title || '')} · ${esc(fmtWhen(i.date))}</small></span></button></li>`; }).join('')}</ul>
@@ -2606,10 +2614,33 @@
         ${SR.soc.posts.length > 5 ? `<button class="linkish" type="button" data-alltalk>See all ${SR.soc.posts.length} in Conversations</button>` : ''}`}</section>`;
     return `${form}<div class="sa">${follow}${blogsHtml(q)}${web}${soc}</div>`;
   }
-  document.addEventListener('submit', e => { if (e.target.id !== 'allForm') return; e.preventDefault(); searchAll($('allQ').value); });
+  document.addEventListener('submit', e => { if (e.target.id !== 'allForm') return; e.preventDefault(); const q = $('allQ').value.trim(); if (q) searchAll(q); else srClear(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'allQ' && SR.q) { e.preventDefault(); srClear(); } });
+  // back to the plain page
+  function srClear() { Object.assign(SR, { q: '', feeds: [], allFeeds: false, web: null, webErr: '', soc: null, luckyErr: '' }); renderList(); setTimeout(() => $('allQ')?.focus(), 0); }
+  // I'm feeling lucky: with words, open the best page on a personal site about them; with none, a random new post
+  // from the small web (Kagi Small Web). Either opens in the app's web window.
+  async function feelingLucky(q) {
+    if (SR.lucky) return;
+    SR.lucky = true; SR.luckyErr = ''; renderList();
+    try {
+      let url = '';
+      if (q.length > 1) { const r = await invoke('web_search', { query: q, page: 1 }); url = r.web?.[0]?.url || ''; if (!url) SR.luckyErr = `Nothing came up for “${q}”. Try other words.`; }
+      else {
+        if (!D.small) { try { D.small = (await invoke('smallweb_feed')) || []; } catch {} }
+        const list = (D.small || []).filter(p => isWeb(p.link) && !followsHost(p.site));
+        url = list.length ? list[Math.floor(Math.random() * list.length)].link : '';
+        if (!url) SR.luckyErr = 'The small web didn’t answer just now. Try again in a minute.';
+      }
+      if (url) openWeb(url);
+    } catch (e) { SR.luckyErr = msg(e); }
+    SR.lucky = false; if (S.view === 'search') renderList();
+  }
   document.addEventListener('click', e => {
     const p = e.target.closest('[data-allq]');
     if (p) { if (p.dataset.allq) searchAll(p.dataset.allq); else { store.set('allSearches', '[]'); renderList(); } return; }
+    if (e.target.closest('[data-allclear]')) { srClear(); return; }
+    if (e.target.closest('[data-lucky]')) { feelingLucky(($('allQ')?.value || '').trim()); return; }
     if (e.target.closest('[data-allfeeds]')) { SR.allFeeds = true; renderList(); return; }
     if (e.target.closest('[data-allweb]')) { webMore(SR.web, () => S.view === 'search'); return; }
     if (e.target.closest('[data-alltalk]')) { const q = SR.q; selectView('talk'); runSearch(q); return; }
