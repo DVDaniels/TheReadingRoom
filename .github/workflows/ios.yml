@@ -144,7 +144,7 @@ jobs:
           # the keys must be inside the app, or Flickr, Tumblr and YouTube can't connect on iPhone (Nov 27)
           APP="$(ls -d "$ARCHIVE/Products/Applications/"*.app | head -1)"
           EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
-          for k in FLICKR_KEY TUMBLR_KEY YOUTUBE_CLIENT_ID; do
+          for k in MARGINALIA_KEY FLICKR_KEY TUMBLR_KEY YOUTUBE_CLIENT_ID; do
             v="${!k:-}"; [ -z "$v" ] && continue
             if grep -a -q -F "$v" "$EXE"; then echo "::notice title=$k::is in the app"; else echo "::error title=$k::is NOT in the app, so it couldn't connect"; exit 1; fi
           done
