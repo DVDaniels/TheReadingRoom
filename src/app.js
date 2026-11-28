@@ -8377,9 +8377,10 @@
     if (!anySocial()) return;
     const tasks = [
       loadConversations(true),
-      invoke('social_profiles').then(p => { SOC.profiles = p; }).catch(() => {}),
+      // never "Looking…" for ever: give up after a minute and say so (Nov 28: both stuck on David's Mac)
+      inTime(invoke('social_profiles'), 60e3, 'Bluesky and Mastodon didn’t send your numbers.').then(p => { SOC.profiles = p; SOC.profilesErr = ''; }).catch(e => { SOC.profilesErr = msg(e); }),
       invoke('social_followers').then(f => { SOC.followers = f; }).catch(() => {}),
-      invoke('social_shared').then(c => { SOC.shared = c; }).catch(e => { SOC.shared = { posts: [], errors: [msg(e)] }; }),
+      inTime(invoke('social_shared'), 60e3, 'Bluesky and Mastodon didn’t answer within a minute.').then(c => { SOC.shared = c; }).catch(e => { SOC.shared = { posts: [], errors: [msg(e) + ' Press ↻ to try again.'] }; }),
     ];
     const d = myDomain();
     if (d) tasks.push(invoke('social_blog_mentions', { domain: d }).then(m => { SOC.mentions = m; youAlerts(); }).catch(() => { SOC.mentions = []; }));
@@ -8388,6 +8389,8 @@
     loadReaders();
     await Promise.allSettled(tasks);
   }
+  document.addEventListener('click', e => { if (e.target.closest('[data-talkagain]')) $('talkRefresh')?.click(); });
+  const inTime = (p, ms, why) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(why), ms))]);
   const fmtN = n => n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n || 0);
   // Your own page (the same page everyone you read has), first in the You tab
   function myPageCard() {
@@ -8415,7 +8418,8 @@
   }
   function profilesHtml() {
     const ps = SOC.profiles || [];
-    return `<div class="pstrip">${myPageCard()}${ps.map(p => {
+    const missing = anySocial() && !ps.length && SOC.profilesErr ? `<p class="note pstrip-note">${esc(SOC.profilesErr)} <button class="linkish" type="button" data-talkagain>Try again</button></p>` : '';
+    return `<div class="pstrip">${myPageCard()}${missing}${ps.map(p => {
       const fresh = (SOC.followers || []).filter(f => f.network === p.network && Date.now() - Date.parse(f.followed_at) < WEEK_MS).length;
       return `<button class="pcard" data-talk="open" data-url="${esc(p.url)}" title="Open your ${NET[p.network]} profile">
         <span class="pav">${isWeb(p.avatar) ? `<img src="${esc(p.avatar)}" alt="" referrerpolicy="no-referrer">` : esc((p.name || '?')[0])}<span class="net">${ICON_NET[p.network]}</span></span>
