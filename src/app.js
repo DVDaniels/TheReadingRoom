@@ -4861,8 +4861,9 @@
   $('rateBtn').onclick = () => openOut('https://apps.apple.com/app/id6828213191?action=write-review');
   $('supportBtn').onclick = () => openOut('https://readingroomapp.com/support/');
   $('settingsPanel').addEventListener('click', e => {
-    const t = e.target.closest('[data-theme]');
+    const t = e.target.closest('button[data-theme]'); // a button: in Midnight the page itself carries data-theme="dark"
     if (t) { typePrefs.theme = t.dataset.theme; applyType(); return; } // Appearance changes in place; Settings stays open
+    if (e.target.closest('[data-appicon]')) return; // the App icon choice also stays open
     if (e.target.closest('button')) closeSettings();
   });
 
