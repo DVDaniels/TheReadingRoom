@@ -3318,3 +3318,5 @@ body.flv-open #shareMenu { z-index: 1000; }
 .yt-watch .yt-watch-body iframe { width: min(100%, calc((100vh - 120px) * 16 / 9)); aspect-ratio: 16/9; border: 0; border-radius: 10px; background: #000; }
 .yt-watch .yt-watch-note { max-width: 480px; padding: 18px 20px; border-radius: 12px; background: #1d1d20; line-height: 1.5; }
 .yt-watch .flv-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fl-refused .wr-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
